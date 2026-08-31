@@ -1,0 +1,1684 @@
+# GDN INT8 Single-Pulse Residual Propagation V1
+
+## Gates
+- FORMAL_STATUS: `COMPLETE`
+- PROTOCOL_GATE: `PASS`
+- PROPAGATION_IMPLEMENTATION_GATE: `PASS`
+- NORM_MATCH_GATE: `PASS`; ANGLE_GATE: `PASS`
+- PILOT_CLASSIFICATION: `N/A`
+- FINAL_CLASSIFICATION: `SINGLE_PULSE_RESIDUAL_PROPAGATION_SUPPORTED`
+- METHOD_DESIGN_READY: `NO`
+
+## Analysis
+```json
+{
+  "aggregate_by_config": {
+    "FP_STATE": {
+      "mean_future_KL_score": 0.0,
+      "mean_max_future_KL": 0.0,
+      "mean_max_propagation_gain": 0.0,
+      "mean_persistence_score": 0.0
+    },
+    "ORTHOGONAL_RANDOM_PULSE": {
+      "mean_future_KL_score": 0.0028269861941106617,
+      "mean_max_future_KL": 0.03905335006937902,
+      "mean_max_propagation_gain": 1.4098998601744657,
+      "mean_persistence_score": 1.180555365382364
+    },
+    "ORTHOGONAL_REALDIR_PULSE": {
+      "mean_future_KL_score": 0.0009317822221343938,
+      "mean_max_future_KL": 0.003595623867163845,
+      "mean_max_propagation_gain": 0.9917711841852799,
+      "mean_persistence_score": 0.8171134533147376
+    },
+    "PARALLEL_MINUS_PULSE": {
+      "mean_future_KL_score": 0.0002173906695206782,
+      "mean_max_future_KL": 0.0012650413552061461,
+      "mean_max_propagation_gain": 0.9707012437654843,
+      "mean_persistence_score": 0.642344401946216
+    },
+    "PARALLEL_PLUS_PULSE": {
+      "mean_future_KL_score": 0.00014220601686061346,
+      "mean_max_future_KL": 0.000953943334025098,
+      "mean_max_propagation_gain": 0.9610830094536948,
+      "mean_persistence_score": 0.6362780354297021
+    },
+    "REAL_R128_PULSE": {
+      "mean_future_KL_score": 0.0011327364248182024,
+      "mean_max_future_KL": 0.0042057513617490055,
+      "mean_max_propagation_gain": 0.9916334175050034,
+      "mean_persistence_score": 0.8170382409068151
+    }
+  },
+  "clear_future_KL_separation_count": 10,
+  "clear_persistence_separation_count": 18,
+  "per_unit": [
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": false,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.00012451777232960724,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.00014461196324440096,
+          "max_future_KL": 0.005602222867310047,
+          "max_propagation_gain": 1.1854697376481012,
+          "mean_G_state": 1.0943513413360308,
+          "mean_KL_future": 0.0008557440122005655,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.0652379980259024,
+          "tau_of_max_future_KL": 2,
+          "tau_of_max_gain": 4
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.00014915694234787224,
+          "max_future_KL": 0.0006050142110325396,
+          "max_propagation_gain": 0.9922102300415815,
+          "mean_G_state": 0.88560559681479,
+          "mean_KL_future": 0.00015576534604511139,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8261739924203976,
+          "tau_of_max_future_KL": 128,
+          "tau_of_max_gain": 2
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 2.4639170018265003e-05,
+          "max_future_KL": 0.0015967506915330887,
+          "max_propagation_gain": 0.9582722000983452,
+          "mean_G_state": 0.7253816661608379,
+          "mean_KL_future": 0.0002827777397179899,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.5945001837442521,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 2.4685581552930102e-05,
+          "max_future_KL": 0.00012195564340800047,
+          "max_propagation_gain": 0.9581869021034912,
+          "mean_G_state": 0.7123213275976246,
+          "mean_KL_future": 1.7496274185679894e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.5738063861984999,
+          "tau_of_max_future_KL": 8,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.00013045991168354477,
+          "max_future_KL": 0.0015356484800577164,
+          "max_propagation_gain": 0.992428238791364,
+          "mean_G_state": 0.8875190226097004,
+          "mean_KL_future": 0.00034468573406609693,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8291963470601997,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 2
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.856441516939727,
+      "problem_id": "test/algebra/1332.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 64
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": false,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 3.8532973306715236e-05,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 3.85952118911348e-05,
+          "max_future_KL": 0.0022274390794336796,
+          "max_propagation_gain": 1.2401374567979822,
+          "mean_G_state": 1.1039232803308663,
+          "mean_KL_future": 0.0004992003494913785,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.0605440304200333,
+          "tau_of_max_future_KL": 4,
+          "tau_of_max_gain": 2
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 2.754293459261703e-06,
+          "max_future_KL": 0.0004719505086541176,
+          "max_propagation_gain": 0.9588012113516992,
+          "mean_G_state": 0.8234947918363085,
+          "mean_KL_future": 9.611047394363081e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7601577536757198,
+          "tau_of_max_future_KL": 4,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 4.628709709209033e-06,
+          "max_future_KL": 0.0004486525140237063,
+          "max_propagation_gain": 0.9703368662430656,
+          "mean_G_state": 0.7866286690427358,
+          "mean_KL_future": 7.21103502988596e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6920194173762233,
+          "tau_of_max_future_KL": 4,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 6.223858441956054e-08,
+          "max_future_KL": 0.0002657131408341229,
+          "max_propagation_gain": 0.9704337003840069,
+          "mean_G_state": 0.7864823621039121,
+          "mean_KL_future": 3.323644897103295e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6918323816690193,
+          "tau_of_max_future_KL": 4,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 1.866439828788202e-05,
+          "max_future_KL": 0.00047202425776049495,
+          "max_propagation_gain": 0.9588491064579427,
+          "mean_G_state": 0.8223104914353745,
+          "mean_KL_future": 7.973113660836306e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7582969347832593,
+          "tau_of_max_future_KL": 4,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.5329493942737666,
+      "problem_id": "test/algebra/1214.json",
+      "role": "INT8-row non-truncated termination control",
+      "t0": 128
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": false,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.00018060806141697585,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 3.72339481647721e-05,
+          "max_future_KL": 0.15839985013008118,
+          "max_propagation_gain": 1.4097169065644746,
+          "mean_G_state": 1.1892081449197003,
+          "mean_KL_future": 0.021199130647349407,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.0949762873269666,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 2
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.0001595619014215899,
+          "max_future_KL": 0.0016227897722274065,
+          "max_propagation_gain": 0.9785885699560902,
+          "mean_G_state": 0.8773022723998447,
+          "mean_KL_future": 0.00031519222748277453,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.828880440386396,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 4.0495754057046084e-05,
+          "max_future_KL": 0.0016219408717006445,
+          "max_propagation_gain": 0.968983616838806,
+          "mean_G_state": 0.8067524013998382,
+          "mean_KL_future": 0.0002925683839258564,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7248358301279009,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 3.4876952064166745e-07,
+          "max_future_KL": 0.0005388450808823109,
+          "max_propagation_gain": 0.969200089580428,
+          "mean_G_state": 0.806675387350583,
+          "mean_KL_future": 6.765696775512531e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7246433953605033,
+          "tau_of_max_future_KL": 2,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.0001809568309376175,
+          "max_future_KL": 0.001622024574317038,
+          "max_propagation_gain": 0.9785635773055199,
+          "mean_G_state": 0.8737077365347264,
+          "mean_KL_future": 0.00032122398163858534,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8229449674739462,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.5110553609347606,
+      "problem_id": "test/counting_and_probability/119.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 256
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": true,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.0031664932080438745,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.0005330670118240732,
+          "max_future_KL": 0.2249559462070465,
+          "max_propagation_gain": 1.7538840159761429,
+          "mean_G_state": 1.4677284357491767,
+          "mean_KL_future": 0.02933147136825731,
+          "mean_Top1_future": 0.875,
+          "persistence_score": 1.3639364048310552,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 4
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.003192264875991313,
+          "max_future_KL": 0.01575818844139576,
+          "max_propagation_gain": 0.9677808009676502,
+          "mean_G_state": 0.8367594343775717,
+          "mean_KL_future": 0.0022386828337024323,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7662797470317082,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 0.00029875236495335855,
+          "max_future_KL": 0.0015933588147163391,
+          "max_propagation_gain": 0.9661633783471052,
+          "mean_G_state": 0.7461134050027766,
+          "mean_KL_future": 0.000387453438743135,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.638666418655119,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 2.577166794743846e-05,
+          "max_future_KL": 0.0001286092883674428,
+          "max_propagation_gain": 0.9665958756133578,
+          "mean_G_state": 0.7472834222386104,
+          "mean_KL_future": 2.7637465948027184e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.640266806038273,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.0013175597987863164,
+          "max_future_KL": 0.006384940817952156,
+          "max_propagation_gain": 0.9675335530117347,
+          "mean_G_state": 0.8385363797935037,
+          "mean_KL_future": 0.0010369548064407819,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7692586030096074,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 2.1356006281041804,
+      "problem_id": "test/geometry/477.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 64
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": false,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 8.47057692103803e-06,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 8.486659274353769e-06,
+          "max_future_KL": 0.035461705178022385,
+          "max_propagation_gain": 1.2680780199250532,
+          "mean_G_state": 1.187729849752696,
+          "mean_KL_future": 0.0088537455664639,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.1870324754594734,
+          "tau_of_max_future_KL": 2,
+          "tau_of_max_gain": 4
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 1.065092542011925e-05,
+          "max_future_KL": 0.0007527763955295086,
+          "max_propagation_gain": 0.9661972326718371,
+          "mean_G_state": 0.8888249318873698,
+          "mean_KL_future": 0.00010087279022513718,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8504917907379761,
+          "tau_of_max_future_KL": 2,
+          "tau_of_max_gain": 2
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 2.1803484990812194e-06,
+          "max_future_KL": 0.00036645453656092286,
+          "max_propagation_gain": 0.9589705098404532,
+          "mean_G_state": 0.8095195034607048,
+          "mean_KL_future": 4.725990053922047e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7296649752828159,
+          "tau_of_max_future_KL": 2,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 2.589558193477615e-06,
+          "max_future_KL": 0.0012898680288344622,
+          "max_propagation_gain": 0.9589956319746189,
+          "mean_G_state": 0.8084344947862183,
+          "mean_KL_future": 0.0001728428144738281,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7279343844159107,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 3.417423443607959e-06,
+          "max_future_KL": 0.0007352608372457325,
+          "max_propagation_gain": 0.966225697901978,
+          "mean_G_state": 0.8903703954953135,
+          "mean_KL_future": 9.410652341346193e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.852936653314203,
+          "tau_of_max_future_KL": 2,
+          "tau_of_max_gain": 2
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.630686090491946,
+      "problem_id": "test/geometry/702.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 128
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": true,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.0014801525293599127,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.00021623418052740817,
+          "max_future_KL": 0.04485861584544182,
+          "max_propagation_gain": 1.207715281429705,
+          "mean_G_state": 1.0410862152472986,
+          "mean_KL_future": 0.00574247790936061,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.9809430768716622,
+          "tau_of_max_future_KL": 4,
+          "tau_of_max_gain": 4
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.0014875333321015204,
+          "max_future_KL": 0.006671047769486904,
+          "max_propagation_gain": 0.979928892402044,
+          "mean_G_state": 0.8318053630308962,
+          "mean_KL_future": 0.001172287689091167,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7582417196218808,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 7.380802741607795e-06,
+          "max_future_KL": 0.0019522648071870208,
+          "max_propagation_gain": 0.9748866637326067,
+          "mean_G_state": 0.7082330462462141,
+          "mean_KL_future": 0.0002486549351696371,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6019003802162953,
+          "tau_of_max_future_KL": 4,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 5.403283310343454e-05,
+          "max_future_KL": 0.0001435734739061445,
+          "max_propagation_gain": 0.9743730781399036,
+          "mean_G_state": 0.708486002929191,
+          "mean_KL_future": 3.3858418623466946e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6028230599193151,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.0013946515249699588,
+          "max_future_KL": 0.006671106442809105,
+          "max_propagation_gain": 0.9799345349444568,
+          "mean_G_state": 0.8314762029238179,
+          "mean_KL_future": 0.0011142915502667123,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.757705908930363,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.6297432417595858,
+      "problem_id": "test/algebra/1332.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 128
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": false,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.0002632120220990686,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.0002641904609426149,
+          "max_future_KL": 0.0012540338793769479,
+          "max_propagation_gain": 0.9992737409554248,
+          "mean_G_state": 0.9624293528212958,
+          "mean_KL_future": 0.0001651633142585318,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.945067880482312,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 64
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.00012112968191395624,
+          "max_future_KL": 0.00034857814898714423,
+          "max_propagation_gain": 0.9725394991744363,
+          "mean_G_state": 0.830592664624526,
+          "mean_KL_future": 7.57292458197778e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7606771577315022,
+          "tau_of_max_future_KL": 128,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 3.9932120216690235e-06,
+          "max_future_KL": 1.9971974325017072e-05,
+          "max_propagation_gain": 0.9559457605740792,
+          "mean_G_state": 0.7527728850115996,
+          "mean_KL_future": 2.5170292040632702e-06,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6435298459567614,
+          "tau_of_max_future_KL": 128,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 5.554179006269366e-05,
+          "max_future_KL": 0.00027755857445299625,
+          "max_propagation_gain": 0.9558124800810444,
+          "mean_G_state": 0.7529100861842991,
+          "mean_KL_future": 3.473635264109563e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6437888295753826,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.0002672052341207376,
+          "max_future_KL": 0.0009891221998259425,
+          "max_propagation_gain": 0.9723766135054844,
+          "mean_G_state": 0.8312093209727934,
+          "mean_KL_future": 0.00016704351034158016,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7617961240182543,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.4685688417073701,
+      "problem_id": "test/algebra/1214.json",
+      "role": "INT8-row non-truncated termination control",
+      "t0": 256
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": true,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.007267818624097089,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.007454980211188911,
+          "max_future_KL": 0.019505560398101807,
+          "max_propagation_gain": 1.6481625573837202,
+          "mean_G_state": 1.4767663360227576,
+          "mean_KL_future": 0.005303565323539594,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.4235589020171757,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 2
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.002237653625036884,
+          "max_future_KL": 0.005285477731376886,
+          "max_propagation_gain": 0.9759088528511423,
+          "mean_G_state": 0.9102247760574835,
+          "mean_KL_future": 0.001454278536123281,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8806907638441526,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 0.00044478757572008476,
+          "max_future_KL": 0.0019028366077691317,
+          "max_propagation_gain": 0.9767898881842852,
+          "mean_G_state": 0.811902890814201,
+          "mean_KL_future": 0.000337223469945247,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7329845761759732,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 0.00018716158709182197,
+          "max_future_KL": 0.0009325314313173294,
+          "max_propagation_gain": 0.9767926445896816,
+          "mean_G_state": 0.8129020060006724,
+          "mean_KL_future": 0.00013597605047688255,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7345515100759104,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.0018408244417156717,
+          "max_future_KL": 0.00392485223710537,
+          "max_propagation_gain": 0.9758873332979737,
+          "mean_G_state": 0.9067897969950854,
+          "mean_KL_future": 0.0012048999258620907,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8751891009365348,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.9421403236641488,
+      "problem_id": "test/intermediate_algebra/207.json",
+      "role": "INT8-row non-truncated termination control",
+      "t0": 64
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": true,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.02671512437639727,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.026721485816233327,
+          "max_future_KL": 0.12776592373847961,
+          "max_propagation_gain": 2.361657291769626,
+          "mean_G_state": 1.6845558510972,
+          "mean_KL_future": 0.020841079935976836,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.6965206285921415,
+          "tau_of_max_future_KL": 8,
+          "tau_of_max_gain": 8
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.00010168143085138581,
+          "max_future_KL": 0.00040077793528325856,
+          "max_propagation_gain": 0.9797313777720708,
+          "mean_G_state": 0.8506724846431672,
+          "mean_KL_future": 7.425379520764608e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7768738840620233,
+          "tau_of_max_future_KL": 8,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 0.00010333828629924824,
+          "max_future_KL": 0.0005097006214782596,
+          "max_propagation_gain": 0.9776451356174415,
+          "mean_G_state": 0.7353441079572272,
+          "mean_KL_future": 8.14516662646092e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6032491555368681,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 6.361439836055638e-06,
+          "max_future_KL": 8.323719521285966e-05,
+          "max_propagation_gain": 0.9777408644979921,
+          "mean_G_state": 0.73422924719284,
+          "mean_KL_future": 1.673434284898967e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6016822887346156,
+          "tau_of_max_future_KL": 2,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.0002302152409356495,
+          "max_future_KL": 0.0005458443192765117,
+          "max_propagation_gain": 0.9797795583557343,
+          "mean_G_state": 0.8512956384127399,
+          "mean_KL_future": 0.00020122173950554156,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7776759913705429,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 2.8196286650837536,
+      "problem_id": "test/geometry/477.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 128
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": false,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 5.858544189378812e-05,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 1.8542767695706176e-05,
+          "max_future_KL": 0.006451860070228577,
+          "max_propagation_gain": 1.0590855659549399,
+          "mean_G_state": 0.9826368535988097,
+          "mean_KL_future": 0.0009264784229159329,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.9538025222322096,
+          "tau_of_max_future_KL": 4,
+          "tau_of_max_gain": 2
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 5.5557929178462474e-05,
+          "max_future_KL": 0.00026185979368165135,
+          "max_propagation_gain": 0.9831322300222887,
+          "mean_G_state": 0.8767751237245709,
+          "mean_KL_future": 5.752401431025067e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8270695530471072,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 2.670636438262264e-06,
+          "max_future_KL": 0.0016959718195721507,
+          "max_propagation_gain": 0.8833707649203174,
+          "mean_G_state": 0.7489514963224463,
+          "mean_KL_future": 0.00025128161667278825,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.692240032139797,
+          "tau_of_max_future_KL": 4,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 4.70149778681872e-06,
+          "max_future_KL": 0.001695800106972456,
+          "max_propagation_gain": 0.8833806177406326,
+          "mean_G_state": 0.7009735243006957,
+          "mean_KL_future": 0.00023897581626031172,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.615433271385696,
+          "tau_of_max_future_KL": 4,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 6.125607833205038e-05,
+          "max_future_KL": 0.0002817110507749021,
+          "max_propagation_gain": 0.9831367441670946,
+          "mean_G_state": 0.8776746303227663,
+          "mean_KL_future": 5.924367019871646e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8284734748298943,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.5498065616165,
+      "problem_id": "test/geometry/702.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 256
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": true,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.0036090262129659934,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.0005071061568529434,
+          "max_future_KL": 0.00260796956717968,
+          "max_propagation_gain": 1.4373644118028446,
+          "mean_G_state": 1.177230266385635,
+          "mean_KL_future": 0.0006432407258214201,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.1715775854090382,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 4
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.0016708632276745128,
+          "max_future_KL": 0.0077520571649074554,
+          "max_propagation_gain": 0.986521670128355,
+          "mean_G_state": 0.9167834438391506,
+          "mean_KL_future": 0.001062258407189931,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8788717450725626,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 0.0003929444185802211,
+          "max_future_KL": 0.0019316384568810463,
+          "max_propagation_gain": 1.089854042188943,
+          "mean_G_state": 0.7145628664966533,
+          "mean_KL_future": 0.0002458330284598187,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.5604956425612972,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 4
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 6.595626175176505e-06,
+          "max_future_KL": 0.00014367862604558468,
+          "max_propagation_gain": 0.9183322032351329,
+          "mean_G_state": 0.6757285750976363,
+          "mean_KL_future": 2.2080102868304863e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.5398987006507048,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.00361562183914117,
+          "max_future_KL": 0.017475860193371773,
+          "max_propagation_gain": 0.9863875535010058,
+          "mean_G_state": 0.9161659414217261,
+          "mean_KL_future": 0.002259771299916835,
+          "mean_Top1_future": 0.875,
+          "persistence_score": 0.8771052761065927,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 2.169995193533235,
+      "problem_id": "test/algebra/1332.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 256
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": true,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.006022670186289408,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.003982408298835472,
+          "max_future_KL": 0.013442078605294228,
+          "max_propagation_gain": 1.0165260585006788,
+          "mean_G_state": 0.9452694290505339,
+          "mean_KL_future": 0.004174014356441796,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.9117451561465497,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 2
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.005077442599549009,
+          "max_future_KL": 0.01573064923286438,
+          "max_propagation_gain": 1.0262565300502537,
+          "mean_G_state": 0.8272683873711959,
+          "mean_KL_future": 0.005140339005376027,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7346379468076003,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 2
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 0.00019151185638577873,
+          "max_future_KL": 0.0009572241106070578,
+          "max_propagation_gain": 0.9689037392988151,
+          "mean_G_state": 0.7198868838911805,
+          "mean_KL_future": 0.00012003663164250958,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.5861894144214309,
+          "tau_of_max_future_KL": 8,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 0.0007085404153439133,
+          "max_future_KL": 0.002585635520517826,
+          "max_propagation_gain": 0.9687962324152752,
+          "mean_G_state": 0.7184806181203097,
+          "mean_KL_future": 0.0006869206067416623,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.5840121612742158,
+          "tau_of_max_future_KL": 8,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.006214182042675187,
+          "max_future_KL": 0.015151944942772388,
+          "max_propagation_gain": 1.0254620610634595,
+          "mean_G_state": 0.8278339486050785,
+          "mean_KL_future": 0.005778549732206206,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7358273278659009,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 2
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.5611749490896127,
+      "problem_id": "test/counting_and_probability/119.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 64
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": true,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.005438081540601658,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.005608643434346305,
+          "max_future_KL": 0.013135272078216076,
+          "max_propagation_gain": 1.792373481309186,
+          "mean_G_state": 1.5013133097898637,
+          "mean_KL_future": 0.004428212600096959,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.3924808234705552,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 2
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.0005817780875527312,
+          "max_future_KL": 0.002163912169635296,
+          "max_propagation_gain": 0.9724718834593378,
+          "mean_G_state": 0.8749137441789232,
+          "mean_KL_future": 0.0003641128337361077,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8257953150293567,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 0.00017056189374464736,
+          "max_future_KL": 0.0006877928390167654,
+          "max_propagation_gain": 0.9635144909962395,
+          "mean_G_state": 0.737834905050978,
+          "mean_KL_future": 0.00011977797248419186,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6134798261189349,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 0.0004058465659724675,
+          "max_future_KL": 0.0019528904231265187,
+          "max_propagation_gain": 0.9634503506676478,
+          "mean_G_state": 0.7580507248986523,
+          "mean_KL_future": 0.0002537839835943245,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6458587429226331,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.0020543902885949094,
+          "max_future_KL": 0.0073154279962182045,
+          "max_propagation_gain": 0.9724788075629001,
+          "mean_G_state": 0.8763432041203232,
+          "mean_KL_future": 0.0012966501127779084,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8281188211532673,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 2.269807032250032,
+      "problem_id": "test/intermediate_algebra/207.json",
+      "role": "INT8-row non-truncated termination control",
+      "t0": 128
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": true,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.0012276892398893403,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.0017582453292561695,
+          "max_future_KL": 0.002746901009231806,
+          "max_propagation_gain": 1.129559248307537,
+          "mean_G_state": 1.03444083267434,
+          "mean_KL_future": 0.0013617179589573425,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.0011384478125818,
+          "tau_of_max_future_KL": 128,
+          "tau_of_max_gain": 4
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.0007853197897929931,
+          "max_future_KL": 0.0017042330000549555,
+          "max_propagation_gain": 0.9698329518943325,
+          "mean_G_state": 0.8543788857114537,
+          "mean_KL_future": 0.000527185897453819,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7926874237568003,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 0.0006561029399307472,
+          "max_future_KL": 0.0012306582648307085,
+          "max_propagation_gain": 0.9584577101469118,
+          "mean_G_state": 0.6964679662289806,
+          "mean_KL_future": 0.00042896415241777675,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.571015289445614,
+          "tau_of_max_future_KL": 128,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 0.0005305560893668293,
+          "max_future_KL": 0.002608784008771181,
+          "max_propagation_gain": 0.9584948816209762,
+          "mean_G_state": 0.6965887273649691,
+          "mean_KL_future": 0.00036391957541798137,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.5711107798309893,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.0007982311743454318,
+          "max_future_KL": 0.0015232376754283905,
+          "max_propagation_gain": 0.969701418606842,
+          "mean_G_state": 0.8539455325065588,
+          "mean_KL_future": 0.0005264652649237256,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7920942101148031,
+          "tau_of_max_future_KL": 128,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.7532603177452772,
+      "problem_id": "test/geometry/477.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 256
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": true,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.0015272033650461036,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.0008021910568274393,
+          "max_future_KL": 0.031070079654455185,
+          "max_propagation_gain": 2.015862490575601,
+          "mean_G_state": 1.723935506118657,
+          "mean_KL_future": 0.006801812611842983,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.6910346130793699,
+          "tau_of_max_future_KL": 2,
+          "tau_of_max_gain": 2
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.00039015607628130057,
+          "max_future_KL": 0.0019316282123327255,
+          "max_propagation_gain": 0.9919237201148677,
+          "mean_G_state": 0.8612021487420595,
+          "mean_KL_future": 0.0005903566689759998,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7939422235477412,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 0.00038784507570142066,
+          "max_future_KL": 0.0019374974071979523,
+          "max_propagation_gain": 0.9657571047777945,
+          "mean_G_state": 0.773969814656413,
+          "mean_KL_future": 0.0003336341968687151,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6790218066159186,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 2.6453906880918864e-05,
+          "max_future_KL": 0.0017090394394472241,
+          "max_propagation_gain": 0.9658261411114162,
+          "mean_G_state": 0.7746443461962027,
+          "mean_KL_future": 0.00023333789073201605,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6800320505125919,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.0015536572719270225,
+          "max_future_KL": 0.007748868316411972,
+          "max_propagation_gain": 0.9921909054741183,
+          "mean_G_state": 0.8629191846890741,
+          "mean_KL_future": 0.0013056818093346578,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.7966333608767545,
+          "tau_of_max_future_KL": 32,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 2.4903980941416144,
+      "problem_id": "test/algebra/1214.json",
+      "role": "INT8-row non-truncated termination control",
+      "t0": 64
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": false,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 5.5563773115974156e-05,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 5.579781564390984e-05,
+          "max_future_KL": 0.0006751585169695318,
+          "max_propagation_gain": 1.1849567590262444,
+          "mean_G_state": 1.0761820413945782,
+          "mean_KL_future": 0.00011928659021992472,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.0768827381292512,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 8
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 2.536480154891052e-06,
+          "max_future_KL": 8.727575732336845e-06,
+          "max_propagation_gain": 0.9930615139955264,
+          "mean_G_state": 0.8977021172482756,
+          "mean_KL_future": 1.5888154822896183e-06,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8459241225043271,
+          "tau_of_max_future_KL": 8,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 7.254787325716717e-07,
+          "max_future_KL": 0.00016216046060435474,
+          "max_propagation_gain": 0.9871032348223293,
+          "mean_G_state": 0.7165825955119987,
+          "mean_KL_future": 2.0715470427732502e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.5635196029038922,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 4
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 2.3404252793568503e-07,
+          "max_future_KL": 0.00014957570238038898,
+          "max_propagation_gain": 0.9853838009445273,
+          "mean_G_state": 0.714616730711498,
+          "mean_KL_future": 1.883951895557262e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.5605169221205799,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 4
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 2.143026144985072e-06,
+          "max_future_KL": 8.90646333573386e-06,
+          "max_propagation_gain": 0.9930422251037011,
+          "mean_G_state": 0.903752579460065,
+          "mean_KL_future": 1.3521000017391316e-06,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8549984764602678,
+          "tau_of_max_future_KL": 8,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.9212314483801938,
+      "problem_id": "test/counting_and_probability/119.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 128
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": false,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.0009853012230162327,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.0010554640779787405,
+          "max_future_KL": 0.004409376066178083,
+          "max_propagation_gain": 1.4075048504769185,
+          "mean_G_state": 1.140445278785572,
+          "mean_KL_future": 0.0007712455187931511,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.120537603529486,
+          "tau_of_max_future_KL": 128,
+          "tau_of_max_gain": 4
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.00031869251429288424,
+          "max_future_KL": 0.0011268503731116652,
+          "max_propagation_gain": 1.1744941441145698,
+          "mean_G_state": 0.961015625581965,
+          "mean_KL_future": 0.00020861765622293138,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.9128635760230626,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 4
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 0.00041222158228411133,
+          "max_future_KL": 0.0019571182783693075,
+          "max_propagation_gain": 0.9784695126368537,
+          "mean_G_state": 0.7721078081697889,
+          "mean_KL_future": 0.00026213223337223646,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6625644458594101,
+          "tau_of_max_future_KL": 128,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 7.016285496250774e-05,
+          "max_future_KL": 0.0003508578520268202,
+          "max_propagation_gain": 0.9785615852592452,
+          "mean_G_state": 0.7708016511040068,
+          "mean_KL_future": 4.41078100702208e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6611376712722521,
+          "tau_of_max_future_KL": 128,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.00014098830125774953,
+          "max_future_KL": 0.0004933224408887327,
+          "max_propagation_gain": 1.1728986623687145,
+          "mean_G_state": 0.9573567150379172,
+          "mean_KL_future": 9.655171314926214e-05,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.9073070052581149,
+          "tau_of_max_future_KL": 16,
+          "tau_of_max_gain": 4
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.6948627376980328,
+      "problem_id": "test/intermediate_algebra/207.json",
+      "role": "INT8-row non-truncated termination control",
+      "t0": 256
+    },
+    {
+      "ANGLE_GATE": "PASS",
+      "NORM_MATCH_GATE": "PASS",
+      "PROPAGATION_IMPLEMENTATION_GATE": "PASS",
+      "PROTOCOL_GATE": "PASS",
+      "clear_future_KL_separation": true,
+      "clear_persistence_separation": true,
+      "future_KL_spread": 0.0012511208078658242,
+      "future_KL_spread_threshold": 0.001,
+      "metrics": {
+        "FP_STATE": {
+          "future_KL_score": 0.0,
+          "max_future_KL": 0.0,
+          "max_propagation_gain": 0.0,
+          "mean_G_state": 0.0,
+          "mean_KL_future": 0.0,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.0,
+          "tau_of_max_future_KL": 1,
+          "tau_of_max_gain": 1
+        },
+        "ORTHOGONAL_RANDOM_PULSE": {
+          "future_KL_score": 0.0016784670932642244,
+          "max_future_KL": 0.008390308357775211,
+          "max_propagation_gain": 1.2608696087362021,
+          "mean_G_state": 1.1491759275243245,
+          "mean_KL_future": 0.001134090297609247,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 1.1129794030467948,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 2
+        },
+        "ORTHOGONAL_REALDIR_PULSE": {
+          "future_KL_score": 0.0004273462853984,
+          "max_future_KL": 0.002124711172655225,
+          "max_propagation_gain": 0.9825000043669542,
+          "mean_G_state": 0.909283249682843,
+          "mean_KL_future": 0.00030457649458415226,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8877830043649617,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_MINUS_PULSE": {
+          "future_KL_score": 0.0007682519455548764,
+          "max_future_KL": 0.0021987513173371553,
+          "max_propagation_gain": 0.969197768514328,
+          "mean_G_state": 0.7563995251407635,
+          "mean_KL_future": 0.0004802620580667827,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.6723223918933863,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        },
+        "PARALLEL_PLUS_PULSE": {
+          "future_KL_score": 0.00045006183858156137,
+          "max_future_KL": 0.0021928264759480953,
+          "max_propagation_gain": 0.9691370902071257,
+          "mean_G_state": 0.7447569509432898,
+          "mean_KL_future": 0.00031770254933327635,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.653675295777543,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        },
+        "REAL_R128_PULSE": {
+          "future_KL_score": 0.0005648308194281526,
+          "max_future_KL": 0.0028234212659299374,
+          "max_propagation_gain": 0.9825249236700392,
+          "mean_G_state": 0.9051047675888183,
+          "mean_KL_future": 0.00039021639942316,
+          "mean_Top1_future": 1.0,
+          "persistence_score": 0.8811297527601667,
+          "tau_of_max_future_KL": 64,
+          "tau_of_max_gain": 1
+        }
+      },
+      "number_of_injections_after_t0": {
+        "FP_STATE": 0,
+        "ORTHOGONAL_RANDOM_PULSE": 0,
+        "ORTHOGONAL_REALDIR_PULSE": 0,
+        "PARALLEL_MINUS_PULSE": 0,
+        "PARALLEL_PLUS_PULSE": 0,
+        "REAL_R128_PULSE": 0
+      },
+      "persistence_separation_ratio": 1.7026487160130621,
+      "problem_id": "test/geometry/702.json",
+      "role": "INT8-row truncated pathological candidate",
+      "t0": 64
+    }
+  ],
+  "positive_unit_count": 18
+}
+```
+
+## Limits
+- Single oracle pulse only; no repeated quantization after t0.
+- Teacher-forced continuation uses retokenized P0 FP_STATE decoded responses; not exact replay.
+- No method design is run.
