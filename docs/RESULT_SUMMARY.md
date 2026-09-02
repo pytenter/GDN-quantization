@@ -1,37 +1,16 @@
 # Result Summary
 
-This summary is a compact guide to the evidence chain. Full compact JSON and Markdown reports are stored under `results/` and `reports/`.
-
-| Area | Experiment | Status | Key Result | Limitation |
-|---|---|---|---|---|
-| Phenomenon | INT8 row E2E completion | COMPLETE | INT8 orientation is a first-order variable; R128 degradation is much stronger than C128 in the tested setting. | Small public evidence bundle excludes raw traces and benchmark text. |
-| Mechanism | Orientation state change | COMPLETE | State-change metrics separate row and column behavior under the canonical continuation protocol. | Uses retokenized FP_STATE decoded responses, not exact original generation IDs. |
-| Negative result | Axis geometry rescue | NEGATIVE/INCONCLUSIVE | Finer grouping rescues KL, but same-codebook lost-update metrics do not explain the rescue. | Does not establish a final causal chain from dynamic range to quality. |
-| Metric | Effective-update audit | COMPLETE | Effective-update metrics are better aligned with KL rescue than raw same-codebook metrics. | Metric audit only; not a method proposal. |
-| Validation | Effective-update multi-prompt validation | COMPLETE | R128 to R16/C16 improves KL and effective-update metrics across 6 prompts. | Prompt set is canonical and small. |
-| Causal | Residual strength | SUPPORTED | Residual-strength attenuation produces a KL dose response. | Intervention is controlled and diagnostic, not a production quantizer. |
-| Causal | Residual geometry | SUPPORTED | Same residual magnitude with different direction changes model fidelity. | Geometry intervention does not by itself explain natural long-horizon accumulation. |
-| Dynamics | Single-pulse residual propagation | SUPPORTED | Same-norm pulse perturbations show direction-dependent damping, persistence, and amplification. | Single-pulse setting only. |
-| Dynamics | Direction sensitivity panel | SUPPORTED | Random orthogonal directions show broad recurrent directional sensitivity. | `PROPAGATION_FIDELITY_LINK = INCONCLUSIVE`; natural R128 direction is low-gain biased. |
-| Readout | Readout-aware propagation audit | INCONCLUSIVE | Readout-aware metrics improve over raw state persistence in pilot but do not meet the formal-run gate. | Formal readout-aware run was not started because pilot threshold was not met. |
-
-## Latest Readout-Aware Pilot
-
-```text
-rho_state           = 0.0882
-rho_frozen_readout  = 0.3500
-rho_actual_readout  = 0.3000
-rho_postproj        = 0.2353
-rho_residual_stream = 0.1059
-```
-
-The result is inconclusive, not positive.
-
-## Current Status
-
-```text
-Current phase = Mechanism Validation
-MECHANISM_CLOSURE_CANDIDATE = NO
-METHOD_DESIGN_READY_CANDIDATE = NO
-METHOD_DESIGN_READY = NO
-```
+| Experiment | Question | Units | Main Metric | Result | Evidence Level | Interpretation |
+|---|---|---:|---|---|---|---|
+| Repeated Accumulation Formal | Does repeated R128 exposure accumulate trajectory error? | 18 | cadence KL/state AUC | SUPPORTED | FORMAL | Recurrent exposure is a core causal pathway. |
+| V-Space Scale Contamination | Is R128 source error representation dependent? | 9 pilot plus screens | residual/KL rescue | V-Hadamard rescue 9/9; median KL rescue fraction about 0.9655 | SUPPORTED | Cross-Value scale contamination is a strong source-side explanation. |
+| Source-to-Temporal Formal Bridge | Does source rescue attenuate repeated accumulation? | 18 | residual, STATE_AUC, KL_AUC | 18/18 improves; SOURCE_TO_TEMPORAL_BRIDGE SUPPORTED | FORMAL | Source-side representation rescue propagates to long-horizon behavior. |
+| Natural Residual Norm-Swap | Is residual magnitude causal and sufficient? | 9 | KL_AUC | REAL_R > REAL_C 9/9; R shrink improves 9/9; same-norm R structure worse 9/9 | CAUSAL PILOT | Magnitude matters, but structure remains. |
+| Frozen Observability | Does persistence explain same-norm harm? | 9 | J_state/J_key/full KL | J_state R/C 0.6665, J_key R/C 2.4732, full KL R/C 2.0473 | SUPPORTED PATH SIGNAL | Persistence is not relevance; future-key interaction is implicated. |
+| Future-Key Causal Construction | Is J_key independently causal? | 9 | intervention cleanliness and KL | CONSTRUCTION_NOT_CLEAN_ENOUGH | NEGATIVE | J_key cannot be claimed as standalone causal scalar. |
+| K-Space Rotation Audit | Is future-key signal just K coordinate basis? | screen | rotation counterfactual | ROTATION_MANIFOLD_DOES_NOT_CLEANLY_DECOUPLE_KEY | NEGATIVE | K-space rotation does not cleanly explain the path signal. |
+| Native Core Replay Audit | Are replay semantics correct? | regression | replay relative error | next_state = 0, core_output = 0 after dtype fix | IMPLEMENTATION SUPPORTED | Later causal replays rest on corrected native semantics. |
+| Local Operator Coupling / U Causal V2 | Does local U transduction explain downstream harm? | 9 | U/E, consumed energy, KL rescue | R U/E > C 8/9; R_STATE_ONLY improves KL only 3/9 | MIXED: SUPPORTED diagnostic, NEGATIVE causal | Local coupling is real but not the downstream causal mechanism. |
+| Downstream Feedback Propagation | Does single-head downstream feedback explain harm? | 9 | hidden/operator/state drift | R>C approximately 0/9 across downstream drift metrics | NEGATIVE | Single-head downstream feedback is not supported. |
+| FAST Multi-Head Composition | Does single-layer multi-head scope amplify R/C gap? | 9 | RC_GAP KL_AUC | scope/head-wise growth PARTIAL; primary interpretation INCONCLUSIVE | INCONCLUSIVE | No clean single-layer scope-amplification explanation. |
+| Headwise S8 Subset Robustness | Is head-wise S8 R-bias subset robust? | 18 | median subset delta | PARTIAL; distributed weak R-bias CANDIDATE; heterogeneity STRONG | CANDIDATE / INCONCLUSIVE | Head identity likely matters. |

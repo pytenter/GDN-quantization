@@ -2,40 +2,56 @@
 
 This document is a research evidence map, not a paper abstract and not a method proposal.
 
-## Observation
+## A. Orientation / Representation
 
-- INT8 orientation is a first-order experimental variable for GDN recurrent-state quantization.
-- R128 degradation is substantially stronger than C128 under the tested protocol.
-- The recurrent state has shape `[B,H,K,V] = [1,32,128,128]`; row groups follow the Key-axis rows and column groups follow the Value-axis columns.
+| Claim | Level | Evidence |
+|---|---|---|
+| R128/C128 orientation is a first-order variable. | OBSERVATION / SUPPORTED | Orientation and end-to-end screening results. |
+| Canonical R128 quantizability is representation dependent. | SUPPORTED | V-space scale-contamination screen and behavioral pilot. |
+| Cross-Value range / scale contamination is the strongest source-side explanation. | SUPPORTED | V-Hadamard and PCA-spread reduce residuals and rescue KL. |
+| K-space coordinate rotation does not cleanly decouple future-key interaction. | NEGATIVE | `ROTATION_MANIFOLD_DOES_NOT_CLEANLY_DECOUPLE_KEY`. |
 
-## Supported Association
+## B. Residual Magnitude
 
-- Finer grouping rescues KL in the tested setting.
-- Runtime effective-update metrics track R16/C16 KL rescue across the 6 canonical prompts.
-- Random orthogonal single-pulse directions show a broad recurrent directional sensitivity distribution.
+| Claim | Level | Evidence |
+|---|---|---|
+| Residual magnitude is causal. | CAUSAL | Natural R/C norm-swap: R shrink improves KL in 9/9 units. |
+| Magnitude alone is insufficient. | CAUSAL / SUPPORTED | Same-norm R structure remains worse than C in 9/9 norm-swap units. |
 
-## Causal Evidence
+## C. Temporal Accumulation
 
-- Residual-strength attenuation produces a KL dose response.
-- Same-norm residual geometry causally changes model fidelity.
-- Same-norm single-pulse perturbations exhibit direction-dependent recurrent propagation.
+| Claim | Level | Evidence |
+|---|---|---|
+| Repeated recurrent quantization accumulates trajectory error. | FORMAL | Repeated accumulation formal: 18/18 units. |
+| V-space source rescue attenuates temporal accumulation. | FORMAL | Source-to-temporal bridge: SOURCE_FORMAL, TEMPORAL_RESCUE_FORMAL, SOURCE_TO_TEMPORAL_BRIDGE all SUPPORTED. |
 
-## Important Negative / Corrective Results
+## D. Same-Norm Residual Structure
 
-- Same-codebook lost-update metrics do not explain the grouping rescue.
-- A simple dynamic-range to lost-update to quality causal chain is not supported.
-- Raw state persistence is insufficient to explain future KL.
-- The natural R128 orthogonal residual direction is low-gain biased in the direction sensitivity panel.
-- The readout-aware single-pulse pilot improves correlation over raw state persistence but remains inconclusive.
+| Claim | Level | Evidence |
+|---|---|---|
+| Same-norm residual structure changes behavior. | CAUSAL / SUPPORTED | Natural residual norm-swap and residual-geometry causal experiments. |
+| More harmful R residual can be less persistent. | SUPPORTED / PARADOX | Frozen observability: J_state R/C < 1 while J_key and full KL R/C > 1. |
+| Head-wise S8 shows a weak positive sign but not strong robustness. | INCONCLUSIVE / CANDIDATE | FAST S8 8/9; subset audit PARTIAL with strong head-set heterogeneity. |
 
-## Inconclusive
+## E. Operator-Conditioned Diagnostics
 
-- Direction sensitivity panel: `PROPAGATION_FIDELITY_LINK = INCONCLUSIVE`.
-- Readout-aware propagation audit: `Pilot = INCONCLUSIVE`, `Formal = NOT_STARTED`.
+| Claim | Level | Evidence |
+|---|---|---|
+| Native replay semantics are fixed. | SUPPORTED | Core-output replay root cause is dtype semantics; next-state and core-output replay errors are zero after correction. |
+| Local operator coupling is real. | SUPPORTED | R U/E and consumed-energy fraction exceed C in 8/9 units. |
+| One-step update transduction is the downstream causal mechanism. | NEGATIVE | R_STATE_ONLY improves KL vs R_FULL only 3/9; UPDATE_TRANSDUCTION_CAUSAL = NOT_SUPPORTED. |
 
-## Unresolved
+## F. Important Negative Results
 
-- Why repeated moderate R128 residuals cause severe long-horizon degradation.
-- Whether repeated residual accumulation closes the natural-R128 paradox.
-- Whether full-network feedback amplifies recurrent-state error.
-- Whether the final mechanism generalizes to C128.
+| Claim | Level | Evidence |
+|---|---|---|
+| J_key alone is a proven causal scalar. | NEGATIVE | Future-key causal construction is `CONSTRUCTION_NOT_CLEAN_ENOUGH`. |
+| Single-head downstream operator feedback explains the gap. | NEGATIVE | Feedback path signal = NOT_SUPPORTED; R hidden/operator/state drift > C is approximately 0/9. |
+| Simple multi-head scope amplification closes the mechanism. | INCONCLUSIVE / NEGATIVE | FAST scope growth is PARTIAL and primary interpretation is INCONCLUSIVE. |
+
+## G. Open Mechanism Questions
+
+- Which functional head identities make same-norm R structure harmful?
+- Is the weak distributed R-bias approximately additive or direction-specific?
+- Does the unresolved same-norm structure effect require cross-layer composition?
+- How should any future method preserve the supported source-to-temporal pathway without overfitting to a diagnostic scalar?

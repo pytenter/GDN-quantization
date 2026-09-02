@@ -1,29 +1,54 @@
 # Research Status
 
-Current phase: Mechanism Validation
+PROJECT_STAGE = `MECHANISM_VALIDATION`
 
-Latest completed task: `GDN_INT8_READOUT_AWARE_PROPAGATION_AUDIT_V1`
+Current model: `Qwen3.5-9B`
 
-Latest classification: `READOUT_AWARE_FIDELITY_SIGNAL_INCONCLUSIVE`
+Latest completed canonical task: `GDN_INT8_HEADWISE_S8_SUBSET_ROBUSTNESS_AUDIT_V1`
 
-Formal status: `NOT_RUN`
+MECHANISM_CLOSURE_CANDIDATE = `NO`
 
-Mechanism closure candidate: `NO`
+METHOD_DESIGN_READY = `NO`
 
-Method design ready candidate: `NO`
+## High-Level Status
 
-Method design ready: `NO`
+| Signal | Status |
+|---|---|
+| SOURCE_TO_TEMPORAL_BRIDGE | SUPPORTED |
+| R128_REPEATED_ACCUMULATION_FORMAL | SUPPORTED |
+| RESIDUAL_STRENGTH_CAUSAL_SUPPORT | YES |
+| RESIDUAL_GEOMETRY_CAUSAL_SUPPORT | YES |
+| FROZEN_PATH_SIGNAL | FUTURE_KEY_INTERACTION_SIGNAL |
+| FUTURE_KEY_CAUSAL_INTERVENTION | CONSTRUCTION_NOT_CLEAN_ENOUGH |
+| KSPACE_ROTATION_COUNTERFACTUAL | ROTATION_MANIFOLD_DOES_NOT_CLEANLY_DECOUPLE_KEY |
+| LOCAL_OPERATOR_COUPLING_SIGNAL | SUPPORTED |
+| UPDATE_TRANSDUCTION_CAUSAL | NOT_SUPPORTED |
+| FEEDBACK_PATH_SIGNAL | NOT_SUPPORTED |
+| FAST_MULTIHEAD_SCOPE_GROWTH | PARTIAL / INCONCLUSIVE |
+| S8_SUBSET_ROBUST_DISTRIBUTED_SIGNAL | PARTIAL |
+| DISTRIBUTED_WEAK_R_BIAS | CANDIDATE |
+| HEAD_SET_HETEROGENEITY | STRONG |
 
-## Latest Pilot Summary
+## Strongest Supported Pathway
 
-- `rho_state = 0.0882`
-- `rho_frozen_readout = 0.3500`
-- `rho_actual_readout = 0.3000`
-- `rho_postproj = 0.2353`
-- `rho_residual_stream = 0.1059`
+```text
+representation-dependent source error
+-> per-step residual dose
+-> repeated recurrent exposure
+-> trajectory accumulation
+-> behavioral degradation
+```
 
-The pilot did not satisfy the pre-registered threshold for launching the formal 6 prompt x 3 t0 readout-aware run.
+## Core Unresolved Phenomenon
 
-## Planned But Not Yet Executed
+At the same residual norm, R-like residual structure can be less persistent but more behaviorally harmful. Current evidence does not close the functional mechanism behind that structure effect.
 
-Repeated residual accumulation / cadence-controlled causal experiment.
+## Eliminated Or Insufficient Simple Explanations
+
+- Persistence alone is insufficient.
+- J_key is not a proven standalone causal scalar.
+- One-step update transduction U does not explain the behavioral gap.
+- Single-head downstream operator feedback is not supported.
+- Simple single-layer multi-head scope amplification remains inconclusive.
+
+No method design is ready.
