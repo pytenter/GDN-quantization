@@ -1,0 +1,117 @@
+{
+  "C128_definition": {
+    "fixed": "Value column",
+    "scale_shape": [
+      1,
+      32,
+      1,
+      128
+    ],
+    "shared_scale_over": "128 Key-axis elements"
+  },
+  "MECHANISM_CLOSURE_CANDIDATE": "NO",
+  "METHOD_DESIGN_READY": "NO",
+  "R128_REPEATED_ACCUMULATION_FORMAL": "SUPPORTED",
+  "R128_definition": {
+    "fixed": "Key row",
+    "scale_shape": [
+      1,
+      32,
+      128,
+      1
+    ],
+    "shared_scale_over": "128 Value-axis elements"
+  },
+  "analytic_replay_identity": {
+    "max_core_readout_relative_error": 0.0001084559737424396,
+    "max_delta_relative_error": 0.0005671976263020272,
+    "max_memory_read_relative_error": 5.331238124096907e-05,
+    "max_next_state_relative_error": 8.07379718446045e-05,
+    "tolerance": 0.005
+  },
+  "driver_hook_sample_shapes": {
+    "beta": [
+      1,
+      32
+    ],
+    "g": [
+      1,
+      32
+    ],
+    "gamma": [
+      1,
+      32
+    ],
+    "initial_state": [
+      1,
+      32,
+      128,
+      128
+    ],
+    "k": [
+      1,
+      32,
+      128
+    ],
+    "q_scaled": [
+      1,
+      32,
+      128
+    ],
+    "v": [
+      1,
+      32,
+      128
+    ]
+  },
+  "gate_results": {
+    "ANALYTIC_REPLAY_IDENTITY_GATE": "PASS",
+    "C128_QUANTIZER_IDENTITY_GATE": "PASS",
+    "NEXT_TOKEN_DRIVER_HOOK_GATE": "PASS",
+    "R128_QUANTIZER_IDENTITY_GATE": "PASS",
+    "SCALE_COUNT_MATCH_GATE": "PASS",
+    "SHADOW_NONINTERFERENCE_GATE": "PASS",
+    "SOURCE_SEMANTICS_GATE": "PASS",
+    "STATE_IDENTITY_GATE": "PASS"
+  },
+  "git_commit": "78b566659776a32183fcc0d6271fe2219bcf5c58",
+  "model": "Qwen3.5-9B",
+  "protocol": "FP trajectory only; R128/C128 are shadow quantized from the same FP state and discarded.",
+  "quantizer_config": {
+    "bit_width": 8,
+    "group_size": 128,
+    "qrange": [
+      -127,
+      127
+    ],
+    "round": "torch.round",
+    "scales_per_head": 128,
+    "symmetric": true,
+    "zero_point": 0
+  },
+  "shadow_noninterference": {
+    "max_state_diff_norm_between_shadow_audits": 0.0
+  },
+  "source_semantics_audit": {
+    "beta_shape_after_transpose": "[B,H,T] and beta_t [B,H,1]",
+    "decay_shape": "g [B,H,T], gamma=exp(g_t) broadcast to [B,H,1,1]",
+    "formula": "S_decay=gamma*S; memory=k^T S_decay; delta=beta*(v-memory); S_next=S_decay+k*delta^T; core=q^T S_next",
+    "modeling_file": "/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py",
+    "qk_normalized_status": "use_qk_l2norm_in_kernel=True in decode path; q is additionally scaled by 1/sqrt(K)",
+    "reduction_dimension_for_k": "K axis via `(last_recurrent_state * k_t.unsqueeze(-1)).sum(dim=-2)`",
+    "reduction_dimension_for_q": "K axis via `(last_recurrent_state * q_t.unsqueeze(-1)).sum(dim=-2)`",
+    "state_axis_order": "[B,H,K,V] where K is key/read dimension and V is value/output dimension"
+  },
+  "state_semantics": {
+    "axis_order": "[B,H,K,V]",
+    "shape": [
+      1,
+      32,
+      128,
+      128
+    ],
+    "state_path": "DynamicCache.layers[layer_idx].recurrent_states[0]"
+  },
+  "task": "GDN_INT8_R128_C128_OPERATOR_ALIGNED_RESIDUAL_AUDIT_V1",
+  "timestamp": "2026-09-01 00:31:00 +0800"
+}
