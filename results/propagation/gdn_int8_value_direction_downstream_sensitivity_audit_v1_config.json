@@ -1,0 +1,31 @@
+{
+  "epsilon": "sqrt((||z_R||^2 + ||z_C||^2)/2) from original R/C only; reused for transfer directions",
+  "git_commit_start": "40cf04b7cca9658ff1c8052106167b9a409f4634",
+  "hook": {
+    "batch_dimension": 0,
+    "head_dimension": 2,
+    "head_scope": "all heads, preserving per-head Value dimension",
+    "layer_scope": "all canonical GDN layers",
+    "location": "Qwen3.5 linear_attn recurrent core output immediately after recurrent-state readout and before gated RMSNorm and out_proj",
+    "relative_to_projection": "before head concatenation/out_proj",
+    "tensor_shape": "[B, T=1, H=32, V=128] per GDN layer",
+    "token_dimension": 1,
+    "value_dimension": 3
+  },
+  "horizon": 128,
+  "norm_floor": 1e-10,
+  "pilot_units": [
+    "test/counting_and_probability/119.json|256",
+    "test/counting_and_probability/119.json|64",
+    "test/algebra/1332.json|256"
+  ],
+  "previous_transfer_run": "/data/zypan/runs/gdn_int8_value_geometry_transfer_validity_and_retest_v1",
+  "previous_transfer_summary": {
+    "VALUE_GEOMETRY_BIDIRECTIONAL_CAUSAL_TRANSFER": "FORMAL_SUPPORTED",
+    "VALUE_SIDE_FUNCTIONAL_DIRECTION_CAUSAL_SIGNAL": "FORMAL_SUPPORTED"
+  },
+  "primary_metric": "teacher-forced mean KL over future horizon after one-shot core-output perturbation, symmetric average over +/- epsilon",
+  "task": "GDN_INT8_VALUE_DIRECTION_DOWNSTREAM_SENSITIVITY_AUDIT_V1",
+  "timestamp": "2026-09-03 19:04:39 +0800",
+  "token_selection": "top-3 future token offsets by pooled original readout energy ||z_R||^2 + ||z_C||^2; no KL/sensitivity used"
+}
