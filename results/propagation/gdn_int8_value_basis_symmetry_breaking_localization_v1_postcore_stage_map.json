@@ -1,0 +1,58 @@
+{
+  "actual_order": [
+    "torch_recurrent_gated_delta_rule / torch_chunk_gated_delta_rule returns core_attn_out [B,T,H,V]",
+    "core_attn_out.reshape(-1, head_v_dim)",
+    "Qwen3_5RMSNormGated: RMS normalize over V",
+    "Qwen3_5RMSNormGated: multiply learned per-V weight",
+    "Qwen3_5RMSNormGated: multiply ACT2FN['silu'](z)",
+    "reshape to [B,T,H*V] preserving head order",
+    "out_proj maps merged Value heads to hidden contribution"
+  ],
+  "module_properties": {
+    "head_v_dim": 128,
+    "hidden_size": 4096,
+    "norm_eps": 1e-06,
+    "norm_weight_shape": [
+      128
+    ],
+    "num_v_heads": 32,
+    "out_proj_weight_shape": [
+      4096,
+      4096
+    ],
+    "value_dim": 4096
+  },
+  "postcore_prefix_stages": [
+    {
+      "index": 0,
+      "name": "raw_core_output",
+      "space": "value"
+    },
+    {
+      "index": 1,
+      "name": "rms_normalized_core",
+      "space": "value"
+    },
+    {
+      "index": 2,
+      "name": "learned_norm_weight",
+      "space": "value"
+    },
+    {
+      "index": 3,
+      "name": "dynamic_silu_z_gate",
+      "space": "value"
+    },
+    {
+      "index": 4,
+      "name": "head_merge_flatten",
+      "space": "merged_value"
+    },
+    {
+      "index": 5,
+      "name": "out_proj_hidden_contribution",
+      "space": "hidden"
+    }
+  ],
+  "source": "transformers.models.qwen3_5.modeling_qwen3_5.Qwen3_5GatedDeltaNet.forward"
+}
