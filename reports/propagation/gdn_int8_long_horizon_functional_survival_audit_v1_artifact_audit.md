@@ -1,0 +1,15 @@
+# Artifact Audit
+
+{
+  "ARTIFACT_REUSE_GATE": "PASS",
+  "GPU_RERUN_REQUIRED": "YES_SINGLE_PULSE_TRAJECTORY_REPLAY",
+  "HEAD": "766b03e5d489f365ad2db2cfe0da3084be461306",
+  "TASK": "GDN_INT8_LONG_HORIZON_FUNCTIONAL_SURVIVAL_AUDIT_V1",
+  "branch": "research-sync-2026-09-02",
+  "geometry_tensor_count": 216,
+  "git_status_start": "?? experiments/propagation/run_int8_long_horizon_functional_survival_audit.py",
+  "query_conditioned_final_exists": true,
+  "real_rc_final_exists": true,
+  "required_head_at_least": "766b03e",
+  "timestamp": "2026-09-06 15:38:35 +0800"
+}
