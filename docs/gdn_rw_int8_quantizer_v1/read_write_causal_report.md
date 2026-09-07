@@ -1,0 +1,57 @@
+# Read Write Causal Decomposition
+
+```json
+{
+  "note": "READ_ONLY/WRITE_ONLY are local recurrent-rule decomposition proxies; strict full-trajectory path isolation is not implemented without custom kernel surgery.",
+  "rows": [
+    {
+      "JOINT_proxy": 1.0403288902914793,
+      "M5_read_distortion": 0.6945167463364179,
+      "READ_ONLY_proxy": 0.8333767133394224,
+      "WRITE_ERROR": 0.04282920354519545,
+      "WRITE_ONLY_proxy": 0.20695217695205684,
+      "unit_id": "test/algebra/1332.json|64"
+    },
+    {
+      "JOINT_proxy": 1.0189711634043306,
+      "M5_read_distortion": 0.633352424435067,
+      "READ_ONLY_proxy": 0.7958344202376944,
+      "WRITE_ERROR": 0.04979000615101334,
+      "WRITE_ONLY_proxy": 0.22313674316663615,
+      "unit_id": "test/algebra/1332.json|128"
+    },
+    {
+      "JOINT_proxy": 0.8211883342198031,
+      "M5_read_distortion": 0.4342070769214921,
+      "READ_ONLY_proxy": 0.6589439103000285,
+      "WRITE_ERROR": 0.026323253093059513,
+      "WRITE_ONLY_proxy": 0.16224442391977456,
+      "unit_id": "test/algebra/1332.json|256"
+    },
+    {
+      "JOINT_proxy": 1.063343059122475,
+      "M5_read_distortion": 0.7963516167044313,
+      "READ_ONLY_proxy": 0.8923853521346209,
+      "WRITE_ERROR": 0.029226537578545004,
+      "WRITE_ONLY_proxy": 0.17095770698785417,
+      "unit_id": "test/counting_and_probability/119.json|64"
+    },
+    {
+      "JOINT_proxy": 0.9202297123263781,
+      "M5_read_distortion": 0.5655595119953098,
+      "READ_ONLY_proxy": 0.7520369086655986,
+      "WRITE_ERROR": 0.028288819203273533,
+      "WRITE_ONLY_proxy": 0.16819280366077954,
+      "unit_id": "test/counting_and_probability/119.json|128"
+    },
+    {
+      "JOINT_proxy": 1.267637657042945,
+      "M5_read_distortion": 0.9906353648748221,
+      "READ_ONLY_proxy": 0.9953066687583391,
+      "WRITE_ERROR": 0.07416416718007018,
+      "WRITE_ONLY_proxy": 0.27233098828460595,
+      "unit_id": "test/counting_and_probability/119.json|256"
+    }
+  ]
+}
+```
