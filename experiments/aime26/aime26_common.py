@@ -6,6 +6,8 @@ import json
 import math
 import random
 import re
+from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 from pathlib import Path
 
 
@@ -48,13 +50,41 @@ def last_boxed(text):
     return None
 
 
+def _numeric_fraction(value):
+    """Parse a complete integer, decimal, or LaTeX/simple fraction exactly."""
+    value = (value or "").strip()
+    value = value.replace("\\left", "").replace("\\right", "")
+    value = value.replace("$", "").replace(",", "").strip()
+    latex_fraction = re.fullmatch(
+        r"\\(?:d?frac)\s*\{\s*([+-]?\d+)\s*\}\s*\{\s*([+-]?\d+)\s*\}",
+        value,
+    )
+    if latex_fraction:
+        numerator, denominator = map(int, latex_fraction.groups())
+        return None if denominator == 0 else Fraction(numerator, denominator)
+    simple_fraction = re.fullmatch(r"([+-]?\d+)\s*/\s*([+-]?\d+)", value)
+    if simple_fraction:
+        numerator, denominator = map(int, simple_fraction.groups())
+        return None if denominator == 0 else Fraction(numerator, denominator)
+    if re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)", value):
+        try:
+            return Fraction(Decimal(value))
+        except (InvalidOperation, ValueError, ZeroDivisionError):
+            return None
+    return None
+
+
+def _canonical_fraction(value):
+    parsed = _numeric_fraction(value)
+    if parsed is None:
+        return ""
+    return str(parsed.numerator) if parsed.denominator == 1 else f"{parsed.numerator}/{parsed.denominator}"
+
+
 def extract_aime_answer(text):
     candidate = last_boxed(text)
     if candidate is None:
-        patterns = (
-            r"(?:final answer|answer is|answer:)\s*\$?([^\n\.]+)",
-            r"(?:最终答案|答案是)\s*[:：]?\s*([^\n。]+)",
-        )
+        patterns = (r"(?:final answer|answer is|answer:)\s*\$?([^\n]+)",)
         values = []
         for pattern in patterns:
             values.extend(re.findall(pattern, text or "", flags=re.I))
@@ -62,17 +92,25 @@ def extract_aime_answer(text):
     if candidate is None:
         return ""
     cleaned = re.sub(r"\\(?:text|mathrm)\s*\{([^{}]*)\}", r"\1", candidate)
-    cleaned = cleaned.replace(",", "").replace("$", "").strip()
-    integers = re.findall(r"(?<!\d)\d{1,3}(?!\d)", cleaned)
-    return integers[-1] if integers else ""
+    direct = _canonical_fraction(cleaned)
+    if direct:
+        return direct
+    if re.search(r"\\(?:d?frac)", cleaned):
+        return ""
+    numeric_tokens = re.findall(
+        r"\\(?:d?frac)\s*\{\s*[+-]?\d+\s*\}\s*\{\s*[+-]?\d+\s*\}"
+        r"|[+-]?\d+\s*/\s*[+-]?\d+"
+        r"|[+-]?(?:\d+(?:\.\d*)?|\.\d+)",
+        cleaned,
+    )
+    return _canonical_fraction(numeric_tokens[-1]) if numeric_tokens else ""
 
 
 def score_aime(response, gold):
     extracted = extract_aime_answer(response)
-    try:
-        correct = int(extracted) == int(gold)
-    except (TypeError, ValueError):
-        correct = False
+    predicted = _numeric_fraction(extracted)
+    reference = _numeric_fraction(str(gold))
+    correct = predicted is not None and reference is not None and predicted == reference
     return extracted, bool(correct)
 
 
