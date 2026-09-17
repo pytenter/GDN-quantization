@@ -85,7 +85,7 @@ def main():
                         "top_p": 0.95,
                         "top_k": 20,
                         "max_new_tokens": 32768,
-                        "seed": seed,
+                        "sampling_seed": seed,
                     },
                 },
                 timeout=12 * 3600,
