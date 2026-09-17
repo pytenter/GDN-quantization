@@ -188,12 +188,16 @@ def main():
     parser.add_argument("--fp-dir", required=True)
     parser.add_argument("--r128-dir", required=True)
     parser.add_argument("--h-dir", required=True)
+    parser.add_argument("--r128-h-dir", required=True)
     parser.add_argument("--r128-dump-dir", required=True)
     parser.add_argument("--r128-audit", required=True)
     parser.add_argument("--h-audit", required=True)
+    parser.add_argument("--r128-h-audit", required=True)
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
-    manual, fp, r128, hdir, out = map(Path, (args.manual_dir, args.fp_dir, args.r128_dir, args.h_dir, args.output_dir))
+    manual, fp, r128, hdir, r128_hdir, out = map(
+        Path, (args.manual_dir, args.fp_dir, args.r128_dir, args.h_dir, args.r128_h_dir, args.output_dir)
+    )
 
     gate_b_policy = {
         "name": "native-runtime-semantic-parity-v1",
@@ -291,17 +295,114 @@ def main():
     }
     fp_h = score_runtime_gate(h_logits, h_states, h_missing, "SGLang FP vs SGLang FP+Value-H", h_policy)
     save_json(out / "fp_hadamard_diagnostic.json", fp_h)
+
+    r128_h_logits, r128_h_states, r128_h_missing = load_sglang_pair(
+        manual, r128, r128_hdir, transform_state=lambda state: hmat.T @ state.float()
+    )
+    r128_h_policy = {
+        "name": "quantized-kda-hadamard-trajectory-v1",
+        "rationale": (
+            "R128 is deliberately basis-dependent, so R128 and R128+Value-H recurrent states are not "
+            "expected to be FP-equivalent after inverse rotation. This diagnostic rejects nonfinite or "
+            "catastrophic state/trajectory drift while requiring strong logit-distribution, top-1 and "
+            "top-20 agreement under identical teacher forcing."
+        ),
+        "checks": {
+            "logit_relative_l2_p95_max": (lambda s: s["logit_relative_l2"]["p95"], "max", 0.10),
+            "logit_cosine_median_min": (lambda s: s["logit_cosine"]["median"], "min", 0.999),
+            "kl_p95_max": (lambda s: s["kl"]["p95"], "max", 0.02),
+            "top1_agreement_min": (lambda s: s["top1_agreement"], "min", 0.98),
+            "top20_overlap_mean_min": (lambda s: s["top20_overlap"]["mean"], "min", 0.95),
+            "state_relative_l2_p95_max": (lambda s: s["state_relative_l2"]["p95"], "max", 0.15),
+            "state_cosine_min_min": (lambda s: s["state_cosine"]["min"], "min", 0.98),
+        },
+    }
+    r128_h = score_runtime_gate(
+        r128_h_logits,
+        r128_h_states,
+        r128_h_missing,
+        "SGLang INT8-R128 vs SGLang INT8-R128+Value-H",
+        r128_h_policy,
+    )
+    save_json(out / "r128_hadamard_diagnostic.json", r128_h)
+
+    basis_rows, basis_missing = [], []
+    for prompt_path in sorted(manual.glob("prompt_*/prompt.json")):
+        prompt_index = int(json.loads(prompt_path.read_text())["prompt_index"])
+        prompt_dir = hdir / f"prompt_{prompt_index:02d}"
+        for layer in (0, 12, 22):
+            paths = {
+                kind: prompt_dir / f"basis_{kind}_layer{layer:02d}.pt"
+                for kind in ("kernel_return", "prefill_end_cache", "first_decode_input")
+            }
+            absent = [str(path) for path in paths.values() if not path.exists()]
+            if absent:
+                basis_missing.extend(absent)
+                continue
+            kernel = torch.load(paths["kernel_return"], map_location="cpu", weights_only=True).float()
+            cache = torch.load(paths["prefill_end_cache"], map_location="cpu", weights_only=True).float()
+            first_decode = torch.load(paths["first_decode_input"], map_location="cpu", weights_only=True).float()
+            kernel_cache = tensor_metrics(cache, kernel)
+            cache_decode = tensor_metrics(first_decode, cache)
+            redundant_h = tensor_metrics(hmat @ kernel, cache)
+            basis_rows.append(
+                {
+                    "prompt_index": prompt_index,
+                    "layer": layer,
+                    "kernel_return_to_cache": kernel_cache,
+                    "cache_to_first_decode_input": cache_decode,
+                    "redundant_hypothetical_H_kernel_to_cache": redundant_h,
+                    "kernel_cache_exact": torch.equal(cache, kernel),
+                    "cache_first_decode_exact": torch.equal(first_decode, cache),
+                }
+            )
+    basis_pass = (
+        len(basis_rows) == 3 * 3
+        and not basis_missing
+        and all(row["kernel_cache_exact"] and row["cache_first_decode_exact"] for row in basis_rows)
+        and all(row["redundant_hypothetical_H_kernel_to_cache"]["relative_l2"] > 0.5 for row in basis_rows)
+    )
+    basis_gate = {
+        "gate": "PASS" if basis_pass else "FAIL",
+        "KDA_ROTATION_SEMANTICS_VERSION": "CORRECTED_PREFILL_ENDPOINT_V2",
+        "REDUNDANT_PREFILL_ENDPOINT_ROTATION": "NO" if basis_pass else "UNRESOLVED",
+        "comparison": "kernel-return -> prefill-end cache -> first-decode input",
+        "missing_files": basis_missing,
+        "rows": basis_rows,
+    }
+    save_json(out / "gate_e_prefill_endpoint_basis.json", basis_gate)
     h_audit = load_audit(Path(args.h_audit))
-    rotation_events = [x for x in h_audit if x.get("event") == "kda_value_hadamard"]
+    r128_h_audit = load_audit(Path(args.r128_h_audit))
+    rotation_events = [x for x in h_audit + r128_h_audit if x.get("event") == "kda_value_hadamard"]
     phases = {x.get("phase") for x in rotation_events}
     placement_ok = bool(rotation_events) and phases == {"prefill", "decode"} and all(
         "ShortConv+SiLU" in x.get("forward_placement", "") and "before RMSNorm" in x.get("inverse_placement", "")
         and x.get("cache_basis") == "S H retained across prefill and decode" for x in rotation_events
     )
-    gate_d = {"gate": "PASS" if placement_ok and fp_h["gate"] == "PASS" else "FAIL", "placement_ok": placement_ok, "rotation_events": rotation_events, "fp_h_diagnostic_gate": fp_h["gate"]}
+    gate_d = {
+        "gate": "PASS" if placement_ok and fp_h["gate"] == "PASS" and r128_h["gate"] == "PASS" and basis_pass else "FAIL",
+        "placement_ok": placement_ok,
+        "rotation_events": rotation_events,
+        "fp_h_diagnostic_gate": fp_h["gate"],
+        "r128_h_diagnostic_gate": r128_h["gate"],
+        "prefill_endpoint_basis_gate": basis_gate["gate"],
+        "KDA_ROTATION_SEMANTICS_VERSION": "CORRECTED_PREFILL_ENDPOINT_V2",
+        "REDUNDANT_PREFILL_ENDPOINT_ROTATION": "NO" if basis_pass else "UNRESOLVED",
+    }
     save_json(out / "gate_d_hadamard.json", gate_d)
-    overall = {"gate_a": json.loads((fp / "gate_a_prompt.json").read_text())["gate"], "gate_b": gate_b["gate"], "gate_c": gate_c["gate"], "gate_d": gate_d["gate"], "fp_h_diagnostic": fp_h["gate"]}
-    overall["LING_SGLANG_RUNTIME_CLOSURE"] = "PASS" if all(value == "PASS" for value in overall.values()) else "FAIL"
+    overall = {
+        "KDA_ROTATION_SEMANTICS_VERSION": "CORRECTED_PREFILL_ENDPOINT_V2",
+        "LING_KDA_PREFILL_ENDPOINT_STATE_BASIS_GATE": basis_gate["gate"],
+        "REDUNDANT_PREFILL_ENDPOINT_ROTATION": "NO" if basis_pass else "UNRESOLVED",
+        "gate_a": json.loads((fp / "gate_a_prompt.json").read_text())["gate"],
+        "gate_b": gate_b["gate"],
+        "gate_c": gate_c["gate"],
+        "gate_d": gate_d["gate"],
+        "fp_h_diagnostic": fp_h["gate"],
+        "r128_h_diagnostic": r128_h["gate"],
+    }
+    pass_fields = ("LING_KDA_PREFILL_ENDPOINT_STATE_BASIS_GATE", "gate_a", "gate_b", "gate_c", "gate_d", "fp_h_diagnostic", "r128_h_diagnostic")
+    overall["LING_SGLANG_RUNTIME_CLOSURE"] = "PASS" if all(overall[key] == "PASS" for key in pass_fields) and overall["REDUNDANT_PREFILL_ENDPOINT_ROTATION"] == "NO" else "FAIL"
     save_json(out / "closure_summary.json", overall)
     print(json.dumps(overall, indent=2))
     raise SystemExit(0 if overall["LING_SGLANG_RUNTIME_CLOSURE"] == "PASS" else 2)

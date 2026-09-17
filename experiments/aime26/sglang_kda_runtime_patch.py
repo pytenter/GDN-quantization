@@ -100,6 +100,33 @@ def _dump_state(active_state, phase, layer):
     torch.save(active_state[0].detach().cpu(), path)
 
 
+def _dump_basis_state(kind, active_state, layer):
+    """Capture the corrected prefill-endpoint V2 state continuity evidence."""
+    force = _refresh_force()
+    if not ROTATE or not force["active"] or layer not in SELECTED_LAYERS or active_state.shape[0] != 1:
+        return
+    path = Path(force["dump_dir"]) / f"basis_{kind}_layer{layer:02d}.pt"
+    if path.exists():
+        return
+    torch.save(active_state[0].detach().cpu(), path)
+    _append_audit(
+        {
+            "event": "kda_prefill_endpoint_basis_capture",
+            "semantics_version": "CORRECTED_PREFILL_ENDPOINT_V2",
+            "kind": kind,
+            "layer": layer,
+            "request_id": force["request_id"],
+            "redundant_prefill_endpoint_rotation": False,
+        }
+    )
+
+
+def _backend_active_state(backend, layer):
+    layer_cache = backend.req_to_token_pool.mamba2_layer_cache(int(layer.layer_id))
+    indices = backend.forward_metadata.mamba_cache_indices.to(torch.int64)
+    return layer_cache.temporal.index_select(0, indices)
+
+
 def _quantize_state(ssm_states, cache_indices, phase, layer):
     indices = cache_indices.to(torch.int64)
     active = ssm_states.index_select(0, indices)
@@ -195,12 +222,17 @@ def install_patch():
     def backend_decode(self, layer, *args, **kwargs):
         global _CURRENT_LAYER
         _CURRENT_LAYER = int(layer.layer_id)
+        _dump_basis_state("first_decode_input", _backend_active_state(self, layer), _CURRENT_LAYER)
         return original_backend_decode(self, layer, *args, **kwargs)
 
     def backend_extend(self, layer, *args, **kwargs):
         global _CURRENT_LAYER
         _CURRENT_LAYER = int(layer.layer_id)
-        return original_backend_extend(self, layer, *args, **kwargs)
+        result = original_backend_extend(self, layer, *args, **kwargs)
+        # The KDA kernel has already written the rotated-basis state to cache.
+        # V2 semantics write/retain it directly: no H/H^T endpoint transform.
+        _dump_basis_state("prefill_end_cache", _backend_active_state(self, layer), _CURRENT_LAYER)
+        return result
 
     def decode(self, *args, **kwargs):
         if ROTATE:
@@ -212,6 +244,10 @@ def install_patch():
         if ROTATE:
             kwargs["v"] = _rotate_v(kwargs["v"])
         result = original_extend(self, *args, **kwargs)
+        if ROTATE:
+            indices = kwargs["cache_indices"].to(torch.int64)
+            kernel_state = kwargs["ssm_states"].index_select(0, indices)
+            _dump_basis_state("kernel_return", kernel_state, int(_CURRENT_LAYER))
         return _after_kernel(result, kwargs, "prefill")
 
     def packed_decode(self, *args, **kwargs):
