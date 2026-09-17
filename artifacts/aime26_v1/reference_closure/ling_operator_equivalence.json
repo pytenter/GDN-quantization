@@ -1,0 +1,121 @@
+{
+  "task": "GDN_KDA_AIME26_REFERENCE_PATH_CLOSURE_V1",
+  "architecture": "Ling-3.0-tiny KDA",
+  "gate": "PASS",
+  "capture": {
+    "problem_id": "60",
+    "layer": 12,
+    "operator": "fused_recurrent_kda",
+    "real_model_inputs": [
+      "S_prev",
+      "q",
+      "k",
+      "v",
+      "beta",
+      "decay"
+    ]
+  },
+  "placement": {
+    "runtime_order": [
+      "v_proj",
+      "ShortConv",
+      "SiLU",
+      "Hadamard on final v",
+      "KDA kernel",
+      "single inverse Hadamard",
+      "o_norm",
+      "dynamic gate",
+      "merge/flatten",
+      "o_proj"
+    ],
+    "hadamard_position": "final v entering KDA kernel",
+    "inverse_before_o_norm": true
+  },
+  "basis": {
+    "prefill": "rotated v creates S H directly",
+    "decode": "cached state remains in S H basis",
+    "double_rotation": false
+  },
+  "modes": [
+    {
+      "mode": "fp64_reference",
+      "state": {
+        "max_abs": 0.0,
+        "relative_l2": 0.0,
+        "cosine": 1.0,
+        "finite": true
+      },
+      "recovered_readout": {
+        "max_abs": 0.0,
+        "relative_l2": 0.0,
+        "cosine": 1.0,
+        "finite": true
+      },
+      "gate": "PASS"
+    },
+    {
+      "mode": "fp32_reference",
+      "state": {
+        "max_abs": 1.043081283569336e-07,
+        "relative_l2": 3.1929717806851045e-07,
+        "cosine": 1.0,
+        "finite": true
+      },
+      "recovered_readout": {
+        "max_abs": 1.2223608791828156e-09,
+        "relative_l2": 2.6031264702614923e-07,
+        "cosine": 1.0,
+        "finite": true
+      },
+      "gate": "PASS"
+    },
+    {
+      "mode": "native_dtype_hadamard",
+      "state": {
+        "max_abs": 0.0009336471557617188,
+        "relative_l2": 0.0028102153222418613,
+        "cosine": 0.9999980330467224,
+        "finite": true
+      },
+      "recovered_readout": {
+        "max_abs": 2.310238778591156e-05,
+        "relative_l2": 0.002482244945239317,
+        "cosine": 0.9999973773956299,
+        "finite": true
+      },
+      "gate": "PASS"
+    },
+    {
+      "mode": "fp32_hadamard_cast_back",
+      "state": {
+        "max_abs": 0.000889211893081665,
+        "relative_l2": 0.001673334315206202,
+        "cosine": 1.0,
+        "finite": true
+      },
+      "recovered_readout": {
+        "max_abs": 4.449771950021386e-06,
+        "relative_l2": 0.0011047248917058195,
+        "cosine": 0.9999992847442627,
+        "finite": true
+      },
+      "gate": "PASS"
+    },
+    {
+      "mode": "fp32_hadamard_no_cast",
+      "state": {
+        "max_abs": 1.7881393432617188e-07,
+        "relative_l2": 3.1308893995250504e-07,
+        "cosine": 1.0,
+        "finite": true
+      },
+      "recovered_readout": {
+        "max_abs": 1.862645149230957e-09,
+        "relative_l2": 2.870131331217909e-07,
+        "cosine": 0.9999998807907104,
+        "finite": true
+      },
+      "gate": "PASS"
+    }
+  ]
+}
