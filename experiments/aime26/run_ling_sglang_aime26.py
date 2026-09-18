@@ -12,7 +12,8 @@ from pathlib import Path
 import requests
 from transformers import AutoTokenizer
 
-from aime26_common import TASK, ids_sha256, load_frozen_dataset, raw_messages, score_aime
+from aime26_common import TASK, ids_sha256, load_frozen_dataset, raw_messages
+from aime26_diagnostic_scorer import score_aime_layers
 
 
 METHODS = {
@@ -236,7 +237,9 @@ def main():
         text = (payload or {}).get("text", "")
         if not text and output_ids:
             text = tokenizer.decode(output_ids, skip_special_tokens=True)
-        extracted, correct = score_aime(text, row["answer"])
+        scoring = score_aime_layers(text, row["answer"])
+        extracted = scoring["strict_extracted_answer"]
+        correct = scoring["strict_correct"]
         finish = meta.get("finish_reason")
         termination_type = finish_type(finish)
         generated_token_count = int(meta.get("completion_tokens", len(output_ids)))
@@ -303,6 +306,7 @@ def main():
             "token_provenance_valid": token_provenance_valid,
             "extracted_answer": extracted,
             "correct": correct,
+            **scoring,
             "input_tokens": len(input_ids),
             "output_tokens": generated_token_count,
             "finish_reason": finish,

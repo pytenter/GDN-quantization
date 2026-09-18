@@ -18,6 +18,9 @@ PARITY_ROOT = REPO / "artifacts/aime26_v2/official_sampling_81920/ling/parity"
 LAUNCH_ROOT = REPO / "artifacts/aime26_v2/official_sampling_81920/ling/launch"
 CRITICAL_FILES = (
     "experiments/aime26/aime26_common.py",
+    "experiments/aime26/aime26_diagnostic_scorer.py",
+    "experiments/aime26/rescore_aime26_diagnostic.py",
+    "experiments/aime26/test_aime26_diagnostic_scorer.py",
     "experiments/aime26/run_ling_sglang_aime26.py",
     "experiments/aime26/launch_ling_sglang.py",
     "experiments/aime26/launch_ling_sglang_server.sh",

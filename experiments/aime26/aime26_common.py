@@ -12,6 +12,8 @@ from pathlib import Path
 
 
 TASK = "GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2"
+STRICT_SCORER_VERSION = "AIME26_STRICT_V1"
+DIAGNOSTIC_SCORER_VERSION = "AIME26_DIAGNOSTIC_EXTRACTOR_V1"
 
 
 def load_frozen_dataset(path):
@@ -81,7 +83,7 @@ def _canonical_fraction(value):
     return str(parsed.numerator) if parsed.denominator == 1 else f"{parsed.numerator}/{parsed.denominator}"
 
 
-def extract_aime_answer(text):
+def extract_aime_answer_strict_v1(text):
     candidate = last_boxed(text)
     if candidate is None:
         patterns = (r"(?:final answer|answer is|answer:)\s*\$?([^\n]+)",)
@@ -106,12 +108,16 @@ def extract_aime_answer(text):
     return _canonical_fraction(numeric_tokens[-1]) if numeric_tokens else ""
 
 
-def score_aime(response, gold):
-    extracted = extract_aime_answer(response)
+def score_aime_strict_v1(response, gold):
+    extracted = extract_aime_answer_strict_v1(response)
     predicted = _numeric_fraction(extracted)
     reference = _numeric_fraction(str(gold))
     correct = predicted is not None and reference is not None and predicted == reference
     return extracted, bool(correct)
+
+# Backward-compatible immutable aliases. Primary experiment code continues to use these.
+extract_aime_answer = extract_aime_answer_strict_v1
+score_aime = score_aime_strict_v1
 
 
 def exact_mcnemar_p(rescue, regression):
