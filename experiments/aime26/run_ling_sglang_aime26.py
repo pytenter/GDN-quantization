@@ -21,13 +21,13 @@ METHODS = {
     "int8_r128_value_h": ("LING_INT8_R128_VALUE_HADAMARD", "INT8 symmetric R128 [B,H,K,1]", "Value-side normalized H128"),
 }
 
-MAX_NEW_TOKENS = 65536
+MAX_NEW_TOKENS = 81920
 TEMPERATURE = 1.0
 TOP_P = 0.95
 TOP_K = 20
 SEEDS = (1, 2)
-PROTOCOL_VERSION = "LING_AIME26_MAX_NEW_TOKENS_65536"
-FORMAL_PROTOCOL_VERSION = "GDN_KDA_AIME26_2SEED_FORMAL_V1_20260917"
+PROTOCOL_VERSION = "GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2"
+FORMAL_PROTOCOL_VERSION = "GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2"
 FORMAL_WORKERS = 2
 KDA_ROTATION_SEMANTICS_VERSION = "CORRECTED_PREFILL_ENDPOINT_V2"
 
@@ -282,6 +282,7 @@ def main():
             "gold_answer": row["answer"],
             "input_ids_hash": ids_sha256(input_ids),
             "thinking": True,
+            "do_sample": True,
             "temperature": TEMPERATURE,
             "top_p": TOP_P,
             "top_k": TOP_K,

@@ -11,7 +11,7 @@ from aime26_common import load_frozen_dataset
 
 REPO = Path(__file__).resolve().parents[2]
 DATASET = REPO / "artifacts/aime26_v1/formal/dataset/aime26_frozen.jsonl"
-OUT = REPO / "artifacts/aime26_v1/formal/ling_sglang/formal_v1"
+OUT = REPO / "artifacts/aime26_v2/official_sampling_81920/ling/formal"
 
 
 def main():

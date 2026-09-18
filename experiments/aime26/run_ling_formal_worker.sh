@@ -14,8 +14,8 @@ PYTHON="/data01/user2/.conda/envs/ling-sglang-aime26/bin/python"
 export NO_PROXY="${NO_PROXY:+$NO_PROXY,}127.0.0.1,localhost,::1"
 export no_proxy="$NO_PROXY"
 DATASET="$REPO/artifacts/aime26_v1/formal/dataset/aime26_frozen.jsonl"
-OUT="$REPO/artifacts/aime26_v1/formal/ling_sglang/formal_v1"
-LAUNCH_ROOT="$REPO/artifacts/aime26_v1/formal_launch/ling"
+OUT="$REPO/artifacts/aime26_v2/official_sampling_81920/ling/formal"
+LAUNCH_ROOT="$REPO/artifacts/aime26_v2/official_sampling_81920/ling/launch"
 ACTIVE_SERVER_PID=""
 
 cleanup_server() {
@@ -34,13 +34,13 @@ echo "hostname=$(hostname)"
 echo "git_commit=$(git rev-parse HEAD)"
 echo "python=$PYTHON"
 echo "worker_id=$WORKER_ID physical_gpu=$PHYSICAL_GPU port=$PORT assigned_units=90"
-echo "config=thinking:on temperature:1.0 top_p:0.95 top_k:20 max_new_tokens:65536 seeds:1,2"
+echo "config=thinking:on temperature:1.0 top_p:0.95 top_k:20 max_new_tokens:81920 seeds:1,2"
 echo "kda_rotation_semantics=CORRECTED_PREFILL_ENDPOINT_V2 redundant_prefill_endpoint_rotation=NO"
 
 for METHOD in fp_state int8_r128 int8_r128_value_h; do
   TAG="formal_w${WORKER_ID}_${METHOD}_v2"
   SERVER_LOG="$LAUNCH_ROOT/${TAG}_server.log"
-  AUDIT_JSONL="$REPO/artifacts/aime26_v1/formal/ling_sglang/parity/${TAG}_audit.jsonl"
+  AUDIT_JSONL="$REPO/artifacts/aime26_v2/official_sampling_81920/ling/parity/${TAG}_audit.jsonl"
   echo "START_SERVER method=$METHOD tag=$TAG timestamp=$(date --iso-8601=seconds)"
   setsid experiments/aime26/launch_ling_sglang_server.sh "$METHOD" "$PHYSICAL_GPU" "$PORT" "$TAG" \
     >"$SERVER_LOG" 2>&1 &
@@ -60,7 +60,7 @@ for METHOD in fp_state int8_r128 int8_r128_value_h; do
   "$PYTHON" -u experiments/aime26/run_ling_sglang_aime26.py \
     --base-url "http://127.0.0.1:$PORT" --dataset "$DATASET" --output-dir "$OUT" \
     --method "$METHOD" --stage formal --gpu "$PHYSICAL_GPU" --audit-jsonl "$AUDIT_JSONL" \
-    --max-new-tokens 65536 --worker-id "$WORKER_ID" --num-workers 2 --resume
+    --max-new-tokens 81920 --worker-id "$WORKER_ID" --num-workers 2 --resume
   cleanup_server
   echo "DONE method=$METHOD timestamp=$(date --iso-8601=seconds)"
 done

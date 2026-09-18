@@ -52,7 +52,7 @@ def main():
         "model": "Ling-3.0-tiny", "configuration": "LING_FP_STATE", "problem_id": row["problem_id"], "seed": 1,
         "diagnostic_token_limit": args.tokens,
         "formal_generation_config": {"thinking": True, "do_sample": True, "temperature": 1.0,
-                                     "top_p": 0.95, "top_k": 20, "max_new_tokens": 65536},
+                                     "top_p": 0.95, "top_k": 20, "max_new_tokens": 81920},
         "input_ids_hash": ids_sha256(input_ids), "run1_token_ids": first, "run2_token_ids": second,
         "run1_token_source": source1, "run2_token_source": source2, "exact_token_id_match": first == second,
     }

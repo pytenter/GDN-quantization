@@ -13,9 +13,9 @@ from aime26_common import extract_aime_answer, load_frozen_dataset, score_aime
 
 REPO = Path(__file__).resolve().parents[2]
 DATASET = REPO / "artifacts/aime26_v1/formal/dataset/aime26_frozen.jsonl"
-SMOKE_ROOT = REPO / "artifacts/aime26_v1/formal/ling_sglang/max_new_tokens_65536/smoke"
-PARITY_ROOT = REPO / "artifacts/aime26_v1/formal/ling_sglang/parity"
-LAUNCH_ROOT = REPO / "artifacts/aime26_v1/formal_launch/ling"
+SMOKE_ROOT = REPO / "artifacts/aime26_v2/official_sampling_81920/ling/smoke"
+PARITY_ROOT = REPO / "artifacts/aime26_v2/official_sampling_81920/ling/parity"
+LAUNCH_ROOT = REPO / "artifacts/aime26_v2/official_sampling_81920/ling/launch"
 CRITICAL_FILES = (
     "experiments/aime26/aime26_common.py",
     "experiments/aime26/run_ling_sglang_aime26.py",
@@ -26,6 +26,8 @@ CRITICAL_FILES = (
     "experiments/aime26/ling_deterministic_replay.py",
     "experiments/aime26/audit_ling_formal_preflight.py",
     "experiments/aime26/audit_ling_formal_status.py",
+    "experiments/aime26/run_ling_smoke_81920.sh",
+    "experiments/aime26/audit_ling_smoke_81920.py",
     "experiments/aime26/run_ling_formal_worker.sh",
 )
 
@@ -97,8 +99,8 @@ def main():
     for rows in smoke.values():
         for row in rows:
             hashes.setdefault((row["problem_id"], int(row["seed"])), set()).add(row["input_ids_hash"])
-    r_events = read_jsonl(PARITY_ROOT / "smoke65536_r128_audit.jsonl")
-    h_events = read_jsonl(PARITY_ROOT / "smoke65536_r128_h_v2_audit.jsonl")
+    r_events = read_jsonl(PARITY_ROOT / "smoke81920_r128_audit.jsonl")
+    h_events = read_jsonl(PARITY_ROOT / "smoke81920_r128_h_v2_audit.jsonl")
     layers = {0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16, 17, 18, 20, 21, 22}
     gate_d = json.loads((PARITY_ROOT / "gate_d_hadamard.json").read_text(encoding="utf-8"))
     canonical = [(method, row["problem_id"], seed) for method in runner.METHODS for row in dataset for seed in runner.SEEDS]
@@ -129,12 +131,20 @@ def main():
             and gate_d.get("prefill_endpoint_basis_gate") == "PASS"
             and all(phase_layers(h_events, "kda_value_hadamard", "int8_r128_value_h", phase) == layers
                     for phase in ("prefill", "decode")),
-        "LING_MAX_NEW_TOKENS": runner.MAX_NEW_TOKENS == 65536 and all(r.get("max_new_tokens") == 65536 for r in all_smoke),
+        "LING_RUNTIME_EFFECTIVE_CONFIG": all(
+            r.get("thinking") is True and r.get("do_sample") is True
+            and r.get("runtime_effective_sampling_params") == {
+                "temperature": runner.TEMPERATURE, "top_p": runner.TOP_P,
+                "top_k": runner.TOP_K, "max_new_tokens": runner.MAX_NEW_TOKENS,
+                "sampling_seed": int(r["seed"]),
+            } for r in all_smoke
+        ),
+        "LING_MAX_NEW_TOKENS_81920": runner.MAX_NEW_TOKENS == 81920 and all(r.get("max_new_tokens") == 81920 for r in all_smoke),
         "LING_SHARD_DISJOINTNESS": len(set().union(*(set(shard) for shard in shards))) == sum(map(len, shards)),
         "LING_SHARD_COVERAGE": sum(map(len, shards)) == 180 and sorted(map(len, shards)) == [90, 90],
     }
     report = {
-        "task": "GDN_KDA_AIME26_2SEED_FORMAL_V1_PREFLIGHT_LING",
+        "task": "GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2_PREFLIGHT_LING",
         "formal_release": "GO" if all(gates.values()) else "HOLD",
         "gates": {name: "PASS" if value else "FAIL" for name, value in gates.items()},
         "dataset_rows": len(dataset), "assigned_units": len(canonical), "worker_units": list(map(len, shards)),

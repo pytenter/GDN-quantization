@@ -11,7 +11,7 @@ from fractions import Fraction
 from pathlib import Path
 
 
-TASK = "GDN_KDA_AIME26_2SEED_FORMAL_V1"
+TASK = "GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2"
 
 
 def load_frozen_dataset(path):

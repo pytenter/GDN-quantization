@@ -29,9 +29,9 @@ export SGLANG_SKIP_SGL_KERNEL_VERSION_CHECK=1
 export NO_PROXY="${NO_PROXY:+$NO_PROXY,}127.0.0.1,localhost,::1"
 export no_proxy="$NO_PROXY"
 export AIME26_KDA_MODE="$MODE"
-export AIME26_KDA_AUDIT_JSONL="$REPO/artifacts/aime26_v1/formal/ling_sglang/parity/${TAG}_audit.jsonl"
-export AIME26_KDA_FORCE_JSON="$REPO/artifacts/aime26_v1/formal/ling_sglang/parity/${TAG}_force.json"
-export AIME26_KDA_GATE_C_DUMP_DIR="$REPO/artifacts/aime26_v1/formal/ling_sglang/parity/${TAG}_gate_c_dumps"
+export AIME26_KDA_AUDIT_JSONL="$REPO/artifacts/aime26_v2/official_sampling_81920/ling/parity/${TAG}_audit.jsonl"
+export AIME26_KDA_FORCE_JSON="$REPO/artifacts/aime26_v2/official_sampling_81920/ling/parity/${TAG}_force.json"
+export AIME26_KDA_GATE_C_DUMP_DIR="$REPO/artifacts/aime26_v2/official_sampling_81920/ling/parity/${TAG}_gate_c_dumps"
 
 exec "$ENV_DIR/bin/python" -u "$REPO/experiments/aime26/launch_ling_sglang.py" \
   --model-path /data01/user2/models/Ling-3.0-tiny \
