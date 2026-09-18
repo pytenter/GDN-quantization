@@ -3,6 +3,8 @@ set -euo pipefail
 
 REPO="/data01/user2/worktrees/aime26-sglang-rotation-v1"
 PYTHON="/data01/user2/.conda/envs/ling-sglang-aime26/bin/python"
+export NO_PROXY="${NO_PROXY:+$NO_PROXY,}127.0.0.1,localhost,::1"
+export no_proxy="$NO_PROXY"
 DATASET="$REPO/artifacts/aime26_v1/formal/dataset/aime26_frozen.jsonl"
 OLD_SMOKE="$REPO/artifacts/aime26_v1/formal/ling_sglang/max_new_tokens_65536/smoke"
 RUN_ROOT="$REPO/artifacts/aime26_v2/official_sampling_81920/ling"
