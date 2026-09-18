@@ -36,4 +36,5 @@ exec "$ENV_DIR/bin/python" -u "$REPO/experiments/aime26/launch_ling_sglang.py" \
   --host 127.0.0.1 --port "$PORT" --tp-size 1 --dtype bfloat16 \
   --mem-fraction-static 0.80 --sampling-backend pytorch --attention-backend triton \
   --linear-attn-backend triton --moe-runner-backend triton --disable-cuda-graph \
+  --disable-radix-cache \
   --trust-remote-code --max-running-requests 1 --enable-deterministic-inference
