@@ -34,6 +34,6 @@ export AIME26_KDA_GATE_C_DUMP_DIR="$REPO/artifacts/aime26_v1/formal/ling_sglang/
 exec "$ENV_DIR/bin/python" -u "$REPO/experiments/aime26/launch_ling_sglang.py" \
   --model-path /data01/user2/models/Ling-3.0-tiny \
   --host 127.0.0.1 --port "$PORT" --tp-size 1 --dtype bfloat16 \
-  --mem-fraction-static 0.80 --sampling-backend pytorch \
+  --mem-fraction-static 0.80 --sampling-backend pytorch --attention-backend triton \
   --linear-attn-backend triton --moe-runner-backend triton --disable-cuda-graph \
   --trust-remote-code --max-running-requests 1 --enable-deterministic-inference
