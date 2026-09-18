@@ -20,7 +20,7 @@ cleanup_workers() {
 }
 
 trap cleanup_workers EXIT INT TERM
-mkdir -p "$RUN_ROOT/logs" "$NEW_SMOKE" "$RUN_ROOT/parity"
+mkdir -p "$RUN_ROOT/logs" "$NEW_SMOKE" "$RUN_ROOT/parity" "$RUN_ROOT/launch"
 cp "$REPO/artifacts/aime26_v1/formal/ling_sglang/parity/gate_d_hadamard.json" "$RUN_ROOT/parity/gate_d_hadamard.json"
 
 run_method() (
