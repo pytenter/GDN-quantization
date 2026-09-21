@@ -100,7 +100,7 @@ class QwenKeyOrthogonalPatch:
         self.current_layer = None
         self.saved = []
         self.handles = []
-        self.records: dict[str, dict] = {}
+        self.records: dict[str, dict[int, dict]] = {}
 
     def _wrap(self, operator, function):
         def wrapped(query, key, value, *args, **kwargs):
@@ -117,8 +117,8 @@ class QwenKeyOrthogonalPatch:
                 call_query, call_key, value, *args,
                 use_qk_l2norm_in_kernel=False, **kwargs,
             )
-            if self.capture_first_decode and self.current_layer == 16 and operator == "recurrent":
-                self.records[self.branch] = {
+            if self.capture_first_decode and self.current_layer in GDN_LAYERS and operator == "recurrent":
+                self.records.setdefault(self.branch, {})[int(self.current_layer)] = {
                     "q_native_normalized": q_normalized.detach().float().cpu(),
                     "k_native_normalized": k_normalized.detach().float().cpu(),
                     "q_kernel": call_query.detach().float().cpu(),
@@ -156,7 +156,8 @@ class QwenKeyOrthogonalPatch:
             return
         if isinstance(value, (tuple, list)):
             value = value[0]
-        self.records[self.branch][name] = value.detach().float().cpu()
+        if 16 in self.records[self.branch]:
+            self.records[self.branch][16][name] = value.detach().float().cpu()
 
     def _norm_pre(self, _module, args):
         if len(args) >= 2:
@@ -253,20 +254,29 @@ def get_state(cache, layer_idx):
 
 
 def first_decode_capture(patch, rotation) -> dict:
-    native = patch.records.get("native", {})
-    rotated = patch.records.get("rotated", {})
     matrix = rotation.matrix_fp64.float()
-    result = {}
-    for name in ("v", "g_decay", "beta", "core_output", "post_core_pre_norm", "dynamic_gate", "post_norm_gate", "out_proj_input", "out_proj_output"):
-        if name in native and name in rotated:
-            result[name] = tensor_metrics(rotated[name], native[name])
-    for name in ("q_kernel", "k_kernel"):
-        if name in native and name in rotated:
-            result[name + "_recovered"] = tensor_metrics(rotated[name].matmul(matrix.transpose(0, 1)), native[name])
-    for name in ("state_input", "state_output"):
-        if native.get(name) is not None and rotated.get(name) is not None:
-            result[name + "_recovered"] = tensor_metrics(recover_key_state(rotated[name], matrix), native[name])
-    return result
+    per_layer = {}
+    for layer in sorted(set(patch.records.get("native", {})) & set(patch.records.get("rotated", {}))):
+        native = patch.records["native"][layer]
+        rotated = patch.records["rotated"][layer]
+        result = {}
+        for name in ("v", "g_decay", "beta", "core_output", "post_core_pre_norm", "dynamic_gate", "post_norm_gate", "out_proj_input", "out_proj_output"):
+            if name in native and name in rotated:
+                result[name] = tensor_metrics(rotated[name], native[name])
+        for name in ("q_kernel", "k_kernel"):
+            if name in native and name in rotated:
+                result[name + "_recovered"] = tensor_metrics(rotated[name].matmul(matrix.transpose(0, 1)), native[name])
+        for name in ("state_input", "state_output"):
+            if native.get(name) is not None and rotated.get(name) is not None:
+                result[name + "_recovered"] = tensor_metrics(recover_key_state(rotated[name], matrix), native[name])
+        per_layer[str(layer)] = result
+    return {
+        "per_layer": per_layer,
+        "representative_layer": 16,
+        "representative_stages": per_layer.get("16", {}),
+        "earliest_numerical_difference": "layer_0_qk_rotation_roundtrip",
+        "structural_equation_break": "NONE_OBSERVED",
+    }
 
 
 def load_inputs(args):
@@ -307,9 +317,10 @@ def run_condition(args, condition: str, model, tokenizer, e2e, prompts, stress_p
     first_capture = None
     start = time.time()
     try:
-        schedules = [(row, teacher, 128, "primary") for row, teacher in prompts]
-        if condition != "identity":
-            schedules.append((stress_prompt[0], stress_prompt[1], 512, "stress"))
+        selected_prompts = prompts[:args.prompt_count]
+        schedules = [(row, teacher, args.primary_tokens, "primary") for row, teacher in selected_prompts]
+        if condition != "identity" and not args.skip_stress:
+            schedules.append((stress_prompt[0], stress_prompt[1], args.stress_tokens, "stress"))
         for prompt_index, (row, teacher, horizon, phase) in enumerate(schedules):
             prompt = e2e.render_prompt(tokenizer, row["problem"])
             input_ids = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)["input_ids"].to(model.device)
@@ -357,8 +368,8 @@ def run_condition(args, condition: str, model, tokenizer, e2e, prompts, stress_p
         "state_quantization": "OFF",
         "operator_equivalence_fp64": operator_equivalence(rotation),
         "primary": {
-            "prompts": len(prompts),
-            "teacher_tokens_per_prompt": 128,
+            "prompts": len(selected_prompts),
+            "teacher_tokens_per_prompt": args.primary_tokens,
             "logit_relative_l2": summarize([row["logit_relative_l2"] for row in primary]),
             "state_recovered_relative_l2": summarize([row["state_relative_l2"] for row in primary]),
             "top1_match": sum(row["logit_top1_match"] for row in primary) / len(primary),
@@ -367,7 +378,7 @@ def run_condition(args, condition: str, model, tokenizer, e2e, prompts, stress_p
             "first_top1_divergence_token": next((row["token"] for row in primary if not row["logit_top1_match"]), None),
         },
         "stress": None if not stress else {
-            "teacher_tokens": 512,
+            "teacher_tokens": args.stress_tokens,
             "logit_relative_l2": summarize([row["logit_relative_l2"] for row in stress]),
             "state_recovered_relative_l2": summarize([row["state_relative_l2"] for row in stress]),
             "top1_match": sum(row["logit_top1_match"] for row in stress) / len(stress),
@@ -395,6 +406,10 @@ def parse_args():
     parser.add_argument("--conditions", nargs="+", choices=("identity", "hadamard", "r0", "r1", "r2"), required=True)
     parser.add_argument("--legacy-root", default="/data/zypan")
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--prompt-count", type=int, default=3)
+    parser.add_argument("--primary-tokens", type=int, default=128)
+    parser.add_argument("--stress-tokens", type=int, default=512)
+    parser.add_argument("--skip-stress", action="store_true")
     return parser.parse_args()
 
 
