@@ -1,66 +1,51 @@
-# Protocol
+# Canonical protocol
 
-This document records the shared protocol assumptions used across the current GDN recurrent-state quantization experiments.
+## Formal AIME26 at 81,920 tokens
 
-## Model
+Protocol identifier: `GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2`.
 
-```text
-Qwen3.5-9B
-```
+- `max_new_tokens = 81920`
+- seeds `[1, 2]`
+- sampling enabled
+- temperature `1.0`
+- top-p `0.95`
+- top-k `20`
+- min-p `0`
+- presence penalty `1.5`
+- repetition penalty `1.0`
+- thinking enabled
 
-The relevant GDN recurrent state has shape:
+Qwen uses the manual Hugging Face runtime. SGLang-only flags must not be added to Qwen. Ling uses the archived SGLang/KDA integration. Historical 65,536-token smoke runs are legacy and must not be mixed into formal results.
 
-```text
-[B,H,K,V] = [1,32,128,128]
-```
+## Qwen/GDN state quantization
 
-## Axis Naming
+- State shape: `[B,H,K,V]`.
+- INT8_C128 groups on K / `dim=-2`, group size 128.
+- Scale shape: `[B,H,1,V]`.
+- Scale source: `state.detach().float()`.
+- Scale: `amax(abs(state), dim=-2) / 127`, epsilon floor `1e-12`.
+- Rounding: `torch.round` (ties-to-even), clamp `[-127,127]`.
+- Dequantization and stored recurrent state: FP32.
+- Prefill is not quantized. During decode: kernel output -> C128 QDQ -> stored state -> next decode.
 
-```text
-row    = Key-axis row group
-column = Value-axis column group
+The canonical formal runner SHA256 is `9ff56d00b6b2dbaf9be3c3186bd30be8d3b9cc9d9b580a680316bcc8c01247dd`.
 
-R128 = full 128-element Value-axis row group
-C128 = full 128-element Key-axis column group
-```
+## Fixed rotations
 
-## Execution Pattern
+Qwen Key-Hadamard applies normalized H128 after q/k normalization and before the GDN core in both prefill and recurrent decode. q and the recurrent state use the same Key-rotated basis; Value is not rotated.
 
-The common mechanism protocol is:
+Ling Value-Hadamard uses `CORRECTED_PREFILL_ENDPOINT_V2` semantics. The KDA kernel already returns recurrent state in rotated Value coordinates. That state is written directly to recurrent cache and consumed unchanged by first decode. Only the KDA core/readout output is mapped back to native Value coordinates before RMSNorm, learned scale, dynamic gate, merge, and `o_proj`.
 
-```text
-FP32 prefill
-+
-quantized or intervened recurrent continuation
-```
+`REDUNDANT_PREFILL_ENDPOINT_ROTATION = NO`.
 
-Formal intervention experiments use teacher-forced continuation so that model-state changes can be compared under the same continuation tokens.
+## Scoring and abstain
 
-## Quantization And Intervention Scope
+The frozen scorer is documented in `docs/SCORER_PROTOCOL.md`. Gold is not used for candidate selection. `Abstain` is a subset of `Incorrect`, so the only valid accounting identity is `Correct + Incorrect = N`.
 
-- State quantization targets GDN recurrent state tensors, not model weights.
-- Causal interventions alter recurrent-state residuals or pulse geometry at specified token indices.
-- Single-pulse experiments inject one state perturbation at `t0`, then continue without repeated injection.
-- Method design, mixed precision, and new quantizer construction are not part of the current mechanism-validation phase.
+## 256K follow-up
 
-## Trajectory Source
+The 256K length-sensitivity jobs use seed 1, `max_new_tokens=262144`, SGLang/Triton, and YaRN factor 2 with original maximum positions 131072. They are separate from the 81,920 frozen formal protocol and cannot be promoted to `FINAL` until generation, frozen scoring, and verification all complete.
 
-The canonical 6-prompt mechanism experiments currently use:
+## Artifact policy
 
-```text
-continuation_source = P0_FP_STATE_DECODED_RESPONSE_RETOKENIZED
-exact_original_generation_token_ids_available = false
-exact_replay_claimed = false
-```
-
-This is a valid controlled continuation source for mechanism diagnostics, but it is not exact replay of original generation token IDs.
-
-## Current Gate Policy
-
-The project remains in mechanism validation:
-
-```text
-MECHANISM_CLOSURE_CANDIDATE = NO
-METHOD_DESIGN_READY_CANDIDATE = NO
-METHOD_DESIGN_READY = NO
-```
+Only compact code, summaries, reports, manifests, and tests are tracked. Checkpoints, model weights, datasets, caches, logs, raw generation JSONL, token/layer/head traces, and large per-horizon tables remain on their provenance hosts and are represented by manifests.

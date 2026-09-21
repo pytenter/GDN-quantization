@@ -10,6 +10,8 @@ sha256 = fa5dd904c7d1887df4b8c23613f37b8d438ea494cb72607b89be8e07d55a343b
 path = experiments/shared/scoring/aime26_scorer_v4.py
 ```
 
+The three audited servers matched this exact scorer. The final repository keeps one canonical implementation at the path above. Gold is never used for candidate selection.
+
 Scores in `results/aime26/81920/ling_kda/` were derived by running this scorer over completed formal JSONL response records. The response text is intentionally not committed. `PROVENANCE.json` records each source file path, byte size, modification time, and SHA256.
 
 ## Counting rules
@@ -19,6 +21,8 @@ Scores in `results/aime26/81920/ling_kda/` were derived by running this scorer o
 - `abstain`: scorer did not accept a final answer extraction; this is a subset of `wrong`.
 - accuracy denominator: all 60 samples per condition.
 - matched comparisons pair the same question and seed.
+
+Therefore the accounting identity is `Correct + Incorrect = N`; `Abstain` must not be added as a third disjoint outcome.
 
 ## Version boundary
 
