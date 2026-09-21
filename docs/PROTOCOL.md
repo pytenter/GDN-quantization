@@ -1,66 +1,75 @@
 # Protocol
 
-This document records the shared protocol assumptions used across the current GDN recurrent-state quantization experiments.
+This document separates current formal protocols from historical mechanism experiments. Protocols with different context length, deterministic settings, cache behavior, sampling, model revision, quantization axis, state dtype, or scorer version must not be merged automatically.
 
-## Model
+## Models and recurrent states
 
-```text
-Qwen3.5-9B
-```
+- Qwen3.5-9B uses Gated DeltaNet (GDN).
+- Ling-3.0-tiny uses Kimi Delta Attention (KDA).
+- Quantization targets recurrent state storage, not model weights.
+- `FP_STATE` means state quantization is disabled. It does not by itself imply that all model compute or state storage is FP32; actual storage and accumulation dtypes require runtime capture.
 
-The relevant GDN recurrent state has shape:
+## Current INT8 semantics
 
-```text
-[B,H,K,V] = [1,32,128,128]
-```
-
-## Axis Naming
+The current Ling `INT8_R128` implementation is audited as:
 
 ```text
-row    = Key-axis row group
-column = Value-axis column group
-
-R128 = full 128-element Value-axis row group
-C128 = full 128-element Key-axis column group
+group axis = V
+group size = 128
+scale shape = [B,H,K,1]
+scale = amax / 127
+rounding = ties-to-even
+clamp = [-127,127]
 ```
 
-## Execution Pattern
+These values document the observed canonical implementation; this consolidation does not modify numerical behavior.
 
-The common mechanism protocol is:
+## Current rotation semantics
+
+Qwen/GDN uses a Key-side Hadamard line with `INT8_C128`.
+
+Ling/KDA uses a Value-side Hadamard line with `INT8_R128` under `CORRECTED_PREFILL_ENDPOINT_V2`:
+
+1. The KDA kernel returns recurrent state already in rotated Value coordinates.
+2. That state is written directly to the recurrent cache.
+3. The first decode step consumes the same rotated-basis cached state.
+4. No extra H or H-transpose is applied at the prefill endpoint.
+5. The KDA core/readout output is mapped back to native Value coordinates before RMSNorm, learned scale/dynamic gate, head merge, and `o_proj`.
+
+Outputs produced through the historical redundant endpoint rotation path are `INVALID_OLD_ROTATION_SEMANTICS` for formal mixing.
+
+## AIME26 81,920 final protocol
 
 ```text
-FP32 prefill
-+
-quantized or intervened recurrent continuation
+questions = 30
+seeds = 2
+samples_per_condition = 60
+max_new_tokens = 81920
+scorer = AIME26_STRICT_V4_CANDIDATE
 ```
 
-Formal intervention experiments use teacher-forced continuation so that model-state changes can be compared under the same continuation tokens.
+Formal accuracy is correct / 60. `Abstain` is an extraction-status subset of incorrect samples, not an additional denominator category.
 
-## Quantization And Intervention Scope
+## Ling 256K protocol boundary
 
-- State quantization targets GDN recurrent state tensors, not model weights.
-- Causal interventions alter recurrent-state residuals or pulse geometry at specified token indices.
-- Single-pulse experiments inject one state perturbation at `t0`, then continue without repeated injection.
-- Method design, mixed precision, and new quantizer construction are not part of the current mechanism-validation phase.
-
-## Trajectory Source
-
-The canonical 6-prompt mechanism experiments currently use:
+The running helper protocol is a separate length-sensitivity run:
 
 ```text
-continuation_source = P0_FP_STATE_DECODED_RESPONSE_RETOKENIZED
-exact_original_generation_token_ids_available = false
-exact_replay_claimed = false
+max_new_tokens = 262144
+context_length = 262144
+model_native_context_length = 131072
+rope_scaling = YaRN factor 2.0
+seed = 1
+condition = INT8_R128 + Value-Hadamard
+execution = two independent TP=1 instances
+deterministic inference = enabled
+radix cache = disabled
+mamba radix cache = disabled
+CUDA graph = disabled
 ```
 
-This is a valid controlled continuation source for mechanism diagnostics, but it is not exact replay of original generation token IDs.
+Because the YaRN/context intervention and execution layout differ from the 81,920 protocol, this run must not be represented as a simple continuation of the 81,920 baseline without an explicit matched-baseline audit.
 
-## Current Gate Policy
+## Historical mechanism protocol
 
-The project remains in mechanism validation:
-
-```text
-MECHANISM_CLOSURE_CANDIDATE = NO
-METHOD_DESIGN_READY_CANDIDATE = NO
-METHOD_DESIGN_READY = NO
-```
+Earlier Qwen mechanism experiments commonly used FP32 prefill followed by teacher-forced quantized/intervened recurrent continuation on a small prompt set. Those results remain useful mechanism evidence but are not interchangeable with AIME26 free generation.
