@@ -19,9 +19,11 @@ def test_precision_decomposition_has_distinct_pre_and_post_cast_metrics():
     value = torch.randn(3, 128, generator=torch.Generator().manual_seed(7))
     result = diag.precision_roundtrip(value, rot.dense_so_matrix(0), "cpu")
     p2 = result["p2_bf16_storage_fp32_rotation"]
+    p2b = result["p2b_bf16_intermediate_storage_fp32_rotation"]
     assert p2["before_final_bf16_cast"]["relative_l2"] >= 0.0
     assert p2["after_final_bf16_cast"]["relative_l2"] >= 0.0
     assert result["p3_native_bf16"]["accumulation_dtype"] == "ACCUMULATION_DTYPE_UNKNOWN"
+    assert p2b["intermediate_storage_dtype"] == "torch.bfloat16"
 
 
 def test_manifest_mismatch_fails_closed(tmp_path):

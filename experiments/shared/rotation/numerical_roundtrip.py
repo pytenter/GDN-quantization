@@ -49,6 +49,16 @@ def precision_roundtrip(value: torch.Tensor, matrix_fp64: torch.Tensor, device: 
     before_metric = tensor_metrics(p2_before, bf16_reference)
     after_metric = tensor_metrics(p2_after, stored_bf16)
 
+    # Some model paths store the forward-rotated driver in BF16 before the
+    # inverse/readout. Keep this distinct from native-BF16 matmul: both
+    # multiplications remain FP32 and only the intermediate is quantized.
+    forward_fp32 = bf16_reference.matmul(matrix32)
+    forward_stored_bf16 = forward_fp32.to(torch.bfloat16)
+    intermediate_before_final = forward_stored_bf16.float().matmul(matrix32.transpose(0, 1))
+    intermediate_after_final = intermediate_before_final.to(torch.bfloat16)
+    intermediate_before_metric = tensor_metrics(intermediate_before_final, bf16_reference)
+    intermediate_after_metric = tensor_metrics(intermediate_after_final, stored_bf16)
+
     native = {
         "status": "UNAVAILABLE",
         "input_dtype": "torch.bfloat16",
@@ -87,6 +97,20 @@ def precision_roundtrip(value: torch.Tensor, matrix_fp64: torch.Tensor, device: 
             "roundtrip_error_relative_l2": before_metric["relative_l2"],
             "cast_error_relative_l2_delta": after_metric["relative_l2"] - before_metric["relative_l2"],
         },
+        "p2b_bf16_intermediate_storage_fp32_rotation": {
+            "input_storage_dtype": "torch.bfloat16",
+            "rotation_dtype": "torch.float32",
+            "intermediate_storage_dtype": "torch.bfloat16",
+            "forward_storage_cast": tensor_metrics(forward_stored_bf16, forward_fp32),
+            "before_final_bf16_cast": intermediate_before_metric,
+            "after_final_bf16_cast": intermediate_after_metric,
+            "intermediate_cast_contribution_relative_l2_delta": (
+                intermediate_before_metric["relative_l2"] - before_metric["relative_l2"]
+            ),
+            "final_cast_contribution_relative_l2_delta": (
+                intermediate_after_metric["relative_l2"] - intermediate_before_metric["relative_l2"]
+            ),
+        },
         "p3_native_bf16": native,
     }
 
@@ -119,15 +143,32 @@ def validate_manifest_hashes(previous_path: Path, current_manifest: dict) -> dic
     }
 
 
-def aggregate_error_contribution(suite: dict, tensor_names: Iterable[str]) -> dict:
-    roundtrip, cast = [], []
+def aggregate_error_contribution(
+    suite: dict, tensor_names: Iterable[str], *, uses_bf16_intermediate_storage: bool = False
+) -> dict:
+    roundtrip, intermediate_cast, final_cast = [], [], []
     for tensor_name in tensor_names:
         for item in suite[tensor_name].values():
             p2 = item["p2_bf16_storage_fp32_rotation"]
             roundtrip.append(float(p2["roundtrip_error_relative_l2"]))
-            cast.append(float(p2["cast_error_relative_l2_delta"]))
+            if uses_bf16_intermediate_storage:
+                p2b = item["p2b_bf16_intermediate_storage_fp32_rotation"]
+                intermediate_cast.append(float(p2b["intermediate_cast_contribution_relative_l2_delta"]))
+                final_cast.append(float(p2b["final_cast_contribution_relative_l2_delta"]))
+            else:
+                intermediate_cast.append(0.0)
+                final_cast.append(float(p2["cast_error_relative_l2_delta"]))
+    roundtrip_mean = sum(roundtrip) / len(roundtrip)
+    intermediate_mean = sum(intermediate_cast) / len(intermediate_cast)
+    final_mean = sum(final_cast) / len(final_cast)
+    contributions = {
+        "ROTATION_ROUNDTRIP": max(0.0, roundtrip_mean),
+        "BF16_INTERMEDIATE_CAST": max(0.0, intermediate_mean),
+        "BF16_FINAL_CAST": max(0.0, final_mean),
+    }
     return {
-        "roundtrip_error_relative_l2_mean": sum(roundtrip) / len(roundtrip),
-        "bf16_cast_error_relative_l2_delta_mean": sum(cast) / len(cast),
-        "dominant": "BF16_CAST" if sum(cast) > sum(roundtrip) else "ROTATION_ROUNDTRIP",
+        "roundtrip_error_relative_l2_mean": roundtrip_mean,
+        "bf16_intermediate_cast_error_relative_l2_delta_mean": intermediate_mean,
+        "bf16_final_cast_error_relative_l2_delta_mean": final_mean,
+        "dominant": max(contributions, key=contributions.get),
     }
