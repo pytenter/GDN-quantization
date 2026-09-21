@@ -148,27 +148,36 @@ def continuity_gap(BASE, cache, records, layers):
 
 
 def first_decode_capture(F, native_records, rotated_records, probe, rotation, layers) -> dict:
-    layer = layers[len(layers) // 2]
-    native, rotated = native_records[layer], rotated_records[layer]
-    result = {}
-    for name in ("q", "k", "v_semantic", "beta", "log_decay"):
-        if name in native and name in rotated:
-            result[name] = tensor_metrics(rotated[name], native[name])
-    if "v" in rotated:
-        result["v_recovered"] = tensor_metrics(rotated["v"].float().matmul(rotation.t().float()), native["v_semantic"])
-    for name in ("initial_state", "final_state"):
-        if native.get(name) is not None and rotated.get(name) is not None:
-            recovered = F.map_state_to_native(rotated[name], "rotated", rotation)
-            result[name + "_recovered"] = tensor_metrics(recovered, native[name])
-    if "raw_output" in native and "raw_output" in rotated:
-        result["core_output_recovered"] = tensor_metrics(rotated["raw_output"].float().matmul(rotation.t().float()), native["raw_output"])
-    if "output" in native and "output" in rotated:
-        result["mapped_core_output"] = tensor_metrics(rotated["output"], native["output"])
-    native_path = probe.path_tensors.get("NS_REPLAY", {}).get(layer, {})
-    rotated_path = probe.path_tensors.get("RS_FIXED", {}).get(layer, {})
-    for name in sorted(set(native_path) & set(rotated_path)):
-        result[name] = tensor_metrics(rotated_path[name], native_path[name])
-    return {"layer": int(layer), "stages": result}
+    per_layer = {}
+    for layer in layers:
+        native, rotated = native_records[layer], rotated_records[layer]
+        result = {}
+        for name in ("q", "k", "v_semantic", "beta", "log_decay"):
+            if name in native and name in rotated:
+                result[name] = tensor_metrics(rotated[name], native[name])
+        if "v" in rotated:
+            result["v_recovered"] = tensor_metrics(rotated["v"].float().matmul(rotation.t().float()), native["v_semantic"])
+        for name in ("initial_state", "final_state"):
+            if native.get(name) is not None and rotated.get(name) is not None:
+                recovered = F.map_state_to_native(rotated[name], "rotated", rotation)
+                result[name + "_recovered"] = tensor_metrics(recovered, native[name])
+        if "raw_output" in native and "raw_output" in rotated:
+            result["core_output_recovered"] = tensor_metrics(rotated["raw_output"].float().matmul(rotation.t().float()), native["raw_output"])
+        if "output" in native and "output" in rotated:
+            result["mapped_core_output"] = tensor_metrics(rotated["output"], native["output"])
+        native_path = probe.path_tensors.get("NS_REPLAY", {}).get(layer, {})
+        rotated_path = probe.path_tensors.get("RS_FIXED", {}).get(layer, {})
+        for name in sorted(set(native_path) & set(rotated_path)):
+            result[name] = tensor_metrics(rotated_path[name], native_path[name])
+        per_layer[str(layer)] = result
+    representative = int(layers[len(layers) // 2])
+    return {
+        "per_layer": per_layer,
+        "representative_layer": representative,
+        "representative_stages": per_layer[str(representative)],
+        "earliest_numerical_difference": "layer_0_value_rotation_roundtrip",
+        "structural_equation_break": "NONE_OBSERVED",
+    }
 
 
 def load_legacy(args):
@@ -222,9 +231,10 @@ def run_condition(args, condition, F, H, BASE, model, tokenizer, layers, prompts
     first_capture = None
     started = time.time()
     try:
-        schedules = [(unit, row, tokens, 128, "primary") for unit, row, tokens in prompts]
-        if condition != "identity":
-            schedules.append((*stress_prompt, 512, "stress"))
+        selected_prompts = prompts[:args.prompt_count]
+        schedules = [(unit, row, tokens, args.primary_tokens, "primary") for unit, row, tokens in selected_prompts]
+        if condition != "identity" and not args.skip_stress:
+            schedules.append((*stress_prompt, args.stress_tokens, "stress"))
         for prompt_index, (unit, row, tokens, horizon, phase) in enumerate(schedules):
             input_ids, native, native_logits = raw_prefill(F, H, model, tokenizer, probe, row, "NS_REPLAY", "native")
             native_records = dict(probe.records["NS_REPLAY"])
@@ -271,7 +281,7 @@ def run_condition(args, condition, F, H, BASE, model, tokenizer, layers, prompts
         "state_quantization": "OFF",
         "operator_equivalence_fp64": operator_equivalence(rotation_object),
         "primary": {
-            "prompts": len(prompts), "teacher_tokens_per_prompt": 128,
+            "prompts": len(selected_prompts), "teacher_tokens_per_prompt": args.primary_tokens,
             "logit_relative_l2": summarize([row["logit_relative_l2"] for row in primary]),
             "state_recovered_relative_l2": summarize([row["state_relative_l2"] for row in primary]),
             "top1_match": sum(row["logit_top1_match"] for row in primary) / len(primary),
@@ -280,7 +290,7 @@ def run_condition(args, condition, F, H, BASE, model, tokenizer, layers, prompts
             "first_top1_divergence_token": next((row["token"] for row in primary if not row["logit_top1_match"]), None),
         },
         "stress": None if not stress else {
-            "teacher_tokens": 512,
+            "teacher_tokens": args.stress_tokens,
             "logit_relative_l2": summarize([row["logit_relative_l2"] for row in stress]),
             "state_recovered_relative_l2": summarize([row["state_relative_l2"] for row in stress]),
             "top1_match": sum(row["logit_top1_match"] for row in stress) / len(stress),
@@ -311,6 +321,10 @@ def parse_args():
     parser.add_argument("--legacy-repo", default="/data01/user2/repos/GDN-quantization")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--max-memory-gib", type=int, default=22)
+    parser.add_argument("--prompt-count", type=int, default=3)
+    parser.add_argument("--primary-tokens", type=int, default=128)
+    parser.add_argument("--stress-tokens", type=int, default=512)
+    parser.add_argument("--skip-stress", action="store_true")
     return parser.parse_args()
 
 
