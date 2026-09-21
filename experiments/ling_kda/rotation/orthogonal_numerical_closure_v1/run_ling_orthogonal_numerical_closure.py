@@ -135,7 +135,10 @@ def compact_layerwise(localization_dir: Path) -> tuple[list[dict], dict]:
     rows = []
     largest = {"relative_l2": -1.0, "condition": None, "layer": None, "module": None}
     for condition in ("hadamard", "r0", "r1", "r2"):
-        payload = json.loads((localization_dir / condition / f"condition_{condition}.json").read_text(encoding="utf-8"))
+        path = localization_dir / condition / f"condition_{condition}.json"
+        if not path.exists():
+            continue
+        payload = json.loads(path.read_text(encoding="utf-8"))
         per_layer = payload["first_decode_capture"]["per_layer"]
         for layer, metrics in per_layer.items():
             def rel(name):
@@ -192,6 +195,7 @@ def parse_args():
     parser.add_argument("--legacy-repo", default="/data01/user2/repos/GDN-quantization")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--max-memory-gib", type=int, default=22)
+    parser.add_argument("--smoke", action="store_true")
     return parser.parse_args()
 
 
@@ -220,14 +224,21 @@ def main():
 
     localization_dir = output_dir / "localization"
     local_args = SimpleNamespace(prompt_count=1, primary_tokens=1, stress_tokens=1, skip_stress=True, output_dir=None)
-    for condition in ("hadamard", "r0", "r1", "r2"):
+    localization_conditions = ("r0",) if args.smoke else ("hadamard", "r0", "r1", "r2")
+    for condition in localization_conditions:
         local_args.output_dir = str(localization_dir / condition)
         GATE.run_condition(local_args, condition, F, H, BASE, model, tokenizer, layers, prompts, stress_prompt)
     layer_rows, largest = compact_layerwise(localization_dir)
     write_csv(output_dir / "layerwise_amplification.csv", layer_rows)
 
     high_precision_dir = output_dir / "teacher_forced_fp32_reference_r0"
-    high_args = SimpleNamespace(prompt_count=3, primary_tokens=128, stress_tokens=512, skip_stress=False, output_dir=str(high_precision_dir))
+    high_args = SimpleNamespace(
+        prompt_count=1 if args.smoke else 3,
+        primary_tokens=2 if args.smoke else 128,
+        stress_tokens=2 if args.smoke else 512,
+        skip_stress=args.smoke,
+        output_dir=str(high_precision_dir),
+    )
     high_precision = GATE.run_condition(
         high_args, "r0", make_high_precision_facade(F, BASE), H, BASE,
         model, tokenizer, layers, prompts, stress_prompt,
@@ -246,6 +257,7 @@ def main():
     stability = "PASS_WITH_PRECISION_POLICY" if improved or decomposition["dominant"] == "BF16_CAST" else "PASS"
     summary = {
         "task": TASK,
+        "run_scope": "SMOKE" if args.smoke else "FORMAL_DIAGNOSTIC",
         "model": "Ling-3.0-tiny/KDA",
         "matrix_provenance": provenance["status"],
         "int8": "OFF",
