@@ -252,9 +252,15 @@ def main():
     save_json(output_dir / "rotation_interface_audit.json", interface)
     save_json(output_dir / "rotation_manifest.json", current_manifest)
     save_json(output_dir / "matrix_provenance.json", provenance)
-    decomposition = NUM.aggregate_error_contribution(suite, ("v",))
+    decomposition = NUM.aggregate_error_contribution(
+        suite, ("v",), uses_bf16_intermediate_storage=True
+    )
     improved = high_precision["primary"]["logit_relative_l2"]["median"] < 0.8 * current["r0"]["primary"]["logit_relative_l2"]["median"]
-    stability = "PASS_WITH_PRECISION_POLICY" if improved or decomposition["dominant"] == "BF16_CAST" else "PASS"
+    stability = (
+        "PASS_WITH_PRECISION_POLICY"
+        if improved or decomposition["dominant"].startswith("BF16_")
+        else "PASS"
+    )
     summary = {
         "task": TASK,
         "run_scope": "SMOKE" if args.smoke else "FORMAL_DIAGNOSTIC",
