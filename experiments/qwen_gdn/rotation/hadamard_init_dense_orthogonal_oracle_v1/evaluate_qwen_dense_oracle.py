@@ -8,6 +8,7 @@ import importlib.util
 import json
 import math
 import random
+import statistics
 import sys
 from pathlib import Path
 
@@ -197,11 +198,14 @@ def bootstrap(differences, hadamard, n=10000, seed=20260921):
     generator = random.Random(seed); values, relative = [], []
     for _ in range(n):
         indices = [generator.randrange(len(differences)) for _ in differences]
-        effect = sorted(differences[i] for i in indices)[len(indices) // 2]
-        base = sorted(hadamard[i] for i in indices)[len(indices) // 2]
+        effect = statistics.median(differences[i] for i in indices)
+        base = statistics.median(hadamard[i] for i in indices)
         values.append(effect); relative.append(effect / max(base, R.EPS))
     values.sort(); relative.sort()
-    return {"resamples": n, "median_effect": values[n // 2], "ci95": [values[int(0.025*n)], values[int(0.975*n)]], "median_relative_reduction": relative[n // 2]}
+    lo, hi = int(0.025 * (n - 1)), int(0.975 * (n - 1))
+    return {"resamples": n, "median_effect": statistics.median(differences),
+            "ci95": [values[lo], values[hi]],
+            "median_relative_reduction": statistics.median(differences) / max(statistics.median(hadamard), R.EPS)}
 
 
 def main():
