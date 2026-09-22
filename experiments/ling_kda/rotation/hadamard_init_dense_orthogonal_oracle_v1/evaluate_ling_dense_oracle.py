@@ -109,7 +109,11 @@ def snapshot(F, cache, layers):
 def recovered_snapshot(F, cache, layers, method, mats, h):
     stack = F.BASE.cache_stack(cache, layers); output = {}
     for layer in layers:
-        value = stack[layer].detach().float()
+        # cache_stack is an audit accessor and may return CPU snapshots even
+        # while the live cache and per-layer correction are CUDA-resident.
+        # Device transfer here is read-only metric plumbing; it does not write
+        # back to the runtime cache or alter the deployed numerical path.
+        value = stack[layer].detach().float().to(mats[layer].device)
         output[layer] = R.recover_state(value, mats[layer], h).cpu() if rotated(method) else value.cpu()
     return output
 
