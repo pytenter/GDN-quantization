@@ -36,6 +36,21 @@ EXPECTED = {
 }
 
 
+def apply_diagnostic_gated_rmsnorm_config() -> bool:
+    if os.environ.get("LING_GATED_RMSNORM_FIXED_CONFIG") != "BT16_W8":
+        return False
+    import triton
+    import fla.modules.fused_norm_gate as module
+    current = module.layer_norm_gated_fwd_kernel
+    while current is not None:
+        if hasattr(current, "configs"):
+            current.configs = [triton.Config({"BT": 16}, num_warps=8, num_stages=3)]
+            if isinstance(getattr(current, "cache", None), dict):
+                current.cache.clear()
+        current = getattr(current, "fn", None)
+    return True
+
+
 def import_file(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
@@ -346,6 +361,7 @@ def main() -> None:
     seed_record = None
     if args.seed_mode == "fixed":
         seed_record = seed_all(args.seed)
+    gated_rmsnorm_fixed = apply_diagnostic_gated_rmsnorm_config()
     started = time.time()
     F, model, tokenizer, layers, device, h, delta_mats, runtime_mats, observed = load_context(args)
     documents = sorted(R.load_corpus(Path(args.corpus), "HELDOUT"), key=lambda row: int(row["panel_index"]))
@@ -365,6 +381,8 @@ def main() -> None:
         "KDA_ROTATION_SEMANTICS_VERSION": "CORRECTED_PREFILL_ENDPOINT_V2",
         "REDUNDANT_PREFILL_ENDPOINT_ROTATION": "NO",
         "PREFILL_ENDPOINT_STATE_BASIS_CONTINUITY": "PASS",
+        "LING_GATED_RMSNORM_FIXED_CONFIG": os.environ.get("LING_GATED_RMSNORM_FIXED_CONFIG"),
+        "diagnostic_gated_rmsnorm_fixed_config_applied": gated_rmsnorm_fixed,
     }
     write_json(out / f"runtime_environment_{args.mode}_{args.seed_mode}.json", environment)
 
