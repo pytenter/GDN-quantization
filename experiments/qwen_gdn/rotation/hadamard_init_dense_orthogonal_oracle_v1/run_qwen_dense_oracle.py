@@ -127,8 +127,9 @@ class TraceProbe:
                     "q": cpu(q, torch.bfloat16), "k": cpu(k, torch.bfloat16),
                     "v": cpu(value, torch.bfloat16), "g": cpu(kwargs["g"], torch.float32),
                     "beta": cpu(kwargs["beta"], torch.float32),
-                    "state_input": cpu(initial, torch.bfloat16),
-                    "state_output": cpu(state, torch.bfloat16),
+                    # Actual GDN recurrent-cache storage is FP32; preserving it is
+                    # required for local replay parity and for the FP_STATE target.
+                    "state_input": cpu(initial, torch.float32),
                     "core_output": cpu(core, torch.bfloat16),
                 }
             return core.to(value.dtype), state
