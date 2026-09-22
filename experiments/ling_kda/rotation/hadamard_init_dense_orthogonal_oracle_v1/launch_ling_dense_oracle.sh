@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 RUNNER="$ROOT/experiments/ling_kda/rotation/hadamard_init_dense_orthogonal_oracle_v1/run_ling_dense_oracle.py"
 EVALUATOR="$ROOT/experiments/ling_kda/rotation/hadamard_init_dense_orthogonal_oracle_v1/evaluate_ling_dense_oracle.py"
 STRESS="$ROOT/experiments/ling_kda/rotation/hadamard_init_dense_orthogonal_oracle_v1/stress_ling_dense_oracle.py"
+THETA0_GATE="$ROOT/experiments/ling_kda/rotation/hadamard_init_dense_orthogonal_oracle_v1/theta0_logits_gate_ling.py"
 PYTHON="${PYTHON:-/data01/user2/.conda/envs/ling-kda/bin/python}"
 RESULTS="${RESULTS:-$ROOT/results/rotation/ling_dense_orthogonal_oracle_v1}"
 CORPUS="${CORPUS:-$RESULTS/calibration/CALIBRATION_RAW_TEXTS.jsonl}"
@@ -30,6 +31,8 @@ case "${1:-}" in
     wait_for_traces
     CUDA_VISIBLE_DEVICES=0 "$PYTHON" "$RUNNER" --phase gate --trace-dir "$TRACES" \
       --output-dir "$RESULTS/gates" >"$RESULTS/logs/gate.log" 2>&1
+    CUDA_VISIBLE_DEVICES=0 "$PYTHON" "$THETA0_GATE" --corpus "$CORPUS" \
+      --output-dir "$RESULTS/gates" >"$RESULTS/logs/theta0_logits_gate.log" 2>&1
 
     CUDA_VISIBLE_DEVICES=0 "$PYTHON" "$RUNNER" --phase train --trace-dir "$TRACES" \
       --output-dir "$RESULTS/lr_probe/state_1e3" --objective DENSE_STATE --lr 0.001 \
