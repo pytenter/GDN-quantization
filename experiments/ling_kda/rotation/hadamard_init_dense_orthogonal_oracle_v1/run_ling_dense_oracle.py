@@ -141,7 +141,6 @@ def collect(args) -> None:
                         "v": record["v_semantic"].to(torch.bfloat16),
                         "beta": record["beta"].float(), "log_decay": record["log_decay"].float(),
                         "state_input": record["state_in"].to(torch.bfloat16),
-                        "state_output": record["state_after"].to(torch.bfloat16),
                         "core_output": record["raw_core_output"].to(torch.bfloat16),
                         "dynamic_gate": token_last(path["dynamic_gate_input"]).to(torch.bfloat16),
                         "post_norm_gate": token_last(path["rmsnorm_scaled_output"]).to(torch.bfloat16),
