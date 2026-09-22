@@ -119,41 +119,44 @@ def collect(args) -> None:
         for row_index, row in enumerate(rows):
             ids = tokenizer(row["raw_text"], add_special_tokens=False).input_ids[:1024]
             positions = manifest["tokenized_documents"][row["document_id"]]["positions"]
-            cache, current, samples = None, 0, []
+            samples = []
+            identity = torch.eye(128, dtype=torch.float32)
             for sample_index, position in enumerate(positions):
-                end = position + 1
-                prior = None if cache is None else {layer: F.BASE.cache_stack(cache, layers)[layer].detach().float().cpu().clone() for layer in layers}
-                chunk = torch.tensor([ids[current:end]], dtype=torch.long, device=device)
+                # Use an independent native prefix and the already validated
+                # canonical H.advance first-decode path.  Cached multi-token
+                # calls do not refresh FullPathForensicProbe.core_tokens.
+                prefix = torch.tensor([ids[:position]], dtype=torch.long, device=device)
+                mask = torch.ones_like(prefix)
                 plan = F.H.plan("NS_REPLAY", "native", False)
                 probe.begin(plan, sample_index)
                 with torch.inference_mode():
-                    output = model(input_ids=chunk, past_key_values=cache, cache_position=torch.arange(current, end, device=device), use_cache=True)
+                    output = model(input_ids=prefix, attention_mask=mask,
+                        cache_position=torch.arange(position, device=device), use_cache=True)
                 probe.end()
-                cache = output.past_key_values
-                cache_stack = F.BASE.cache_stack(cache, layers)
+                cache_live = F.BASE.cache_stack(output.past_key_values, layers)
+                cache_stack = {layer: cache_live[layer].detach().float().cpu().clone() for layer in layers}
+                prefill_records = dict(probe.records["NS_REPLAY"])
+                branch = F.H.branch("NS_REPLAY", "native", False, output.past_key_values, mask)
+                _logits, decode_records = F.H.advance(
+                    model, probe, branch, int(ids[position]), position,
+                    layers, identity, sample_index + 1)
                 layer_records = {}
                 for layer in layers:
-                    records = probe.core_tokens["NS_REPLAY"][layer]
-                    record = records[-1]
+                    record = decode_records[layer]
                     path = probe.path_tensors["NS_REPLAY"][layer]
                     layer_records[layer] = {
                         "q": record["q"].to(torch.bfloat16), "k": record["k"].to(torch.bfloat16),
                         "v": record["v_semantic"].to(torch.bfloat16),
                         "beta": record["beta"].float(), "log_decay": record["log_decay"].float(),
-                        "state_input": record["state_in"].to(torch.bfloat16),
-                        "core_output": record["raw_core_output"].to(torch.bfloat16),
+                        "state_input": record["initial_state"].to(torch.bfloat16),
+                        "core_output": record["raw_output"].to(torch.bfloat16),
                         "dynamic_gate": token_last(path["dynamic_gate_input"]).to(torch.bfloat16),
                         "post_norm_gate": token_last(path["rmsnorm_scaled_output"]).to(torch.bfloat16),
                         "out_proj_output": token_last(path["out_proj_output"]).to(torch.bfloat16),
                     }
-                    continuity_kernel_cache.append(relative_l2(probe.records["NS_REPLAY"][layer]["final_state"], cache_stack[layer]))
-                    if prior is not None:
-                        # core_tokens accumulates across begin/end calls; select
-                        # the first record belonging to this newly fed chunk.
-                        first_current = records[-int(chunk.shape[-1])]
-                        continuity_cache_next.append(relative_l2(first_current["state_in"], prior[layer]))
+                    continuity_kernel_cache.append(relative_l2(prefill_records[layer]["final_state"], cache_stack[layer]))
+                    continuity_cache_next.append(relative_l2(record["initial_state"], cache_stack[layer]))
                 samples.append({"position": position, "layers": layer_records})
-                current = end
             shard = {"document_id": row["document_id"], "raw_text_sha256": row["raw_text_sha256"], "split": args.split.upper(), "layers": layers, "samples": samples}
             path = outdir / f"{row['document_id']}.pt"
             torch.save(shard, path)
