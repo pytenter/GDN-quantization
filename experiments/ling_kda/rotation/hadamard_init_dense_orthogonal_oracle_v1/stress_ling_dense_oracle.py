@@ -80,6 +80,8 @@ def main():
         "Hadamard": E.matrices("Hadamard", banks, layers, device),
         best: E.matrices(best, banks, layers, device),
     }
+    runtime_mats = {method: E.runtime_matrices(method, mats[method], layers, h)
+                    for method in mats}
     document = E.R.load_corpus(Path(args.corpus), "HELDOUT")[0]
     ids = tokenizer(document["raw_text"], add_special_tokens=False).input_ids[:1024]
     if len(ids) < 640:
@@ -96,7 +98,7 @@ def main():
 
     rows = []
     for method in ("Hadamard", best):
-        probe = E.PerLayerHistoryProbe.build(F, mats[method])
+        probe = E.PerLayerHistoryProbe.build(F, runtime_mats[method])
         probe.install(model)
         try:
             rows.extend(trajectory_all(F, model, ids, probe, layers, device, method,

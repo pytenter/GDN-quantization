@@ -42,6 +42,20 @@ def matrices(method, banks, layers, device):
 def rotated(method): return method != "Native_INT8"
 
 
+def runtime_matrices(method, delta_mats, layers, h):
+    """Full Value-basis matrices consumed by the canonical runtime probe.
+
+    The learned bank stores only DeltaR.  Side-car replay applies canonical H
+    and then DeltaR explicitly.  The historical runtime probe accepts one full
+    row-vector rotation, so it must receive H @ DeltaR (H for Hadamard), never
+    bare DeltaR.  Native remains the identity/no-rotation branch.
+    """
+    identity = torch.eye(128, device=h.device, dtype=torch.float32)
+    if method == "Native_INT8":
+        return {layer: identity for layer in layers}
+    return {layer: h.matmul(delta_mats[layer]) for layer in layers}
+
+
 def local_method(model, probe, layers, traces, method, banks, h, device):
     mats = matrices(method, banks, layers, device)
     accum = {key: [] for key in ("state_error", "core_error", "post_norm_error", "post_gate_error", "out_proj_error", "saturation", "scale_mean", "scale_max")}
@@ -177,13 +191,13 @@ def main():
     sb,sm=load_bank(args.state_checkpoint,layers,device); fb,fm=load_bank(args.functional_checkpoint,layers,device); banks={"Dense_State":sb,"Dense_Functional":fb}; methods=("Native_INT8","Hadamard","Dense_State","Dense_Functional")
     traces=R.load_traces(Path(args.trace_dir),"VALIDATION"); local={m:local_method(model,local_probe,layers,traces,m,banks,h,device) for m in methods}; local_probe.close()
     out=Path(args.output_dir); out.mkdir(parents=True,exist_ok=True); R.save_json(out/"heldout_local_metrics.json",local)
-    docs=R.load_corpus(Path(args.corpus),"HELDOUT"); mats={m:matrices(m,banks,layers,device) for m in methods}; horizon_rows=[]; per_doc=[]
+    docs=R.load_corpus(Path(args.corpus),"HELDOUT"); mats={m:matrices(m,banks,layers,device) for m in methods}; runtime_mats={m:runtime_matrices(m,mats[m],layers,h) for m in methods}; horizon_rows=[]; per_doc=[]
     for di,doc in enumerate(docs):
         ids=tokenizer(doc["raw_text"],add_special_tokens=False).input_ids[:1024]
-        ref_probe=PerLayerHistoryProbe.build(F,{layer:torch.eye(128,device=device) for layer in layers}); ref_probe.install(model)
+        ref_probe=PerLayerHistoryProbe.build(F,runtime_mats["Native_INT8"]); ref_probe.install(model)
         references=trajectory(F,model,ids,ref_probe,layers,device,"Native_INT8",mats["Native_INT8"],h,128,None); ref_probe.close()
         for method in methods:
-            probe=PerLayerHistoryProbe.build(F,mats[method]); probe.install(model)
+            probe=PerLayerHistoryProbe.build(F,runtime_mats[method]); probe.install(model)
             rows=trajectory(F,model,ids,probe,layers,device,method,mats[method],h,128,references); probe.close()
             for row in rows: horizon_rows.append({"document_id":doc["document_id"],"method":method,**row})
             per_doc.append({"document_id":doc["document_id"],"method":method,"auc":auc(rows)})

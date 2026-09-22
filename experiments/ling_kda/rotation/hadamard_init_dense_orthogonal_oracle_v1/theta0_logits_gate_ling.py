@@ -35,17 +35,20 @@ def main():
     F, model, tokenizer, initial_probe, layers = E.R.load_context(args)
     initial_probe.close()
     device = F.model_input_device(model)
+    h = E.R.hadamard(device)
     identity = {layer: torch.eye(128, device=device) for layer in layers}
     zero_bank = E.R.C.PerLayerCayleyRotations(layers).to(device)
     dense_zero = {layer: zero_bank.layer(layer).matrix().detach() for layer in layers}
+    canonical_runtime = E.runtime_matrices("Hadamard", identity, layers, h)
+    dense_zero_runtime = E.runtime_matrices("Dense_State", dense_zero, layers, h)
     document = E.R.load_corpus(Path(args.corpus), "HELDOUT")[0]
     ids = tokenizer(document["raw_text"], add_special_tokens=False).input_ids[:1024]
-    probe = E.PerLayerHistoryProbe.build(F, identity); probe.install(model)
+    probe = E.PerLayerHistoryProbe.build(F, canonical_runtime); probe.install(model)
     try:
         canonical = run(F, model, ids, probe, layers, device)
     finally:
         probe.close()
-    probe = E.PerLayerHistoryProbe.build(F, dense_zero); probe.install(model)
+    probe = E.PerLayerHistoryProbe.build(F, dense_zero_runtime); probe.install(model)
     try:
         theta0 = run(F, model, ids, probe, layers, device)
     finally:
