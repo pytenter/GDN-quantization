@@ -209,6 +209,8 @@ def tokenizer_manifest(tokenizer, corpus_path: Path, rows: list[dict]) -> dict:
 def collect(args) -> None:
     model, tokenizer, _config, _e2e = load_model(args)
     rows = load_corpus(Path(args.corpus), args.split)
+    if args.document_limit is not None:
+        rows = rows[: args.document_limit]
     outdir = Path(args.output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
     manifest = tokenizer_manifest(tokenizer, Path(args.corpus), rows)
@@ -471,6 +473,7 @@ def parse_args():
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--validation-interval", type=int, default=50)
     parser.add_argument("--train-sequence-limit", type=int)
+    parser.add_argument("--document-limit", type=int)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--replay-tolerance", type=float, default=5.0e-3)
     return parser.parse_args()
