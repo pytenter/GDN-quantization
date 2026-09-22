@@ -7,6 +7,7 @@ import argparse
 import importlib.util
 import json
 import random
+import statistics
 import sys
 from pathlib import Path
 
@@ -161,8 +162,8 @@ def auc(rows):
 def bootstrap(diff, had, n=10000):
     rng=random.Random(20260921); effects=[]; relative=[]
     for _ in range(n):
-        ix=[rng.randrange(len(diff)) for _ in diff]; e=sorted(diff[i] for i in ix)[len(ix)//2]; b=sorted(had[i] for i in ix)[len(ix)//2]; effects.append(e); relative.append(e/max(b,R.EPS))
-    effects.sort(); relative.sort(); return {"resamples":n,"median_effect":effects[n//2],"ci95":[effects[int(.025*n)],effects[int(.975*n)]],"median_relative_reduction":relative[n//2]}
+        ix=[rng.randrange(len(diff)) for _ in diff]; e=statistics.median(diff[i] for i in ix); b=statistics.median(had[i] for i in ix); effects.append(e); relative.append(e/max(b,R.EPS))
+    effects.sort(); relative.sort(); lo,hi=int(.025*(n-1)),int(.975*(n-1)); return {"resamples":n,"median_effect":statistics.median(diff),"ci95":[effects[lo],effects[hi]],"median_relative_reduction":statistics.median(diff)/max(statistics.median(had),R.EPS)}
 
 
 def main():
