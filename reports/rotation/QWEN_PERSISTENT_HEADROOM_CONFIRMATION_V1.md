@@ -16,7 +16,7 @@
 
 Before deletion, `/data` had 12,168,261,632 bytes available (about 12 GiB). The approved manifest contained 99 `.pt` files: 39,926,989,994 bytes of formal traces and 1,247,832,879 bytes across three smoke directories, totaling 41,174,797,650 bytes (38.347 GiB). Every path, category, suffix, size, mtime, and parent directory was independently revalidated immediately before deletion.
 
-After deletion, `/data` had 53,344,317,440 bytes available (about 50 GiB). All 99 approved files were deleted, zero approved `.pt` files remained, and `DELETE_SCOPE_MISMATCH = false`. Checkpoints, learned matrices, source, manifests, provenance, compact evaluation results, summaries, and reports were preserved.
+After deletion, `/data` had 53,344,317,440 bytes available (about 50 GiB), an available-space increase of 41,176,055,808 bytes. Deleted file payload was exactly 41,174,797,650 bytes; the small filesystem-accounting difference is 1,258,158 bytes. All 99 approved files were deleted, zero approved `.pt` files remained, and `DELETE_SCOPE_MISMATCH = false`. Checkpoints, learned matrices, source, manifests, provenance, compact evaluation results, summaries, and reports were preserved.
 
 ## Dataset and execution
 
