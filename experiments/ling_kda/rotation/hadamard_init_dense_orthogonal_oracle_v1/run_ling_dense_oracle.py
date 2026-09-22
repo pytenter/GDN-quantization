@@ -148,7 +148,10 @@ def collect(args) -> None:
                     }
                     continuity_kernel_cache.append(relative_l2(probe.records["NS_REPLAY"][layer]["final_state"], cache_stack[layer]))
                     if prior is not None:
-                        continuity_cache_next.append(relative_l2(records[0]["state_in"], prior[layer]))
+                        # core_tokens accumulates across begin/end calls; select
+                        # the first record belonging to this newly fed chunk.
+                        first_current = records[-int(chunk.shape[-1])]
+                        continuity_cache_next.append(relative_l2(first_current["state_in"], prior[layer]))
                 samples.append({"position": position, "layers": layer_records})
                 current = end
             shard = {"document_id": row["document_id"], "raw_text_sha256": row["raw_text_sha256"], "split": args.split.upper(), "layers": layers, "samples": samples}
