@@ -22,7 +22,7 @@ The panel contains the original 16 held-out WikiText-2 raw test documents in the
 
 Each document is evaluated independently with teacher forcing and the same future tokens on FP and INT8 paths. Horizons are 1, 4, 8, 16, 32, 64, and 128. Future-KL AUC reuses the prior normalized trapezoidal definition. The evaluator writes one compact JSONL row per document and immediately releases all recurrent states, logits, and cache tensors. No raw tensor trace is written.
 
-Qwen runs four deterministic modulo shards, one per RTX 3090. Ling runs two modulo shards, one per RTX 4090. Runs are resumable by document ID. Qwen checks `/data` free space and experiment storage at least every eight completed documents; it stops below 8 GiB free or above 4 GiB experiment storage.
+Qwen runs four deterministic modulo shards, one per RTX 3090. Ling runs two contiguous panel ranges, one per RTX 4090; this keeps original documents 0–15 in their frozen single-process order on GPU0 because the KDA runtime is history-sensitive. Runs are resumable by document ID. Qwen checks `/data` free space and experiment storage at least every eight completed documents; it stops below 8 GiB free or above 4 GiB experiment storage.
 
 ## Gates and statistics
 
