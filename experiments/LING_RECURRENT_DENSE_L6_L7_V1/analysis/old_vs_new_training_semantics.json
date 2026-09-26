@@ -1,0 +1,26 @@
+{
+  "task": "LING_RECURRENT_DENSE_L6_L7_V1",
+  "OLD_L4_OBJECTIVE_RECONSTRUCTED": "PASS",
+  "OLD_L5_OBJECTIVE_RECONSTRUCTED": "PASS",
+  "L4_OLD_OBJECTIVE": "mean over 18 layers of mean over batch/head [sum_K,V((recover(QDQ_BF16(teacher_state @ H128 @ Delta)))-teacher_state)^2 / max(sum_K,V(teacher_state^2),1e-12)]",
+  "L6_NEW_OBJECTIVE": "same relative state-error formula and reductions, evaluated after each recurrent update between recovered student post-QDQ state and FP teacher post-update state, then averaged over trajectory tokens",
+  "L5_OLD_OBJECTIVE": "mean over 18 layers of local attention out_proj relative MSE, plus 0.1 times the old state objective; primary metric is local functional relative MSE",
+  "L7_NEW_OBJECTIVE": "same local out_proj relative MSE target, denominator, layer weighting, and 0.1 state-loss auxiliary term, but readout consumes the historically accumulated student INT8 recurrent state",
+  "ONLY_INTENDED_TRAINING_SEMANTIC_DIFFERENCE": "FP_STATE_RESET_EACH_TOKEN -> REAL_RECURRENT_INT8_STATE_WRITEBACK",
+  "MANDATED_PATH_NORMALIZATION": "training and formal inference use materialized R_final in one entry GEMM and R_final.T in one legal recovery GEMM",
+  "old_flow": [
+    "FP teacher state_t",
+    "single token",
+    "QDQ",
+    "loss",
+    "reset"
+  ],
+  "new_flow": [
+    "student INT8 state_t",
+    "recurrent update",
+    "QDQ",
+    "student INT8 state_t+1",
+    "WRITE BACK",
+    "next token consumes this exact tensor"
+  ]
+}

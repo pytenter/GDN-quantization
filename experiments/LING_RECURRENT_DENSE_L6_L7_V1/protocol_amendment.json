@@ -1,0 +1,39 @@
+{
+  "task": "LING_RECURRENT_DENSE_L6_L7_V1",
+  "amends": "LING_SGLANG_DENSE_AIME26_LAST20_256K_SINGLESEED_V1",
+  "amendment_time": "2026-09-26T09:35:00+08:00",
+  "created_before_l6_l7_aime_results": true,
+  "created_before_l6_l7_training": true,
+  "reason": [
+    "L3 audit shows an identical H128 mathematical rotation to L2",
+    "L3/L2 difference is a controlled numerical-path difference only",
+    "256K generation resources are limited",
+    "priority is shifted to previously untested recurrent-aware training"
+  ],
+  "changes": [
+    "stop scheduling new L3 samples after each currently in-flight sample finishes",
+    "do not start new L4/L5 256K formal generation",
+    "introduce L6 recurrent Dense-State and L7 recurrent Dense-Functional",
+    "materialize one final R per KDA layer",
+    "use one unified dense final-R inference path for H, L6, and L7",
+    "reuse the complete L2 baseline only if the unified-H parity and baseline-reuse gates pass"
+  ],
+  "l3_at_amendment": {
+    "status": "EARLY_STOPPING_FOR_RESOURCE_REALLOCATION",
+    "completed_question_ids": [
+      "aime26_11",
+      "aime26_12",
+      "aime26_14",
+      "aime26_16",
+      "aime26_18"
+    ],
+    "in_flight_question_ids_allowed_to_finish": [
+      "aime26_13",
+      "aime26_20"
+    ],
+    "new_samples_after_in_flight": "DO_NOT_SCHEDULE",
+    "interim_correctness_not_called_final_accuracy": true
+  },
+  "l4_l5_formal": "DO_NOT_START",
+  "scientific_scope": "The main training change is FP_STATE_RESET_EACH_TOKEN to REAL_RECURRENT_INT8_STATE_WRITEBACK; the separately mandated unified-final-R path is preregistered as an inference-path normalization."
+}
