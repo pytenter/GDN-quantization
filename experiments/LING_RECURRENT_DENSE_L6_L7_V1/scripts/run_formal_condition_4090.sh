@@ -10,8 +10,8 @@ EXP=/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_RECUR
 PY=/data01/user2/.conda/envs/ling-sglang-aime26/bin/python
 MODEL=/data01/user2/models/Ling-3.0-tiny
 PATCH="$EXP/scripts/sglang_kda_unified_final_r_patch.py"
-GPU0_IDS=(aime26_17 aime26_19 aime26_23 aime26_24 aime26_26)
-GPU1_IDS=(aime26_16 aime26_18 aime26_22 aime26_25 aime26_29)
+GPU0_IDS=(aime26_11 aime26_15 aime26_19 aime26_23 aime26_27)
+GPU1_IDS=(aime26_12 aime26_16 aime26_20 aime26_24 aime26_28)
 OWN_PIDS=()
 
 cleanup() {
@@ -25,12 +25,13 @@ trap cleanup EXIT INT TERM
 import hashlib, json, sys
 from pathlib import Path
 root, rotation = Path(sys.argv[1]), Path(sys.argv[2])
-for relative, key in (
-    ('analysis/unified_h_parity.json', 'UNIFIED_H_VS_L2_PARITY'),
-    ('analysis/cross_host_4090_3090_parity.json', 'CROSS_HOST_4090_3090_STEP0_PARITY'),
-):
-    value = json.loads((root / relative).read_text())
-    if value.get(key) != 'PASS': raise RuntimeError(f'{key} is not PASS')
+condition = rotation.name.split('_', 1)[0]
+if condition not in ('L6', 'L7'): raise RuntimeError('cannot derive L6/L7 condition from rotation')
+value = json.loads((root / f'analysis/{condition}_4090_3090_int8_parity.json').read_text())
+key = f'{condition}_4090_3090_INT8_BITWISE_PARITY'
+if value.get(key) != 'PASS': raise RuntimeError(f'{key} is not PASS')
+assignment = json.loads((root / 'manifests/hardware_assignment.json').read_text())
+if assignment.get('status') != 'FROZEN_BEFORE_FORMAL_GENERATION': raise RuntimeError('hardware assignment is not frozen')
 if not rotation.is_file(): raise RuntimeError(f'missing rotation: {rotation}')
 print('FORMAL_4090_PREFLIGHT_PASS', hashlib.sha256(rotation.read_bytes()).hexdigest())
 PY

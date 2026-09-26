@@ -37,8 +37,10 @@ def mcnemar_exact(rescued: int, regressed: int) -> float:
     return min(1.0, 2.0 * sum(math.comb(n, i) for i in range(k + 1)) / (2**n))
 
 
-def paired(name, treatment, reference, data):
+def paired(name, treatment, reference, data, selected_ids=None):
     ids = sorted(set(data[treatment]) & set(data[reference]))
+    if selected_ids is not None:
+        ids = [qid for qid in ids if qid in set(selected_ids)]
     pairs = [(data[treatment][qid]["correct"], data[reference][qid]["correct"]) for qid in ids]
     rescued = [qid for qid, (a, b) in zip(ids, pairs) if a and not b]
     regressed = [qid for qid, (a, b) in zip(ids, pairs) if not a and b]
@@ -73,6 +75,13 @@ def main() -> None:
     parser.add_argument("--experiment-root", required=True)
     args = parser.parse_args()
     root = Path(args.experiment_root)
+    hardware_manifest = json.loads((root / "manifests/hardware_assignment.json").read_text())
+    if hardware_manifest.get("status") != "FROZEN_BEFORE_FORMAL_GENERATION":
+        raise RuntimeError("hardware assignment manifest is not frozen")
+    hardware = {
+        (row["condition"], row["question_id"]): row
+        for row in hardware_manifest["assignments"]
+    }
     baseline = json.loads((root / "manifests/baseline_reuse_manifest.json").read_text())
     if baseline["status"] != "PASS":
         raise RuntimeError("BASELINE_REUSE_GATE is not PASS")
@@ -96,11 +105,19 @@ def main() -> None:
                 "source_path": item["source_path"],
                 "source_hash": item["source_file_hash"],
                 "rotation_sha256": None,
+                "gpu_architecture": "REUSED_L2",
+                "gpu_model": "REUSED_L2",
+                "worker_or_gpu_id": "REUSED_L2",
+                "retry_count": 0,
+                "infrastructure_failure_count": 0,
             }
         )
     for condition in ("L6", "L7"):
         for path in sorted((root / "outputs" / condition).glob("aime26_*_seed1.json")):
             item = json.loads(path.read_text())
+            assignment = hardware[(condition, item["question_id"])]
+            if item.get("seed") != assignment["generation_seed"]:
+                raise RuntimeError(f"seed/assignment mismatch: {condition} {item['question_id']}")
             finish = item["finish_reason"]
             rows.append(
                 {
@@ -119,6 +136,11 @@ def main() -> None:
                     "source_path": str(path),
                     "source_hash": file_sha256(path),
                     "rotation_sha256": item["final_rotation_sha256"],
+                    "gpu_architecture": assignment["gpu_architecture"],
+                    "gpu_model": assignment["gpu_model"],
+                    "worker_or_gpu_id": assignment["worker_or_gpu_id"],
+                    "retry_count": int(item.get("retry_count", 0)),
+                    "infrastructure_failure_count": len(item.get("infrastructure_failures", [])),
                 }
             )
     with (root / "analysis/per_sample_scores.csv").open("w", newline="", encoding="utf-8") as handle:
@@ -171,6 +193,32 @@ def main() -> None:
     }
     (root / "analysis/paired_comparisons.json").write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    strata = {}
+    for model in ("RTX4090", "RTX3090"):
+        model_ids = {
+            row["question_id"]
+            for row in hardware_manifest["assignments"]
+            if row["condition"] == "L6" and row["gpu_model"] == model
+        }
+        strata[model] = {
+            "status": "DESCRIPTIVE_NOT_INDEPENDENT_PRIMARY_TEST",
+            "n_questions": len(model_ids),
+            "primary": [paired(*spec, data, selected_ids=model_ids) for spec in PRIMARY],
+            "secondary": [paired(*spec, data, selected_ids=model_ids) for spec in SECONDARY],
+            "condition_correct": {
+                condition: sum(data[condition][qid]["correct"] for qid in sorted(model_ids))
+                for condition in CONDITIONS
+            },
+        }
+    hardware_result = {
+        "status": "COMPLETE" if complete else "NOT_COMPLETE",
+        "interpretation": "descriptive hardware strata; not independent primary tests",
+        "post_hoc_subset_deletion_allowed": False,
+        "strata": strata,
+    }
+    (root / "analysis/hardware_stratified.json").write_text(
+        json.dumps(hardware_result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     print(json.dumps({"status": result["status"], "summary": summary, "comparisons": comparisons}, indent=2))
     if not complete:

@@ -1,0 +1,83 @@
+{
+  "FP_4090_3090_BITWISE_PARITY": "FAIL",
+  "FP_STATE_MIXED_HARDWARE_ALLOWED": false,
+  "L2_reuse": {
+    "allowed": true,
+    "requires": [
+      "L2 baseline reuse audit=PASS",
+      "L2 cross-hardware INT8 bitwise parity=PASS"
+    ],
+    "rerun_only_for_hardware_blocking": false
+  },
+  "amendment": "LING_RECURRENT_DENSE_L6_L7_MIXED_GPU_AMENDMENT_V1",
+  "analysis": {
+    "hardware_strata": [
+      "RTX4090",
+      "RTX3090"
+    ],
+    "hardware_strata_are_independent_primary_tests": false,
+    "post_hoc_subset_deletion_allowed": false,
+    "primary": [
+      "L6 vs L2",
+      "L7 vs L2"
+    ],
+    "secondary": [
+      "L7 vs L6"
+    ]
+  },
+  "assignment_constraints": [
+    "independent of correctness",
+    "independent of previous model answer",
+    "independent of output length",
+    "independent of intermediate score",
+    "independent of method performance",
+    "no result-quality reassignment"
+  ],
+  "condition_specific_required_gates": {
+    "L6": "L6_4090_3090_INT8_BITWISE_PARITY=PASS",
+    "L7": "L7_4090_3090_INT8_BITWISE_PARITY=PASS"
+  },
+  "covered_conditions": {
+    "L2": "fixed H128 + INT8-R128",
+    "L6": "recurrent Dense-State final-R + INT8-R128",
+    "L7": "recurrent Dense-Functional final-R + INT8-R128"
+  },
+  "created_at": "2026-09-26T13:15:00+08:00",
+  "formal_generation_started_at_freeze": false,
+  "frozen_training_checkpoint_seed_questions_scorer_generation_parameters_unchanged": true,
+  "mixed_hardware_permission_scope": "per-condition; audited model revision, checkpoint/final-R, runtime, and INT8-R128 configuration only",
+  "reason": {
+    "FP": {
+      "logits": "FAIL",
+      "prefill_endpoint": "FAIL",
+      "recurrent_state": "FAIL"
+    },
+    "H_INT8_R128": {
+      "logits": "BITWISE_PASS",
+      "post_QDQ": "BITWISE_PASS",
+      "prefill": "BITWISE_PASS",
+      "qcode": "BITWISE_PASS",
+      "scale": "BITWISE_PASS",
+      "state": "BITWISE_PASS"
+    }
+  },
+  "required_bitwise_fields": [
+    "post-update recurrent state",
+    "quantization scale",
+    "qcodes",
+    "post-QDQ state",
+    "prefill endpoint",
+    "selected intermediate readout where available",
+    "logits"
+  ],
+  "status": "FROZEN_BEFORE_MIXED_HARDWARE_L6_L7_AIME26_GENERATION",
+  "stop_rule": [
+    "finish L7 training",
+    "materialize final R_L7",
+    "run L6 and L7 condition-specific INT8 bitwise parity",
+    "start mixed-hardware generation for a condition only if its gate passes",
+    "do not mix hardware for a condition whose gate fails"
+  ],
+  "task": "LING_RECURRENT_DENSE_L6_L7_V1",
+  "tolerance_fallback_allowed": false
+}

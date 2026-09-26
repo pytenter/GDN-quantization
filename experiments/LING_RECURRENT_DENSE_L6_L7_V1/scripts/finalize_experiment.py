@@ -86,6 +86,12 @@ def main() -> None:
     leakage = read_json(root / "analysis/training_data_leakage.json")
     sanity = read_json(root / "analysis/sanity_metrics.json")
     paired = read_json(root / "analysis/paired_comparisons.json")
+    hardware_stratified = read_json(root / "analysis/hardware_stratified.json")
+    hardware_assignment = read_json(root / "manifests/hardware_assignment.json")
+    l6_cross_hardware = read_json(root / "analysis/L6_4090_3090_int8_parity.json")
+    l7_cross_hardware = read_json(root / "analysis/L7_4090_3090_int8_parity.json")
+    fp_cross_hardware = read_json(root / "analysis/cross_host_4090_3090_parity.json")
+    mixed_amendment = read_json(root / "mixed_gpu_protocol_amendment_v1.json")
     l3 = read_json(root / "analysis/l3_early_stop.json")
 
     for gate in REQUIRED_GATES:
@@ -101,6 +107,12 @@ def main() -> None:
     require_pass("AIME26_OVERLAP", leakage.get("AIME26_overlap") == "NO")
     require_pass("SANITY_PANEL", sanity.get("status") == "PASS")
     require_pass("FORMAL_SCORING", paired.get("status") == "COMPLETE")
+    require_pass("HARDWARE_STRATIFIED_ANALYSIS", hardware_stratified.get("status") == "COMPLETE")
+    require_pass("HARDWARE_ASSIGNMENT_FROZEN", hardware_assignment.get("status") == "FROZEN_BEFORE_FORMAL_GENERATION")
+    require_pass("L6_4090_3090_INT8_BITWISE_PARITY", l6_cross_hardware.get("L6_4090_3090_INT8_BITWISE_PARITY") == "PASS")
+    require_pass("L7_4090_3090_INT8_BITWISE_PARITY", l7_cross_hardware.get("L7_4090_3090_INT8_BITWISE_PARITY") == "PASS")
+    require_pass("FP_4090_3090_BITWISE_PARITY_RECORDED_FAIL", fp_cross_hardware.get("CROSS_HOST_4090_3090_STEP0_PARITY") == "FAIL")
+    require_pass("MIXED_GPU_AMENDMENT_FROZEN", mixed_amendment.get("status") == "FROZEN_BEFORE_MIXED_HARDWARE_L6_L7_AIME26_GENERATION")
 
     frozen = read_json(root / "configs/frozen_eval_config.json")
     effective_server = {
@@ -213,7 +225,9 @@ L2, L6, and L7 use the same loader, tensor boundary, FP32 dense GEMM mechanism, 
 - `TP_ROTATION_MAPPING_GATE`: PASS (TP=1, all 18 audited KDA layers mapped)
 - `BASELINE_REUSE_GATE`: {baseline['status']}
 
-The Step0 parity panel passed exact matrix equality and the required FP/INT8 state, prefill endpoint, first/short decode, logits, scale, qcode, and post-QDQ checks. This authorizes reuse of the complete frozen L2 result (9/20).
+The original same-host Step0 parity panel passed exact matrix equality and the required FP/INT8 state, prefill endpoint, first/short decode, logits, scale, qcode, and post-QDQ checks. This authorizes reuse of the complete frozen L2 result (9/20).
+
+Cross-hardware FP bitwise parity failed, so FP_STATE mixed-hardware pooling is forbidden. Under the prospectively frozen `LING_RECURRENT_DENSE_L6_L7_MIXED_GPU_AMENDMENT_V1`, the audited condition-specific INT8-R128 gates passed before generation: L6={l6_cross_hardware['L6_4090_3090_INT8_BITWISE_PARITY']}, L7={l7_cross_hardware['L7_4090_3090_INT8_BITWISE_PARITY']}. These claims are restricted to the audited model, final-R, runtime, and INT8-R128 configuration.
 """
     (root / "reports/runtime_report.md").write_text(runtime_report, encoding="utf-8")
 
@@ -221,6 +235,23 @@ The Step0 parity panel passed exact matrix equality and the required FP/INT8 sta
     by_condition = {row["condition"]: row for row in summary_rows}
     primary = {row["name"]: row for row in paired["primary"]}
     secondary = {row["name"]: row for row in paired["secondary"]}
+    assignment_rows = hardware_assignment["assignments"]
+    generated_4090 = sum(row["gpu_model"] == "RTX4090" for row in assignment_rows)
+    generated_3090 = sum(row["gpu_model"] == "RTX3090" for row in assignment_rows)
+    per_sample_rows = csv_rows(root / "analysis/per_sample_scores.csv")
+    hardware_retry_metadata = {}
+    for model in ("RTX4090", "RTX3090"):
+        selected = [row for row in per_sample_rows if row.get("gpu_model") == model]
+        hardware_retry_metadata[model] = {
+            "generated_samples": len(selected),
+            "retries": sum(int(row.get("retry_count") or 0) for row in selected),
+            "infrastructure_failures": sum(int(row.get("infrastructure_failure_count") or 0) for row in selected),
+        }
+    parity_hashes = {
+        "FP_cross_hardware_failure": sha256(root / "analysis/cross_host_4090_3090_parity.json"),
+        "L6_INT8_condition_gate": sha256(root / "analysis/L6_4090_3090_int8_parity.json"),
+        "L7_INT8_condition_gate": sha256(root / "analysis/L7_4090_3090_int8_parity.json"),
+    }
 
     def result_line(condition: str) -> str:
         row = by_condition[condition]
@@ -273,6 +304,16 @@ Status: **COMPLETE**
 - {result_line('L2')}
 - {result_line('L6')}
 - {result_line('L7')}
+
+FP cross-hardware bitwise parity failed. Audited INT8 condition-specific parity passed before mixed-hardware formal generation.
+
+- hardware assignment manifest SHA256: `{sha256(root / 'manifests/hardware_assignment.json')}`
+- cross-hardware parity artifact hashes: `{json.dumps(parity_hashes, sort_keys=True)}`
+- scheduled/generated on RTX4090: {generated_4090}
+- scheduled/generated on RTX3090: {generated_3090}
+- retries and infrastructure failures by hardware: `{json.dumps(hardware_retry_metadata, sort_keys=True)}`
+
+Hardware-stratified descriptive results (not independent primary tests) are in `analysis/hardware_stratified.json`; no hardware subset was deleted post hoc.
 
 Primary comparisons use the preregistered two-comparison Holm correction. Full rescued/regressed IDs, exact McNemar p-values, bootstrap intervals, token counts, and termination metadata are in `analysis/paired_comparisons.json`, `analysis/per_sample_scores.csv`, and `analysis/summary.csv`.
 
