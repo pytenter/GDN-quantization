@@ -27,7 +27,8 @@ case "$CONDITION" in
 esac
 
 mkdir -p "$LOGDIR"
-PATCH="int8_r128_unified_final_r"
+MODE="int8_r128_unified_final_r"
+PATCH="$EXP/scripts/sglang_kda_unified_final_r_patch.py"
 
 cleanup() {
   if [[ -n "${SERVER_PID:-}" ]]; then
@@ -37,7 +38,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-"$EXP/scripts/launch_parity_server.sh" 0 "$PORT" "$PATCH" "$LOGDIR" "$ROTATION" \
+"$EXP/scripts/launch_parity_server.sh" 0 "$PORT" "$MODE" "$LOGDIR" "$PATCH" "$ROTATION" \
   >"$LOGDIR/server_launcher.log" 2>&1 &
 SERVER_PID=$!
 
