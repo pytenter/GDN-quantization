@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 import random
@@ -18,6 +19,14 @@ ANALYSIS_SEED = 20260926
 
 def finish_type(value):
     return value.get("type") if isinstance(value, dict) else value
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def mcnemar_exact(rescued: int, regressed: int) -> float:
@@ -86,6 +95,7 @@ def main() -> None:
                 "runtime_seconds": None,
                 "source_path": item["source_path"],
                 "source_hash": item["source_file_hash"],
+                "rotation_sha256": None,
             }
         )
     for condition in ("L6", "L7"):
@@ -107,7 +117,8 @@ def main() -> None:
                     "max_length_hit": bool(item["hit_context_limit"]),
                     "runtime_seconds": item["runtime_seconds"],
                     "source_path": str(path),
-                    "source_hash": item["final_rotation_sha256"],
+                    "source_hash": file_sha256(path),
+                    "rotation_sha256": item["final_rotation_sha256"],
                 }
             )
     with (root / "analysis/per_sample_scores.csv").open("w", newline="", encoding="utf-8") as handle:
