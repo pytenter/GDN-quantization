@@ -27,7 +27,7 @@ for qid in expected:
 parity = json.loads((root / 'analysis/L7_4090_3090_int8_parity.json').read_text())
 if parity.get('L7_4090_3090_INT8_BITWISE_PARITY') != 'PASS':
     raise RuntimeError('L7 cross-host parity is not PASS')
-if hashlib.sha256(rotation.read_bytes()).hexdigest() != '57eaebb47ff031c2b171cbb94563f814811d4f4632098af8339a27d01347060a2':
+if hashlib.sha256(rotation.read_bytes()).hexdigest() != '57eaebb47ff031c2b171cbb94563f81481d4f4632098af8339a27d01347060a2':
     raise RuntimeError('L7 rotation hash mismatch')
 print('L7_IDLE_4090_GPU1_HELPER_V3_PREFLIGHT_PASS')
 PY
