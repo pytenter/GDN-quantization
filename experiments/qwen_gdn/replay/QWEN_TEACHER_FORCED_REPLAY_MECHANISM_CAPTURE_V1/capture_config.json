@@ -1,0 +1,140 @@
+{
+  "aime_generation_rerun": false,
+  "capture_script": {
+    "path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/run_capture.py",
+    "sha256": "3e4eb01be6c970ca404572d7b1bd904443be5b629545039c598ff17da3c7b6bf"
+  },
+  "conditions": [
+    "FP_STATE",
+    "INT8_C128",
+    "INT8_C128_KEY_HADAMARD"
+  ],
+  "decision": {
+    "delta": "condition logit shift on FP top-1 token",
+    "epsilon": 1e-06,
+    "margin": "FP top1 minus FP top2"
+  },
+  "execution": {
+    "batch_rows": [
+      "FP",
+      "Native INT8",
+      "Key-Hadamard INT8"
+    ],
+    "bootstrap_resamples": 2000,
+    "bootstrap_seed": 20260923,
+    "chunk_size": 64,
+    "gpus": 4,
+    "kv_cache": "exact CPU offload for full-attention layers only; GDN recurrent states remain on GPU"
+  },
+  "gdn_layers": [
+    0,
+    1,
+    2,
+    4,
+    5,
+    6,
+    8,
+    9,
+    10,
+    12,
+    13,
+    14,
+    16,
+    17,
+    18,
+    20,
+    21,
+    22,
+    24,
+    25,
+    26,
+    28,
+    29,
+    30
+  ],
+  "m5": {
+    "aggregates": [
+      "mean",
+      "median",
+      "p95",
+      "max"
+    ],
+    "definition": "||W_O D_g D_w J_RMS(o) E^T q||_2",
+    "timing": "cached E_(t-1), FP q_t"
+  },
+  "model": "Qwen3.5-9B/GDN",
+  "model_path": "/data/zypan/modelscope_models/Qwen3.5-9B",
+  "persistence": {
+    "alpha": 0.9,
+    "epsilon": 1e-12,
+    "horizons": [
+      1,
+      4,
+      8,
+      16,
+      32
+    ]
+  },
+  "quantizer": {
+    "axis": -2,
+    "bits": 8,
+    "group": "C128",
+    "modified": false,
+    "qrange": [
+      -127,
+      127
+    ],
+    "symmetric": true
+  },
+  "rotation": {
+    "modified": false,
+    "name": "key-side normalized H128",
+    "recovery_for_state_comparison": "H128 @ S_hadamard"
+  },
+  "sampling": false,
+  "shards": [
+    {
+      "completed_units": 15,
+      "elapsed_seconds": 13193.288605213165,
+      "peak_gpu_memory_mb": 19362.17724609375,
+      "shard": 0,
+      "status": "COMPLETE",
+      "token_csv_gz": "experiments/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/formal/shard_00/token_metrics.csv.gz",
+      "total_units": 15,
+      "trajectory_summary": "experiments/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/formal/shard_00/trajectory_summary.jsonl"
+    },
+    {
+      "completed_units": 15,
+      "elapsed_seconds": 13787.687264919281,
+      "peak_gpu_memory_mb": 19166.78466796875,
+      "shard": 1,
+      "status": "COMPLETE",
+      "token_csv_gz": "experiments/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/formal/shard_01/token_metrics.csv.gz",
+      "total_units": 15,
+      "trajectory_summary": "experiments/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/formal/shard_01/trajectory_summary.jsonl"
+    },
+    {
+      "completed_units": 15,
+      "elapsed_seconds": 14580.916283607483,
+      "peak_gpu_memory_mb": 22113.15087890625,
+      "shard": 2,
+      "status": "COMPLETE",
+      "token_csv_gz": "experiments/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/formal/shard_02/token_metrics.csv.gz",
+      "total_units": 15,
+      "trajectory_summary": "experiments/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/formal/shard_02/trajectory_summary.jsonl"
+    },
+    {
+      "completed_units": 15,
+      "elapsed_seconds": 12252.685598134995,
+      "peak_gpu_memory_mb": 19298.8662109375,
+      "shard": 3,
+      "status": "COMPLETE",
+      "token_csv_gz": "experiments/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/formal/shard_03/token_metrics.csv.gz",
+      "total_units": 15,
+      "trajectory_summary": "experiments/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/formal/shard_03/trajectory_summary.jsonl"
+    }
+  ],
+  "task": "QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1",
+  "teacher_forcing_source": "existing FP_STATE generated_token_ids",
+  "training": false
+}

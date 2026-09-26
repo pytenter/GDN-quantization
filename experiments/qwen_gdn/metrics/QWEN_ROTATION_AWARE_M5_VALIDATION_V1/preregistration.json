@@ -1,0 +1,170 @@
+{
+  "task": "QWEN_ROTATION_AWARE_M5_VALIDATION_V1",
+  "version": 1,
+  "preregistered_at": "2026-09-24T00:00:00+08:00",
+  "status": "FROZEN_BEFORE_FORMAL_METRIC_COMPARISON",
+  "scientific_question": "Does raw M5 fail as a rotation surrogate, or does it require mathematically justified rotation-aware normalization?",
+  "constraints": {
+    "new_free_generation": false,
+    "new_rotation_training": false,
+    "model_modified": false,
+    "quantizer_modified": false,
+    "rotation_modified": false,
+    "scorer_modified": false,
+    "recurrent_semantics_modified": false,
+    "persistent_kl_pipeline_paused": true
+  },
+  "source_panel": {
+    "trajectories": 60,
+    "teacher_tokens": "existing FP_STATE generated_token_ids",
+    "primary_panel": "clean59",
+    "symmetric_numerical_exclusion": {
+      "problem_id": "aime26_28",
+      "seed": 2
+    },
+    "pairing_key": [
+      "problem_id",
+      "seed"
+    ]
+  },
+  "minimal_component_replay": {
+    "reason": "Existing scalar artifacts do not preserve M5 primitive components, per-token per-layer values, denominators, or head localization.",
+    "conditions_in_one_batch": [
+      "FP reference",
+      "Identity INT8-C128",
+      "Key-Hadamard INT8-C128"
+    ],
+    "semantics": "Reuse the frozen prior BatchedMechanismPatch recurrent implementation and C128 QDQ; add observation-only norm hooks. Prefill is unquantized and generated tokens are replayed deterministically with QDQ after each token.",
+    "full_formal_replay": "all 60 existing trajectories, no sampling, no logits or generated text saved",
+    "chunk_size": 64,
+    "shards": 4,
+    "resume_unit": "trajectory",
+    "labels_loaded_by_replay_worker": false,
+    "parity_gate": {
+      "sample_selection": "canonical source row 0, first 128 generated tokens",
+      "m0_layer_p95_max_abs_tolerance": 1e-5,
+      "m5_layer_p95_max_abs_tolerance": 1e-4,
+      "fp_margin_max_abs_tolerance": 1e-5,
+      "delta_z_max_abs_tolerance": 1e-4,
+      "top1_changed": "exact",
+      "token_ids": "exact"
+    }
+  },
+  "fp_equivalent_coordinate_audit": {
+    "sample_indices": [
+      0,
+      20,
+      40,
+      59
+    ],
+    "tokens_per_sample": 512,
+    "selection_basis": "fixed canonical indices, chosen before outcomes are joined",
+    "quantization": "OFF",
+    "interpretation": "M5 is evaluated only as the same frozen functional map applied to finite-precision FP-equivalence residual E. No synthetic nonzero M5 reference is constructed.",
+    "coordinate_residual_gate": "For a candidate metric, the Hadamard FP-equivalent residual p95 must be <=1% of the Hadamard INT8 p95 on the same audit token/layer points; otherwise coordinate sanity fails.",
+    "identity_expected": "zero up to deterministic arithmetic identity"
+  },
+  "primitive_components": [
+    "M0 canonical state-error norm",
+    "E^T q readout-error norm",
+    "FP core-output RMS denominator",
+    "RMS JVP norm",
+    "gate RMS",
+    "weighted-JVP norm",
+    "out-projected M5 norm",
+    "FP functional output signal norm",
+    "per-head readout maximum/argmax/concentration",
+    "per-head JVP maximum/argmax/concentration",
+    "per-head projected contribution maximum/argmax/concentration"
+  ],
+  "candidate_metrics": {
+    "raw_M5": {
+      "definition": "Existing canonical/recovered-basis ||W_O D_g D_w J_RMS(o) E^T q||_2.",
+      "role": "control"
+    },
+    "M5_canonical": {
+      "definition": "The existing M5 after Hadamard state error is strictly pulled back by H128 into the native FP state basis before E^T q; FP q, RMS point, gate, norm weight and W_O are shared.",
+      "transformation_proof_obligation": "H128 is orthogonal and symmetric; S_native=H128*S_rotated and q_rotated=q_native*H128 preserve q*S readout in exact arithmetic.",
+      "expected_relation": "Algebraically identical to the existing implementation; retained to test whether the prior raw metric was already canonical."
+    },
+    "Delta_M5": {
+      "definition": "M5_INT8,R - M5_reference,R only if a definition-consistent reference error exists.",
+      "applicability_rule": "The exact FP-vs-self error is zero, so Delta_M5 reduces identically to M5_canonical and is not treated as an independent candidate. If a nonzero rotation-specific baseline would be required, classify NOT_APPLICABLE rather than invent it."
+    },
+    "relative_M5_reference": {
+      "definition": "(M5_INT8+eps)/(M5_reference+eps) and corresponding log difference.",
+      "applicability_rule": "NOT_APPLICABLE when the mathematically valid reference is exactly zero or the empirical finite-precision residual is near-zero/unstable."
+    },
+    "FP_signal_normalized_M5": {
+      "definition": "M5_canonical / (||W_O[(RMS(o_FP)*norm_weight)*silu(gate_FP)]||_2 + 1e-12).",
+      "meaning": "Functional error relative to the native FP linear-attention output signal scale at the same token and layer.",
+      "denominator_source": "single shared FP row, never estimated separately per rotation",
+      "denominator_pathology_rule": "Report fractions below 1e-8, 1e-6 and 1e-4 and all quantiles; fail coordinate sanity if more than 1% are below 1e-8 or if the metric tail is demonstrably denominator-controlled."
+    },
+    "M5_over_M0": {
+      "definition": "M5_canonical/(M0_canonical+1e-12) at the same token and layer.",
+      "role": "DIAGNOSTIC_ONLY unless every gate passes; cancellation of a common scale is not itself functional validation."
+    }
+  },
+  "aggregation": {
+    "trajectory": {
+      "mean": "mean over all finite token-layer observations",
+      "p95": "linear 95th percentile over all finite token-layer observations",
+      "cvar95": "mean of observations >= trajectory p95",
+      "max": "maximum"
+    },
+    "candidate_primary": "median of clean59 trajectory p95 values",
+    "candidate_secondary": [
+      "median trajectory mean",
+      "median trajectory CVaR95"
+    ],
+    "no_posthoc_layer_or_token_selection": true
+  },
+  "tail_localization": {
+    "fractions": [
+      0.05,
+      0.01,
+      0.001,
+      0.0001
+    ],
+    "all_layers_tokens_heads_reported_without_exclusion": true
+  },
+  "gate_definitions": {
+    "coordinate_sanity": "FP-equivalent residual gate passes and no unexplained rotation-specific denominator pathology.",
+    "within_rotation": "For both Identity and Hadamard on the FP-correct panel, failure AUROC point estimate >0.50 and median risk(failure)>median risk(correct); bootstrap CIs and effect sizes are reported but are not required to exclude 0.50.",
+    "pairwise_direction": "On clean59, median trajectory p95(Hadamard) < median trajectory p95(Identity). This is only PAIRWISE_DIRECTION_CHECK.",
+    "rescue_association": "P(delta_risk<0) in Hadamard-rescue >0.50, rescue median delta < stable-failure median delta, Cliff's delta(rescue,stable-failure)<0, and one-sided label-permutation p<0.10."
+  },
+  "classification_labels": [
+    "DIAGNOSTIC_ONLY",
+    "ROTATION_AWARE_PROMISING",
+    "FAILED_COORDINATE_SANITY",
+    "FAILED_CROSS_ROTATION",
+    "INSUFFICIENT_EVIDENCE",
+    "NOT_APPLICABLE"
+  ],
+  "decision_rule": {
+    "PASS": "At least one rotation-aware variant passes all four gates.",
+    "FAIL": "Every mathematically reasonable rotation-aware variant fails at least one required gate.",
+    "on_PASS": "Stop before persistent KL replay and report.",
+    "on_FAIL": "Report failure, then the separately preserved persistent pipeline may be resumed only in a later execution step. This task itself stops after the report."
+  },
+  "statistics": {
+    "bootstrap_resamples": 5000,
+    "permutation_resamples": 10000,
+    "seed": 20260924,
+    "within_rotation": [
+      "AUROC",
+      "bootstrap 95% CI",
+      "Spearman",
+      "median correct/incorrect",
+      "Cliffs delta"
+    ],
+    "rescue": [
+      "P(delta<0) with Wilson 95% CI",
+      "paired sign test",
+      "one-sided label permutation test",
+      "Cliffs delta"
+    ]
+  }
+}
