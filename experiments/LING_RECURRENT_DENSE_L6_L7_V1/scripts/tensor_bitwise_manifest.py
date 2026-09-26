@@ -30,7 +30,7 @@ def file_sha256(path: Path) -> str:
 def update_hash(digest: "hashlib._Hash", value: object, metadata: list[dict], key: str = "root") -> None:
     if torch.is_tensor(value):
         tensor = value.detach().cpu().contiguous()
-        raw = tensor.view(torch.uint8).numpy().tobytes()
+        raw = tensor.reshape(-1).view(torch.uint8).numpy().tobytes()
         row = {"key": key, "dtype": str(tensor.dtype), "shape": list(tensor.shape), "bytes": len(raw)}
         metadata.append(row)
         digest.update(b"T\0")
