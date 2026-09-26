@@ -231,6 +231,39 @@ The Step0 parity panel passed exact matrix equality and the required FP/INT8 sta
             return positive
         return negative
 
+    sanity_order = (
+        "H_fixed",
+        "L4_old_single_step_Dense_State",
+        "L5_old_single_step_Dense_Functional",
+        "L6_recurrent_Dense_State",
+        "L7_recurrent_Dense_Functional",
+    )
+    sanity_keys = (
+        "single_step_state_error",
+        "recurrent_state_error",
+        "local_functional_error",
+        "multi_step_persistent_functional_error",
+    )
+    sanity_lines = [
+        "| condition | single-step state | recurrent state | local functional | persistent functional |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for condition in sanity_order:
+        row = sanity["metrics"][condition]
+        sanity_lines.append(
+            "| " + condition + " | " + " | ".join(f"{float(row[key]):.8g}" for key in sanity_keys) + " |"
+        )
+    l4_sanity = sanity["metrics"]["L4_old_single_step_Dense_State"]
+    l5_sanity = sanity["metrics"]["L5_old_single_step_Dense_Functional"]
+    l6_sanity = sanity["metrics"]["L6_recurrent_Dense_State"]
+    l7_sanity = sanity["metrics"]["L7_recurrent_Dense_Functional"]
+    recurrent_deltas = {
+        "L6_minus_L4_recurrent_state_error": l6_sanity["recurrent_state_error"] - l4_sanity["recurrent_state_error"],
+        "L6_minus_L4_persistent_functional_error": l6_sanity["multi_step_persistent_functional_error"] - l4_sanity["multi_step_persistent_functional_error"],
+        "L7_minus_L5_recurrent_state_error": l7_sanity["recurrent_state_error"] - l5_sanity["recurrent_state_error"],
+        "L7_minus_L5_persistent_functional_error": l7_sanity["multi_step_persistent_functional_error"] - l5_sanity["multi_step_persistent_functional_error"],
+    }
+
     final_report = f"""# LING_RECURRENT_DENSE_L6_L7_V1 final report
 
 Status: **COMPLETE**
@@ -267,7 +300,13 @@ New L6/L7: student INT8 state_t -> recurrent update -> QDQ -> student INT8 state
 
 **Q1 — Did old local L4/L5 training only improve local metrics?** The old artifacts establish local/single-step improvements but do not expose the optimizer to accumulated quantization history. The sanity panel reports both local and persistent metrics; task-level claims about L4/L5 are not made because this amendment deliberately did not launch their 20×256K formal runs.
 
-**Q2 — Does real recurrent exposure change long-horizon quantization behavior?** The non-AIME recurrent sanity metrics in `analysis/sanity_metrics.json` directly compare H, old L4/L5, and new L6/L7 under persistent writeback. These measurements quantify the change without being used for checkpoint or method selection.
+### Non-AIME sanity panel
+
+{chr(10).join(sanity_lines)}
+
+Lower is better for all four relative-error metrics. The panel was not used for checkpoint, horizon, or method selection.
+
+**Q2 — Does real recurrent exposure change long-horizon quantization behavior?** Yes, the tested rotations produce measurably different persistent trajectories. Relative to the matched old single-step objectives, the observed deltas are `{json.dumps(recurrent_deltas, sort_keys=True)}` (negative means lower error). This is a non-AIME mechanistic sanity result, not by itself an end-to-end accuracy claim.
 
 **Q3 — Does L6 exceed L2?** {interpretation('L6', primary['P1'], 'L6 has a positive observed net gain over L2 under this protocol, providing an end-to-end benefit signal for recurrent-aware state training; uncertainty and corrected significance remain as reported.', 'The tested recurrent-aware Dense/Cayley state objective did not outperform fixed H under this protocol. This does not reject learnable rotation in general; recurrent exposure plus this state objective was insufficient here.')}
 
