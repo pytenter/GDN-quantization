@@ -10,8 +10,8 @@ EXP=/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_RECUR
 PY=/data01/user2/.conda/envs/ling-sglang-aime26/bin/python
 MODEL=/data01/user2/models/Ling-3.0-tiny
 PATCH="$EXP/scripts/sglang_kda_unified_final_r_patch.py"
-GPU0_IDS=(aime26_11 aime26_15 aime26_19 aime26_23 aime26_27)
-GPU1_IDS=(aime26_12 aime26_16 aime26_20 aime26_24 aime26_28)
+GPU0_IDS=(aime26_17 aime26_19 aime26_23 aime26_24 aime26_26)
+GPU1_IDS=(aime26_16 aime26_18 aime26_22 aime26_25 aime26_29)
 OWN_PIDS=()
 
 cleanup() {

@@ -10,8 +10,8 @@ EXP=/data/zypan/experiments/LING_RECURRENT_DENSE_L6_L7_V1
 PY=/data/zypan/envs/ling-sglang-aime26/bin/python
 MODEL=/data/zypan/models/Ling-3.0-tiny
 PATCH="$EXP/scripts/sglang_kda_unified_final_r_patch.py"
-GPU3_IDS=(aime26_13 aime26_17 aime26_21 aime26_25 aime26_29)
-GPU4_IDS=(aime26_14 aime26_18 aime26_22 aime26_26 aime26_30)
+GPU3_IDS=(aime26_11 aime26_12 aime26_14 aime26_21 aime26_28)
+GPU4_IDS=(aime26_13 aime26_15 aime26_20 aime26_27 aime26_30)
 OWN_PIDS=()
 
 cleanup() {
