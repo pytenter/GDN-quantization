@@ -1,0 +1,22 @@
+{
+  "L4_EXACT_OBJECTIVE": "MEAN_layer MEAN_batch,head,key [sum_value((R^-1 QDQ_BF16(S_fp R)-S_fp)^2) / max(sum_value(S_fp^2),1e-12)]",
+  "L4_reductions": {
+    "batch_head_key": "mean",
+    "layer": "uniform mean over 18",
+    "token_sequence": "one independently sampled trace per SGD step",
+    "value": "sum squared error and sum squared reference"
+  },
+  "L4_target": "native FP reference recurrent state captured before one decode token, serialized BF16; not post-writeback state",
+  "L5_EXACT_OBJECTIVE": "LOCAL_BLOCK_OUTPROJ_OBJECTIVE",
+  "L5_formula": "mean_layer relative_MSE(o_proj(o_norm(R^-1 KDA(q,k,vR,QDQ_BF16(S_fp R)),dynamic_gate)), native_out_proj_output) + 0.1*L4_state_loss",
+  "L5_primary_selection_metric": "local out_proj relative MSE only",
+  "L5_reference_location": "attention local out_proj output",
+  "not_full_model_or_logits": true,
+  "source": {
+    "functional_loss_lines": "262-279",
+    "relative_mse_lines": "/data01/user2/worktrees/hadamard-init-dense-oracle-v1-ling/experiments/shared/rotation/cayley_rotation.py:173-176",
+    "state_loss_lines": "175-194",
+    "trainer": "/data01/user2/worktrees/hadamard-init-dense-oracle-v1-ling/experiments/ling_kda/rotation/hadamard_init_dense_orthogonal_oracle_v1/run_ling_dense_oracle.py"
+  },
+  "target_detached": true
+}
