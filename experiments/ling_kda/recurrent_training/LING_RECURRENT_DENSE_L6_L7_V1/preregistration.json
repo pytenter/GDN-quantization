@@ -1,0 +1,93 @@
+{
+  "task": "LING_RECURRENT_DENSE_L6_L7_V1",
+  "frozen_before_l6_l7_aime_generation": true,
+  "frozen_before_l6_l7_training": true,
+  "model": "Ling-3.0-tiny/KDA",
+  "conditions": {
+    "B0": "L2 fixed H128 reused subject to parity and provenance gates",
+    "B1": "L6 recurrent Dense-State",
+    "B2": "L7 recurrent Dense-Functional"
+  },
+  "training_initialization": "Hadamard initialization; Cayley correction exactly identity; no L4/L5 warm start",
+  "rotation_reconstruction": "R_final = H128 @ CayleyDelta",
+  "quantized_object": "recurrent state only",
+  "quantization": "INT8 symmetric R128 over the Value axis with canonical BF16 boundary, amax/127 scale, ties-to-even round, [-127,127] clip, dequant, and immediate recurrent writeback",
+  "training_rollout": {
+    "sequence_length": 512,
+    "numerical_recurrent_state": "continuous for the complete trajectory",
+    "gradient_horizon_candidates_descending": [
+      512,
+      256,
+      128,
+      64,
+      32
+    ],
+    "selection_rule": "largest candidate with no OOM, finite nonzero gradient, and at most 900 seconds for the worst-case L7 probe",
+    "selection_reason": "RESOURCE_FEASIBILITY_ONLY",
+    "detach_semantics": "state = state.detach(); numerical tensor retained; teacher state is never substituted",
+    "rotation_update_timing": "one optimizer update only after the entire 512-token rollout, so the learned coordinate system is fixed within a trajectory"
+  },
+  "objectives": {
+    "L6": "mean over token and 18 layers of mean over batch/head [sum_K,V((student_post_qdq_native - teacher_post_update)^2) / max(sum_K,V(teacher_post_update^2),1e-12)]",
+    "L7_primary": "mean over token and 18 layers of local attention out_proj relative MSE against the FP teacher output",
+    "L7_combined": "L7_primary + 0.1 * L6_state_objective",
+    "new_losses_forbidden": [
+      "logits KL",
+      "cross entropy",
+      "answer loss"
+    ]
+  },
+  "data": {
+    "source": "same frozen WikiText-2 raw calibration corpus as old L4/L5",
+    "train_documents": 64,
+    "validation_documents": 16,
+    "one_512_token_recurrent_trajectory_per_document": true,
+    "trajectory_start": "earliest old L4/L5 sampled position that leaves 512 tokens, with deterministic right-aligned fallback",
+    "aime26_overlap_allowed": false
+  },
+  "optimization": {
+    "optimizer": "Adam",
+    "learning_rate": 0.003,
+    "weight_decay": 0.0,
+    "gradient_clip_global_norm": 1.0,
+    "optimizer_steps": 100,
+    "seed": 0,
+    "validation_interval_steps": 10,
+    "validation_sequences": 4,
+    "checkpoint_selection": "minimum non-AIME validation primary metric",
+    "early_stop_after_nonimproving_validations": 10,
+    "rationale_for_100_steps": "confirmed historical trainer default and resource-feasible recurrent setting; each step exposes 512 recurrent tokens versus one old single-step token"
+  },
+  "required_pretraining_gates": [
+    "OLD_L4_OBJECTIVE_RECONSTRUCTED",
+    "OLD_L5_OBJECTIVE_RECONSTRUCTED",
+    "TRAIN_QDQ_MATCH",
+    "VALUE_BASIS_LIFECYCLE",
+    "GRADIENT_GATE",
+    "REAL_RECURRENT_WRITEBACK_GATE",
+    "RECURRENT_STATE_PROVENANCE_GATE",
+    "HORIZON_FEASIBILITY_GATE",
+    "AIME26_OVERLAP_NO"
+  ],
+  "checkpoint_selection_uses_aime": false,
+  "formal_panel": "frozen AIME26 question IDs 11..30",
+  "generation_seed": 1,
+  "primary_metric": "Frozen V4 correct / 20",
+  "primary_comparisons": [
+    [
+      "L6",
+      "L2"
+    ],
+    [
+      "L7",
+      "L2"
+    ]
+  ],
+  "multiple_testing": "Holm correction across the two primary comparisons",
+  "secondary_comparison": [
+    "L7",
+    "L6"
+  ],
+  "outcome_based_changes_forbidden": true,
+  "training_and_formal_generation_concurrency": "one condition at a time"
+}
