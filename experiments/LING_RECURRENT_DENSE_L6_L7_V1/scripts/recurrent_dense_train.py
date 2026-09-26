@@ -792,9 +792,55 @@ def phase_materialize(args) -> None:
         raise RuntimeError("FINAL_R_MATERIALIZATION_FAIL")
 
 
+def phase_materialize_h(args) -> None:
+    _fullpath, _cayley, ortho = load_modules(Path(args.legacy_repo))
+    h = ortho.normalized_hadamard(128).float().contiguous()
+    rotations = {layer: h.clone() for layer in LAYERS}
+    output = Path(args.output_file)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "task": TASK,
+            "condition": "L2_UNIFIED_H128",
+            "source_checkpoint": None,
+            "source_checkpoint_sha256": None,
+            "reconstruction_formula": "R_final = H128",
+            "entry": "state @ R_final",
+            "recovery": "rotated @ R_final.T",
+            "layer_ids": LAYERS,
+            "rotations": rotations,
+        },
+        output,
+    )
+    rows = [
+        {
+            "layer_id": layer,
+            "shape": [128, 128],
+            "dtype": str(h.dtype),
+            "sha256": tensor_sha256(h),
+            "orthogonality_error": float((h.T.matmul(h) - torch.eye(128)).abs().max()),
+        }
+        for layer in LAYERS
+    ]
+    atomic_json(
+        Path(args.manifest_file),
+        {
+            "task": TASK,
+            "condition": "L2_UNIFIED_H128",
+            "status": "PASS",
+            "path": str(output.resolve()),
+            "sha256": sha256_file(output),
+            "layers": rows,
+            "factorized_runtime_forbidden": True,
+        },
+    )
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--phase", choices=("collect", "smoke", "horizon", "train", "materialize"), required=True)
+    parser.add_argument(
+        "--phase", choices=("collect", "smoke", "horizon", "train", "materialize", "materialize_h"), required=True
+    )
     parser.add_argument("--legacy-repo", required=True)
     parser.add_argument("--max-memory-gib", type=int, default=22)
     parser.add_argument("--seed", type=int, default=0)
@@ -832,8 +878,10 @@ def main() -> None:
         phase_horizon(args)
     elif args.phase == "train":
         phase_train(args)
-    else:
+    elif args.phase == "materialize":
         phase_materialize(args)
+    else:
+        phase_materialize_h(args)
 
 
 if __name__ == "__main__":
