@@ -407,8 +407,35 @@ def phase_smoke(args) -> None:
         )
         combined.backward()
         grads = [p.grad for p in bank.parameters()]
-        grad_finite = all(g is not None and torch.isfinite(g).all() for g in grads)
-        grad_norm = math.sqrt(sum(float(g.detach().float().square().sum().cpu()) for g in grads if g is not None))
+        l7_grad_finite = all(g is not None and torch.isfinite(g).all() for g in grads)
+        l7_grad_norm = math.sqrt(sum(float(g.detach().float().square().sum().cpu()) for g in grads if g is not None))
+        bank.zero_grad(set_to_none=True)
+        rotations_l6 = final_rotations(bank, h, layers)
+        teacher_l6, student_l6 = init_states(trace, records, rotations_l6, cayley, True)
+        l6_combined, *_ = rollout_chunk(
+            model=model,
+            probe=probe,
+            cayley=cayley,
+            bank=bank,
+            h=h,
+            trace=trace,
+            records=records,
+            teacher=teacher_l6,
+            student=student_l6,
+            start=0,
+            end=min(4, int(trace["sequence_length"])),
+            objective="L6_RECURRENT_DENSE_STATE",
+            grad=True,
+            provenance=None,
+        )
+        l6_combined.backward()
+        l6_grads = [p.grad for p in bank.parameters()]
+        l6_grad_finite = all(g is not None and torch.isfinite(g).all() for g in l6_grads)
+        l6_grad_norm = math.sqrt(
+            sum(float(g.detach().float().square().sum().cpu()) for g in l6_grads if g is not None)
+        )
+        grad_finite = l6_grad_finite and l7_grad_finite
+        grad_norm = min(l6_grad_norm, l7_grad_norm)
         rotation_requires_grad = all(p.requires_grad for p in bank.parameters())
         model_frozen = not any(p.requires_grad for p in model.parameters())
         state_changed = any(before[layer] != tensor_sha256(student[layer]) for layer in layers)
@@ -429,7 +456,11 @@ def phase_smoke(args) -> None:
             "rotation_params_require_grad": rotation_requires_grad,
             "rotation_grad_finite": grad_finite,
             "rotation_grad_nonzero": grad_norm > 0.0,
-            "rotation_grad_norm": grad_norm,
+            "rotation_grad_norm_min_across_objectives": grad_norm,
+            "per_objective_gradient": {
+                "L6_RECURRENT_DENSE_STATE": {"finite": l6_grad_finite, "norm": l6_grad_norm, "nonzero": l6_grad_norm > 0.0},
+                "L7_RECURRENT_DENSE_FUNCTIONAL": {"finite": l7_grad_finite, "norm": l7_grad_norm, "nonzero": l7_grad_norm > 0.0},
+            },
             "model_weights_frozen": model_frozen,
             "INT8_QDQ_active": qdq_forward_exact,
             "STE_FORWARD_EXACT_QDQ": "PASS" if qdq_forward_exact else "FAIL",
