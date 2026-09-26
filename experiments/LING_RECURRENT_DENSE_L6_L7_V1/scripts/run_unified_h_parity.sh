@@ -21,20 +21,26 @@ trap cleanup EXIT INT TERM
 run_pair() {
   local kind="$1" old_mode="$2" new_mode="$3"
   local old_dir="$ROOT/old_l2_$kind" new_dir="$ROOT/unified_h_$kind"
-  local p0 p1 c0 c1 s0=0 s1=0
+  local server client status=0
   [[ ! -e "$old_dir/client_result.json" && ! -e "$new_dir/client_result.json" ]] || {
     echo "refusing to overwrite parity result for $kind" >&2; return 2;
   }
   mkdir -p "$old_dir" "$new_dir"
-  "$EXP/scripts/launch_parity_server.sh" 0 31300 "$old_mode" "$old_dir" "$OLD_PATCH" "" > "$old_dir/server.log" 2>&1 & p0=$!
-  "$EXP/scripts/launch_parity_server.sh" 1 31301 "$new_mode" "$new_dir" "$NEW_PATCH" "$H_FINAL" > "$new_dir/server.log" 2>&1 & p1=$!
-  OWN_PIDS=("$p0" "$p1")
-  "$PY" "$EXP/scripts/run_runtime_gate_client.py" --base-url http://127.0.0.1:31300 --model "$MODEL" --mode "$old_mode" --run-dir "$old_dir" --reference-json "$REFERENCE" --wait-seconds 1200 > "$old_dir/client.log" 2>&1 & c0=$!
-  "$PY" "$EXP/scripts/run_runtime_gate_client.py" --base-url http://127.0.0.1:31301 --model "$MODEL" --mode "$new_mode" --run-dir "$new_dir" --reference-json "$REFERENCE" --wait-seconds 1200 > "$new_dir/client.log" 2>&1 & c1=$!
-  wait "$c0" || s0=$?; wait "$c1" || s1=$?
-  kill "$p0" "$p1" 2>/dev/null || true; wait "$p0" 2>/dev/null || true; wait "$p1" 2>/dev/null || true
+  "$EXP/scripts/launch_parity_server.sh" 1 31301 "$old_mode" "$old_dir" "$OLD_PATCH" "" > "$old_dir/server.log" 2>&1 & server=$!
+  OWN_PIDS=("$server")
+  "$PY" "$EXP/scripts/run_runtime_gate_client.py" --base-url http://127.0.0.1:31301 --model "$MODEL" --mode "$old_mode" --run-dir "$old_dir" --reference-json "$REFERENCE" --wait-seconds 1200 > "$old_dir/client.log" 2>&1 & client=$!
+  wait "$client" || status=$?
+  kill "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true
   OWN_PIDS=()
-  [[ "$s0" -eq 0 && "$s1" -eq 0 ]] || { echo "parity clients failed: old=$s0 new=$s1" >&2; return 1; }
+  [[ "$status" -eq 0 ]] || { echo "old L2 parity client failed: $status" >&2; return 1; }
+  status=0
+  "$EXP/scripts/launch_parity_server.sh" 1 31301 "$new_mode" "$new_dir" "$NEW_PATCH" "$H_FINAL" > "$new_dir/server.log" 2>&1 & server=$!
+  OWN_PIDS=("$server")
+  "$PY" "$EXP/scripts/run_runtime_gate_client.py" --base-url http://127.0.0.1:31301 --model "$MODEL" --mode "$new_mode" --run-dir "$new_dir" --reference-json "$REFERENCE" --wait-seconds 1200 > "$new_dir/client.log" 2>&1 & client=$!
+  wait "$client" || status=$?
+  kill "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true
+  OWN_PIDS=()
+  [[ "$status" -eq 0 ]] || { echo "unified-H parity client failed: $status" >&2; return 1; }
   echo "PAIR_PASS $kind"
 }
 
