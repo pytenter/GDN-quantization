@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
+import statistics
 from pathlib import Path
 
 
@@ -87,12 +89,33 @@ def aggregate(args: argparse.Namespace) -> None:
         if payload.get("status") != "PASS":
             raise RuntimeError(f"{label} did not pass")
 
+    def selected_orthogonality(manifest: dict) -> dict:
+        rows = manifest["layers"]
+        errors = sorted(float(row["orthogonality_error"]) for row in rows)
+        worst = max(rows, key=lambda row: float(row["orthogonality_error"]))
+        p95_index = min(len(errors) - 1, math.ceil(0.95 * len(errors)) - 1)
+        return {
+            "status": "PASS" if errors[-1] <= 1.0e-4 else "FAIL",
+            "source": "SELECTED_CHECKPOINT_MATERIALIZED_R_FINAL",
+            "median": statistics.median(errors),
+            "p95": errors[p95_index],
+            "max": errors[-1],
+            "worst_layer": worst["layer_id"],
+            "per_layer": [
+                {
+                    "layer_id": row["layer_id"],
+                    "max_abs_rt_r_minus_i": row["orthogonality_error"],
+                }
+                for row in rows
+            ],
+        }
+
     orthogonality = {
         "task": TASK,
         "status": "PASS",
         "conditions": {
-            "L6_RECURRENT_DENSE_STATE": l6_summary["history"][-1]["orthogonality"],
-            "L7_RECURRENT_DENSE_FUNCTIONAL": l7_summary["history"][-1]["orthogonality"],
+            "L6_RECURRENT_DENSE_STATE": selected_orthogonality(l6_materialization),
+            "L7_RECURRENT_DENSE_FUNCTIONAL": selected_orthogonality(l7_materialization),
         },
     }
     if any(row.get("status") != "PASS" for row in orthogonality["conditions"].values()):
