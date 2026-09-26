@@ -1,0 +1,62 @@
+{
+  "amendment_id": "QWEN_BACKWARD_NUMERICAL_EQUIVALENCE_V1",
+  "parent_task": "QWEN_BACKWARD_REPEATABILITY_AND_TOPOLOGY_CLOSURE_V1",
+  "reason": "Five fresh-process single-GPU backward gradients were not bitwise repeatable. Strict PyTorch deterministic mode stopped at cumsum_cuda_kernel before backward; its operator is not replaced or bypassed.",
+  "scientific_training_definition": "UNCHANGED",
+  "reference": {
+    "condition": "C5",
+    "topology": "single_GPU0",
+    "gradient_horizon": 32,
+    "rotation_initialization": "Hadamard_step0_theta0",
+    "input": "configs/frozen_backward_reference.json",
+    "optimizer": "Adam_lr_0.003_weight_decay_0_fresh_state",
+    "epsilon": 1e-12
+  },
+  "gradient_metric_definitions": {
+    "relative_l2": "l2(a-b)/max(l2(a),l2(b),epsilon)",
+    "max_abs": "max(abs(a-b))",
+    "normalized_max_abs": "max(abs(a-b))/max(max(abs(a)),max(abs(b)),epsilon)",
+    "cosine_error": "1-clamp(dot(a,b)/(l2(a)*l2(b)),-1,1), if both norms > epsilon",
+    "log_norm_ratio": "abs(log((l2(a)+epsilon)/(l2(b)+epsilon)))",
+    "zero_tensor_policy": "both_zero: cosine_error=null and remaining metrics computed; one_zero: cosine_error=null and pair fails if single envelope does not contain an identical zero class"
+  },
+  "single_gradient_envelope": {
+    "fresh_process_runs": 10,
+    "pairs": 45,
+    "aggregation": "maximum_observed_value_no_multiplier",
+    "scope": "each_of_24_layers_and_global_concatenation",
+    "metrics": ["relative_l2", "max_abs", "normalized_max_abs", "cosine_error", "log_norm_ratio"],
+    "frozen_artifact": "analysis/frozen_single_gpu_noise_envelope.json"
+  },
+  "single_update_envelope": {
+    "same_10_fresh_process_runs": true,
+    "optimizer_steps_per_run": 1,
+    "quantity": "delta_theta_from_identical_theta0",
+    "pairs": 45,
+    "aggregation": "maximum_observed_value_no_multiplier",
+    "scope": "each_of_24_layers_and_global_concatenation",
+    "metrics": ["relative_l2", "max_abs", "normalized_max_abs", "cosine_error", "log_norm_ratio"],
+    "frozen_artifact": "analysis/frozen_single_gpu_update_envelope.json"
+  },
+  "dual_sample": {
+    "fresh_process_runs": 5,
+    "cross_topology_pairs": 50,
+    "dual_internal_pairs": 10,
+    "all_pairs_all_layers_all_metrics_must_be_within_frozen_single_max": true,
+    "allow_exclusion_of_outlier_or_difficult_layer": false,
+    "allow_posthoc_envelope_multiplier": false
+  },
+  "forward_gate": "input_ids_teacher_targets_240_state_QDQ_points_qcodes_losses_writeback_and_BPTT_remain_exact",
+  "trajectory_if_one_step_passes": {
+    "single_runs": 3,
+    "dual_runs": 3,
+    "optimizer_updates_per_run": 8,
+    "single_envelope": "maximum_of_three_single_pair_differences_at_each_update_and_endpoint_no_multiplier",
+    "update_metrics": ["training_loss_absolute", "gradient_norm_absolute", "rotation_displacement_absolute", "orthogonality_absolute"],
+    "endpoint_metrics": ["per_layer_R_relative_l2", "per_layer_R_max_abs", "global_parameter_relative_l2", "global_parameter_max_abs"],
+    "dual_comparison": "every_single_dual_pair_and_dual_dual_pair_within_frozen_single_envelope",
+    "teacher_forced_probe": "fixed_non_AIME_input; qcodes_disagreement_and_numeric_state_scale_postQDQ_loss_logits_differences_compared_to_frozen_single_endpoint_envelope"
+  },
+  "interpretation": "Hash mismatch alone is provenance, not topology failure, because same-topology backward bitwise repeatability failed.",
+  "pre_existing_dual_evidence": "Prior V2 dual gradient hashes and scalar norm were known before this amendment; no full dual gradient tensors or magnitude comparisons were examined. No new dual runs begin until both single envelopes are frozen and hashed."
+}

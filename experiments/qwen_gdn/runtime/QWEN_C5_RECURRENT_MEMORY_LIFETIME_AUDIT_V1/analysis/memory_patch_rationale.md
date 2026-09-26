@@ -1,0 +1,3 @@
+# Memory patch rationale
+
+No training-runtime patch was justified. The A12 allocated baseline was identical for all 11 completed updates, the first validation returned to its entry baseline, and every recurrent cache had zero graph-bearing tensors after BPTT detach. The original weakref probe held two strong references in its own local variables (`state_tensor` and `cache_tensor`), producing a false-positive QDQ/cache weakref alarm. The diagnostic harness now deletes those local references immediately after creating weakrefs. A one-update probe confirmed all four watched objects die by A12. This changed only diagnostic instrumentation; the C5 training runtime was not modified.

@@ -1,0 +1,63 @@
+{
+  "created_before_formal_training_results": true,
+  "forbidden_parallelism": [
+    "DDP",
+    "DataParallel",
+    "FSDP",
+    "ZeRO",
+    "tensor parallel",
+    "pipeline microbatch overlap",
+    "RPC pipeline",
+    "CPU offload",
+    "activation checkpointing"
+  ],
+  "horizon_policy": {
+    "conditions_share_final_horizon": true,
+    "formal_candidates": [
+      128,
+      64,
+      32
+    ],
+    "minimum_peak_free_fraction_per_gpu": 0.05,
+    "parity_reference_horizon": 32,
+    "selection_depends_on_task_accuracy": false,
+    "selection_rule": "largest_joint_sustained_feasible_horizon",
+    "short_screen_updates_per_condition_split": 2,
+    "sustained_updates_per_condition": 30,
+    "validation_boundary_required": true
+  },
+  "old_memory_audit_sha256": "2e6921e76f9c7d36663b642bf24565ebf29a2496dc8306e18f13732372ed9073",
+  "old_v1_preregistration_sha256": "226c3bfb03c4b1741c0cd9a6fb29052e622c3dd24d216760929d7a1c76b6ccba",
+  "reason": [
+    "single-GPU H32 sustained feasibility failed",
+    "memory audit proved NO_LEAK_H32_TOO_LARGE",
+    "two same-architecture RTX3090 GPUs are available",
+    "dual-GPU topology may support a larger gradient horizon"
+  ],
+  "task": "QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2",
+  "training_topology_change": {
+    "from": {
+      "gpu_count": 1
+    },
+    "to": {
+      "gpu_count": 2,
+      "one_process": true,
+      "topology": "contiguous_layer_model_parallel"
+    }
+  },
+  "unchanged": [
+    "recurrent numerical writeback semantics",
+    "quantizer",
+    "QDQ timing",
+    "training data",
+    "validation data",
+    "optimizer",
+    "learning rate",
+    "training seed",
+    "loss definitions",
+    "rotation parameterization",
+    "checkpoint-selection rule",
+    "formal AIME protocol"
+  ],
+  "version": 2
+}

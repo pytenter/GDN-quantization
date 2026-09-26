@@ -1,0 +1,26 @@
+{
+  "BACKWARD_NONDETERMINISM_SOURCE": "UNRESOLVED",
+  "FIRST_REPORTED_NONDETERMINISTIC_OP": "cumsum_cuda_kernel",
+  "candidate_mechanisms_not_proven": [
+    "CUDA cumsum kernel or its backward reduction",
+    "CUDA reduction or shared-parameter gradient accumulation ordering",
+    "other model backward kernels, including full-attention blocks"
+  ],
+  "diagnostic_limits": "Strict deterministic mode halts at the first reported forward operator, so later backward operators cannot be audited by that mode without changing the frozen path.",
+  "evidence": {
+    "custom_autograd_Function_in_qdq_source": false,
+    "deterministic_error_sha256": "e725187ff5bcc91d348363b283c664de79253df4cee8175bf443463c52c1785a",
+    "fla_distribution_installed": false,
+    "flash_attn_installed": true,
+    "gated_delta_fallback_has_cumsum": true,
+    "hub_fallback_stack_observed": true,
+    "modeling_source_explicit_cuda_graph": false,
+    "modeling_source_explicit_scatter_add": false,
+    "modeling_source_explicit_triton_autotune": false,
+    "qdq_ste_uses_detach_identity_gradient": true,
+    "runtime_source_revisions_sha256": "f7e65ceebd10a5fb8358b016390ff529527d547da312b7d93c9162e9e1abcf61",
+    "single_forward_exact_five_runs": true,
+    "single_gradient_bitwise_repeatable_five_runs": false
+  },
+  "finding": "PyTorch flags CUDA cumsum in the Qwen3.5 gated-delta fallback as nondeterministic before backward; this does not by itself prove it caused the observed gradient variability."
+}

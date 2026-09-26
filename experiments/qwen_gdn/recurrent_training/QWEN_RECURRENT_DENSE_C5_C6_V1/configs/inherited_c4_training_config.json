@@ -1,0 +1,58 @@
+{
+  "objective": {
+    "epsilon": 1e-12,
+    "evidence": [
+      "run_qwen_dense_oracle.py:293-316",
+      "run_qwen_dense_oracle.py:384-401"
+    ],
+    "name": "LOCAL_BLOCK_OUTPROJ_OBJECTIVE",
+    "norm": "global squared relative L2 per layer",
+    "not_a": [
+      "full block output objective",
+      "full-model logit objective",
+      "end-to-end loss"
+    ],
+    "optimized_formula": "L_local_outproj + 0.1 * L_state",
+    "primary_formula": "mean_layers [sum((out_proj(norm(local_rotated_core,teacher_gate))-teacher_out_proj)^2) / max(sum(teacher_out_proj^2),1e-12)]",
+    "quantized_path": "QDQ(FP teacher state_input), then one local GDN recurrence with teacher q/k/v/g/beta, RMSNorm+gate, out_proj",
+    "reductions": "sum all output elements per layer; mean 24 layers; one sampled token per optimizer step",
+    "reference": "detached BF16 out_proj output from the FP teacher execution of that same layer/token",
+    "selection_metric": "L_local_outproj only"
+  },
+  "source": {
+    "checkpoint": {
+      "confidence": "HIGH",
+      "exists": true,
+      "mtime": "2026-09-22T02:29:32.894513+00:00",
+      "path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/results/rotation/qwen_dense_orthogonal_oracle_v1/training/dense_functional/best_dense_functional_seed0.pt",
+      "sha256": "758a5ab138d23fa5dae5666cd51039550ec662b565d9b4f4a3dcbb50ca61cc4c",
+      "size": 789694,
+      "source_relation": "selected checkpoint"
+    },
+    "last_recorded_step": 1000,
+    "log": {
+      "confidence": "HIGH",
+      "exists": true,
+      "mtime": "2026-09-22T02:30:31.217510+00:00",
+      "path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/results/rotation/qwen_dense_orthogonal_oracle_v1/logs/full_dense_functional.log",
+      "sha256": "b15ca49bf6927291a8a30812adde7390c9ec86a982a67dd64caa6cfa433b05ae",
+      "size": 16352,
+      "source_relation": "captured stdout training log"
+    },
+    "lr": 0.001,
+    "objective": "DENSE_FUNCTIONAL",
+    "seed": 0,
+    "selected_step": 900,
+    "status": "PASS",
+    "steps_requested": 1000,
+    "training_summary": {
+      "confidence": "HIGH",
+      "exists": true,
+      "mtime": "2026-09-22T02:30:31.222509+00:00",
+      "path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/results/rotation/qwen_dense_orthogonal_oracle_v1/training/dense_functional/training_summary.json",
+      "sha256": "09c979cafaa916996ce4d7af2f54ebb87e1ca207e4d81b72b7dbbeded1f9cb75",
+      "size": 14622,
+      "source_relation": "training metrics and selection record"
+    }
+  }
+}

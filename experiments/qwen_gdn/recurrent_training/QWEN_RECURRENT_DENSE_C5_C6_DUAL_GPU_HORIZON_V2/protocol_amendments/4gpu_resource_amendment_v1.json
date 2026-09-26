@@ -1,0 +1,30 @@
+{
+  "amendment_id": "QWEN_RECURRENT_DENSE_C5_C6_4GPU_RESOURCE_AMENDMENT_V1",
+  "parent_task": "QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2",
+  "source_attachment_sha256": "6e4880b215a00f018a15a3c799f4c8960b8a01f8a3eebf651ffd14d906da0e78",
+  "scope": "prospective_resource_topology_only",
+  "available_qwen_gpus": "4 x RTX3090 24GB",
+  "selection_rule": "MAXIMIZE_HORIZON_THEN_MINIMIZE_GPU_COUNT",
+  "parity_reference_horizon": 32,
+  "gpu_topologies": ["2GPU_CONTIGUOUS_COMPLETE_BLOCKS", "4GPU_CONTIGUOUS_COMPLETE_BLOCKS"],
+  "required_decision_order": [
+    {"gpu_count": 2, "gradient_horizon": 128},
+    {"gpu_count": 4, "gradient_horizon": 128},
+    {"gpu_count": 2, "gradient_horizon": 64},
+    {"gpu_count": 4, "gradient_horizon": 64},
+    {"gpu_count": 2, "gradient_horizon": 32},
+    {"gpu_count": 4, "gradient_horizon": 32}
+  ],
+  "topology_gates": {
+    "2gpu_h32": "mandatory_before_2gpu_resource_screen",
+    "4gpu_h32": "mandatory_before_first_4gpu_resource_screen_if_required"
+  },
+  "joint_feasibility": "C5_AND_C6_MUST_PASS_SAME_H_AND_TOPOLOGY",
+  "sustained_updates": "20-30_PER_CONDITION",
+  "minimum_free_memory_fraction_at_observed_peak": 0.05,
+  "selection_excludes": ["AIME", "loss", "validation_metric", "rotation_quality"],
+  "formal_training_initialization": "Hadamard_step0_theta0_no_resume_or_warm_start",
+  "formal_evaluation": "unchanged_Frozen_V4_seed1_max_new_tokens81920_independent_single_gpu_workers",
+  "existing_completed_gates_and_artifacts": "preserved_without_overwrite",
+  "effective_from": "next_not_yet_started_decision_node"
+}
