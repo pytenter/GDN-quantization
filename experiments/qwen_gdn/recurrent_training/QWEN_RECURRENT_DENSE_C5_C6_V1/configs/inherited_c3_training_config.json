@@ -1,0 +1,53 @@
+{
+  "objective": {
+    "epsilon": 1e-12,
+    "evidence": [
+      "run_qwen_dense_oracle.py:269-276",
+      "run_qwen_dense_oracle.py:384-401"
+    ],
+    "formula": "mean_layers mean_{B,H}[sum_{K,V}(H Delta Q(H^T Delta^T S_fp)-S_fp)^2 / max(sum_{K,V}S_fp^2,1e-12)]",
+    "name": "FP_TEACHER_STATE_LOCAL_RELATIVE_MSE_AFTER_ROTATE_QDQ_RECOVER",
+    "norm": "squared L2 relative error",
+    "quantized_path": "S_fp -> (H@Delta)^T S_fp -> exact INT8-C128 forward/STE backward -> H@Delta recovery",
+    "reductions": "sum K,V; mean batch and head; mean 24 layers; one sampled token per optimizer step",
+    "target": "detached FP32 native-basis state_input captured from an FP teacher trajectory",
+    "token_filter": "8 deterministic positions/document, positions >=128",
+    "weighting": "uniform"
+  },
+  "source": {
+    "checkpoint": {
+      "confidence": "HIGH",
+      "exists": true,
+      "mtime": "2026-09-22T02:21:48.308545+00:00",
+      "path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/results/rotation/qwen_dense_orthogonal_oracle_v1/training/dense_state/best_dense_state_seed0.pt",
+      "sha256": "a3597986bf9fd57e8af8dfcd13cbb8b443e1e641459444510a41ee556955074c",
+      "size": 789554,
+      "source_relation": "selected checkpoint"
+    },
+    "last_recorded_step": 600,
+    "log": {
+      "confidence": "HIGH",
+      "exists": true,
+      "mtime": "2026-09-22T02:24:07.133535+00:00",
+      "path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/results/rotation/qwen_dense_orthogonal_oracle_v1/logs/full_dense_state.log",
+      "sha256": "224b1800956bf65dc2ff65e82d0083d2a10e5cee165dfd3a51939d7311e18947",
+      "size": 11212,
+      "source_relation": "captured stdout training log"
+    },
+    "lr": 0.003,
+    "objective": "DENSE_STATE",
+    "seed": 0,
+    "selected_step": 100,
+    "status": "PASS",
+    "steps_requested": 1000,
+    "training_summary": {
+      "confidence": "HIGH",
+      "exists": true,
+      "mtime": "2026-09-22T02:24:07.137535+00:00",
+      "path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/results/rotation/qwen_dense_orthogonal_oracle_v1/training/dense_state/training_summary.json",
+      "sha256": "97dc5d588f73371239301b61be7380ff0537e2ab4e384db10f6889e52ab797c9",
+      "size": 8834,
+      "source_relation": "training metrics and selection record"
+    }
+  }
+}

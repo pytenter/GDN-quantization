@@ -1,0 +1,24 @@
+{
+  "DENSE_FUNCTIONAL_RECURRENT_MODE": "FP_STATE_RESET_EACH_TOKEN",
+  "DENSE_STATE_RECURRENT_MODE": "FP_STATE_RESET_EACH_TOKEN",
+  "REAL_RECURRENT_TRAINING_GATE": "FAIL",
+  "bptt_length": 1,
+  "detach_interval": "trace capture; all teacher tensors detached to CPU",
+  "details": [
+    "Trace collection rolls an FP model cache to sampled positions and saves state_input.",
+    "Optimization randomly selects one saved token trace and separately evaluates every layer.",
+    "No quantized updated state is fed to a later token; upstream/downstream layers remain FP teacher traces."
+  ],
+  "evidence": [
+    "run_qwen_dense_oracle.py:210-251",
+    "run_qwen_dense_oracle.py:319-330",
+    "run_qwen_dense_oracle.py:384-401",
+    "run_qwen_dense_oracle.py:436-444"
+  ],
+  "fp_recurrent_state_teacher_forcing": true,
+  "history_source": "state_input from an independently captured FP model trajectory at each sampled position",
+  "quantized_state_writeback_during_training": false,
+  "reset_interval": "every sampled token",
+  "teacher_forced_tokens": true,
+  "unroll_length": 1
+}

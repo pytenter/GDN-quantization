@@ -1,0 +1,28 @@
+{
+  "LING_LOSS_GRAPH_RETENTION_GATE": "PASS",
+  "assessment_scope": "static source audit",
+  "findings": [
+    "Each BPTT chunk calls backward immediately.",
+    "Update totals are constructed from float(tensor.detach().cpu()).",
+    "Persistent history contains Python numbers and detached validation/orthogonality values, not CUDA tensors.",
+    "No losses.append(loss), metrics tensor append, or graph-bearing total_loss accumulation crosses an optimizer update."
+  ],
+  "source_evidence": [
+    {
+      "line": 695,
+      "text": "[float(x.detach().cpu()) for x in (combined, primary, state, functional)], dtype=torch.float64"
+    },
+    {
+      "line": 710,
+      "text": "\"gradient_norm\": float(grad.detach().cpu()),"
+    },
+    {
+      "line": 743,
+      "text": "history.append(row)"
+    },
+    {
+      "line": 744,
+      "text": "atomic_json(outdir / \"training_curve.json\", history)"
+    }
+  ]
+}

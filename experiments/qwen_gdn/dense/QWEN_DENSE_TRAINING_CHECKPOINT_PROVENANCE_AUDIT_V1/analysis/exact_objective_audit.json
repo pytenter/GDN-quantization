@@ -1,0 +1,39 @@
+{
+  "DENSE_FUNCTIONAL_EXACT_OBJECTIVE": {
+    "epsilon": 1e-12,
+    "evidence": [
+      "run_qwen_dense_oracle.py:293-316",
+      "run_qwen_dense_oracle.py:384-401"
+    ],
+    "name": "LOCAL_BLOCK_OUTPROJ_OBJECTIVE",
+    "norm": "global squared relative L2 per layer",
+    "not_a": [
+      "full block output objective",
+      "full-model logit objective",
+      "end-to-end loss"
+    ],
+    "optimized_formula": "L_local_outproj + 0.1 * L_state",
+    "primary_formula": "mean_layers [sum((out_proj(norm(local_rotated_core,teacher_gate))-teacher_out_proj)^2) / max(sum(teacher_out_proj^2),1e-12)]",
+    "quantized_path": "QDQ(FP teacher state_input), then one local GDN recurrence with teacher q/k/v/g/beta, RMSNorm+gate, out_proj",
+    "reductions": "sum all output elements per layer; mean 24 layers; one sampled token per optimizer step",
+    "reference": "detached BF16 out_proj output from the FP teacher execution of that same layer/token",
+    "selection_metric": "L_local_outproj only"
+  },
+  "DENSE_STATE_EXACT_OBJECTIVE": {
+    "epsilon": 1e-12,
+    "evidence": [
+      "run_qwen_dense_oracle.py:269-276",
+      "run_qwen_dense_oracle.py:384-401"
+    ],
+    "formula": "mean_layers mean_{B,H}[sum_{K,V}(H Delta Q(H^T Delta^T S_fp)-S_fp)^2 / max(sum_{K,V}S_fp^2,1e-12)]",
+    "name": "FP_TEACHER_STATE_LOCAL_RELATIVE_MSE_AFTER_ROTATE_QDQ_RECOVER",
+    "norm": "squared L2 relative error",
+    "quantized_path": "S_fp -> (H@Delta)^T S_fp -> exact INT8-C128 forward/STE backward -> H@Delta recovery",
+    "reductions": "sum K,V; mean batch and head; mean 24 layers; one sampled token per optimizer step",
+    "target": "detached FP32 native-basis state_input captured from an FP teacher trajectory",
+    "token_filter": "8 deterministic positions/document, positions >=128",
+    "weighting": "uniform"
+  },
+  "FUNCTIONAL_OBJECTIVE_RECONSTRUCTED": "PASS",
+  "STATE_OBJECTIVE_RECONSTRUCTED": "PASS"
+}

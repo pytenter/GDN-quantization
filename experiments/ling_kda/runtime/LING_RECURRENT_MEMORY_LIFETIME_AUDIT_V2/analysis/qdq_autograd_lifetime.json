@@ -1,0 +1,34 @@
+{
+  "LING_QDQ_AUTOGRAD_LIFETIME_GATE": "UNKNOWN",
+  "dynamic_weakref_and_saved_tensor_probe": "DEFERRED_DUE_TO_ACTIVE_FORMAL_GENERATION",
+  "implementation": "Exact QDQ intermediates are local QuantizationResult fields; STE is value + (exact_dequant - value).detach().",
+  "reason_unknown": "Static inspection is favorable but cannot prove post-backward object death across optimizer updates.",
+  "source_evidence": [
+    {
+      "line": 140,
+      "text": "def canonical_symmetric_int8_qdq(value: torch.Tensor, group_axis: int) -> QuantizationResult:"
+    },
+    {
+      "line": 145,
+      "text": "return QuantizationResult(codes * scale, scale, codes)"
+    },
+    {
+      "line": 158,
+      "text": "def ste_from_exact(value: torch.Tensor, exact_dequant: torch.Tensor) -> torch.Tensor:"
+    },
+    {
+      "line": 160,
+      "text": "return value + (exact_dequant - value).detach()"
+    },
+    {
+      "line": 165,
+      "text": "return QuantizationResult(ste_from_exact(value, exact.dequant), exact.scale, exact.codes)"
+    },
+    {
+      "line": 170,
+      "text": "return QuantizationResult(ste_from_exact(value, exact.dequant), exact.scale, exact.codes)"
+    }
+  ],
+  "source_sha256": "62e769dfad73170279daf0bdb56855b7d7e4aaf77478de897958fa87b2608067",
+  "static_assessment": "NO_CUSTOM_AUTOGRAD_CTX_OR_MODULE_CACHE_FOUND"
+}

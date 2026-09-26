@@ -1,0 +1,60 @@
+{
+  "audit_only_recoveries": 3,
+  "audit_path_side_effect": {
+    "audit_operation": "detached recovery only; recovered tensor is never written to cache or model input",
+    "bitwise_equal": true,
+    "logits": {
+      "cosine": 0.9999862313270569,
+      "max_abs": 0.0,
+      "nonfinite": 0,
+      "relative_l2": 0.0
+    },
+    "status": "NO"
+  },
+  "functional_recoveries": 0,
+  "generic_r_rt_interface_fixed": "YES",
+  "hadamard_self_inverse_dependency_found": "YES_IN_HISTORICAL_INTERFACE_ONLY",
+  "rows": [
+    {
+      "dtype_after": "FP32",
+      "dtype_before": "model/native",
+      "location": "QwenKeyOrthogonalPatch._wrap/q",
+      "purpose": "q Key-basis forward rotation",
+      "required_for_inference": true,
+      "required_only_for_audit": false
+    },
+    {
+      "dtype_after": "FP32",
+      "dtype_before": "model/native",
+      "location": "QwenKeyOrthogonalPatch._wrap/k",
+      "purpose": "k Key-basis forward rotation",
+      "required_for_inference": true,
+      "required_only_for_audit": false
+    },
+    {
+      "dtype_after": "FP32 detached",
+      "dtype_before": "state storage",
+      "location": "recover_key_state",
+      "purpose": "native-basis state comparison",
+      "required_for_inference": false,
+      "required_only_for_audit": true
+    },
+    {
+      "dtype_after": "FP32 detached",
+      "dtype_before": "FP32 rotated",
+      "location": "first_decode_capture/q_kernel_recovered",
+      "purpose": "diagnostic q recovery",
+      "required_for_inference": false,
+      "required_only_for_audit": true
+    },
+    {
+      "dtype_after": "FP32 detached",
+      "dtype_before": "FP32 rotated",
+      "location": "first_decode_capture/k_kernel_recovered",
+      "purpose": "diagnostic k recovery",
+      "required_for_inference": false,
+      "required_only_for_audit": true
+    }
+  ],
+  "unnecessary_inference_roundtrip_found": "NO"
+}

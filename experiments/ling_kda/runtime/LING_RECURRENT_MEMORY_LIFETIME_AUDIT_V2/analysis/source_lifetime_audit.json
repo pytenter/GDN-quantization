@@ -1,0 +1,37 @@
+{
+  "LING_RECURRENT_DETACH_SEMANTICS": "PASS",
+  "detach_evidence": [
+    {
+      "line": 356,
+      "text": "teacher[layer] = teacher_next.detach()"
+    },
+    {
+      "line": 357,
+      "text": "student[layer] = student_post"
+    },
+    {
+      "line": 697,
+      "text": "teacher = {layer: value.detach() for layer, value in teacher.items()}"
+    },
+    {
+      "line": 698,
+      "text": "student = {layer: value.detach() for layer, value in student.items()}"
+    }
+  ],
+  "findings": [
+    "The numerical student state is QDQ-written back every token.",
+    "At each 128-token BPTT boundary, teacher and student state dictionaries are detached in place and then passed into the next rollout window.",
+    "No FP teacher state is substituted for the detached numerical student state.",
+    "Per-update trace/record/student/teacher objects are deleted after logging.",
+    "The outer rotations variable and last local loss tensors survive until the next loop rebind, but are not appended to any long-lived container; this is bounded current-update retention, not an accumulating old-window list.",
+    "FullPathForensicProbe path tensors are CPU copies and the active training path does not enable a trace branch while local_output hooks execute."
+  ],
+  "long_lived_container_scan": {
+    "history": "CPU/Python scalars and dictionaries only",
+    "module_level_recurrent_cache": "not present in recurrent_dense_train.py",
+    "probe_path_tensors": "CPU tensors when capture is active; key overwrite rather than per-token append",
+    "training_curve": "serialized JSON scalars only"
+  },
+  "status": "PASS_STATIC_ONLY",
+  "trainer_sha256": "d1c433598875ea84c80c6f6d4fb5fe48088d5ca0bf44ccff9d950a77560fd9ae"
+}

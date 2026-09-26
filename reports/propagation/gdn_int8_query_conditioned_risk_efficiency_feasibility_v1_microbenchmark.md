@@ -1,0 +1,22 @@
+# Microbenchmark
+
+{
+  "MICROBENCH_BACKEND_LIMITED": "YES",
+  "MICROBENCH_OVERHEAD": 0.4362282620141247,
+  "baseline_current_int8_stat_proxy": {
+    "median_ms": 0.08806400001049042,
+    "p25_ms": 0.0859839990735054,
+    "p75_ms": 0.08908800035715103
+  },
+  "group16_staticw_proxy": {
+    "median_ms": 0.1258240044116974,
+    "p25_ms": 0.12492799758911133,
+    "p75_ms": 0.12697599828243256
+  },
+  "note": "PyTorch elementwise proxy benchmark only; not production CUDA latency.",
+  "q2_staticw_proxy": {
+    "median_ms": 0.12648000568151474,
+    "p25_ms": 0.12572799623012543,
+    "p75_ms": 0.12800000607967377
+  }
+}

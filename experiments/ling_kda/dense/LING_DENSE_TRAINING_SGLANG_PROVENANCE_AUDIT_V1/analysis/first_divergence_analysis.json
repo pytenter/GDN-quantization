@@ -1,0 +1,39 @@
+{
+  "FAST_H_VS_DENSE_H_CLASSIFICATION": "CONTROLLED_NUMERICAL_PATH_DIFFERENCE",
+  "FIRST_CONFIRMED_IMPLEMENTATION_DIFFERENCE": "L3 executes an additional FP32 GEMM by identity after the common dense H128 GEMM; L2 diagnostic code does not invoke an FWHT kernel despite its Fast-H label.",
+  "FIRST_DIVERGENT_LAYER": 0,
+  "FIRST_DIVERGENT_STAGE": "bounded to post-prefill recurrent state; exact earlier tensor boundary not dumped",
+  "FIRST_DIVERGENT_TOKEN": "prefill endpoint (step0000 dump)",
+  "first_fp_logit_observation": {
+    "bitwise_equal": false,
+    "file": "prompt01/logits_step0000.pt",
+    "max_abs": 0.734375,
+    "relative_l2": 0.03824485465884209
+  },
+  "first_fp_state_observation": {
+    "bitwise_equal": false,
+    "file": "prompt01/state_step0000_layer00_prefill.pt",
+    "max_abs": 0.00080108642578125,
+    "relative_l2": 0.0015596867306157947
+  },
+  "first_int8_qcode_observation": {
+    "file": "runtime_prefill_layer00_head00.pt",
+    "head": 0,
+    "layer": 0,
+    "phase": "prefill",
+    "post_qdq_state_relative_l2": 0.0033525084145367146,
+    "pre_qdq_state_relative_l2": 0.001520611229352653,
+    "qcode_exact_match_rate": 0.959716796875,
+    "scale_relative_l2": 0.00046013982500880957
+  },
+  "not_proven": "No rotated-Value dump was captured, so the exact first floating-point element divergence cannot be placed before the post-prefill state.",
+  "semantic_checks": {
+    "no_double_rotation": true,
+    "same_axis": true,
+    "same_inverse_order": true,
+    "same_matrix": true,
+    "same_qdq": true,
+    "same_tp_mapping": true
+  },
+  "why_not_exact": "extra identity GEMM introduces an additional CUDA FP32 matmul/accumulation boundary before BF16 cast; observed differences then amplify through recurrent state and INT8 code thresholds"
+}

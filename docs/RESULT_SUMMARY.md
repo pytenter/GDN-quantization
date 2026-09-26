@@ -30,8 +30,13 @@ The result is inconclusive, not positive.
 ## Current Status
 
 ```text
-Current phase = Mechanism Validation
-MECHANISM_CLOSURE_CANDIDATE = NO
-METHOD_DESIGN_READY_CANDIDATE = NO
-METHOD_DESIGN_READY = NO
+Current phase = Recurrent-aware learnable rotation design and validation
+Fixed Hadamard baseline = ESTABLISHED
+Qwen C5/C6 formal AIME = NOT STARTED
+Qwen trajectory closure = RUNNING
+Ling L6 formal evaluation = RUNNING/PARTIAL
+Ling L7 formal evaluation = PENDING
+Ling memory V2 = PARTIAL
 ```
+
+The current open question is whether a learnable orthogonal rotation trained under real recurrent INT8 history can outperform fixed Hadamard on long-horizon reasoning. Existing mechanism rows retain their original experiment-level gates and limitations.

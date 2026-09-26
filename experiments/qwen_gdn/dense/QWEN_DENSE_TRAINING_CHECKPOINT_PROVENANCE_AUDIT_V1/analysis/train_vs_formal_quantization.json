@@ -1,0 +1,36 @@
+{
+  "OLD_DENSE_RUNTIME_SEMANTICS": "MISMATCH",
+  "TRAIN_VS_FORMAL_PRECISION_MATCH": "PASS",
+  "TRAIN_VS_FORMAL_QDQ_MATCH": "NUMERICALLY_EQUIVALENT",
+  "TRAIN_VS_FORMAL_WRITEBACK_MATCH": "FAIL",
+  "backward_rule": "STE identity: value + (exact_dequant-value).detach()",
+  "evidence": [
+    "cayley_rotation.py:140-165",
+    "run_qwen_dense_oracle.py:269-276,384-401",
+    "run_qwen_aime26_formal.py:151-167,300-304"
+  ],
+  "formal_path": "prefill in H/Delta basis (not QDQ) -> decode recurrence/readout -> post-decode exact QDQ cache writeback -> next decode consumes quantized history",
+  "precision": {
+    "functional_out_proj": "BF16 model path both",
+    "qk_rotation_matmul": "FP32 both",
+    "rotation_master": "FP32 both",
+    "state": "FP32 both"
+  },
+  "qdq": {
+    "formal": "same",
+    "group_axis": "K/-2",
+    "group_size": 128,
+    "layout": "[B,H,K,V]",
+    "precision": "INT8 symmetric represented by FP codes",
+    "scale_shape": "[B,H,1,V]",
+    "train": "float32; scale=max(abs(S),dim=-2,keepdim)/127 clamped at 1e-12; torch.round ties-to-even; clamp[-127,127]; dequant=codes*scale",
+    "zero_point": 0
+  },
+  "quantization_object": {
+    "formal": "recurrent cache state only",
+    "train": "recurrent state tensor only in side-car local objective",
+    "weights_or_other_activations_quantized": false
+  },
+  "timing_difference": "Training injects and quantizes an FP previous state for each isolated token; formal quantizes each updated state and writes it back for the next token.",
+  "train_path": "FP teacher state_input -> H/Delta rotate -> QDQ/STE -> optional native recovery or one local recurrence -> no state writeback"
+}

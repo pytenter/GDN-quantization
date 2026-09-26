@@ -1,0 +1,30 @@
+--- initial_audit_harness.py
++++ run_memory_lifetime_audit.py
+@@ -31,7 +31,10 @@
+ 
+ ROOT = Path(__file__).resolve().parents[2]
+ SOURCE_EXPERIMENT = ROOT / "experiments/QWEN_RECURRENT_DENSE_C5_C6_V1"
+-AUDIT = ROOT / "experiments/QWEN_C5_RECURRENT_MEMORY_LIFETIME_AUDIT_V1"
++AUDIT = Path(os.environ.get(
++    "QWEN_MEMORY_AUDIT_ROOT",
++    ROOT / "experiments/QWEN_C5_RECURRENT_MEMORY_LIFETIME_AUDIT_V1",
++))
+ SOURCE_SCRIPT = SOURCE_EXPERIMENT / "run_recurrent_dense.py"
+ TASK = "QWEN_C5_RECURRENT_MEMORY_LIFETIME_AUDIT_V1"
+ AUDIT_UPDATES = 30
+@@ -476,6 +479,7 @@
+                         cache_tensor = first_tensor(student_cache, lambda tensor: tensor.is_cuda and tensor.grad_fn is not None)
+                         if cache_tensor is not None:
+                             refs["recurrent_cache_entry"] = safe_weakref(cache_tensor)
++                            del cache_tensor
+                     if capture:
+                         state, functional, c5, c6 = patch.captured_losses()
+                         combined = c5
+@@ -484,6 +488,7 @@
+                             state_tensor = next(iter(patch.student_post.values()))
+                             refs["student_state_old_window"] = safe_weakref(state_tensor)
+                             refs["qdq_temporary"] = safe_weakref(state_tensor)
++                            del state_tensor
+                         doc_primary += float(state.detach().cpu()) / BASE.TARGETS_PER_DOCUMENT
+                         doc_state += float(state.detach().cpu()) / BASE.TARGETS_PER_DOCUMENT
+                         doc_functional += float(functional.detach().cpu()) / BASE.TARGETS_PER_DOCUMENT
