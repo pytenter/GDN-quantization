@@ -21,9 +21,9 @@ run_one() {
   local kind="$1" mode="$2" dir="$ROOT/candidate_$kind" server client status=0
   [[ ! -e "$dir/client_result.json" ]] || { echo "refusing to overwrite $dir" >&2; return 2; }
   mkdir -p "$dir"
-  "$EXP/scripts/launch_formal_server_3090.sh" 3 31503 "$mode" "$dir" "$PATCH" "$H_FINAL" > "$dir/server.log" 2>&1 & server=$!
+  "$EXP/scripts/launch_formal_server_3090.sh" 4 31504 "$mode" "$dir" "$PATCH" "$H_FINAL" > "$dir/server.log" 2>&1 & server=$!
   OWN_PIDS=("$server")
-  "$PY" "$EXP/scripts/run_runtime_gate_client.py" --base-url http://127.0.0.1:31503 \
+  "$PY" "$EXP/scripts/run_runtime_gate_client.py" --base-url http://127.0.0.1:31504 \
     --model "$MODEL" --mode "$mode" --run-dir "$dir" --reference-json "$REFERENCE_JSON" \
     --wait-seconds 1200 > "$dir/client.log" 2>&1 & client=$!
   wait "$client" || status=$?
