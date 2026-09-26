@@ -6,6 +6,7 @@ Protocol identifier: `GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2`.
 
 - `max_new_tokens = 81920`
 - seeds `[1, 2]`
+- 30 AIME26 problems, giving 60 samples per condition
 - sampling enabled
 - temperature `1.0`
 - top-p `0.95`
@@ -44,7 +45,7 @@ The frozen scorer is documented in `docs/SCORER_PROTOCOL.md`. Gold is not used f
 
 ## 256K follow-up
 
-The 256K length-sensitivity jobs use seed 1, `max_new_tokens=262144`, SGLang/Triton, and YaRN factor 2 with original maximum positions 131072. They are separate from the 81,920 frozen formal protocol and cannot be promoted to `FINAL` until generation, frozen scoring, and verification all complete.
+The completed 256K offline length-sensitivity analysis uses seed 1, `max_new_tokens=262144`, SGLang/Triton, and YaRN factor 2 with original maximum positions 131072. Its compact frozen scoring and verification evidence is archived under `experiments/ling_kda/long_horizon/LING_256K_LONG_HORIZON_V1/`. It remains supporting length-sensitivity evidence and does not replace the 81,920 two-seed frozen formal protocol.
 
 ## Artifact policy
 

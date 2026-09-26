@@ -28,7 +28,7 @@ The repository retains compact causal and diagnostic chains without upgrading pa
 
 ## 256K length-sensitivity follow-up
 
-Snapshot timestamp: `2026-09-21T16:07:03+08:00`.
+The table below is retained as a historical snapshot from `2026-09-21T16:07:03+08:00`:
 
 | Condition | Snapshot | Status |
 |---|---:|---|
@@ -36,8 +36,8 @@ Snapshot timestamp: `2026-09-21T16:07:03+08:00`.
 | Ling INT8_R128 | 13/30 | `IN_PROGRESS` |
 | Ling INT8_R128 + Value-Hadamard | 10/30 | `IN_PROGRESS` |
 
-These are progress counts, not accuracy values. No 256K condition is marked `FINAL` in this consolidation.
+Those entries are historical progress counts, not accuracy values. The later completed offline analysis is archived under `experiments/ling_kda/long_horizon/LING_256K_LONG_HORIZON_V1/` and reports FP_STATE 21/30, INT8_R128 9/30, and INT8_R128 + Value-Hadamard 17/30. It remains separate from the canonical 81,920 two-seed result.
 
 ## Next stage
 
-Adaptive / learnable structured recurrent-state rotation has not been executed. ButterflyQuant and HARP have not been executed. The next research stage is learnable / structured recurrent-state rotation design.
+The current phase is recurrent-aware learnable rotation design and validation. Qwen C5/C6 semantic gates pass, but formal AIME has not started; Ling L6 evaluation is running/partial, L7 evaluation is pending, and Ling memory V2 remains partial. ButterflyQuant and HARP have not been executed. The open question is whether a learnable orthogonal rotation trained under real recurrent INT8 history can outperform fixed Hadamard.

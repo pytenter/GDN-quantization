@@ -30,4 +30,4 @@ V1, V2, V3, diagnostic extractors, and development corpora are historical or aud
 
 ## 256K boundary
 
-The active Ling 256K helper references the same V4 scorer implementation, but its growing outputs are not final and are not archived or declared as final accuracy in this consolidation.
+The completed Ling 256K offline analysis uses the same V4 scorer implementation. Its compact frozen scoring evidence is archived separately from the canonical 81,920 comparison; it is a seed-1 length-sensitivity result, not a replacement for the 30-problem, two-seed formal protocol.

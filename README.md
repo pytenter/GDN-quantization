@@ -38,7 +38,7 @@ The current phase is **recurrent-aware learnable rotation design and validation*
 
 ```text
 experiments/   Canonical AIME26, rotation, and mechanism code
-results/       Compact immutable evidence and non-final 256K status snapshots
+results/       Compact immutable evidence, frozen reasoning results, and finalized offline analyses
 reports/       Scientific reports and consolidation audits
 tests/         Scorer and rotation regressions
 docs/          Protocols, experiment index, provenance, and server inventories
