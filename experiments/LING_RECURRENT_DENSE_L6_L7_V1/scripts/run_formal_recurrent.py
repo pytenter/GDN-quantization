@@ -55,6 +55,11 @@ def output_ids(payload):
     return [], None
 
 
+def raw_messages(problem):
+    """Frozen prompt wrapper used by the audited L2 formal client."""
+    return [{"role": "user", "content": str(problem)}]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", required=True)
@@ -69,8 +74,28 @@ def main():
     args = parser.parse_args()
     root = Path(args.experiment_root)
     sys.path.insert(0, str(root / "scripts"))
-    from aime26_common import raw_messages
     from aime26_scorer_v4 import compare_with_gold, extract_v4
+
+    frozen = json.loads((root / "configs/frozen_eval_config.json").read_text(encoding="utf-8"))
+    expected_constants = {
+        "context_length": CONTEXT_LENGTH,
+        "safety_margin": SAFETY_MARGIN,
+        "generation_seed": SEED,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 20,
+        "repetition_penalty": 1.0,
+        "thinking": True,
+        "do_sample": True,
+        "tp_size": 1,
+    }
+    mismatches = {
+        key: {"frozen": frozen.get(key), "client": value}
+        for key, value in expected_constants.items()
+        if frozen.get(key) != value
+    }
+    if mismatches:
+        raise RuntimeError(f"frozen evaluation config mismatch: {mismatches}")
 
     deadline = time.time() + 1200
     while True:
@@ -106,10 +131,10 @@ def main():
         if max_new != int(row["max_new_tokens"]):
             raise RuntimeError(f"frozen budget mismatch for {question_id}")
         sampling = {
-            "temperature": 1.0,
-            "top_p": 0.95,
-            "top_k": 20,
-            "repetition_penalty": 1.0,
+            "temperature": frozen["temperature"],
+            "top_p": frozen["top_p"],
+            "top_k": frozen["top_k"],
+            "repetition_penalty": frozen["repetition_penalty"],
             "max_new_tokens": max_new,
             "sampling_seed": SEED,
         }

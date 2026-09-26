@@ -42,9 +42,43 @@ print('FORMAL_CONDITION_COMPLETE', sys.argv[1])
 PY
 }
 
-[[ "$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["UNIFIED_H_VS_L2_PARITY"])' "$EXP/analysis/unified_h_parity.json")" == PASS ]] || {
-  echo "UNIFIED_H_VS_L2_PARITY is not PASS" >&2; exit 2;
+"$PY" - "$EXP" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+
+def load(relative):
+    path = root / relative
+    if not path.is_file():
+        raise RuntimeError(f"missing formal prerequisite: {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+parity = load("analysis/unified_h_parity.json")
+baseline = load("analysis/baseline_reuse_audit.json")
+training = load("analysis/TRAINING_PIPELINE_COMPLETE.json")
+leakage = load("analysis/training_data_leakage.json")
+materialization = load("analysis/final_rotation_materialization.json")
+train_manifest = load("manifests/training_data_manifest.json")
+validation_manifest = load("manifests/validation_data_manifest.json")
+
+checks = {
+    "UNIFIED_H_VS_L2_PARITY": parity.get("UNIFIED_H_VS_L2_PARITY") == "PASS",
+    "BASELINE_REUSE_GATE": baseline.get("status") == "PASS",
+    "TRAINING_PIPELINE_COMPLETE": training.get("status") == "PASS",
+    "AIME26_TRAINING_OVERLAP_NO": leakage.get("status") == "PASS" and leakage.get("AIME26_overlap") == "NO",
+    "TRAIN_MANIFEST": train_manifest.get("status") == "PASS",
+    "VALIDATION_MANIFEST": validation_manifest.get("status") == "PASS",
+    "FINAL_R_MATERIALIZATION": materialization.get("status") == "PASS",
+    "L6_ROTATION_PRESENT": (root / "rotations/L6_final_rotation.pt").is_file(),
+    "L7_ROTATION_PRESENT": (root / "rotations/L7_final_rotation.pt").is_file(),
 }
+failed = [name for name, passed in checks.items() if not passed]
+if failed:
+    raise RuntimeError(f"formal generation gate failed: {failed}")
+print("FORMAL_PREFLIGHT_PASS", json.dumps(checks, sort_keys=True))
+PY
 run_condition L6 "$EXP/rotations/L6_final_rotation.pt"
 run_condition L7 "$EXP/rotations/L7_final_rotation.pt"
 echo L6_L7_FORMAL_COMPLETE

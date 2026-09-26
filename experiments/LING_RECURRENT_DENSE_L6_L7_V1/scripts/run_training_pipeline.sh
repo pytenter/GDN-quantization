@@ -25,6 +25,7 @@ done
   --corpus "$EXP/source_traces/CALIBRATION_RAW_TEXTS.jsonl" \
   --eval-samples "$EXP/source_traces/eval_samples.jsonl" \
   --output-dir "$EXP/manifests"
+cp "$EXP/manifests/training_data_leakage.json" "$EXP/analysis/training_data_leakage.json"
 
 env CUDA_VISIBLE_DEVICES=3 LING_MODEL_PATH="$MODEL" \
   "$PY" "$TRAINER" --phase smoke --legacy-repo "$REPO" \
