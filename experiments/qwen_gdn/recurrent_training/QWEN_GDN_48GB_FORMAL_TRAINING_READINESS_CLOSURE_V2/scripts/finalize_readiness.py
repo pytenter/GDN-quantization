@@ -20,7 +20,7 @@ def write_once(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         raise RuntimeError(f'refusing to overwrite frozen artifact: {path}')
-    with path.open('x', encoding='utf-8') as out:
+    with path.open('x', encoding='utf-8', newline='\n') as out:
         if isinstance(value, str):
             out.write(value)
         else:
