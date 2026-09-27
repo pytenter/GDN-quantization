@@ -181,12 +181,11 @@ def run(condition: str, horizon: int, sustained: bool):
         if schedule[0]['document_id'] != protocol['fixed_first_document']:
             raise RuntimeError('first training document mismatch')
         ids, positions = core.tokenize(tokenizer, schedule[0])
-        token_hash = hashlib.sha256(bytes().join(int(x).to_bytes(4, 'little') for x in ids)).hexdigest()
+        token_hash = hashlib.sha256(bytes().join(int(x).to_bytes(8, 'little') for x in ids)).hexdigest()
         if len(ids) != protocol['first_document_token_count'] or positions != protocol['first_document_capture_positions_zero_based']:
             raise RuntimeError('first training document token/positions mismatch')
-        # Record this explicit LE-uint32 digest; the frozen audit digest used
-        # a different serialization, while document identity/count/positions
-        # are checked here against the same verified manifest and tokenizer.
+        if token_hash != protocol['first_document_token_sha256']:
+            raise RuntimeError('first training document int64 token digest mismatch')
     model_before = _model_sentinels(model)
     device_memory_before = _snap(device, 'after_model_load')
     h = core.hadamard(device)
@@ -198,7 +197,7 @@ def run(condition: str, horizon: int, sustained: bool):
                 'distributed_framework_used': False,
                 'canonical_source_sha256': parent_checks['canonical_c5_c6_source']['actual_sha256']}
     if not sustained:
-        evidence['first_document_token_sha256_le_uint32'] = token_hash
+        evidence['first_document_token_sha256_le_uint64'] = token_hash
     print(json.dumps({'event': 'diagnostic_start', 'condition': condition, 'horizon': horizon,
                       'sustained': sustained, 'document_ids': [x['document_id'] for x in schedule]}), flush=True)
     try:

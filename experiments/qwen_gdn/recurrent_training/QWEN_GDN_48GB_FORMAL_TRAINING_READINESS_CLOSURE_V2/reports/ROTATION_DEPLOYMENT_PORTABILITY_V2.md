@@ -1,0 +1,13 @@
+# Frozen rotation deployment portability V2
+
+Verdict: **PASS** for the new frozen-matrix deployment path. The V1 question—whether two hosts independently recompute byte-identical Cayley matrices from the same theta—remains **FAIL** and is not reinterpreted.
+
+The diagnostic training checkpoint `/root/autodl-tmp/qwen_48gb_rotation_h32_8update_v1.pt` has SHA-256 `554b59891cc3c5b37a48203fd553e3992e6b7759f5867080ea377e165377f228`: C5, H32, eight diagnostic updates, 195,072 FP32 theta parameters across the frozen 24 GDN layer IDs. A fresh vGPU process used the unchanged canonical Cayley implementation to export each layer's 128×128 FP32 matrix. The matrix-only deployment artifact is 1,582,050 bytes, SHA-256 `cb9eca306fa4e3589fd4d5a67fe285f90ef94085a27715e1ed517ef60b3bbe17`. It contains no model weights and is not committed to Git.
+
+The vGPU artifact is at `/root/autodl-tmp/rotation_deployments/QWEN_GDN_48GB_FORMAL_TRAINING_READINESS_CLOSURE_V2/qwen_48gb_rotation_h32_8update_v1_frozen_R.pt`; the original-server copy is at `/data/zypan/artifacts/QWEN_GDN_48GB_FORMAL_TRAINING_READINESS_CLOSURE_V2/qwen_48gb_rotation_h32_8update_v1_frozen_R.pt`. Exact file SHA-256 and size matched after transfer. All 24 per-layer matrix hashes matched on same-host export/load and on original-server direct load. Layer mapping, FP32 shape, H×Delta orientation, and inverse/recovery convention were checked without changing the QDQ or recurrent kernel.
+
+The vGPU same-host theta-bank versus frozen-bank probe had zero exact mismatches across matrices, selected rotated q/k, pre-QDQ state, scale, codes, post-QDQ state, writeback, block output, losses and logits. The original Qwen server directly loaded frozen matrices, ran the fixed non-AIME canonical GDN/C128/recurrent probe, and passed finite scale, valid int8 codes, post-QDQ and recurrent-writeback diagnostics. The original server did **not** recompute Cayley matrices for the V2 deployment path. The wrapper was diagnostic-only; no original inference source or frozen C0–C4 artifact was modified.
+
+Thus `FROZEN_R_LOADER_SEMANTICS_GATE`, `FROZEN_R_FILE_PORTABILITY_GATE`, `ORIGINAL_SERVER_FROZEN_R_RUNTIME`, and `VGPU_TO_CANONICAL_DEPLOYMENT_PORTABILITY_V2` are all **PASS**. This does not claim cross-host bitwise equality of an entire model forward pass; it establishes exact deployed rotation-operator bytes plus the canonical-server functional gate. The historical `V1_RECOMPUTED_MATRIX_HASH_PORTABILITY` stays **FAIL** (max absolute R difference 4.768×10⁻⁷, relative L2 1.093×10⁻⁷).
+
+Evidence: `analysis/frozen_rotation_matrix_manifest.json`, `analysis/frozen_rotation_same_host.json`, `analysis/cross_host_file_integrity.json`, and `analysis/original_server_deployment_gate.json`.
