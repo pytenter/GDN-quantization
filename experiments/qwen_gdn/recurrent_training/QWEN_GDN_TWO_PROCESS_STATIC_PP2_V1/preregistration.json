@@ -1,0 +1,23 @@
+{
+  "experiment_id": "QWEN_GDN_TWO_PROCESS_STATIC_PP2_V1",
+  "branch": "exp/qwen-gdn-two-process-static-pp2-v1",
+  "base_branch": "exp/qwen-gdn-deepspeed-zero3-recurrent-feasibility-v1",
+  "base_sha": "1edd108db04ff4f2ddfcc3d26868b6a5ba662d08",
+  "inherited_evidence_branches": {
+    "fsdp2_feasibility": "ad5007de643f55d92fccdb37562318f22a2e734b",
+    "fsdp2_reentry": "f730e3dca7589d8cc272de839d6e5b3a77cd1eaa",
+    "fsdp2_output_hook": "c4fa1819633398696b3fed98e82b95fcc07473fa",
+    "zero3_feasibility": "1edd108db04ff4f2ddfcc3d26868b6a5ba662d08"
+  },
+  "canonical_c5_source_sha256": "48bd12d252c827ae57c48b2228d95e30de9f92baad47ebc2e8b64405b49e516e",
+  "canonical_quantizer_rotation_source_sha256": "62e769dfad73170279daf0bdb56855b7d7e4aaf77478de897958fa87b2608067",
+  "canonical_modeling_source_sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a",
+  "model_config_sha256": "d0883072e01861ed0b2d47be3c16c36a8e81c224c7ffaa310c6558fb3f932b05",
+  "phase_order": ["canonical_math", "static_partition", "teacher_and_student_forward_parity", "H1_gradient_parity", "H4_one_update", "H8_one_update", "H16_one_update", "H32_one_update", "H32_five_updates_and_checkpoint_portability"],
+  "forward_failure_rule": "one first-forward-divergence localization then stop",
+  "h1_boundary_failure_rule": "one boundary-gradient/math audit then stop",
+  "h4_failure_rule": "one directly related diagnostic then stop",
+  "forbidden": ["FSDP", "DeepSpeed", "ZeRO", "TP", "HF dual device_map", "PipelineModule", "activation checkpointing", "offload", "formal C5/C6", "AIME", "environment changes"],
+  "canonical_diagnostic": "Frozen V1 TRAIN first row, first 32 tokens, target token index 31, theta=0; no AIME",
+  "optimizer": {"name": "Adam", "lr": 0.003, "weight_decay": 0.0, "scope": "owning-rank rotation only"}
+}

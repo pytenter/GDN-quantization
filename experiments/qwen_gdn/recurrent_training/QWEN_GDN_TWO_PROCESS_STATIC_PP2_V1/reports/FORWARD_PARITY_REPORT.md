@@ -1,0 +1,11 @@
+# Static PP2 forward parity — FAIL
+
+The stage-local load gate passed on physical GPUs 0 and 1: each rank held only its assigned 16 blocks, with frozen base parameters and static checkpoint bytes matching the partition inventory. The canonical single-GPU teacher reference exactly reproduced the existing historical input, selected recurrent-state, logits and loss hashes. Thus this comparison has a validated reference.
+
+On the fixed, non-AIME TRAIN prefix (64 tokens), both ranks used identical input-token hashes and the post-block-15 activation transmitted by rank0 was received bitwise unchanged by rank1. However, that activation **did not** equal the single-GPU reference: reference SHA256 `7d350f43e5a67784b05359f4c1ff6726fbef214cead806c7858c85572377d370`, PP2 SHA256 `6941cd7bdb25a64072f689b1262e127a311b92b521fc50feff3fcbe5ec84cf10`. Reference loss was `16.969072341918945`; PP2 loss was `15.68132209777832`. Final logits also had different hashes. Only GDN layer 0 of 24 had an exact teacher recurrent-state hash; the other 23 differed. These are teacher-forward results, not student QDQ parity.
+
+The one protocol-allowed first-divergence localization found that block 0 already differs. Within block 0, `input_layernorm` output was hash-exact but `linear_attn` output differed (L2 reference `50.78388595581055`, PP2 `50.748409271240234`). The complete model recorded `_attn_implementation=sdpa`; the standalone stage recorded `None`, and Transformers emitted the corresponding standalone-attention warning. This is a concrete configuration difference and investigation lead, **not a proven unique cause**. The localization records every block hash comparison and stops at `root_cause=UNRESOLVED_WITHIN_ONE_DIAGNOSTIC`.
+
+`FORWARD_PARITY_GATE=FAIL`. In accordance with the preregistered stop rule, no student QDQ/writeback test, backward, H1/H4/H8/H16/H32 step, checkpoint export, formal C5/C6 training, or AIME inference was run. No attempt was made to patch or retry the model within this task.
+
+Evidence: `analysis/single_teacher_reference.json`, `analysis/pp2_teacher_rank0.json`, `analysis/pp2_teacher_rank1.json`, `analysis/pp2_teacher_forward_parity.json`, `analysis/first_forward_divergence_localization.json`, and the corresponding compact diagnostic traces.

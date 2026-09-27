@@ -1,0 +1,9 @@
+# Static two-process PP2 design freeze
+
+Rank0 owns embedding and decoder blocks 0–15; rank1 owns blocks 16–31, final RMSNorm and LM head. Neither rank may permanently hold the other half's GPU weights. Each owns only its 12 GDN rotations (97,536 FP32 theta values). A stage-local cache may contain empty placeholders for global layer indices, but must allocate recurrent/conv/key-value state only for owned layers.
+
+The boundary is the BF16 hidden state **after block 15 and before block 16**. The two ranks reconstruct identical position/attention-mask metadata from the same token index; this needs empirical parity testing, especially because `Qwen3_5TextModel.forward` (model source lines 1152–1217) normally derives positions and masks using the cache. Rotary embeddings have no learned parameters and may be instantiated on both ranks. For single-token batch size 1 and hidden size 4096, forward activation and backward gradient are 8,192 bytes each. Teacher prefixes may send proportionally larger `[1,T,4096]` tensors.
+
+Forward: rank0 keeps `h_local` with graph, sends a detached copy to rank1. Rank1 makes the received tensor a leaf with `requires_grad=True`, evaluates blocks 16–31, and forms its local contribution with global layer denominator 24. Backward: rank1 obtains gradient for every boundary tensor in the active H segment and sends it to rank0. Rank0 injects those gradients together with its own local C5 loss, using original graph tensors. Both ranks step only their own rotation parameters after gradients are complete. No pipeline overlap, FSDP, DeepSpeed, ZeRO, TP, offload or checkpointing.
+
+No stage-local module forward or model weights have been changed from the canonical Qwen source. The forward parity gate precedes any gradient experiment. A forward failure permits one first-divergence localization and then stops the experiment.

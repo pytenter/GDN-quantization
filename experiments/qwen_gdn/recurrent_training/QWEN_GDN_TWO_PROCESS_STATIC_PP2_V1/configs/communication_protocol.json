@@ -1,0 +1,12 @@
+{
+  "world_size": 2,
+  "backend": "NCCL",
+  "gpu_pair_preferred": [0,1],
+  "ownership": {"rank0": "embedding + blocks 0-15 + local GDN cache/rotations", "rank1": "blocks 16-31 + final norm/lm_head + local GDN cache/rotations"},
+  "forward_tensor": "post-block-15 hidden_states [batch,sequence,4096] BF16; send detached communication copy while retaining rank0 graph tensor",
+  "backward_tensor": "gradient with respect to rank1 leaf boundary hidden [batch,sequence,4096]; explicit send to rank0 and autograd injection",
+  "single_token_batch1_bytes_each_direction": 8192,
+  "student_cache_or_quantizer_cross_rank_transfer": false,
+  "position_and_mask": "reconstruct locally from common token index and frozen Qwen3.5 source; test exact parity before backward",
+  "schedule": "synchronous non-overlapped forward stage0->stage1; backward stage1->stage0; no implicit cross-process autograd"
+}
