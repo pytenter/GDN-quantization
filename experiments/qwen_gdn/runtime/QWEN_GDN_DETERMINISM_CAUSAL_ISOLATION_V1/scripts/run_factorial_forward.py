@@ -32,7 +32,7 @@ def digest(data: bytes) -> str:
 
 
 def tensor_bytes(t: torch.Tensor) -> bytes:
-    return t.detach().contiguous().cpu().view(torch.uint8).numpy().tobytes()
+    return t.detach().contiguous().cpu().reshape(-1).view(torch.uint8).numpy().tobytes()
 
 
 def tensor_summary(t: torch.Tensor) -> dict:
