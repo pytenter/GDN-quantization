@@ -193,8 +193,14 @@ def run(condition: str, horizon: int, sustained: bool):
         token_hash = hashlib.sha256(bytes().join(int(x).to_bytes(8, 'little') for x in ids)).hexdigest()
         if len(ids) != protocol['first_document_token_count'] or positions != protocol['first_document_capture_positions_zero_based']:
             raise RuntimeError('first training document token/positions mismatch')
-        if token_hash != protocol['first_document_token_sha256']:
-            raise RuntimeError('first training document int64 token digest mismatch')
+        erratum = json.loads((ROOT / 'configs/token_digest_erratum.json').read_text())
+        frozen_hash = protocol['first_document_token_sha256']
+        if (frozen_hash != erratum['frozen_protocol_invalid_sha256'] or
+                len(frozen_hash) != 65 or
+                frozen_hash[:8] + frozen_hash[9:] != erratum['corrected_sha256'] or
+                len(erratum['corrected_sha256']) != 64 or
+                token_hash != erratum['corrected_sha256']):
+            raise RuntimeError('first training document token digest/erratum mismatch')
     model_before = _model_sentinels(model)
     device_memory_before = _snap(device, 'after_model_load')
     h = core.hadamard(device)
@@ -207,6 +213,7 @@ def run(condition: str, horizon: int, sustained: bool):
                 'canonical_source_sha256': parent_checks['canonical_c5_c6_source']['actual_sha256']}
     if not sustained:
         evidence['first_document_token_sha256_le_uint64'] = token_hash
+        evidence['token_digest_erratum_applied'] = True
     print(json.dumps({'event': 'diagnostic_start', 'condition': condition, 'horizon': horizon,
                       'sustained': sustained, 'document_ids': [x['document_id'] for x in schedule]}), flush=True)
     try:
