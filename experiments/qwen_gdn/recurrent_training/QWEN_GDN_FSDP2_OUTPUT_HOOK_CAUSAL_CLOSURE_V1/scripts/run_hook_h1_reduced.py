@@ -27,7 +27,7 @@ from run_small_stack_reentry import SmallStack, load_layers  # noqa: E402
 
 
 def sha_tensor(t):
-    return hashlib.sha256(t.detach().contiguous().cpu().view(torch.uint8).numpy().tobytes()).hexdigest()
+    return hashlib.sha256(t.detach().contiguous().cpu().reshape(-1).view(torch.uint8).numpy().tobytes()).hexdigest()
 
 
 def save_once(path, data):
@@ -42,7 +42,8 @@ def run(condition):
     world = int(os.environ.get("WORLD_SIZE", "1"))
     if world != 2 or torch.cuda.device_count() != 2 or os.environ.get("CUDA_VISIBLE_DEVICES") != "0,1":
         raise RuntimeError("exactly two safe physical GPUs 0/1 and two ranks required")
-    tag = f"hook_h1_{condition}_rank{rank}"
+    # v1 files record the diagnostic scalar-serializer error; never overwrite them.
+    tag = f"hook_h1_v2_{condition}_rank{rank}"
     if (ROOT / "analysis" / f"{tag}.json").exists() or (ROOT / "analysis" / f"{tag}.error.json").exists():
         raise RuntimeError("single-use evidence already exists")
     torch.cuda.set_device(rank)
