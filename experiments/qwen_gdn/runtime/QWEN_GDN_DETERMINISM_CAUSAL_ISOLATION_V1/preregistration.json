@@ -1,0 +1,31 @@
+{
+  "task": "QWEN_GDN_DETERMINISM_CAUSAL_ISOLATION_V1",
+  "parent_v2_commit_sha": "52be0e5bc9561067231f87ded788a2d0147800a1",
+  "main_base_sha": "78b566659776a32183fcc0d6271fe2219bcf5c58",
+  "canonical_modeling_source_sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a",
+  "canonical_c5_source_sha256": "48bd12d252c827ae57c48b2228d95e30de9f92baad47ebc2e8b64405b49e516e",
+  "candidate_prefix_source_sha256": "3c952305335de0166ca18e33cd60ae99eb5906956cd797387299252b96ef0571",
+  "input": "same V2 fixed non-AIME V1 TRAIN first row, first 64 token IDs",
+  "seed": 0,
+  "model_and_rotation": "Qwen3.5-9B BF16, frozen model, theta=0 Hadamard initialization; teacher-forward cache states and canonical INT8-C128 QDQ diagnostics",
+  "conditions": {
+    "P0R0": {"prefix": "canonical", "runtime": "normal"},
+    "P1R0": {"prefix": "fixed_left_to_right_cumsum candidate", "runtime": "normal"},
+    "P0R1": {"prefix": "canonical", "runtime": "strict torch deterministic algorithms"},
+    "P1R1": {"prefix": "fixed_left_to_right_cumsum candidate", "runtime": "strict torch deterministic algorithms"}
+  },
+  "primary_pairs": ["P0R0_vs_P1R0", "P1R0_vs_P1R1"],
+  "thresholds_from_v2": {
+    "logits_max_abs": 0.0625,
+    "logits_relative_l2": 0.001,
+    "state_max_abs": 0.001,
+    "state_relative_l2": 0.00001,
+    "loss_relative_error": 0.00001,
+    "qdq_scale_relative_l2": 0.00001,
+    "qdq_codes": "exact, all 24 layers"
+  },
+  "first_divergence_tolerance": "bitwise exact at ordered captured nodes",
+  "runtime_subfactor_order": ["workspace_only", "tf32_off_only", "cudnn_only", "torch_deterministic_algorithms_only", "fixed_triton_fla_if_applicable", "combined"],
+  "stop_rules": ["no backward until full-model semantics and fresh-process forward repeatability pass", "no PP2, H32/H64/H128, formal C5/C6, or AIME", "no modification to old V1/V2 artifacts"],
+  "preregistered_before_new_factorial_results": true
+}
