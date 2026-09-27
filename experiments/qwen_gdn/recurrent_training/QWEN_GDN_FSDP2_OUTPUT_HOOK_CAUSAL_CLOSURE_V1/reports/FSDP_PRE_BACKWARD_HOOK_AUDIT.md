@@ -1,0 +1,7 @@
+# FSDP pre-backward hook audit
+
+Installed PyTorch 2.5.1 FSDP2 `_fsdp_state.py:316-323` registers a pre-backward hook on grad-requiring tensors in a wrapped module's ordinary output. Its `_fsdp_param_group.py:321-329` records `FSDP::pre_backward (<module FQN>)` while unsharding. These files were inspected read-only; no private state or hooks were mutated.
+
+The first reduced H1 audit finished backward but its diagnostic-only scalar hash serializer rejected a 0-dimensional tensor. Its two error JSON files were preserved. The corrected v2 used a flattened scalar before byte reinterpretation and new evidence filenames. In fresh two-rank, two-real-GDN-decoder H1 comparisons, public output hooks plus CPU profiler changed **none** of the loss, input gradient, rotation gradient, or Adam theta hashes and added **0 bytes** to peak allocated GPU memory. Each rank recorded one forward entry/exit and one output-gradient hook per decoder and root; profiler recorded `FSDP::pre_backward (model.layers.1)` then `(model.layers.0)`. `HOOK_INSTRUMENTATION_NONINTERFERENCE=PASS` for this reduced passing graph only.
+
+Neither the frozen parent H4 baseline nor the anchored H4 run has an FSDP pre-backward trace. After the anchored run produced a new backward failure shape, the frozen stop rule prohibited any hook-only H4 rerun. Consequently baseline-vs-anchor missing/restored hook comparison, first missing unit, and H4 hook anomaly are all **UNKNOWN**. The passing reduced H1 trace cannot be projected onto the failing full 9B H4 graph.
