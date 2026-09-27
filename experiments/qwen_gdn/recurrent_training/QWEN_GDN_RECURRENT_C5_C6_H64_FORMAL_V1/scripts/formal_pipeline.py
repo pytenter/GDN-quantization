@@ -178,6 +178,19 @@ def verify_static_protocol(condition: str) -> tuple[dict, dict]:
         # git merge-base --is-ancestor prints nothing on success.
         raise RuntimeError("unexpected ancestry output")
     protocol = load_protocol()
+    expected_environment = protocol["environment"]
+    if (torch.cuda.device_count() != 1 or
+            torch.cuda.get_device_name(0) != expected_environment["gpu_model"] or
+            torch.cuda.get_device_properties(0).total_memory != expected_environment["vram_bytes"]):
+        raise RuntimeError("GPU topology/model/VRAM drift")
+    current_determinism = {
+        "torch_deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
+        "cudnn_deterministic": torch.backends.cudnn.deterministic,
+        "cudnn_benchmark": torch.backends.cudnn.benchmark,
+        "cuda_matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+    }
+    if current_determinism != expected_environment["deterministic_flags"]:
+        raise RuntimeError("deterministic flag drift")
     provenance = runtime.check_parent_sources()
     recorded = protocol["source_hashes"]
     paths = {
@@ -192,6 +205,13 @@ def verify_static_protocol(condition: str) -> tuple[dict, dict]:
     for name, path in paths.items():
         if file_sha256(path) != recorded[name]["sha256"]:
             raise RuntimeError(f"source/hash drift: {name}")
+    for name, expected in protocol["frozen_config_hashes"].items():
+        if file_sha256(ROOT / "configs" / name) != expected:
+            raise RuntimeError(f"frozen config hash drift: {name}")
+    for item in protocol["model"]["inventory"]:
+        model_path = Path(item["path"])
+        if model_path.stat().st_size != item["size_bytes"] or file_sha256(model_path) != item["sha256"]:
+            raise RuntimeError(f"model checkpoint hash drift: {model_path.name}")
     if file_sha256(core.CORPUS) != protocol["training"]["common"].get(
             "corpus_sha256", "37f38795847da8daa776be9d7dd3b6083442dd7a27e0d14f0dedbeaa3d4884d0"):
         raise RuntimeError("training data hash mismatch")

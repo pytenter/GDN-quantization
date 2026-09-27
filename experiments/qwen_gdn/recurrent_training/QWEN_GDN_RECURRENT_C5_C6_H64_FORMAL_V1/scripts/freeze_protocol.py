@@ -285,6 +285,7 @@ def main() -> None:
         "graph_detach_semantics": "backward at each H64 boundary only when that segment contains capture loss; recurrent cache detached after every H64 segment; numerical INT8 state remains continuous",
         "recurrent_writeback": "real student post-QDQ INT8-C128 dequantized state",
         "gradient_clip_global_norm": 1.0,
+        "catastrophic_exploding_gradient_global_norm_threshold": 1.0e6,
         "weight_decay": 0.0,
         "random_seeds": {"python_random": 0, "torch_manual_seed": 0, "schedule_seed": 0},
         "distributed_training": False,
@@ -337,6 +338,39 @@ def main() -> None:
         "checkpoint_selection": selection_audit["conditions"],
         "canonical_definition_ambiguity": False,
     }
+    c5_config = {**common_training, "condition": "C5",
+                 "objective": {"objective": "DENSE_STATE exact objective",
+                               "optimized_loss": "state relative-MSE", "optimizer": "Adam", "lr": 0.003},
+                 "validation": validation}
+    c6_config = {**common_training, "condition": "C6",
+                 "objective": {"objective": "DENSE_FUNCTIONAL exact objective",
+                               "optimized_loss": "local out-proj relative-MSE + 0.1 * state relative-MSE",
+                               "optimizer": "Adam", "lr": 0.001},
+                 "validation": validation}
+    training_panel_config = {"unique_panel": train_panel, "schedule": schedule_ids,
+                             "schedule_sha256": text_sha256(schedule_ids)}
+    validation_panel_config = {"panel": validation_panel,
+                               "document_ids": validation["document_ids"]}
+    atomic_json(ROOT / "configs/environment.json", environment)
+    atomic_json(ROOT / "configs/model_provenance.json", model)
+    atomic_json(ROOT / "configs/quantization.json", quantization)
+    atomic_json(ROOT / "configs/rotation.json", rotation)
+    atomic_json(ROOT / "configs/canonical_definition_audit.json", canonical_audit)
+    atomic_json(ROOT / "configs/source_provenance.json", source_hashes)
+    atomic_json(ROOT / "configs/C5.json", c5_config)
+    atomic_json(ROOT / "configs/C6.json", c6_config)
+    atomic_json(ROOT / "configs/training_document_panel.json", training_panel_config)
+    atomic_json(ROOT / "configs/validation_panel.json", validation_panel_config)
+    atomic_json(ROOT / "configs/token_digest_erratum_reference.json", erratum)
+    frozen_config_names = [
+        "environment.json", "model_provenance.json", "quantization.json", "rotation.json",
+        "canonical_definition_audit.json", "source_provenance.json", "C5.json", "C6.json",
+        "training_document_panel.json", "validation_panel.json", "token_digest_erratum_reference.json",
+    ]
+    frozen_config_hashes = {
+        name: file_sha256(ROOT / "configs" / name) for name in frozen_config_names
+    }
+
     protocol = {
         "experiment": ROOT.name,
         "formal_protocol_status": "PROSPECTIVE_NOT_YET_TRAINED",
@@ -362,20 +396,10 @@ def main() -> None:
             "history_preserved": True,
         },
         "source_hashes": source_hashes,
+        "frozen_config_hashes": frozen_config_hashes,
     }
 
-    atomic_json(ROOT / "configs/environment.json", environment)
-    atomic_json(ROOT / "configs/model_provenance.json", model)
-    atomic_json(ROOT / "configs/quantization.json", quantization)
-    atomic_json(ROOT / "configs/rotation.json", rotation)
     atomic_json(ROOT / "configs/formal_training_protocol.json", protocol)
-    atomic_json(ROOT / "configs/canonical_definition_audit.json", canonical_audit)
-    atomic_json(ROOT / "configs/source_provenance.json", source_hashes)
-    atomic_json(ROOT / "configs/C5.json", {**common_training, "condition": "C5", "objective": protocol["training"]["C5"], "validation": validation})
-    atomic_json(ROOT / "configs/C6.json", {**common_training, "condition": "C6", "objective": protocol["training"]["C6"], "validation": validation})
-    atomic_json(ROOT / "configs/training_document_panel.json", {"unique_panel": train_panel, "schedule": schedule_ids, "schedule_sha256": text_sha256(schedule_ids)})
-    atomic_json(ROOT / "configs/validation_panel.json", {"panel": validation_panel, "document_ids": validation["document_ids"]})
-    atomic_json(ROOT / "configs/token_digest_erratum_reference.json", erratum)
     atomic_json(ROOT / "preregistration.json", protocol)
 
     report = f"""# Prospective preregistration: {ROOT.name}
