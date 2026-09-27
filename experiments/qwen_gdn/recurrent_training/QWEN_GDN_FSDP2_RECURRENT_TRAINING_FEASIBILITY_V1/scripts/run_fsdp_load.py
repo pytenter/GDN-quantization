@@ -103,7 +103,7 @@ def main():
                                   'dtype': str(p.dtype),
                                   'placements': [str(x) for x in p.placements] if is_dt else [],
                                   'requires_grad': p.requires_grad})
-        sharded = all(d['placements'] and any('Shard' in s for s in d['placements']) for d in param_details)
+        sharded = all(d['placements'] and any('Shard' in s or s.startswith('S(') for s in d['placements']) for d in param_details)
         frozen = all(not d['requires_grad'] for d in param_details)
         rotation_trainable = bool(bank_params) and all(p.requires_grad for _, p in bank_params)
         result = {'rank': rank, 'local_rank': local_rank, 'device': str(torch.cuda.current_device()),
@@ -124,7 +124,7 @@ def main():
                   'TRAINABLE_PARAMETER_GATE': 'PASS' if frozen and rotation_trainable else 'FAIL',
                   'PARAMETER_SHARDING_GATE': 'PASS' if sharded else 'FAIL'}
         save_once(ROOT / 'analysis' / f'fsdp_load_rank{rank}.json', result)
-        dist.barrier()
+        dist.barrier(device_ids=[local_rank])
         if rank == 0:
             other = json.loads((ROOT / 'analysis/fsdp_load_rank1.json').read_text())
             combined = {'world_size': world, 'ranks': [result, other],
