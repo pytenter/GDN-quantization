@@ -23,11 +23,11 @@ trap cleanup EXIT INT TERM
 
 "$PY" - "$EXP" "$SOURCE" "$CONDITION" "$ROTATION" <<'PY'
 import hashlib,json,pathlib,sys
-exp,source,condition,rotation=map(pathlib.Path,sys.argv[1:])
+exp=pathlib.Path(sys.argv[1]); source=pathlib.Path(sys.argv[2]); condition=sys.argv[3]; rotation=pathlib.Path(sys.argv[4])
 stage=json.loads((exp/'provenance/stage0_audit.json').read_text())
 if stage['gates']['PROVENANCE_GATE']!='PASS': raise RuntimeError('provenance gate')
-if stage['parity'][str(condition)]['status']!='PASS': raise RuntimeError('parity gate')
-key='H_rotation' if str(condition)=='H' else f'{condition}_rotation'
+if stage['parity'][condition]['status']!='PASS': raise RuntimeError('parity gate')
+key='H_rotation' if condition=='H' else f'{condition}_rotation'
 actual=hashlib.sha256(rotation.read_bytes()).hexdigest()
 if actual!=stage['artifacts'][key]['expected']: raise RuntimeError('rotation identity gate')
 if hashlib.sha256((exp/'scripts/aime26_scorer_v4.py').read_bytes()).hexdigest()!='fa5dd904c7d1887df4b8c23613f37b8d438ea494cb72607b89be8e07d55a343b': raise RuntimeError('scorer gate')
