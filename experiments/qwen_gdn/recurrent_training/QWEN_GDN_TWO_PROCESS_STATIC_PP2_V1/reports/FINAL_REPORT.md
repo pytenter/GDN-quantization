@@ -4,7 +4,7 @@
 
 ## Provenance and ownership
 
-- Branch: `exp/qwen-gdn-two-process-static-pp2-v1`; base: `exp/qwen-gdn-deepspeed-zero3-recurrent-feasibility-v1` at `1edd108db04ff4f2ddfcc3d26868b6a5ba662d08`. Final HEAD and commit list are provided by Git history after commit.
+- Branch: `exp/qwen-gdn-two-process-static-pp2-v1`; base: `exp/qwen-gdn-deepspeed-zero3-recurrent-feasibility-v1` at `1edd108db04ff4f2ddfcc3d26868b6a5ba662d08`. Evidence commit: `5140abb45e4d31b9a82137ad502b7cad0df3bc0d` (`qwen: record static PP2 forward parity failure and stop`). The publication commit adding this provenance line is the branch HEAD and is recorded in Git history.
 - Canonical C5 implementation SHA256: `48bd12d252c827ae57c48b2228d95e30de9f92baad47ebc2e8b64405b49e516e`; rotation/QDQ SHA256: `62e769dfad73170279daf0bdb56855b7d7e4aaf77478de897958fa87b2608067`; Qwen modeling SHA256: `90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a`.
 - Physical GPUs: rank0→GPU0, rank1→GPU1, both RTX 3090. Rank0 owns embedding and blocks 0–15; rank1 owns blocks 16–31, final norm and LM head. Static checkpoint weights: rank0 `8.338878870010376 GiB`, rank1 `8.338886499404907 GiB` (BF16 plus FP32 tensors as inventoried).
 - Rank0 GDN IDs: `0,1,2,4,5,6,8,9,10,12,13,14`; rank1: `16,17,18,20,21,22,24,25,26,28,29,30`. Planned owning-rank rotation parameter counts are `97,536` each, `195,072` global, without replication. These rotations were inventoried from the canonical design; no trainable rotations were instantiated or trained after forward failure.

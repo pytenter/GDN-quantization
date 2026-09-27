@@ -66,7 +66,7 @@ def main() -> None:
         relative = path.relative_to(ROOT).as_posix()
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         lines.append(f"{digest}  {relative}\n")
-    with manifest.open("x", encoding="utf-8", newline="\n") as handle:
+    with manifest.open("w", encoding="utf-8", newline="\n") as handle:
         handle.writelines(lines)
     print(json.dumps({"evidence_gate": "PASS", "files_hashed": len(lines),
                       "manifest": str(manifest)}, sort_keys=True))
