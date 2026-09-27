@@ -1,0 +1,13 @@
+# Recurrent determinism operator audit (in progress)
+
+The original V1 closure remains FAIL. Its strict deterministic-mode run stopped during **teacher-target forward**, before backward, at `g.cumsum(dim=-1)` in the canonical Qwen3.5 Torch gated-delta fallback (`modeling_qwen3_5.py:291`, source SHA256 `90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a`). This establishes the first unsupported strict-determinism operator; it does **not** establish the cause of old gradient variability.
+
+The canonical function casts `g` to FP32, pads to a 64-token chunk, reshapes it to `[batch, value_heads, ceil(length/64), 64]`, then performs the prefix sum in forward. Qwen3.5-9B uses 32 value heads. This source contains no explicit Triton autotune for this operation. Its hub-kernel decorator can select alternatives, but the preserved V1 traceback used the Torch fallback. The cached one-token student path takes `torch_recurrent_gated_delta_rule` instead and does not execute this cumsum; teacher chunks do.
+
+An explicit, GPU-only, left-to-right FP32 prefix-sum reference is in `runtime/deterministic_ops/cumsum_reference.py`. It is **not installed into the model** and does not patch the canonical runtime. Before testing, `configs/deterministic_runtime.json` froze synthetic shapes and numerical thresholds. The bounded operator microdiagnostic passed both FP32 and BF16 comparisons and its analytic reverse-prefix gradient check. The raw metrics are `analysis/deterministic_cumsum_micro.json`.
+
+The copied full chunk function passed AST source-delta verification: its body is identical to canonical after reversing the single declared prefix-sum replacement. A fixed synthetic function-level test also passed core output, recurrent state, QDQ code/scale and loss checks exactly. Neither result authorizes a model-level claim.
+
+The subsequent one-shot full-model teacher-forward test **failed** under its pre-frozen thresholds. Logits relative L2 was 0.0111629 (max absolute 0.203125), loss relative error was 0.0061993, and C128 codes differed in all 24 GDN layers. The largest recorded state max-absolute difference was 0.03402 at layer 25. Raw results and traceback are preserved in `analysis/deterministic_full_model_teacher_forward_gate.json` and its `.error.json` companion. This test changed both the chunk function and global strict deterministic mode, so it does not isolate which change caused the divergence. No retry, threshold change, or additional GPU experiment was performed after this failure.
+
+`RECURRENT_DETERMINISM_GATE=FAIL`. PP2 same-topology reproducibility, model gradient, checkpoint portability, H32/H64/H128 and formal training remain NOT_RUN.

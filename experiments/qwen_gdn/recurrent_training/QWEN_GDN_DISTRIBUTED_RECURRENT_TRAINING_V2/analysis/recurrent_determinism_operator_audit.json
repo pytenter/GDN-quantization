@@ -1,0 +1,37 @@
+{
+  "task": "QWEN_GDN_DISTRIBUTED_RECURRENT_TRAINING_V2",
+  "canonical_source_file": "/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py",
+  "canonical_source_sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a",
+  "first_reported_op": {
+    "expression": "g = g.cumsum(dim=-1)",
+    "function": "torch_chunk_gated_delta_rule",
+    "source_line": 291,
+    "phase": "forward during teacher-target collection, before backward",
+    "input_dtype_at_op": "float32, after explicit conversion",
+    "chunk_size": 64,
+    "shape_formula": "[batch, value_heads, ceil(sequence_length/64), 64]",
+    "GDN_value_heads": 32,
+    "known_prior_error": "cumsum_cuda_kernel does not have a deterministic implementation when torch.use_deterministic_algorithms(True)",
+    "depends_on_triton_autotune_in_this_source": false,
+    "source_has_hub_kernel_wrapper": true,
+    "prior_trace_used_torch_fallback": true
+  },
+  "student_single_token_path": {
+    "function": "torch_recurrent_gated_delta_rule",
+    "condition": "cache has prior state and sequence length equals one",
+    "cumsum_present_in_function": false
+  },
+  "interpretation_limit": "The strict-mode teacher forward error is not by itself proof that cumsum caused old backward variability; later backward operators were not reached.",
+  "explicit_opt_in_candidate": "runtime/deterministic_ops/cumsum_reference.py",
+  "candidate_semantics": "GPU FP32 fixed left-to-right prefix sum; no CPU fallback, dtype downgrade, or canonical runtime patch",
+  "candidate_micro_config": "configs/deterministic_runtime.json",
+  "candidate_micro_result": "analysis/deterministic_cumsum_micro.json",
+  "candidate_micro_gate": "PASS",
+  "full_recurrent_state_loss_forward_gate": "FAIL",
+  "full_forward_result": "analysis/deterministic_full_model_teacher_forward_gate.json",
+  "full_forward_result_sha256": "41638d46c535478640c801d85dbd83f7f8952f1d55a5cb2184c785b06e442c66",
+  "full_forward_error_sha256": "26def9a3b67885bd70f5ba95adda3a1dddd982f7e1797b86bf7b18518ff4a62b",
+  "full_forward_failure_attribution": "NOT_ISOLATED: the diagnostic changed both the chunk function and global strict deterministic mode",
+  "RECURRENT_DETERMINISM_GATE": "FAIL",
+  "required_action": "STOP_AND_REPORT_NO_RETRY"
+}
