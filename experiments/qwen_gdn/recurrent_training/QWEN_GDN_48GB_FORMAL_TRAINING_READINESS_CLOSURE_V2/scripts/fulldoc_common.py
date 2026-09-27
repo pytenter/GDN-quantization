@@ -153,9 +153,10 @@ def run(condition: str, horizon: int, sustained: bool):
     condition = condition.upper()
     if condition not in ('C5', 'C6') or horizon not in (32, 64, 128):
         raise ValueError('condition/horizon outside frozen candidate set')
-    if sustained and horizon != 32:
-        raise ValueError('higher horizon sustained screening requires a separate preregistered entry')
-    target = ROOT / 'analysis' / (f'{condition}_stability.json' if sustained else f'{condition}_H{horizon}_fulldoc.json')
+    target_name = (f'{condition}_stability.json' if sustained and horizon == 32 else
+                   f'{condition}_H{horizon}_stability.json' if sustained else
+                   f'{condition}_H{horizon}_fulldoc.json')
+    target = ROOT / 'analysis' / target_name
     error_target = target.with_suffix('.error.json')
     if target.exists() or error_target.exists():
         raise RuntimeError(f'prior evidence exists; do not rerun {target}')
