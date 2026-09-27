@@ -155,7 +155,7 @@ def run(n, reshard, cache_mode):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser()
-    p.add_argument('--n', type=int, choices=[1, 2, 3, 4], required=True)
+    p.add_argument('--reentries', dest='n', type=int, choices=[1, 2, 3, 4], required=True)
     p.add_argument('--reshard', choices=['true', 'false'], required=True)
     p.add_argument('--cache-mode', choices=['none', 'recurrent'], default='none')
     a = p.parse_args()
