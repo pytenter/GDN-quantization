@@ -137,9 +137,18 @@ def train_document(core, model, tokenizer, bank, patch, optimizer, device, row, 
                           'peak_reserved_bytes': doc['peak_reserved_bytes']}), flush=True)
         return doc
     except BaseException as exc:
+        try:
+            last_memory = _snap(device, 'failure')
+        except BaseException as memory_exc:
+            last_memory = {'snapshot_error_type': type(memory_exc).__name__,
+                           'snapshot_error_message': str(memory_exc),
+                           'allocated_bytes_without_sync': torch.cuda.memory_allocated(device),
+                           'reserved_bytes_without_sync': torch.cuda.memory_reserved(device),
+                           'peak_allocated_bytes_without_sync': torch.cuda.max_memory_allocated(device),
+                           'peak_reserved_bytes_without_sync': torch.cuda.max_memory_reserved(device)}
         doc['failure'] = {'type': type(exc).__name__, 'message': str(exc),
                           'traceback': traceback.format_exc(),
-                          'last_memory': _snap(device, 'failure')}
+                          'last_memory': last_memory}
         raise DocumentFailure(doc) from exc
 
 

@@ -74,8 +74,11 @@ for h in (32, 64, 128):
 
 h32_ready = all(checks['32'][c]['one_update'] == 'PASS' and
                 checks['32'][c]['sustained'] == 'PASS' for c in ('C5', 'C6'))
-both_higher_screened = all(checks[str(h)][c]['one_update'] != 'NOT_SCREENED'
-                           for h in (64, 128) for c in ('C5', 'C6'))
+both_higher_screened = all(
+    checks[str(h)][c]['one_update'] != 'NOT_SCREENED' and
+    (checks[str(h)][c]['one_update'] != 'PASS' or
+     checks[str(h)][c]['sustained'] != 'NOT_SCREENED')
+    for h in (64, 128) for c in ('C5', 'C6'))
 selected = None
 if h32_ready and both_higher_screened:
     for h in (128, 64, 32):
