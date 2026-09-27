@@ -1,0 +1,9 @@
+# Rotation checkpoint portability
+
+Eight bounded H32 C5 diagnostic updates produced a rotation-only 788,902-byte checkpoint at `/root/autodl-tmp/qwen_48gb_rotation_h32_8update_v1.pt`. Its SHA-256 is `554b59891cc3c5b37a48203fd553e3992e6b7759f5867080ea377e165377f228`. The same bytes were copied to the original Qwen server at `/tmp/qwen_48gb_rotation_h32_8update_v1.pt`; both endpoints confirmed the SHA-256. No 9B model or training environment was copied back.
+
+On the original server, the checkpoint bytes, canonical source, model config/index, and all theta tensor hashes matched the vGPU export exactly. The CPU-reconstructed Cayley delta and effective Hadamard-rotation *bitwise hashes did not match*: 24/24 layers differed. Both sides passed the canonical orthogonality gate, but exact hashes were a specified requirement, so `VGPU_TO_CANONICAL_CHECKPOINT_PORTABILITY=FAIL_EXACT_ROTATION_MATRIX_HASH`. The fixed original-server checkpoint forward, C128 QDQ, and recurrent writeback checks were not run after this strict gate failure. `FORMAL_RECURRENT_TRAINING_READY=NO`.
+
+A separate read-only numerical characterization, which did not change the gate, compared all 393,216 FP32 Cayley-matrix entries. It found maximum absolute difference 4.76837158203125e-7, relative L2 1.0934163902555456e-7, cosine 0.9999999999999788. This is consistent with host-dependent floating-point linear algebra, but that attribution remains an inference; no alternate tolerance was registered or applied. The original strict per-layer hashes and the exported hashes are retained in `analysis/checkpoint_portability.json` and `analysis/checkpoint_export.json`.
+
+No formal C5/C6 training or AIME evaluation started. A future decision to use a numerical portability criterion would require a separately authorized, preregistered task; this experiment's failed exact-hash result must remain intact.

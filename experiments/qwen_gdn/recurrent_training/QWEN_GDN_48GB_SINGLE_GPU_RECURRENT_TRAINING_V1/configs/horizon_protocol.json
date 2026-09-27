@@ -1,0 +1,20 @@
+{
+  "sample": "Frozen V1 TRAIN:first-row",
+  "token_prefix_length": 32,
+  "single_capture_token_index": 31,
+  "diagnostic_writeback_capture_token_index": 30,
+  "loss": "canonical C5 state loss, global sum over 24 GDN layers divided by 24",
+  "teacher": "canonical full-model unrotated no-grad continuous cache; detached target",
+  "student": "canonical key-side Hadamard-initialized Cayley, INT8-C128 STE QDQ, differentiable recurrent writeback",
+  "load_placement": "Full canonical Qwen model is loaded with device_map=None and moved to the sole CUDA device before freezing, matching the previously validated single-GPU teacher reference; C5 patch/loss/optimizer source is unchanged.",
+  "optimizer": {"name": "Adam", "learning_rate": 0.003, "weight_decay": 0.0, "gradient_clip_norm": 1.0, "initial_theta": 0},
+  "fresh_process_horizons": [1, 4, 8, 16, 32],
+  "updates_per_horizon": 1,
+  "detach_interval_tokens": "H for each respective horizon, including recurrent, convolution, key/value caches",
+  "sustained_H32_updates": 5,
+  "sustained_allocated_baseline_span_limit_bytes": 268435456,
+  "sustained_memory_measurement": "After each update, release the rollout/cache/capture graph, collect Python garbage, empty the CUDA cache, and compare five end-of-update allocated baselines. A span above 256 MiB stops the diagnostic before the rotation-checkpoint extension.",
+  "portability_checkpoint_total_H32_updates": 8,
+  "checkpoint_rule": "Only if first five sustained updates pass; continue same diagnostic process to eight total updates and save rotation parameters only.",
+  "no_aime_or_formal_training": true
+}
