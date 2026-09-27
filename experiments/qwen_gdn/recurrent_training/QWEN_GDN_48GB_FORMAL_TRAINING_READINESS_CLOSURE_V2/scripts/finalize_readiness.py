@@ -75,10 +75,10 @@ for h in (32, 64, 128):
 h32_ready = all(checks['32'][c]['one_update'] == 'PASS' and
                 checks['32'][c]['sustained'] == 'PASS' for c in ('C5', 'C6'))
 both_higher_screened = all(
-    checks[str(h)][c]['one_update'] != 'NOT_SCREENED' and
-    (checks[str(h)][c]['one_update'] != 'PASS' or
-     checks[str(h)][c]['sustained'] != 'NOT_SCREENED')
-    for h in (64, 128) for c in ('C5', 'C6'))
+    all(checks[str(h)][c]['one_update'] != 'NOT_SCREENED' for c in ('C5', 'C6')) and
+    (not all(checks[str(h)][c]['one_update'] == 'PASS' for c in ('C5', 'C6')) or
+     all(checks[str(h)][c]['sustained'] != 'NOT_SCREENED' for c in ('C5', 'C6')))
+    for h in (64, 128))
 selected = None
 if h32_ready and both_higher_screened:
     for h in (128, 64, 32):
@@ -109,7 +109,7 @@ horizon = {'historical_policy': policy['later_frozen_selection_rule'],
            'historical_candidate_order': policy['later_frozen_candidate_order'],
            'screen_order_this_task': [32, 64, 128],
            'resource_only': True, 'checks': checks,
-           'all_higher_one_update_screens_complete': both_higher_screened,
+           'all_higher_decisions_complete': both_higher_screened,
            'selected_formal_horizon': selected}
 verdict = {'task': ROOT.name, 'parent_experiment': parent['parent_experiment'],
            'parent_sha': parent['parent_sha'],
@@ -122,9 +122,12 @@ verdict = {'task': ROOT.name, 'parent_experiment': parent['parent_experiment'],
            'C6_FULLDOC_H32_GATE': checks['32']['C6']['one_update'],
            'C5_FULLDOC_MEMORY_LIFETIME': checks['32']['C5']['sustained'],
            'C6_FULLDOC_MEMORY_LIFETIME': checks['32']['C6']['sustained'],
+           'H64_JOINT_SUSTAINED_GATE': 'PASS' if all(checks['64'][c]['sustained'] == 'PASS' for c in ('C5', 'C6')) else 'FAIL',
+           'H128_JOINT_RESOURCE_GATE': 'PASS' if all(checks['128'][c]['one_update'] == 'PASS' for c in ('C5', 'C6')) else 'BLOCKED',
            'validation_return_to_baseline': 'PASS' if len(validation) == 2 and
                all(validation[c]['status'] == 'PASS' for c in validation) else 'FAIL',
            'selected_formal_horizon': selected,
+           'token_digest_erratum_recorded': (ROOT / 'configs/token_digest_erratum.json').is_file(),
            'FORMAL_RECURRENT_TRAINING_READY': 'YES' if ready else 'NO',
            'FORMAL_C5_C6_TRAINING': 'NOT_STARTED', 'AIME': 'NOT_STARTED',
            'distributed_framework_used': False,
@@ -164,6 +167,27 @@ for c in ('C5', 'C6'):
     lines.append('')
 lines += ['The hard peak-free margin is 5% of device VRAM, with 10% preferred. '
           'All horizon decisions are resource/stability-only; loss and validation score did not select a horizon.', '']
+for h in (64, 128):
+    for c in ('C5', 'C6'):
+        status, item = gate(c, h, False)
+        sustained_status, sustained = gate(c, h, True)
+        if status == 'PASS':
+            d = item['documents'][0]
+            lines.append(f"{c} H{h} one-update: **PASS**, peak allocated {gi(d['peak_allocated_bytes'])}, "
+                         f"reserved {gi(d['peak_reserved_bytes'])}, minimum conservative free "
+                         f"{100 * item['minimum_observed_free_fraction']:.2f}%; sustained **{sustained_status}**.")
+        elif item and item.get('failed_document'):
+            d = item['failed_document']
+            last = d['failure']['last_memory']
+            lines.append(f"{c} H{h} one-update: **{status}** ({d['failure']['type']}); "
+                         f"last peak allocated {gi(last['peak_allocated_bytes'])}, "
+                         f"reserved {gi(last['peak_reserved_bytes'])}, "
+                         f"free {last['device_free_bytes'] / 2**20:.1f} MiB; "
+                         f"{len(d['capture_memory'])} capture(s), "
+                         f"{len(d['backward_memory']) // 2} completed backprops. No retry.")
+        else:
+            lines.append(f'{c} H{h} one-update: **{status}**; sustained **{sustained_status}**.')
+lines.append('')
 write_once(R / 'FULL_DOCUMENT_MEMORY_CLOSURE.md', '\n'.join(lines))
 
 readiness = ['# Formal recurrent training readiness', '',
@@ -180,8 +204,16 @@ readiness = ['# Formal recurrent training readiness', '',
              'The training host remains the 48GB single-vGPU. The original four-RTX3090 Qwen server '
              'remains the canonical inference/evaluation host; its source runtime was not modified. '
              'Future formal checkpoints would preserve theta as provenance and deploy exact frozen FP32 R matrices.',
+             'The frozen first-document token hash contained an invalid 65-character transcription. '
+             'Its original value was preserved, the one-character erratum was recorded after a preflight-only stop, '
+             'and the canonical token sequence was independently verified by two exact 64-bit byte constructions. '
+             'No training data or model mathematics were changed.',
              'Distributed frameworks, formal C5/C6 training, and AIME were not used in this task.', '']
-write_once(R / 'FORMAL_TRAINING_READINESS.md', '\n\n'.join(readiness))
+for h in (32, 64, 128):
+    readiness.append(f"H{h} resource screen: " + ', '.join(
+        f"{c} one-update={checks[str(h)][c]['one_update']}, sustained={checks[str(h)][c]['sustained']}"
+        for c in ('C5', 'C6')))
+write_once(R / 'FORMAL_TRAINING_READINESS.md', '\n'.join(readiness) + '\n')
 
 summary = ['# QWEN_GDN_48GB_FORMAL_TRAINING_READINESS_CLOSURE_V2 — final report', '',
            f"Parent: `{parent['parent_branch']}` at `{parent['parent_sha']}`. "
@@ -193,7 +225,8 @@ summary = ['# QWEN_GDN_48GB_FORMAL_TRAINING_READINESS_CLOSURE_V2 — final repor
            'Full-document training has 1024 tokens and eight zero-based captures at '
            '625, 663, 813, 819, 881, 940, 957, 989. There are at most two simultaneously '
            'stored capture losses before a segment backward. Theta gradients accumulate over '
-           'H segments; one optimizer step follows the document.', '']
+           'H segments; one optimizer step follows the document. The original preregistered token '
+           'digest had one extra character; the explicit erratum and preflight stop are preserved.', '']
 for c in ('C5', 'C6'):
     s, o = gate(c, 32, False)
     t, st = gate(c, 32, True)
@@ -204,6 +237,15 @@ for c in ('C5', 'C6'):
                        f"memory creep {st['memory_creep'] if st else 'unknown'}.")
     else:
         summary.append(f'{c} H32: **{s}**; sustained **{t}**.')
+for c in ('C5', 'C6'):
+    _, h64 = gate(c, 64, False)
+    _, h128 = gate(c, 128, False)
+    summary.append(f"{c} H64: single **{checks['64'][c]['one_update']}**, "
+                   f"sustained **{checks['64'][c]['sustained']}**, "
+                   f"single peak reserved {gi(h64['documents'][0]['peak_reserved_bytes'])}. "
+                   f"H128: **{checks['128'][c]['one_update']}** by CUDA OOM, "
+                   f"last free {h128['failed_document']['failure']['last_memory']['device_free_bytes'] / 2**20:.1f} MiB; "
+                   'no retry.')
 summary += ['', f"Historical horizon rule: {policy['later_frozen_selection_rule']}. "
             f"Selected horizon: {selected if selected is not None else 'not selected'}. "
             f"FORMAL_RECURRENT_TRAINING_READY={verdict['FORMAL_RECURRENT_TRAINING_READY']}.",
