@@ -1,6 +1,6 @@
 # LING L6/L7 new-member handoff — Stage 0 audit
 
-Status: `PHASE1_SMALL_ARTIFACTS_VERIFIED_CLEAN_ROOM_PENDING`
+Status: `HANDOFF_READY_EXCEPT_PUBLIC_TRACES`
 
 This audit was performed without starting a model job, using a formal GPU, changing the formal branch, or moving any canonical output. The active confirmatory experiment was observed at H 37/40 with three clients alive; it was not interrupted.
 
@@ -120,10 +120,16 @@ Small canonical binaries and metadata completed Phase 1. Trace upload must remai
 | HF small-artifact upload | PASS (`bbc37a200721ee6e5b02f3793d7731c4c53464e2`) |
 | HF small-artifact readback | PASS (4/4 size and SHA256) |
 | Runtime snapshot build | PASS (16 files, exact SHA256) |
-| Clean-room smokes | NOT RUN |
+| Clean-room L6/L7 gradient and one-update smokes | PASS |
 
 ## Required next decisions
 
-1. Run the clean-room smokes without using or interrupting the active formal-generation GPUs.
-2. Obtain an explicit license determination for public distribution of the 80 derived trace files.
-3. Keep trace upload as a separate Phase 2 gate.
+The clean-room checkout verified 38 package files on Windows and Linux. It downloaded all 16 Phase 1 Hugging Face files from the immutable Hub commit and verified 15 manifest rows. On idle RTX 3090 GPU5, outside the formal GPU3/GPU4 allocation, L6/L7 4-token gradient smokes and one-update smokes all passed in the canonical training environment. Evidence hashes are recorded in `clean_room_smoke_audit.json`.
+
+1. Obtain an explicit license determination for public distribution of the 80 derived trace files.
+2. Keep trace upload as a separate Phase 2 gate.
+
+```ini
+NEW_MEMBER_DIRECT_EVAL_READY = YES
+NEW_MEMBER_RETRAIN_READY_EXCEPT_TRACES = YES
+```

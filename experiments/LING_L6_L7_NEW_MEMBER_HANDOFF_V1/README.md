@@ -13,3 +13,10 @@ The four canonical binaries are distributed through Hugging Face, not Git. The 1
 Public upload of the 80 recurrent traces is blocked pending a license determination. See `DATA_PROVENANCE_AND_LICENSE.md`; do not interpret their absence from Hugging Face as a failed local-integrity audit.
 
 Use `scripts/download_hf_artifacts.sh`, then `scripts/smoke_l6_l7.py`. Full 100-update retraining is available through `scripts/train_l6_l7_from_frozen_traces.sh` only when the frozen traces have been obtained through an approved distribution route.
+
+Clean-room verification passed for both L6 and L7 gradient and one-update paths. See `analysis/clean_room_smoke_audit.json` and `reports/FINAL_REPORT.md`.
+
+```ini
+NEW_MEMBER_DIRECT_EVAL_READY = YES
+NEW_MEMBER_RETRAIN_READY_EXCEPT_TRACES = YES
+```
