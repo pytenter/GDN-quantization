@@ -1,0 +1,3 @@
+# C6 frozen rotation deployment
+
+Verify `frozen_rotation_fp32.pt` SHA256 is `67e3731213ad3fb0c088c781ddd912aaaad5af75f9532b289442690a7b09f39c` and verify all 24 tensor hashes in `deployment_manifest.json`. Load the stored FP32 matrices directly. Do not reconstruct matrices from theta. Apply each stored Delta after canonical H128 on row-vector q/k; recurrent recovery applies Delta and then H128 on the key axis. Keep symmetric INT8-C128 grouping on K (`dim=-2`), round-to-even, and clamp to [-127,127]. Run the fixed non-AIME functional probe before downstream evaluation. AIME remains NOT_STARTED in this task.
