@@ -1,23 +1,21 @@
 # LING L6/L7 new-member handoff — Stage 0 audit
 
-Status: `AUDIT_COMPLETE_UPLOAD_BLOCKED`
+Status: `PHASE1_SMALL_ARTIFACTS_VERIFIED_CLEAN_ROOM_PENDING`
 
 This audit was performed without starting a model job, using a formal GPU, changing the formal branch, or moving any canonical output. The active confirmatory experiment was observed at H 37/40 with three clients alive; it was not interrupted.
 
 ## Outcome
 
-The four canonical L6/L7 binaries are intact, and all 80 frozen recurrent traces passed a full per-file SHA256 audit. Exact official-model revision and a content-addressed actual runtime source tree were recovered. Upload is blocked because neither server is authenticated to Hugging Face and because the public WikiText license evidence is internally inconsistent about license version and does not by itself settle the redistribution classification of the derived recurrent tensors.
-
-No Hugging Face upload or readback was attempted.
+The four canonical L6/L7 binaries are intact, and all 80 frozen recurrent traces passed a full per-file SHA256 audit. Exact official-model revision and a content-addressed actual runtime source tree were recovered. The Phase 1 small-artifact package was uploaded from the authenticated local host and independently read back from its immutable Hugging Face commit; all four canonical binary sizes and SHA256 values passed. Public upload of the recurrent traces remains blocked because the public WikiText license evidence is internally inconsistent about license version and does not by itself settle the redistribution classification of the derived recurrent tensors.
 
 ## Canonical identities
 
 | Asset | Bytes | SHA256 | GitHub | HF |
 |---|---:|---|---|---|
-| L6 best checkpoint | 591269 | `0f5a7666193ae8a8c8166329a41e6e47e952f6ec74ca08bcfe644b193dcd83b3` | No | No |
-| L7 best checkpoint | 591269 | `ec3e0916796d63dfb7dce84ba62f2062873f066565e965af14798998746d28ae` | No | No |
-| L6 final rotation | 1186141 | `ca6ef0d398d0b030dd5c295f62b8c0f43e11d41b92b319bd750ffa064977d71a` | No | No |
-| L7 final rotation | 1186205 | `57eaebb47ff031c2b171cbb94563f81481d4f4632098af8339a27d01347060a2` | No | No |
+| L6 best checkpoint | 591269 | `0f5a7666193ae8a8c8166329a41e6e47e952f6ec74ca08bcfe644b193dcd83b3` | No | Yes, readback PASS |
+| L7 best checkpoint | 591269 | `ec3e0916796d63dfb7dce84ba62f2062873f066565e965af14798998746d28ae` | No | Yes, readback PASS |
+| L6 final rotation | 1186141 | `ca6ef0d398d0b030dd5c295f62b8c0f43e11d41b92b319bd750ffa064977d71a` | No | Yes, readback PASS |
+| L7 final rotation | 1186205 | `57eaebb47ff031c2b171cbb94563f81481d4f4632098af8339a27d01347060a2` | No | Yes, readback PASS |
 
 Training curves, summaries, training config, data manifests, checkpoint manifest, materialization manifests, trainer, pipeline script, and preregistration are already tracked by GitHub at the frozen baseline. The checkpoint manifest and preregistration are absent from the canonical training directory copy but present in Git with exact hashes recorded in the JSON audit.
 
@@ -84,11 +82,17 @@ The formal evaluation environment is separately preserved as Torch 2.9.1+cu128, 
 
 ## Hugging Face access
 
-Repository `pytenter/ling-kda-artifacts` is publicly readable, ungated, and currently contains only `.gitattributes`. Both the 4090 and 3090 hosts return `LocalTokenNotFoundError` for `whoami`.
+Repository `pytenter/ling-kda-artifacts` is publicly readable and ungated. Phase 1 is fixed at repository commit `bbc37a200721ee6e5b02f3793d7731c4c53464e2`, containing the four canonical binaries plus training metadata and manifests. Both GPU servers remain intentionally unauthenticated.
 
 `HF_AUTHENTICATION_GATE = PASS` on the local upload host as account `pytenter`. The two GPU servers remain intentionally unauthenticated.
 
-The user must run `hf auth login` directly on the intended upload host and verify that `hf auth whoami` returns `pytenter`. A token must not be sent to Codex.
+The local upload host returned account `pytenter`. No credential or token is recorded in the repository or audit output.
+
+`HF_SMALL_ARTIFACT_UPLOAD_GATE = PASS`
+
+The four canonical binaries were downloaded again from the immutable Hub commit above into a fresh directory. Each byte size and SHA256 matched `manifests/artifact_manifest.json` exactly.
+
+`HF_SMALL_ARTIFACT_READBACK_GATE = PASS`
 
 ## Public trace licensing
 
@@ -96,7 +100,7 @@ The official Salesforce WikiText page identifies WikiText and allows sharing/ada
 
 `TRACE_PUBLIC_LICENSE_GATE = BLOCKED_PENDING_LICENSE_REVIEW`
 
-Small canonical binaries and metadata remain eligible for a later Phase 1 after HF authentication and packaging/security checks. Trace upload must remain blocked until the license review resolves version, attribution, share-alike, and derived-artifact treatment.
+Small canonical binaries and metadata completed Phase 1. Trace upload must remain blocked until the license review resolves version, attribution, share-alike, and derived-artifact treatment.
 
 ## Stage 0 gates
 
@@ -113,12 +117,13 @@ Small canonical binaries and metadata remain eligible for a later Phase 1 after 
 | Candidate secret scan | PASS |
 | HF authentication | PASS (local upload host) |
 | Public trace license | BLOCKED_PENDING_LICENSE_REVIEW |
-| HF upload/readback | NOT RUN |
+| HF small-artifact upload | PASS (`bbc37a200721ee6e5b02f3793d7731c4c53464e2`) |
+| HF small-artifact readback | PASS (4/4 size and SHA256) |
 | Runtime snapshot build | PASS (16 files, exact SHA256) |
 | Clean-room smokes | NOT RUN |
 
 ## Required next decisions
 
-1. Upload and read back the Phase 1 small artifacts from the authenticated local upload host.
+1. Run the clean-room smokes without using or interrupting the active formal-generation GPUs.
 2. Obtain an explicit license determination for public distribution of the 80 derived trace files.
-3. Run the clean-room smokes without using or interrupting the active formal-generation GPUs. Trace upload remains a separate Phase 2 gate.
+3. Keep trace upload as a separate Phase 2 gate.
