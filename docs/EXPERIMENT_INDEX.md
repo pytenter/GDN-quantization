@@ -11,7 +11,8 @@ Classification is semantic, not chronological:
 | Experiment / area | Model | Status | Primary archived path | Scientific role |
 |---|---|---|---|---|
 | AIME26 81920 Frozen V4 | Qwen | COMPLETE/FROZEN | `results/aime26/81920/qwen_gdn/` | FP 52/60; INT8-C128 18/60; Key-Hadamard 41/60 |
-| AIME26 81920 Frozen V4 | Ling | COMPLETE/FROZEN | `results/aime26/81920/ling_kda/` | FP 44/60; INT8-R128 23/60; Value-Hadamard 28/60 |
+| Ling 256K long-horizon canonical protocol | Ling | CURRENT/FROZEN | `docs/LING_CANONICAL_256K_PROTOCOL.md` | Context and server budget 262144; dynamic per-sample generation budget |
+| AIME26 81920 Frozen V4 | Ling | COMPLETE/HISTORICAL BASELINE | `results/aime26/81920/ling_kda/` | Historical only: FP 44/60; INT8-R128 23/60; Value-Hadamard 28/60 |
 | Strict V4 scorer | Shared | COMPLETE/FROZEN | `experiments/shared/scoring/aime26_scorer_v4.py` | Canonical scoring; hash in scorer protocol |
 | Key-Hadamard | Qwen | COMPLETE/FROZEN | `experiments/qwen_gdn/rotation/key_hadamard/` | Strong fixed C128 Key-side baseline |
 | Corrected Value-Hadamard V2 | Ling | COMPLETE/FROZEN | `experiments/ling_kda/rotation/value_hadamard/` | Strong fixed R128 Value-side baseline; no redundant endpoint rotation |
@@ -41,7 +42,18 @@ Classification is semantic, not chronological:
 | Qwen gdn_rotation_headroom_v1 | NEGATIVE_OR_SUPERSEDED | Failed/closed structured prototype |
 | Qwen gdn_postconv_structured_rotation_v1 | NEGATIVE_OR_SUPERSEDED | Failed/closed structured prototype |
 | Strict scorers V1/V2/V3 | SUPERSEDED | Replaced by frozen Strict V4 |
-| 65,536-token runtime smoke | LEGACY | Replaced by frozen 81,920-token protocol |
+| 65,536-token runtime smoke | LEGACY | Replaced by the historical 81,920-token baseline, which is itself superseded for current Ling evaluation by the 256K protocol |
+
+## Ling canonical evaluation
+
+| Field | Value |
+|---|---|
+| Context | `262144` |
+| Protocol | 256K long-horizon |
+| Status | Current frozen protocol |
+| `81920` | Historical baseline only |
+
+The 81,920 fixed-budget and 256K dynamic-budget Ling outputs must not be merged. Cross-protocol comparisons must be explicitly labeled as historical comparisons.
 
 ## Historical mechanism archive
 

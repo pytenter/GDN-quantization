@@ -1,8 +1,9 @@
 # Research status
 
-## Frozen formal closure
+## Frozen formal closure and protocol boundary
 
-- AIME26 81,920-token protocol: frozen and archived for Qwen3.5-9B/GDN and Ling-3.0-tiny/KDA.
+- AIME26 81,920-token protocol: frozen and archived; for Ling-3.0-tiny/KDA it is a historical baseline only. This documentation change does not alter the Qwen protocol designation.
+- Ling-3.0-tiny/KDA current canonical evaluation: 256K long horizon with `context_length = max_total_tokens = 262144` and `max_new_tokens = 262144 - prompt_tokens - 512`.
 - Scorer: `AIME26_STRICT_V4_CANDIDATE`, SHA256 `fa5dd904c7d1887df4b8c23613f37b8d438ea494cb72607b89be8e07d55a343b`.
 - Dataset manifest: SHA256 `5cdda617c7bbf73a0277de75a0f25ed52976e385b01e1264b806085d33649b0f`; three-server match.
 - Qwen formal provenance: `qwen3090` / SERVER_B.
@@ -36,7 +37,7 @@ The table below is retained as a historical snapshot from `2026-09-21T16:07:03+0
 | Ling INT8_R128 | 13/30 | `IN_PROGRESS` |
 | Ling INT8_R128 + Value-Hadamard | 10/30 | `IN_PROGRESS` |
 
-Those entries are historical progress counts, not accuracy values. The later completed offline analysis is archived under `experiments/ling_kda/long_horizon/LING_256K_LONG_HORIZON_V1/` and reports FP_STATE 21/30, INT8_R128 9/30, and INT8_R128 + Value-Hadamard 17/30. It remains separate from the canonical 81,920 two-seed result.
+Those entries are historical progress counts, not accuracy values. The later completed offline analysis is archived under `experiments/ling_kda/long_horizon/LING_256K_LONG_HORIZON_V1/` and reports FP_STATE 21/30, INT8_R128 9/30, and INT8_R128 + Value-Hadamard 17/30. It is a seed-1 precursor study. The current Ling canonical protocol is the separately frozen 256K dynamic-budget, two-seed evaluation; the 81,920 result is retained only as a historical baseline.
 
 ## Next stage
 

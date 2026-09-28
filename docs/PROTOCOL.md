@@ -1,6 +1,22 @@
-# Canonical protocol
+# Evaluation protocols
 
-## Formal AIME26 at 81,920 tokens
+## Ling/KDA current canonical protocol: 256K long horizon
+
+The current canonical Ling-3.0-tiny/KDA evaluation uses:
+
+- `context_length = 262144`
+- `server_max_total_tokens = 262144`
+- `safety_margin = 512`
+- `max_new_tokens = 262144 - prompt_tokens - 512`
+- seeds `[1, 2]`
+- sampling enabled with temperature `1.0`, top-p `0.95`, top-k `20`, and repetition penalty `1.0`
+- thinking enabled
+
+The full frozen runtime and decoding specification is in `docs/LING_CANONICAL_256K_PROTOCOL.md`. The machine-readable source of truth is `experiments/LING_L6_L7_CANONICAL_60_CONFIRMATORY_V1/configs/frozen_eval_config.json` on branch `exp/ling-l6-l7-canonical-60-confirmatory-v1`, frozen at commit `69b23bd999dc23a9c852497b98df0f56abdbdff0`.
+
+The 81,920-token Ling protocol below is historical reference only. Its outputs must not be merged with 256K dynamic-budget outputs.
+
+## Historical formal AIME26 at 81,920 tokens
 
 Protocol identifier: `GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2`.
 
@@ -16,7 +32,7 @@ Protocol identifier: `GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2`.
 - repetition penalty `1.0`
 - thinking enabled
 
-Qwen uses the manual Hugging Face runtime. SGLang-only flags must not be added to Qwen. Ling uses the archived SGLang/KDA integration. Historical 65,536-token smoke runs are legacy and must not be mixed into formal results.
+Qwen uses the manual Hugging Face runtime. SGLang-only flags must not be added to Qwen. Ling uses the archived SGLang/KDA integration. For Ling, this protocol is a historical baseline only. Historical 65,536-token smoke runs are legacy and must not be mixed into formal results.
 
 ## Qwen/GDN state quantization
 
@@ -43,9 +59,9 @@ Ling Value-Hadamard uses `CORRECTED_PREFILL_ENDPOINT_V2` semantics. The KDA kern
 
 The frozen scorer is documented in `docs/SCORER_PROTOCOL.md`. Gold is not used for candidate selection. `Abstain` is a subset of `Incorrect`, so the only valid accounting identity is `Correct + Incorrect = N`.
 
-## 256K follow-up
+## 256K evidence boundary
 
-The completed 256K offline length-sensitivity analysis uses seed 1, `max_new_tokens=262144`, SGLang/Triton, and YaRN factor 2 with original maximum positions 131072. Its compact frozen scoring and verification evidence is archived under `experiments/ling_kda/long_horizon/LING_256K_LONG_HORIZON_V1/`. It remains supporting length-sensitivity evidence and does not replace the 81,920 two-seed frozen formal protocol.
+The completed seed-1 256K offline length-sensitivity analysis used a fixed `max_new_tokens=262144`, SGLang/Triton, and YaRN factor 2 with original maximum positions 131072. Its compact frozen scoring and verification evidence is archived under `experiments/ling_kda/long_horizon/LING_256K_LONG_HORIZON_V1/`. It is precursor evidence, not interchangeable with the current 60-sample 256K canonical evaluation, whose generation budget is dynamic and reserves a 512-token safety margin.
 
 ## Artifact policy
 

@@ -1,17 +1,19 @@
 # Research status at the 2026-09-26 handoff
 
+> Historical snapshot notice (2026-09-28): references below to Ling's 81,920-token evaluation describe the status at this handoff date. The current Ling/KDA canonical protocol is now the 256K dynamic-budget protocol documented in `LING_CANONICAL_256K_PROTOCOL.md`; the 81,920 Ling result is a historical baseline only.
+
 ## One-sentence status
 
 Fixed Hadamard substantially recovers recurrent-state INT8 reasoning, while the old Dense rotations were trained with single-step FP-state resets; the active phase is to establish reliable recurrent-aware multi-step training and test whether a learnable orthogonal rotation can outperform Hadamard.
 
-## Canonical configuration and result
+## Historical 81,920 configuration and result
 
 | Model | State quantization | Fixed rotation | FP | Native INT8 | Fixed rotation |
 |---|---|---|---:|---:|---:|
 | Qwen3.5-9B / GDN | INT8-C128 | Key-side Hadamard | 52/60 | 18/60 | 41/60 |
 | Ling-3.0-tiny / KDA | INT8-R128 | Value-side Hadamard | 44/60 | 23/60 | 28/60 |
 
-These are the frozen AIME26 Strict V4 results under `GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2`: all 30 problems are evaluated with seeds 1 and 2, giving 60 samples per condition, with `max_new_tokens = 81920`. The scorer SHA256 is `fa5dd904c7d1887df4b8c23613f37b8d438ea494cb72607b89be8e07d55a343b`. Qwen's C128 grouping follows the Key-oriented GDN state geometry. Ling's R128 grouping and Value rotation follow KDA's Value basis; the corrected implementation writes the kernel-returned state directly because it is already in the rotated Value basis.
+These are the frozen historical AIME26 Strict V4 results under `GDN_KDA_AIME26_OFFICIAL_SAMPLING_81920_2SEED_FORMAL_V2`: all 30 problems are evaluated with seeds 1 and 2, giving 60 samples per condition, with `max_new_tokens = 81920`. The scorer SHA256 is `fa5dd904c7d1887df4b8c23613f37b8d438ea494cb72607b89be8e07d55a343b`. For Ling, this is no longer the current canonical generation protocol. Qwen's C128 grouping follows the Key-oriented GDN state geometry. Ling's R128 grouping and Value rotation follow KDA's Value basis; the corrected implementation writes the kernel-returned state directly because it is already in the rotated Value basis.
 
 ## What the metric work established
 
@@ -37,7 +39,7 @@ Old C3/C4 and L4/L5 training used `FP_STATE_RESET_EACH_TOKEN`. Train-time QDQ is
 
 ## 256K length sensitivity
 
-The completed offline Ling 256K analysis reports FP 21/30, Native INT8_R128 9/30, and Value-Hadamard 17/30. Compact per-sample metadata, taxonomy, stability analysis, scoring, manifests, and reports are archived. Full responses remain on the source server and are excluded from Git. This result is a separate length-sensitivity study; the frozen canonical comparison remains 81,920 tokens.
+The completed offline Ling 256K analysis reports FP 21/30, Native INT8_R128 9/30, and Value-Hadamard 17/30. Compact per-sample metadata, taxonomy, stability analysis, scoring, manifests, and reports are archived. Full responses remain on the source server and are excluded from Git. This seed-1 result is a precursor length-sensitivity study. The current canonical Ling comparison uses the separately frozen 256K dynamic-budget, two-seed protocol; 81,920 is historical only.
 
 ## Current blockers and next decision
 

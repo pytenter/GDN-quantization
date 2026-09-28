@@ -7,7 +7,7 @@ This repository studies INT8 recurrent-state quantization in recurrent and linea
 
 Model weights are not quantized by these experiments. The repository contains executable research code, compact evidence, frozen protocols, and provenance—not checkpoints, datasets, caches, logs, or raw generation traces.
 
-## Frozen AIME26 results at 81,920 tokens
+## Historical AIME26 results at 81,920 tokens
 
 `Incorrect` includes `Abstain`; therefore `Correct + Incorrect = 60` for every row.
 
@@ -20,7 +20,45 @@ Model weights are not quantized by these experiments. The repository contains ex
 | Ling | INT8_R128 | 23 | 37 | 28 | 38.33% |
 | Ling | INT8_R128 + Value-Hadamard | 28 | 32 | 28 | 46.67% |
 
-The 81,920-token run remains the frozen canonical protocol. A separate, completed 256K offline length-sensitivity analysis is now archived: Ling scored 21/30 for FP_STATE, 9/30 for INT8_R128, and 17/30 for INT8_R128 + Value-Hadamard. It is supporting long-horizon evidence, not a replacement for the 81,920-token canonical result.
+For Ling/KDA, these 81,920-token results are a frozen historical baseline only. They are retained for historical comparison and regression analysis and must not be merged with current 256K canonical outputs. The completed seed-1 256K offline study (FP_STATE 21/30, INT8_R128 9/30, INT8_R128 + Value-Hadamard 17/30) is also retained as precursor evidence; it is not itself the current 60-sample confirmatory result.
+
+## Ling/KDA Current Canonical Evaluation Protocol
+
+Ling-3.0-tiny / KDA currently uses the 256K-token long-horizon protocol as the canonical evaluation setting.
+
+The canonical context budget is:
+
+```text
+context_length = 262144
+max_total_tokens = 262144
+```
+
+`max_new_tokens` is dynamically computed:
+
+```text
+262144 - prompt_tokens - safety_margin
+```
+
+with:
+
+```text
+safety_margin = 512
+```
+
+The previous 81,920-token Ling AIME26 evaluation is historical reference only. It must not be mixed with the current 256K canonical evaluation. The 81,920-token results are retained for historical comparison and regression analysis.
+
+The complete frozen Ling/KDA runtime and decoding definition is in [`docs/LING_CANONICAL_256K_PROTOCOL.md`](docs/LING_CANONICAL_256K_PROTOCOL.md).
+
+## Protocol Compatibility Warning
+
+Do not compare or merge outputs generated under:
+
+- 81,920-token fixed budget
+- 256K dynamic-budget protocol
+
+unless explicitly marked as historical comparison.
+
+Canonical Ling experiments after this update should use the 256K protocol.
 
 ## Rotation status
 

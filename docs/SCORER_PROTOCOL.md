@@ -2,7 +2,7 @@
 
 ## Frozen scorer
 
-The archived 81,920-token final comparison uses:
+The archived historical 81,920-token comparison and the current Ling 256K canonical evaluation use:
 
 ```text
 name = AIME26_STRICT_V4_CANDIDATE
@@ -28,6 +28,6 @@ Therefore the accounting identity is `Correct + Incorrect = N`; `Abstain` must n
 
 V1, V2, V3, diagnostic extractors, and development corpora are historical or audit assets. They must not silently rescore or overwrite Frozen V4 results. Any future scorer change requires a new versioned output directory and cross-audit.
 
-## 256K boundary
+## Ling 256K boundary
 
-The completed Ling 256K offline analysis uses the same V4 scorer implementation. Its compact frozen scoring evidence is archived separately from the canonical 81,920 comparison; it is a seed-1 length-sensitivity result, not a replacement for the 30-problem, two-seed formal protocol.
+The current Ling canonical evaluation uses the same exact Frozen V4 scorer with the 256K dynamic-budget generation protocol. The older 81,920 Ling comparison is historical only. The completed seed-1 256K offline analysis also uses Frozen V4, but remains a separate precursor study rather than the current 30-problem, two-seed confirmatory result.
