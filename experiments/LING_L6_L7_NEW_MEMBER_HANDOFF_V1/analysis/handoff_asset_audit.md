@@ -86,7 +86,7 @@ The formal evaluation environment is separately preserved as Torch 2.9.1+cu128, 
 
 Repository `pytenter/ling-kda-artifacts` is publicly readable, ungated, and currently contains only `.gitattributes`. Both the 4090 and 3090 hosts return `LocalTokenNotFoundError` for `whoami`.
 
-`HF_AUTHENTICATION_GATE = FAIL`
+`HF_AUTHENTICATION_GATE = PASS` on the local upload host as account `pytenter`. The two GPU servers remain intentionally unauthenticated.
 
 The user must run `hf auth login` directly on the intended upload host and verify that `hf auth whoami` returns `pytenter`. A token must not be sent to Codex.
 
@@ -111,14 +111,14 @@ Small canonical binaries and metadata remain eligible for a later Phase 1 after 
 | Model provenance | PASS |
 | Environment provenance | PASS |
 | Candidate secret scan | PASS |
-| HF authentication | FAIL |
+| HF authentication | PASS (local upload host) |
 | Public trace license | BLOCKED_PENDING_LICENSE_REVIEW |
 | HF upload/readback | NOT RUN |
-| Runtime snapshot build | NOT RUN |
+| Runtime snapshot build | PASS (16 files, exact SHA256) |
 | Clean-room smokes | NOT RUN |
 
 ## Required next decisions
 
-1. Authenticate manually on the intended host with `hf auth login`; do not send the token to Codex.
+1. Upload and read back the Phase 1 small artifacts from the authenticated local upload host.
 2. Obtain an explicit license determination for public distribution of the 80 derived trace files.
-3. Only then proceed to runtime snapshot construction and Phase 1 small-artifact upload/readback. Trace upload remains a separate Phase 2 gate.
+3. Run the clean-room smokes without using or interrupting the active formal-generation GPUs. Trace upload remains a separate Phase 2 gate.
