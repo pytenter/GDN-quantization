@@ -1,0 +1,3980 @@
+core/src/it/alcacoop/backgammon/logic/MatchState.java
+public class MatchState {
+
+  public static int[][] board = {
+      { 0, 0, 0, 0, 0, 5, 0, 3, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0 },// BLACK (HUMAN) BGV
+      { 0, 0, 0, 0, 0, 5, 0, 3, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0 },// WHITE (PC)
+      { 0, 0, 0, 0, 0, 4, 0, 3, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0 },// BLACK (HUMAN) NGV
+      { 0, 0, 0, 0, 0, 4, 0, 3, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0 },// WHITE (PC) NGV
+
+      { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },// ALL BEARED OFF
+      { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },// ALL BEARED OFF
+  };
+
+  public static final int RNG_MERSENNE = 0;
+  public static final int RNG_ISAAC = 1;
+
+  /* NOTE: ON NATIVE API HUMAN=1 AND PC=0 */
+  public static AILevels currentLevel = AILevels.EXPERT;
+  public static int fMove = 1; // CHI HA I DADI IN MANO (1=PC 0=HUMAN)
+  public static int fTurn = 1; // CHI DEVE DECIDERE (1=PC 0=HUMAN)
+  public static int fCubeOwner = -1; // (-1=BAR 1=PC 0=HUMAN)
+  public static int nCube = 1; // VALORE ATTUALE DEL CUBO
+  public static int fCrawford = 0; // REGOLA DI CRAWFORD
+  public static int nMatchTo = 0;
+  public static int[] anScore = { 0, 0 }; // MATCH SCORES
+  public static int bgv = 0; // 0=BACKGAMMON 1=NACKGAMMON 2=RESTORED_GAME
+  public static int fCubeUse = 0; // USING CUBE
+  public static int matchType = 0; // 0=SINGLE PLAYER, 1=TWO PLAYERS, 2=FIBS, 3=GSERVICE
+  public static boolean fPostCrawford = false; // POST CRAWFORD RULE
+  public static boolean fCrafwordGame = false;
+  public static int resignValue = 0;
+  public static int FibsDirection = 0;
+  public static int FibsColor = 0;
+
+  public static int win_type = 0; // 1=SINGLE, 2=GAMMON, 3=BACKGAMMON
+
+  public static String pl0;
+  public static String pl1;
+
+
+  public static void SwitchTurn() {
+    SwitchTurn(true);
+  }
+  public static void SwitchTurn(boolean event) {
+    Float left1 = GnuBackgammon.Instance.board.rollBtn.getX();
+    Float left2 = GnuBackgammon.Instance.board.doubleBtn.getX();
+    if (fMove == 0) {
+      if (event)
+        SetGameTurn(1, 1);
+      GnuBackgammon.Instance.board.rollBtn.setX(Math.min(left1, left2));
+      GnuBackgammon.Instance.board.doubleBtn.setX(Math.max(left1, left2));
+    } else {
+      if (event)
+        SetGameTurn(0, 0);
+      GnuBackgammon.Instance.board.rollBtn.setX(Math.max(left1, left2));
+      GnuBackgammon.Instance.board.doubleBtn.setX(Math.min(left1, left2));
+    }
+    GnuBackgammon.Instance.board.showArrow();
+  }
+
+  public static void SetGameVariant(int type) {
+    MatchState.bgv = type;
+    AICalls.Locking.SetGameVariant(type);
+  }
+
+  public static void UpdateMSCubeInfo(int cubeValue, int owner) {
+    MatchState.fCubeOwner = owner;
+    MatchState.nCube = cubeValue;
+    AICalls.Locking.UpdateMSCubeInfo(MatchState.nCube, MatchState.fCubeOwner);
+  }
+
+  public static void SetMatchTo(String sMatchTo) {
+    MatchState.nMatchTo = Integer.parseInt(sMatchTo);
+    AICalls.Locking.SetMatchTo(MatchState.nMatchTo);
+  }
+
+  public static void SetMatchScore(int AIScore, int HumanScore) {
+    MatchState.anScore[0] = HumanScore;
+    MatchState.anScore[1] = AIScore;
+    if ((AIScore == 0) && (HumanScore == 0)) { // RESET CRAWFORD LOGIC
+      fPostCrawford = false;
+      fCrafwordGame = false;
+      resignValue = 0;
+      nCube = 1;
+    }
+    if (((nMatchTo - AIScore <= 1) || (nMatchTo - HumanScore <= 1)) && (!fCrafwordGame) && (!fPostCrawford)) {
+      // CRAWFORD GAME!
+      fCrafwordGame = true;
+      fPostCrawford = true;
+    }
+    else if (((nMatchTo - AIScore <= 1) || (nMatchTo - HumanScore <= 1)) && (fCrafwordGame) && (fPostCrawford)) {
+      // POST CRAWFORD GAMES!
+      fCrafwordGame = false;
+    }
+    AICalls.Locking.SetMatchScore(MatchState.anScore[1], MatchState.anScore[0]);
+  }
+
+  public static void SetAILevel(AILevels level) {
+    MatchState.currentLevel = level;
+    AICalls.Locking.SetAILevel(level.ordinal());
+  }
+
+  public static void SetGameTurn(int fTurn, int fMove) {
+    MatchState.fMove = fMove;
+    MatchState.fTurn = fTurn;
+    AICalls.SetGameTurn(MatchState.fTurn, MatchState.fMove);
+    GameMenuPopup.setDisabledButtons();
+  }
+
+  public static void SetCubeUse(int fCubeUse) {
+    MatchState.fCubeUse = fCubeUse;
+    AICalls.Locking.SetCubeUse(fCubeUse);
+  }
+
+  public static void SetCrawford(int fCrawford) {
+    MatchState.fCrawford = fCrawford;
+    AICalls.Locking.SetCrawford(fCrawford);
+  }
+
+  public static void setBoardFromString(String sbb, String sbw) {
+    String ssw[] = sbw.split(":");
+    String ssb[] = sbb.split(":");
+    for (int i = 0; i < 25; i++) {
+      MatchState.board[4][i] = Integer.parseInt(ssb[i]);
+      MatchState.board[5][i] = Integer.parseInt(ssw[i]);
+    }
+  }
+}
+core/src/it/alcacoop/backgammon/fsm/BaseFSM.java
+public class BaseFSM implements Context {
+
+  private int nMoves;
+  public int[] greedyMoves = { -1, -1, -1, -1, -1, -1, -1, -1 };
+  public int[] hmoves = { -1, -1, -1, -1, -1, -1, -1, -1 };
+  public int hnmove = 0;
+  public boolean helpShown = false;
+
+  public enum Events {
+    NOOP,
+
+    GSERVICE_LOGIN,
+    GSERVICE_CONNECTED,
+    GSERVICE_READY,
+    GSERVICE_INIT_RATING, // params={rating}
+    GSERVICE_HANDSHAKE,
+    GSERVICE_FIRSTROLL, // params={turn, dice0, dice1}
+    GSERVICE_ROLL, // params={dice0, dice1}
+    GSERVICE_DOUBLE,
+    GSERVICE_ACCEPT,
+    GSERVICE_MOVES, // params={-1,-1,-1,-1,-1,-1,-1,-1}
+    GSERVICE_BOARD,
+    GSERVICE_BOARD_SYNCED,
+    GSERVICE_CHATMSG,
+    GSERVICE_ERROR,
+    GSERVICE_ABANDON, // params: 0=abandon,1=resign_single,2=resign_gammon,3=resign_bg
+    GSERVICE_BYE,
+    GSERVICE_RETURN_GAME,
+    GSERVICE_PLAY_AGAIN,
+
+    FIBS_ERROR,
+    FIBS_ACCOUNT_CREATED,
+    FIBS_ACCOUNT_PRESENT,
+    FIBS_ACCOUNT_SPAM,
+    FIBS_WHO_END,
+    FIBS_CANCEL,
+    FIBS_CONNECTED,
+    FIBS_DISCONNECT,
+    FIBS_LOGIN_OK,
+    FIBS_LOGIN_ERROR,
+    FIBS_NETWORK_ERROR,
+    FIBS_PLAYER_CHANGED,
+    FIBS_PLAYER_LOGOUT,
+    FIBS_PLAYER_LOGIN,
+    FIBS_INVITE_RECEIVED,
+    FIBS_INVITE_SENDED,
+    FIBS_INVITE_DECLINED,
+    FIBS_START_GAME,
+    FIBS_FIRSTROLL,
+    FIBS_RESUMEGAME,
+    FIBS_BOARD,
+    FIBS_BOARD_SYNCED,
+    FIBS_MOVES,
+    FIBS_OPPONENT_ROLLS,
+    FIBS_YOU_ROLL,
+    FIBS_ABANDON_GAME,
+    FIBS_RESIGN_REQUEST,
+    FIBS_MATCHOVER,
+
+    ACCEPT_DOUBLE,
+    ACCEPT_RESIGN,
+    GET_RESIGN_VALUE,
+    ASK_FOR_DOUBLING,
+    ASK_FOR_RESIGNATION,
+    EVALUATE_BEST_MOVE,
+    INITIALIZE_ENVIRONMENT,
+    ROLL_DICE,
+    DICES_ROLLED,
+    SET_BOARD,
+    SET_GAME_TURN,
+    SET_MATCH_SCORE,
+    SET_MATCH_TO,
+    UPDATE_MS_CUBEINFO,
+    GREEDY_MOVE,
+    PERFORMED_MOVE,
+    NO_MORE_MOVES,
+    POINT_TOUCHED,
+    GENERATE_MOVES,
+    DICE_CLICKED,
+    STARTING_SIMULATION,
+    START_GAME,
+    SIMULATED_TURN,
+    BUTTON_CLICKED,
+    CHECKER_RESETTED,
+    DOUBLING_RESPONSE,
+    CONTINUE,
+    STOPPED,
+    DOUBLE_REQUEST,
+    HUMAN_DOUBLE_RESPONSE,
+    CPU_DOUBLE_ACCEPTED,
+    CPU_DOUBLE_NOT_ACCEPTED,
+    SHOW_DOUBLE_DIALOG,
+    CPU_RESIGNED,
+    HUMAN_RESIGNED,
+    ABANDON_MATCH,
+    RESTORE_ANSWER,
+    RESET_STATS
+  }
+
+  public enum States implements State {
+    STOPPED {};
+
+    // DEFAULT IMPLEMENTATION
+    public boolean processEvent(Context ctx, BaseFSM.Events evt, Object params) {
+      return false;
+    }
+
+    public void enterState(Context ctx) {}
+
+    public void exitState(Context ctx) {}
+  };
+
+  public State currentState;
+  public State previousState;
+
+
+  public void start() {
+    for (int i = 0; i < 8; i++)
+      hmoves[i] = -1;
+    hnmove = 0;
+  }
+
+  public void stop() {
+    state(States.STOPPED);
+  }
+
+  public void restart() {
+    stop();
+    start();
+  }
+
+  public void processEvent(final Events evt, final Object params) {
+    final BaseFSM ctx = this;
+    // GnuBackgammon.out.println("PROCESS " + evt + " ON " + state());
+    Gdx.app.postRunnable(new Runnable() {
+      @Override
+      public void run() {
+        state().processEvent(ctx, evt, params);
+      }
+    });
+  }
+
+  public State state() {
+    return currentState;
+  }
+
+  public void back() {
+    if (previousState != null)
+      state(previousState);
+  }
+
+  public void state(final State state) {
+    // GnuBackgammon.out.println("---> +++ ENQUEUE ST " + state + ": " + Thread.currentThread().getName());
+    final Context _ctx = this;
+    Gdx.app.postRunnable(new Runnable() {
+      @Override
+      public void run() {
+        // GnuBackgammon.out.println("---> +++ EXECUTE ST " + state + ": " + Thread.currentThread().getName());
+        // GnuBackgammon.out.println(" FSM ---> MOVE FROM " + currentState + " TO " + state);
+        if (currentState != null)
+          currentState.exitState(_ctx);
+        previousState = currentState;
+        currentState = state;
+        if (currentState != null)
+          currentState.enterState(_ctx);
+      }
+    });
+
+  }
+
+  public boolean isStopped() {
+    return currentState == States.STOPPED;
+  }
+
+  public Board board() {
+    return null;
+  }
+
+  @Override
+  public int getMoves() {
+    return nMoves;
+  }
+
+  @Override
+  public void setMoves(int n) {
+    nMoves = n;
+  }
+
+}
+core/src/it/alcacoop/backgammon/utils/JSONProperties.java
+public class JSONProperties {
+  public OrderedMap<String, Object> data;
+	
+	public static JSONProperties newFromFile(FileHandle fh) {
+        InputStream inStream = fh.read();
+        JSONProperties properties = new JSONProperties();
+
+        try {
+            properties.load(fh);
+            inStream.close();
+        } catch (IOException e) {
+            if (inStream != null) {
+                try {
+                    inStream.close();
+                } catch (IOException ex) {
+                    // TODO handle IOException
+				}
+			}
+		}
+		return properties;
+	}
+	
+	@SuppressWarnings("unchecked")
+	private void load(FileHandle fh) throws IOException {
+		JsonReader reader = new JsonReader();
+		data = (OrderedMap<String,Object>) reader.parse(fh.reader());
+	}
+	
+	public JSONProperties() {
+		data = new OrderedMap<String,Object>();
+	}
+	
+	public JSONProperties(OrderedMap<String,Object> data) {
+		this.data = data;
+	}
+	
+	public JSONProperties(FileHandle fh) {
+        try {
+            load(fh);
+        } catch (IOException e) {
+            // ERROR LOADING PROPERTIES
+        }
+	}
+	
+  public String[] getKeys() {
+    if (data == null) {
+      return null;
+    }
+    Array<String> keys = data.orderedKeys();
+    String[] keys_string = new String[keys.size];
+
+    for (int i = 0; i < keys.size; i++) {
+      keys_string[i] = keys.get(i);
+    }
+
+    return keys_string;
+  }
+
+	private Object getProperty(String name) {
+		if (!data.containsKey(name))
+			return null;
+		
+		return data.get(name);
+	}
+	
+	public int asInt (String name, int fallback) {
+		Object v = getProperty(name);
+		if (v == null) return fallback;
+		return ((Float)v).intValue();
+	}
+
+	public float asFloat (String name, float fallback) {
+		Object v = getProperty(name);
+		if (v == null) return fallback;
+		return (Float)v;
+	}
+
+	public String asString (String name, String fallback) {
+		Object v = getProperty(name);
+		if (v == null) return fallback;
+		return (String)v;
+	}
+
+	public boolean asBool(String name, boolean fallback) {
+		Object v = getProperty(name);
+		if (v == null) return fallback;
+		return (Boolean)v;
+	}
+	
+	@SuppressWarnings("unchecked")
+	public Array<Object> asArray(String name, Array<Object> fallback) {
+		Object v = getProperty(name);
+		if (v == null) return fallback;
+		return (Array<Object>)v;
+	}
+
+  @SuppressWarnings("unchecked")
+  public JSONProperties asJSONProperties(String name, JSONProperties fallback) {
+    Object v = getProperty(name);
+    if (v == null)
+      return fallback;
+    return (new JSONProperties((OrderedMap<String, Object>)v));
+  }
+
+	public void set(String key, Object value) {
+		data.put(key, value);
+	}
+
+	public void save(FileHandle fh) throws IOException {
+		Writer writer = fh.writer(false);
+		Json json = new Json();
+		json.setOutputType(OutputType.minimal);
+		json.toJson(data,writer);
+		writer.flush();
+		writer.close();
+	}
+
+  public Object asObject(String name, Object fallback) {
+    Object v = getProperty(name);
+    if (v == null)
+      return fallback;
+    return v;
+  }
+
+  public Object getData() {
+    return data;
+  }
+}
+core/src/it/alcacoop/backgammon/fsm/GameFSM.java
+public class GameFSM extends BaseFSM implements Context {
+
+  private Board board;
+  public State currentState;
+  public static boolean skip_stats = false;
+
+
+  public enum States implements State {
+    CPU_TURN {
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+
+          case SET_GAME_TURN:
+            AICalls.Locking.SetBoard(ctx.board()._board[1], ctx.board()._board[0]);
+            float p0 = ctx.board().getPIPS(0); // BACK PIPS
+            float p1 = ctx.board().getPIPS(1); // WHITE PIPS
+            p0 = p0 + p0 * 0.3f;
+            if (p1 <= p0) {
+              // NON CALCOLO RESIGN - PICCOLO VANTAGGIO PIPS
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.ASK_FOR_RESIGNATION, 0);
+            } else {
+              AICalls.AskForResignation();
+            }
+            break;
+
+          case ASK_FOR_RESIGNATION:
+            int resign = (Integer)params;
+            if (resign > 0) {
+              MatchState.resignValue = resign;
+              String s = "Your opponent resigned a game";
+              if (resign == 2)
+                s = "Your opponent resigned a gammon game";
+              if (resign == 3)
+                s = "Your opponent resigned a backgammon game";
+              ctx.state(DIALOG_HANDLER);
+              UIDialog.getFlashDialog(Events.CPU_RESIGNED, s);
+            } else { // ASKFORDOUBLING OR ROLL..
+              if (MatchState.fCubeUse == 0) { // NO CUBE USE
+                if ((!GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                  ctx.board().rollDices();
+                } else if ((GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                  UIDialog.getDicesDialog(false);
+                }
+              } else {
+                if (
+                ((MatchState.fCrawford == 0) || (!MatchState.fCrafwordGame)) && // NOCR OR NO CRGAME
+                    ((MatchState.fCubeOwner == -1) || (MatchState.fCubeOwner == 1)) // AVAILABLE CUBE
+                ) {
+                  if (MatchState.nMatchTo - MatchState.anScore[1] > 1)
+                    AICalls.AskForDoubling();
+                  else {// DEAD CUBE!!
+                    if ((!GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                      ctx.board().rollDices();
+                    } else if ((GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                      UIDialog.getDicesDialog(false);
+                    }
+                  }
+                } else {
+                  if ((!GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                    ctx.board().rollDices();
+                  } else if ((GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                    UIDialog.getDicesDialog(false);
+                  }
+                }
+              }
+            }
+            break;
+
+          case ASK_FOR_DOUBLING:
+            if (Integer.parseInt(params.toString()) == 1) { // OPEN DOUBLING DIALOG
+              GnuBackgammon.Instance.rec.addDoubleRequest(1);
+              ctx.state(DIALOG_HANDLER);
+              UIDialog.getYesNoDialog(Events.DOUBLING_RESPONSE, "CPU is asking for double. Accept?");
+            } else {
+              if ((!GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                ctx.board().rollDices();
+              } else if ((GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                UIDialog.getDicesDialog(false);
+              }
+            }
+            break;
+
+          case DICES_ROLLED:
+            ctx.board().dices.animating = false;
+            int dices[] = (int[])params;
+
+            // STATS MANAGEMENT
+            if (MatchState.matchType == 0) {
+              StatManager.getInstance().addRoll(MatchState.fMove, dices, ctx.board()._board);
+            }
+
+            if ((GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+              ctx.board().rollDices(dices[0], dices[1]);
+            }
+            GnuBackgammon.Instance.rec.addDices(dices[0], dices[1], false);
+            ctx.board().thinking(true);
+            AICalls.EvaluateBestMove(dices);
+            break;
+
+          case EVALUATE_BEST_MOVE:
+            ctx.board().thinking(false);
+            int moves[] = (int[])params;
+            int[] d = ctx.board().dices.get();
+            GnuBackgammon.Instance.rec.addMove(1, d[0], d[1], moves);
+            if (moves[0] == -1) {
+              ctx.state(DIALOG_HANDLER);
+              UIDialog.getFlashDialog(Events.NO_MORE_MOVES, "Your opponent has no legal moves", 0.8f);
+            } else {
+              moves = (int[])params;
+              ctx.board().setMoves(moves);
+            }
+            break;
+
+          case PERFORMED_MOVE:
+            ctx.board().updatePInfo();
+            ctx.board().performNextMove();
+            break;
+
+          case NO_MORE_MOVES:
+            ctx.state(States.CHECK_WIN);
+            break;
+
+          default:
+            return false;
+        }
+        return true;
+      }
+    },
+
+
+    HUMAN_TURN {
+      @Override
+      public boolean processEvent(Context ctx, GameFSM.Events evt, Object params) {
+        switch (evt) {
+
+          case SET_GAME_TURN:
+            ctx.board().dices.clear();
+            if (MatchState.fCubeUse == 0) {
+              if ((!GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                ctx.board().rollDices();
+              } else if ((GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                UIDialog.getDicesDialog(false);
+              }
+            } else {
+              if (
+              ((MatchState.fCrawford == 0) || (!MatchState.fCrafwordGame)) && // NOCR OR NO CRGAME
+                  ((MatchState.fCubeOwner == -1) || (MatchState.fCubeOwner == MatchState.fMove)) // AVAILABLE CUBE
+              ) {
+                ctx.board().addActor(ctx.board().rollBtn);
+                ctx.board().addActor(ctx.board().doubleBtn);
+              } else {
+                if ((!GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                  ctx.board().rollDices();
+                } else if ((GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                  UIDialog.getDicesDialog(false);
+                }
+              }
+            }
+            break;
+
+          case DICES_ROLLED:
+            ctx.board().removeActor(ctx.board().rollBtn);
+            if (MatchState.fCubeUse == 1)
+              ctx.board().removeActor(ctx.board().doubleBtn);
+            int dices[] = (int[])params;
+
+            // STATS MANAGEMENT
+            if (MatchState.matchType == 0) {
+              StatManager.getInstance().addRoll(MatchState.fMove, dices, ctx.board()._board);
+            }
+
+            if ((GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+              ctx.board().rollDices(dices[0], dices[1]);
+            }
+            GnuBackgammon.Instance.rec.addDices(dices[0], dices[1], true);
+            AICalls.GenerateMoves(ctx.board(), dices[0], dices[1]);
+            break;
+
+          case GENERATE_MOVES:
+            int moves[][] = (int[][])params;
+
+            if (moves != null) { // PLAYER HAS MOVES
+              ctx.board().availableMoves.setMoves(moves);
+
+              if ((GnuBackgammon.fsm.greedyMoves = ctx.board().getGreedyBearoffMove(moves)) != null)
+                ctx.state(GREEDY_BEAROFF); // START GREEDY BEAROFF
+
+            } else { // PAYER HASN'T ANY MOVE
+              ctx.state(DIALOG_HANDLER);
+              int[] d = ctx.board().dices.get();
+              int[] m = { -1, -1, -1, -1, -1, -1, -1, -1 };
+              GnuBackgammon.Instance.rec.addMove(0, d[0], d[1], m);
+              UIDialog.getFlashDialog(Events.NO_MORE_MOVES, "No legal moves available", 0.8f);
+            }
+            ctx.board().dices.animating = false;
+            break;
+
+
+          case POINT_TOUCHED:
+            if (!ctx.board().availableMoves.hasMoves())
+              break;
+            if (GnuBackgammon.Instance.optionPrefs.getString("AMOVES", "Tap").equals("Auto")) {
+              int orig = (Integer)params;
+              if ((orig == -1) || (ctx.board()._board[MatchState.fMove][orig] == 0))
+                break;
+              int dest = ctx.board().getAutoDestination(orig);
+              if (dest != -2) {
+                int m[] = { orig, dest, -1, -1, -1, -1, -1, -1 };
+
+                int idx = GnuBackgammon.fsm.hnmove;
+                GnuBackgammon.fsm.hmoves[idx * 2] = orig;
+                GnuBackgammon.fsm.hmoves[idx * 2 + 1] = dest;
+                GnuBackgammon.fsm.hnmove++;
+
+                ctx.board().availableMoves.dropDice(orig - dest);
+                ctx.state(States.HUMAN_CHECKER_MOVING);
+                ctx.board().humanMove(m);
+              }
+            } else {
+              if (ctx.board().points.get((Integer)params).isTarget) { // MOVE CHECKER
+                int origin = ctx.board().selected.boardX;
+                int dest = (Integer)params;
+                int m[] = { origin, dest, -1, -1, -1, -1, -1, -1 };
+
+                int idx = GnuBackgammon.fsm.hnmove;
+                GnuBackgammon.fsm.hmoves[idx * 2] = origin;
+                GnuBackgammon.fsm.hmoves[idx * 2 + 1] = dest;
+                GnuBackgammon.fsm.hnmove++;
+
+                ctx.state(HUMAN_CHECKER_MOVING);
+                ctx.board().humanMove(m);
+                ctx.board().availableMoves.dropDice(origin - dest);
+              } else { // SELECT NEW CHECKER
+                if ((Integer)params != -1)
+                  ctx.board().selectChecker((Integer)params);
+              }
+            }
+            break;
+
+          case DICE_CLICKED:
+            int[] d = ctx.board().dices.get();
+            GnuBackgammon.Instance.rec.addMove(0, d[0], d[1], GnuBackgammon.fsm.hmoves);
+            ctx.board().dices.clear();
+            ctx.state(CHECK_WIN);
+            break;
+
+          default:
+            return false;
+        }
+        return true;
+      }
+    },
+
+    GREEDY_BEAROFF {
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+          case GREEDY_MOVE:
+            int idx = GnuBackgammon.fsm.hnmove;
+            int gm[] = (int[])params;
+            int m[] = { gm[0], gm[1], -1, -1, -1, -1, -1, -1 };
+            GnuBackgammon.fsm.hmoves[idx * 2] = gm[0];
+            GnuBackgammon.fsm.hmoves[idx * 2 + 1] = gm[1];
+            GnuBackgammon.fsm.hnmove++;
+            ctx.board().availableMoves.dropDice(gm[0] - gm[1]);
+            ctx.board().humanMove(m);
+            break;
+
+          case PERFORMED_MOVE:
+            ctx.board().updatePInfo();
+            int mv[] = { -1, -1 };
+            for (int i = 0; i < 4; i++) {
+              if (GnuBackgammon.fsm.greedyMoves[i * 2] != -1) {
+                mv[0] = GnuBackgammon.fsm.greedyMoves[i * 2];
+                mv[1] = GnuBackgammon.fsm.greedyMoves[(i * 2) + 1];
+                GnuBackgammon.fsm.greedyMoves[i * 2] = -1;
+                GnuBackgammon.fsm.greedyMoves[(i * 2) + 1] = -1;
+                break;
+              }
+            }
+            if (mv[0] != -1)
+              GnuBackgammon.fsm.processEvent(Events.GREEDY_MOVE, mv);
+            else
+              GnuBackgammon.fsm.processEvent(Events.NO_MORE_MOVES, null);
+            break;
+
+          case NO_MORE_MOVES:
+            GnuBackgammon.fsm.state(HUMAN_TURN);
+            GnuBackgammon.fsm.processEvent(Events.DICE_CLICKED, null);
+            break;
+
+          default:
+            return false;
+        }
+        return true;
+      }
+
+      @Override
+      public void enterState(Context ctx) {
+        GnuBackgammon.fsm.processEvent(Events.PERFORMED_MOVE, null);
+      }
+    },
+
+    HUMAN_CHECKER_MOVING { // HERE ALL TOUCH EVENTS ARE IGNORED!
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+
+          case PERFORMED_MOVE:
+            ctx.board().updatePInfo();
+            ctx.state(HUMAN_TURN);
+            break;
+
+          default:
+            return false;
+        }
+        return true;
+      }
+    },
+
+    CHECK_WIN {
+      public void enterState(Context ctx) {
+        for (int i = 0; i < 8; i++)
+          GnuBackgammon.fsm.hmoves[i] = -1;
+        GnuBackgammon.fsm.hnmove = 0;
+        GnuBackgammon.Instance.rec.updateBoard();
+        if (MatchState.matchType == 0)
+          GnuBackgammon.Instance.rec.saveJson(GnuBackgammon.Instance.fname + "json");
+
+        if (ctx.board().gameFinished()) {
+          ctx.state(CHECK_END_MATCH);
+        } else {
+          if (MatchState.fMove == 1)
+            ctx.state(States.HUMAN_TURN);
+          else {
+            if (MatchState.matchType == 0)
+              ctx.state(States.CPU_TURN);
+            else
+              ctx.state(States.HUMAN_TURN);
+          }
+
+          ctx.board().switchTurn();
+        }
+      }
+    },
+
+    CHECK_END_MATCH {
+      @Override
+      public void enterState(Context ctx) {
+        int game_score = 0;
+
+        if (MatchState.resignValue == 0) {
+          game_score = MatchState.nCube * ctx.board().gameScore(MatchState.fMove == 1 ? 0 : 1);
+          MatchState.win_type = ctx.board().gameScore(MatchState.fMove == 1 ? 0 : 1);
+        } else {
+          game_score = MatchState.resignValue * MatchState.nCube;
+          MatchState.win_type = MatchState.resignValue;
+        }
+        // win_type in [1=SINGLE|2=GAMMON|3=BACKGAMMON]
+
+        GnuBackgammon.Instance.rec.addResult(MatchState.fMove, game_score, (MatchState.resignValue > 0));
+        if (MatchState.matchType == 0)
+          GnuBackgammon.Instance.rec.saveJson(GnuBackgammon.Instance.fname + "json");
+
+        if (MatchState.fMove == 0)
+          MatchState.SetMatchScore(MatchState.anScore[1], MatchState.anScore[MatchState.fMove] + game_score);
+        else
+          MatchState.SetMatchScore(MatchState.anScore[MatchState.fMove] + game_score, MatchState.anScore[0]);
+
+        String matchProgress = " (match to " + MatchState.nMatchTo + " in progress)";
+        if (MatchState.anScore[MatchState.fMove] >= MatchState.nMatchTo) {
+          matchProgress = " (match to " + MatchState.nMatchTo + " finished)";
+        }
+
+        String gameString = "Your opponent won " + game_score + " point";
+        String score1 = "";
+        String score2 = "";
+        if (MatchState.matchType == 0) {
+          if (MatchState.fMove == 1) {
+            gameString = "CPU WON " + game_score + " POINT!";
+            if (!skip_stats) StatManager.getInstance().addGame(1);
+          } else {
+            gameString = "YOU WON " + game_score + " POINT!";
+            if (!skip_stats) StatManager.getInstance().addGame(0);
+          }
+
+          if (!skip_stats) GnuBackgammon.Instance.nativeFunctions.gserviceUpdateState();
+
+          score1 = "CPU: " + MatchState.anScore[1];
+          score2 = "YOU: " + MatchState.anScore[0];
+        } else {
+          score1 = "Player1: " + MatchState.anScore[1];
+          score2 = "Player2: " + MatchState.anScore[0];
+        }
+
+        if (MatchState.anScore[MatchState.fMove] >= MatchState.nMatchTo) // MATCH FINISHED
+          GnuBackgammon.Instance.nativeFunctions.showAds(false);
+        if (!skip_stats) {
+          if ((ctx.board().getPIPS(0) <= 0) || (((MatchState.resignValue == 1) ||
+            (MatchState.resignValue == 2) || (MatchState.resignValue == 3)) && (MatchState.fMove == 0))) {
+            AchievementsManager.getInstance().checkAchievements(true);
+            if (MatchState.anScore[MatchState.fMove] >= MatchState.nMatchTo) {
+              ELORatingManager.getInstance().updateRating(true);
+            }
+          } else {
+            AchievementsManager.getInstance().checkAchievements(false);
+          }
+        }
+
+        skip_stats = false;
+        UIDialog.getEndGameDialog(Events.CONTINUE, matchProgress, gameString, score1, score2);
+      }
+
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        if (evt == Events.CONTINUE) {
+          if (MatchState.anScore[MatchState.fMove] >= MatchState.nMatchTo) { // MATCH FINISHED: GO TO MAIN MENU
+            if (MatchState.matchType == 0)
+              Gdx.files.absolute(GnuBackgammon.Instance.fname + "json").delete();
+            GnuBackgammon.Instance.rec.reset();
+            GnuBackgammon.Instance.nativeFunctions.showInterstitial();
+            GnuBackgammon.Instance.setFSM("MENU_FSM");
+          } else {
+            ctx.state(OPENING_ROLL);
+          }
+        }
+        return false;
+      }
+    },
+
+
+    OPENING_ROLL {
+      @Override
+      public void enterState(Context ctx) {
+        MatchState.UpdateMSCubeInfo(1, -1);
+        MatchState.win_type = 0;
+        ctx.board().initBoard();
+        ctx.board().updatePInfo();
+
+        GnuBackgammon.Instance.rec.addGame();
+
+        if ((!GnuBackgammon.fsm.helpShown) && (GnuBackgammon.Instance.optionPrefs.getString("SHOWHELP", "Yes").equals("Yes"))) {
+          UIDialog.getHelpDialog(true);
+          GnuBackgammon.fsm.helpShown = true;
+        } else {
+          GnuBackgammon.fsm.processEvent(Events.NOOP, null);
+        }
+      }
+
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+
+          case NOOP:
+            GnuBackgammon.Instance.optionPrefs.putString("SHOWHELP", "No");
+            GnuBackgammon.Instance.optionPrefs.flush();
+            ctx.board().rollDices();
+            break;
+
+          case DICES_ROLLED:
+            int dices[] = { 0, 0 };
+            if (dices[0] == dices[1]) {
+              while (dices[0] == dices[1]) {
+                dices = AICalls.Locking.RollDice();
+              }
+            }
+            GnuBackgammon.fsm.processEvent(Events.ROLL_DICE, dices);
+            break;
+
+          case ROLL_DICE:
+            dices = (int[])params;
+            GnuBackgammon.Instance.rec.addDices(dices[0], dices[1], dices[0] > dices[1]);
+            if (dices[0] > dices[1]) {// START HUMAN
+              MatchState.SetGameTurn(0, 0);
+              if (MatchState.matchType == 0)
+                StatManager.getInstance().addRoll(0, dices, ctx.board()._board);
+            } else if (dices[0] < dices[1]) {// START CPU
+              MatchState.SetGameTurn(1, 1);
+              if (MatchState.matchType == 0)
+                StatManager.getInstance().addRoll(1, dices, ctx.board()._board);
+            }
+            ctx.board().showArrow();
+            ctx.board().rollDices(dices[0], dices[1]);
+            break;
+
+          case SET_GAME_TURN:
+            if (MatchState.fMove == 0)
+              AICalls.Locking.SetBoard(ctx.board()._board[0], ctx.board()._board[1]);
+            else
+              AICalls.Locking.SetBoard(ctx.board()._board[1], ctx.board()._board[0]);
+
+            if ((MatchState.fMove == 0) || (MatchState.matchType == 1)) {
+              ctx.state(HUMAN_TURN);
+              int d[] = ctx.board().dices.get();
+              AICalls.GenerateMoves(ctx.board(), d[0], d[1]);
+            } else {
+              ctx.state(CPU_TURN);
+              ctx.board().thinking(true);
+              AICalls.EvaluateBestMove(ctx.board().dices.get());
+            }
+            ctx.board().dices.animating = false;
+            break;
+
+          default:
+            return false;
+        }
+        return false;
+      }
+    },
+
+
+    DIALOG_HANDLER {
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+
+          case DOUBLING_RESPONSE: // RISPOSTA A CPU DOUBLING REQUEST
+            if ((Boolean)params) { // DOUBLING ACCEPTED
+              GnuBackgammon.Instance.rec.addDoubleTake(0);
+              MatchState.UpdateMSCubeInfo(MatchState.nCube * 2, 0);
+              GnuBackgammon.Instance.rec.setCube(MatchState.nCube, 0);
+              ctx.board().doubleCube();
+              ctx.state(CPU_TURN);
+              if ((!GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                ctx.board().rollDices();
+              } else if ((GnuBackgammon.Instance.optionPrefs.getString("DICESG", "MER-TWS").equals("Manual")) && (MatchState.matchType < 2)) {
+                UIDialog.getDicesDialog(false);
+              }
+            } else { // DOUBLING NOT ACCEPTED
+              GnuBackgammon.Instance.rec.addDoubleDrop(0);
+              ctx.state(CHECK_END_MATCH);
+            }
+            break;
+
+          case DOUBLE_REQUEST: // DOUBLE BUTTON CLICKED!
+            if (MatchState.matchType == 0) { // CPU VS HUMAN
+              GnuBackgammon.Instance.rec.addDoubleRequest(0);
+              ctx.board().removeActor(ctx.board().doubleBtn);
+              AICalls.Locking.SetBoard(ctx.board()._board[1], ctx.board()._board[0]);
+              ctx.board().thinking(true);
+              AICalls.AcceptDouble();
+            } else { // SHOW DOUBLE DIALOG!
+              UIDialog.getYesNoDialog(Events.HUMAN_DOUBLE_RESPONSE, "Accept double?");
+            }
+            break;
+
+          case HUMAN_DOUBLE_RESPONSE: // HUMAN DOUBLE RESPONSE (TWO PLAYERS MODE)
+            boolean res = (Boolean)params;
+            if (res) { // HUMAN OPPONENT ACCEPTED DOUBLE
+              MatchState.UpdateMSCubeInfo(MatchState.nCube * 2, MatchState.fMove == 0 ? 1 : 0);
+              GnuBackgammon.Instance.rec.setCube(MatchState.nCube, MatchState.fMove == 0 ? 1 : 0);
+              ctx.board().doubleCube();
+              ctx.state(HUMAN_TURN);
+            } else { // HUMAN OPPONENT DIDN'T ACCEPT IT
+              ctx.state(CHECK_END_MATCH);
+            }
+            break;
+
+          case ACCEPT_DOUBLE: // CPU DOUBLING RESPONSE
+            ctx.board().thinking(false);
+            if (((Integer)params == 1) || (MatchState.nMatchTo - MatchState.anScore[0] == 1)) { // CPU ACCEPTED MY DOUBLE || OPPONENT IS WINNING (DEAD CUBE!!)
+              UIDialog.getFlashDialog(Events.CPU_DOUBLE_ACCEPTED, "Your opponent accepted double");
+            } else { // CPU DIDN'T ACCEPT MY DOUBLE
+              UIDialog.getFlashDialog(Events.CPU_DOUBLE_NOT_ACCEPTED, "Double not accepted");
+            }
+            break;
+
+          case CPU_DOUBLE_ACCEPTED: // CPU ACCEPTED DOUBLE
+            ctx.state(States.HUMAN_TURN);
+            MatchState.UpdateMSCubeInfo(MatchState.nCube * 2, MatchState.fMove == 0 ? 1 : 0);
+            GnuBackgammon.Instance.rec.setCube(MatchState.nCube, 1);
+            GnuBackgammon.Instance.rec.addDoubleTake(1);
+            ctx.board().doubleCube();
+            break;
+
+          case CPU_RESIGNED: // CPU RESIGN GAME
+            ctx.board().switchTurn();
+            ctx.state(CHECK_END_MATCH);
+            break;
+
+          case CPU_DOUBLE_NOT_ACCEPTED: // CPU DIDN'T ACCEPT DOUBLE
+            GnuBackgammon.Instance.rec.addDoubleDrop(1);
+            ctx.state(CHECK_END_MATCH);
+            break;
+
+          case NO_MORE_MOVES: // NO LEGAL MOVES AVAILABLE
+            GnuBackgammon.fsm.state(States.CHECK_WIN);
+            break;
+
+          case GET_RESIGN_VALUE:
+            int ret = (Integer)params;
+            MatchState.resignValue = ret;
+            String s = "Really resign the game?";
+            if (ret == 2)
+              s = "Really resign a gammon game?";
+            if (ret == 3)
+              s = "Really resign a backgammon game?";
+            UIDialog.getYesNoDialog(Events.HUMAN_RESIGNED, s);
+            break;
+
+          case HUMAN_RESIGNED: // HUMAN RESIGN GAME
+            if ((Boolean)params) {
+              ctx.board().switchTurn();
+              GnuBackgammon.fsm.state(States.CHECK_END_MATCH);
+            } else {
+              MatchState.resignValue = 0;
+              ctx.state(HUMAN_TURN);
+            }
+            break;
+
+          case ABANDON_MATCH: // QUIT MATCH
+            if (MatchState.matchType == 1) {
+              if ((Boolean)params) { // ABANDON
+                GnuBackgammon.Instance.rec.reset();
+                GnuBackgammon.Instance.setFSM("MENU_FSM");
+              } else { // CANCEL
+                GnuBackgammon.fsm.back();
+              }
+            } else {
+              String response = "YES";
+              try {
+                response = (String)params;
+              } catch (Exception e) {}
+              if (response.equals("YES")) {
+                // SAVING AND ABANDONING
+                StatManager.getInstance().addGame(1);
+                GnuBackgammon.Instance.nativeFunctions.gserviceUpdateState();
+                GnuBackgammon.Instance.rec.saveJson(GnuBackgammon.Instance.fname + "json");
+                GnuBackgammon.Instance.rec.reset();
+                GnuBackgammon.Instance.setFSM("MENU_FSM");
+              } else if (response.equals("NO")) {
+                // ABANDONING
+                StatManager.getInstance().addGame(1);
+                GnuBackgammon.Instance.nativeFunctions.gserviceUpdateState();
+                Gdx.files.absolute(GnuBackgammon.Instance.fname + "json").delete();
+                GnuBackgammon.Instance.rec.reset();
+                GnuBackgammon.Instance.setFSM("MENU_FSM");
+              } else {
+                // CANCEL!
+                GnuBackgammon.fsm.back();
+              }
+            }
+            break;
+
+          default:
+            return false;
+        }
+
+
+        return true;
+      }
+
+      @Override
+      public void exitState(Context ctx) {
+        Gdx.graphics.setContinuousRendering(false);
+        Gdx.graphics.requestRendering();
+        super.exitState(ctx);
+      }
+    },
+
+
+    STOPPED {
+      @Override
+      public void enterState(Context ctx) {}
+    };
+
+    // DEFAULT IMPLEMENTATION
+    public boolean processEvent(Context ctx, Events evt, Object params) {
+      return false;
+    }
+    public void enterState(Context ctx) {}
+    public void exitState(Context ctx) {}
+
+  };
+
+
+  public GameFSM(Board _board) {
+    board = _board;
+  }
+
+  public void start() {
+    super.start();
+    GnuBackgammon.Instance.goToScreen(4);
+    hnmove = 0;
+  }
+
+  public void stop() {
+    state(States.STOPPED);
+    GnuBackgammon.fsm.helpShown = false;
+  }
+
+  public Board board() {
+    return board;
+  }
+}
+core/src/it/alcacoop/backgammon/fsm/BaseFSM.java
+public enum Events {
+  NOOP,
+
+  GSERVICE_LOGIN,
+  GSERVICE_CONNECTED,
+  GSERVICE_READY,
+  GSERVICE_INIT_RATING, // params={rating}
+  GSERVICE_HANDSHAKE,
+  GSERVICE_FIRSTROLL, // params={turn, dice0, dice1}
+  GSERVICE_ROLL, // params={dice0, dice1}
+  GSERVICE_DOUBLE,
+  GSERVICE_ACCEPT,
+  GSERVICE_MOVES, // params={-1,-1,-1,-1,-1,-1,-1,-1}
+  GSERVICE_BOARD,
+  GSERVICE_BOARD_SYNCED,
+  GSERVICE_CHATMSG,
+  GSERVICE_ERROR,
+  GSERVICE_ABANDON, // params: 0=abandon,1=resign_single,2=resign_gammon,3=resign_bg
+  GSERVICE_BYE,
+  GSERVICE_RETURN_GAME,
+  GSERVICE_PLAY_AGAIN,
+
+  FIBS_ERROR,
+  FIBS_ACCOUNT_CREATED,
+  FIBS_ACCOUNT_PRESENT,
+  FIBS_ACCOUNT_SPAM,
+  FIBS_WHO_END,
+  FIBS_CANCEL,
+  FIBS_CONNECTED,
+  FIBS_DISCONNECT,
+  FIBS_LOGIN_OK,
+  FIBS_LOGIN_ERROR,
+  FIBS_NETWORK_ERROR,
+  FIBS_PLAYER_CHANGED,
+  FIBS_PLAYER_LOGOUT,
+  FIBS_PLAYER_LOGIN,
+  FIBS_INVITE_RECEIVED,
+  FIBS_INVITE_SENDED,
+  FIBS_INVITE_DECLINED,
+  FIBS_START_GAME,
+  FIBS_FIRSTROLL,
+  FIBS_RESUMEGAME,
+  FIBS_BOARD,
+  FIBS_BOARD_SYNCED,
+  FIBS_MOVES,
+  FIBS_OPPONENT_ROLLS,
+  FIBS_YOU_ROLL,
+  FIBS_ABANDON_GAME,
+  FIBS_RESIGN_REQUEST,
+  FIBS_MATCHOVER,
+
+  ACCEPT_DOUBLE,
+  ACCEPT_RESIGN,
+  GET_RESIGN_VALUE,
+  ASK_FOR_DOUBLING,
+  ASK_FOR_RESIGNATION,
+  EVALUATE_BEST_MOVE,
+  INITIALIZE_ENVIRONMENT,
+  ROLL_DICE,
+  DICES_ROLLED,
+  SET_BOARD,
+  SET_GAME_TURN,
+  SET_MATCH_SCORE,
+  SET_MATCH_TO,
+  UPDATE_MS_CUBEINFO,
+  GREEDY_MOVE,
+  PERFORMED_MOVE,
+  NO_MORE_MOVES,
+  POINT_TOUCHED,
+  GENERATE_MOVES,
+  DICE_CLICKED,
+  STARTING_SIMULATION,
+  START_GAME,
+  SIMULATED_TURN,
+  BUTTON_CLICKED,
+  CHECKER_RESETTED,
+  DOUBLING_RESPONSE,
+  CONTINUE,
+  STOPPED,
+  DOUBLE_REQUEST,
+  HUMAN_DOUBLE_RESPONSE,
+  CPU_DOUBLE_ACCEPTED,
+  CPU_DOUBLE_NOT_ACCEPTED,
+  SHOW_DOUBLE_DIALOG,
+  CPU_RESIGNED,
+  HUMAN_RESIGNED,
+  ABANDON_MATCH,
+  RESTORE_ANSWER,
+  RESET_STATS
+}
+core/src/it/alcacoop/backgammon/ui/UIDialog.java
+public final class UIDialog extends Table {
+
+  private Table t1, t2, t3;
+  private TextButton bContinue;
+  private TextButton bYes;
+  private TextButton bNo;
+  private TextButton bCancel;
+  private TextButton bExport;
+  private TextButton bAccept;
+  private TextButton bReject;
+
+  private Label label;
+  private Label diceLabel;
+  private Drawable background;
+  private static ClickListener cl;
+
+  private Map<String, DiceButton> diceButtonMap;
+  private GetRandomDiceButton randomDicesButton;
+
+  private static UIDialog instance;
+
+  private BaseFSM.Events evt;
+  private boolean quitWindow = false;
+  private boolean optionsWindow = false;
+  private boolean leaveWindow = false;
+  private boolean dicesWindow = false;
+  private boolean visible = false;
+  private GameOptionsTable opts;
+  private static float alpha = 0.9f;
+
+  static {
+    instance = new UIDialog();
+    instance.setSkin(GnuBackgammon.skin);
+  }
+
+  private UIDialog() {
+    cl = new ClickListener() {
+      public void clicked(InputEvent event, float x, float y) {
+        final String s;
+        GnuBackgammon.Instance.snd.playMoveStart();
+        if (event.getTarget() instanceof Label) {
+          s = ((Label)event.getTarget()).getText().toString().toUpperCase();
+        } else if (event.getTarget() instanceof DiceButton) {
+          s = ((DiceButton)event.getTarget()).getName();
+        } else if (event.getTarget() instanceof GetRandomDiceButton) {
+          int ds[] = AICalls.Locking.RollDice();
+          if (ds[0] > ds[1])
+            s = ds[0] + "x" + ds[1];
+          else
+            s = ds[1] + "x" + ds[0];
+        } else {
+          s = ((TextButton)event.getTarget()).getText().toString().toUpperCase();
+        }
+
+        instance.addAction(MyActions.sequence(
+            Actions.run(new Runnable() {
+              @Override
+              public void run() {
+                // WORKAROUND: ON FIBS_MULTIPLAYER SOME DIALOG LOCK EXECUTION..
+              }
+            }),
+            Actions.fadeOut(0.3f),
+            Actions.run(new Runnable() {
+              @Override
+              public void run() {
+                instance.remove();
+                if (leaveWindow) {
+                  GnuBackgammon.fsm.processEvent(instance.evt, s);
+                  return;
+                }
+
+                boolean ret = s.equals("YES") || s.equals("OK");
+
+                if ((instance.quitWindow) && (ret)) {
+                  Gdx.app.exit();
+                } else {
+                  GnuBackgammon.fsm.processEvent(instance.evt, ret);
+                  if (instance.optionsWindow) {
+                    opts.savePrefs();
+                    GnuBackgammon.Instance.nativeFunctions.showAds(true);
+                  }
+                }
+
+                if ((instance.dicesWindow) && (!ret)) {
+                  // MANUAL DICES CLOSE
+                  GnuBackgammon.Instance.nativeFunctions.showAds(true);
+                  String[] ret2 = s.split("x");
+                  int[] intArray = new int[ret2.length];
+                  for (int i = 0; i < ret2.length; i++) {
+                    intArray[i] = Integer.parseInt(ret2[i]);
+                  }
+                  GnuBackgammon.fsm.processEvent(GameFSM.Events.DICES_ROLLED, intArray);
+                }
+
+                Gdx.graphics.setContinuousRendering(false);
+                Gdx.graphics.requestRendering();
+                visible = false;
+              }
+            })
+            ));
+      };
+    };
+
+    label = new Label("", GnuBackgammon.skin);
+    diceLabel = new Label("", GnuBackgammon.skin);
+
+    diceButtonMap = new HashMap<String, DiceButton>();
+    for (int i = 1; i < 7; i++) {
+      for (int j = 1; j < 7; j++) {
+        if (j <= i) {
+          DiceButton b = new DiceButton(i, j);
+          b.addListener(cl);
+          diceButtonMap.put(i + "x" + j, b);
+        }
+      }
+    }
+
+    randomDicesButton = new GetRandomDiceButton();
+    randomDicesButton.addListener(cl);
+
+    TextButtonStyle tl = GnuBackgammon.skin.get("button", TextButtonStyle.class);
+
+    bYes = new TextButton("Yes", tl);
+    bYes.addListener(cl);
+    bNo = new TextButton("No", tl);
+    bNo.addListener(cl);
+    bContinue = new TextButton("Ok", tl);
+    bContinue.addListener(cl);
+    bCancel = new TextButton("Cancel", tl);
+    bCancel.addListener(cl);
+    bExport = new TextButton("Export Match", tl);
+    bExport.addListener(new ClickListener() {
+      @Override
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        GnuBackgammon.Instance.nativeFunctions.shareMatch(GnuBackgammon.Instance.rec);
+        super.clicked(event, x, y);
+      }
+    });
+    bAccept = new TextButton("Accept", tl);
+    bAccept.addListener(new ClickListener() {
+      @Override
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        instance.addAction(MyActions.sequence(
+            Actions.fadeOut(0.3f),
+            Actions.run(new Runnable() {
+              @Override
+              public void run() {
+                String u = GnuBackgammon.Instance.fibsScreen.lastInvite;
+                GnuBackgammon.Instance.fibsScreen.fibsInvitations.remove(u);
+                GnuBackgammon.Instance.fibsScreen.refreshInvitationList();
+                GnuBackgammon.Instance.commandDispatcher.send("join " + GnuBackgammon.Instance.fibsScreen.lastInvite);
+                instance.remove();
+                Gdx.graphics.setContinuousRendering(false);
+                Gdx.graphics.requestRendering();
+              }
+            })));
+      }
+    });
+    bReject = new TextButton("Reject", tl);
+    bReject.addListener(new ClickListener() {
+      @Override
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        instance.addAction(MyActions.sequence(
+            Actions.fadeOut(0.3f),
+            Actions.run(new Runnable() {
+              @Override
+              public void run() {
+                instance.remove();
+                String u = GnuBackgammon.Instance.fibsScreen.lastInvite;
+                GnuBackgammon.Instance.commandDispatcher.send("tell " + u + " Sorry, not now. Thanks for the invitation.");
+                GnuBackgammon.Instance.fibsScreen.fibsInvitations.remove(u);
+                GnuBackgammon.Instance.fibsScreen.refreshInvitationList();
+                Gdx.graphics.setContinuousRendering(false);
+                Gdx.graphics.requestRendering();
+              }
+            })));
+      }
+    });
+
+
+    background = GnuBackgammon.skin.getDrawable("default-window");
+    setBackground(background);
+
+    opts = new GameOptionsTable(false, cl);
+
+    t1 = new Table();
+    t1.setFillParent(true);
+    t1.add(label).fill().expand().center();
+
+    t2 = new Table();
+    t2.setFillParent(true);
+    t2.add().colspan(2).expand();
+    t2.add(bContinue).fill().expand();
+    t2.add().colspan(2).expand();
+
+    t3 = new Table();
+    t3.setFillParent(true);
+    t3.add().expand();
+    t3.add(bNo).fill().expand();
+    t3.add().expand();
+    t3.add(bYes).fill().expand();
+    t3.add().expand();
+
+    setColor(1, 1, 1, 0);
+
+  }
+  private void setText(String t) {
+    label.setText(t);
+  }
+
+
+  public static void getYesNoDialog(BaseFSM.Events evt, String text) {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.quitWindow = false;
+    instance.optionsWindow = false;
+    instance.leaveWindow = false;
+    instance.dicesWindow = false;
+    instance.evt = evt;
+    instance.remove();
+    instance.setText(text);
+
+    float height = stage.getHeight() * 0.4f;
+    float width = stage.getWidth() * 0.78f;
+
+    instance.clear();
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    instance.row().padTop(width / 25);
+    instance.add(instance.label).colspan(5).expand().align(Align.center);
+
+    instance.row().pad(width / 25);
+    instance.add();
+    instance.add(instance.bNo).fill().expand().height(height * 0.25f).width(width / 4);
+    instance.add();
+    instance.add(instance.bYes).fill().expand().height(height * 0.25f).width(width / 4);
+    instance.add();
+
+    stage.addActor(instance);
+    instance.setY(stage.getHeight());
+    instance.addAction(MyActions.sequence(Actions.parallel(Actions.color(new Color(1, 1, 1, alpha), 0.2f),
+        Actions.moveTo((stage.getWidth() - width) / 2, (stage.getHeight() - height) / 2, 0.2f))));
+  }
+
+
+  public static void getContinueDialog(BaseFSM.Events evt, String text) {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.quitWindow = false;
+    instance.optionsWindow = false;
+    instance.leaveWindow = false;
+    instance.dicesWindow = false;
+    instance.evt = evt;
+    instance.remove();
+    instance.setText(text);
+
+    float height = stage.getHeight() * 0.4f;
+    float width = stage.getWidth() * 0.6f;
+
+    instance.clear();
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    instance.row().padTop(width / 25);
+    instance.add(instance.label).colspan(3).expand().align(Align.center);
+
+    instance.row().pad(width / 25);
+    instance.add();
+    instance.add(instance.bContinue).fill().expand().height(height * 0.25f).width(width / 4);
+    instance.add();
+
+    stage.addActor(instance);
+    instance.setY(stage.getHeight());
+    instance.addAction(MyActions.sequence(Actions.parallel(Actions.color(new Color(1, 1, 1, alpha), 0.2f),
+        Actions.moveTo((stage.getWidth() - width) / 2, (stage.getHeight() - height) / 2, 0.2f))));
+  }
+
+
+  public static void getEndGameDialog(BaseFSM.Events evt, String text, String text1, String score1, String score2) {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.quitWindow = false;
+    instance.optionsWindow = false;
+    instance.leaveWindow = false;
+    instance.dicesWindow = false;
+    instance.evt = evt;
+    instance.remove();
+
+    float height = stage.getHeight() * 0.6f;
+    float width = stage.getWidth() * 0.6f;
+
+    instance.clear();
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    instance.row().padTop(width / 25);
+    instance.add().expand();
+    instance.add(text1).colspan(2).expand().align(Align.center);
+    instance.add().expand();
+
+    instance.row();
+    instance.add().expand();
+    instance.add("Overall Score " + text).colspan(2).expand().align(Align.center);
+    instance.add().expand();
+    instance.row();
+    instance.add().expand();
+    instance.add(score1).expand().align(Align.center);
+    instance.add(score2).expand().align(Align.center);
+    instance.add().expand();
+
+    Table t1 = new Table();
+    t1.row().expand().fill();
+    t1.add();
+    t1.add(instance.bContinue).colspan(2).fill().expand().height(height * 0.15f).width(width / 3);
+    if ((MatchState.anScore[0] >= MatchState.nMatchTo || MatchState.anScore[1] >= MatchState.nMatchTo) && (MatchState.matchType == 0)) {
+      t1.add();
+      t1.add(instance.bExport).colspan(2).fill().expand().height(height * 0.15f).width(width / 3);
+    }
+    t1.add();
+    instance.row();
+    instance.add(t1).colspan(4).fill().padBottom(width / 25);
+
+    stage.addActor(instance);
+    instance.setY(stage.getHeight());
+    instance.addAction(MyActions.sequence(Actions.parallel(Actions.color(new Color(1, 1, 1, alpha), 0.2f),
+        Actions.moveTo((stage.getWidth() - width) / 2, (stage.getHeight() - height) / 2, 0.2f))));
+  }
+
+
+  public static void getFlashDialog(BaseFSM.Events evt, String text) {
+    getFlashDialog(evt, text, 1.5f);
+  }
+
+  public static void getFlashDialog(BaseFSM.Events evt, String text, float waitTime) {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.quitWindow = false;
+    instance.optionsWindow = false;
+    instance.leaveWindow = false;
+    instance.dicesWindow = false;
+    instance.evt = evt;
+    instance.remove();
+    instance.setText(text);
+
+    float height = stage.getHeight() * 0.3f;
+    float width = stage.getWidth() * 0.75f;
+
+    instance.clear();
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    instance.add(instance.label).expand().align(Align.center);
+
+    stage.addActor(instance);
+    instance.addAction(MyActions.sequence(
+        Actions.alpha(alpha, 0.3f),
+        Actions.delay(waitTime),
+        Actions.fadeOut(0.3f),
+        Actions.run(new Runnable() {
+          @Override
+          public void run() {
+            instance.remove();
+            GnuBackgammon.fsm.processEvent(instance.evt, true);
+          }
+        })
+        ));
+  }
+
+
+  public static void getQuitDialog() {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.quitWindow = true;
+    instance.optionsWindow = false;
+    instance.leaveWindow = false;
+    instance.dicesWindow = false;
+    instance.remove();
+    instance.setText("Really quit the game?");
+
+    float height = stage.getHeight() * 0.4f;
+    float width = stage.getWidth() * 0.5f;
+
+    instance.clear();
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    instance.row().padTop(width / 25);
+    instance.add(instance.label).colspan(5).expand().align(Align.center);
+
+    instance.row().pad(width / 25);
+    instance.add();
+    instance.add(instance.bNo).fill().expand().height(height * 0.25f).width(width / 4);
+    instance.add();
+    instance.add(instance.bYes).fill().expand().height(height * 0.25f).width(width / 4);
+    instance.add();
+
+    stage.addActor(instance);
+    instance.setY(stage.getHeight());
+    instance.addAction(MyActions.sequence(Actions.parallel(Actions.color(new Color(1, 1, 1, alpha), 0.2f),
+        Actions.moveTo((stage.getWidth() - width) / 2, (stage.getHeight() - height) / 2, 0.2f))));
+  }
+
+
+  public static void getLeaveDialog(BaseFSM.Events evt) {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.quitWindow = false;
+    instance.optionsWindow = false;
+    instance.leaveWindow = true;
+    instance.dicesWindow = false;
+    instance.evt = evt;
+    instance.remove();
+
+    instance.setText("You are leaving current match.");
+
+    float height = stage.getHeight() * 0.45f;
+    float width = stage.getWidth() * 0.6f;
+
+    instance.clear();
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    instance.row().padTop(width / 25);
+    instance.add(instance.label).colspan(7).expand().align(Align.center);
+    instance.row().padTop(width / 45);
+    instance.add(new Label("Do you want to save it?", GnuBackgammon.skin)).colspan(7).expand().align(Align.center);
+
+    instance.row().padTop(width / 25);
+    instance.add();
+    instance.add(instance.bYes).fill().expand().height(height * 0.25f).width(width / 4.5f);
+    instance.add();
+    instance.add(instance.bNo).fill().expand().height(height * 0.25f).width(width / 4.5f);
+    instance.add();
+    instance.add(instance.bCancel).fill().expand().height(height * 0.25f).width(width / 4.5f);
+    instance.add();
+
+    instance.row().padBottom(width / 35);
+    instance.add();
+
+
+    stage.addActor(instance);
+    instance.setY(stage.getHeight());
+    instance.addAction(MyActions.sequence(Actions.parallel(Actions.color(new Color(1, 1, 1, alpha), 0.2f),
+        Actions.moveTo((stage.getWidth() - width) / 2, (stage.getHeight() - height) / 2, 0.2f))));
+  }
+
+
+  public static void getHelpDialog(Boolean cb) {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.evt = Events.NOOP;
+    instance.quitWindow = false;
+    instance.leaveWindow = false;
+    instance.optionsWindow = false;
+    instance.dicesWindow = false;
+    instance.remove();
+    Label l = new Label(
+        "GAME TYPE\n" +
+            "You can choose two game type, and several options:\n" +
+            "Backgammon - usual starting position\n" +
+            "Nackgammon - Nack's starting position, attenuates lucky starting roll\n" +
+            "Doubling Cube: use or not the doubling cube, with or without Crawford rule\n\n" +
+            "START TURN\n" +
+            "If cube isn't available, dices are rolled automatically,\n" +
+            "else you must click on 'Double' or 'Roll' button\n\n" +
+            "MOVING MECHANIC\n" +
+            "You can choose two moves mechanic (Options->Move Logic):\n" +
+            "TAP - once you rolled dices, select the piece you would move.\n" +
+            "If legal moves for that piece are available, they will be shown.\n" +
+            "Click an available point and the piece will move there.\n" +
+            "AUTO - click on a piece and it moves automatically to destination point.\n" +
+            "Bigger dice is played first. You can change dice order clicking on dices\n\n" +
+            "You can cancel your moves in current hand just clicking the UNDO button\n" +
+            "in the game options menu popup.\n\n" +
+            "END TURN\n" +
+            "When you finish your turn, click again the dices to take back them and change turn.\n"
+        , GnuBackgammon.skin);
+    l.setWrap(true);
+
+    ScrollPane sc = new ScrollPane(l, GnuBackgammon.skin);
+    sc.setFadeScrollBars(false);
+    sc.setOverscroll(false, false);
+
+
+    float height = stage.getHeight() * 0.85f;
+    float width = stage.getWidth() * 0.9f;
+
+    instance.clear();
+    instance.row().padTop(width / 25);
+    instance.add(sc).colspan(3).expand().fill().align(Align.center).padTop(width / 25).padLeft(width / 35).padRight(width / 35);
+
+    instance.row().pad(width / 25);
+    instance.add();
+    instance.add(instance.bContinue).fill().expand().height(height * 0.15f).width(width / 4);
+    instance.add();
+
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    stage.addActor(instance);
+    instance.setY(stage.getHeight());
+    instance.addAction(Actions.sequence(
+        MyActions.sequence(
+            Actions.parallel(
+                Actions.color(new Color(1, 1, 1, alpha), 0.2f),
+                Actions.moveTo((stage.getWidth() - width) / 2, (stage.getHeight() - height) / 2, 0.2f))),
+        Actions.run(new Runnable() {
+          @Override
+          public void run() {
+            Gdx.graphics.setContinuousRendering(true);
+          }
+        })
+        ));
+  }
+
+
+  public static void getAboutDialog(Boolean cb) {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.evt = Events.NOOP;
+    instance.quitWindow = false;
+    instance.leaveWindow = false;
+    instance.optionsWindow = false;
+    instance.dicesWindow = false;
+    instance.remove();
+
+    final String gnuBgLink = "http://www.gnubg.org";
+    final String gplLink = "http://www.gnu.org/licenses/gpl.html";
+    final String githubLink1 = "https://github.com/alcacoop/it.alcacoop.backgammon";
+    final String githubLink2 = "https://github.com/alcacoop/libgnubg-android";
+    final String wikipediaLink = "http://en.wikipedia.org/wiki/Backgammon#Rules";
+
+    Table t = new Table();
+    t.add(new Label("ABOUT BACKGAMMON MOBILE", GnuBackgammon.skin)).expand();
+    t.row();
+    t.add(new Label(" ", GnuBackgammon.skin)).fill().expand();
+    t.row();
+    t.add(new Label("Backgammon Mobile is based on GNUBackgammon (gnubg)", GnuBackgammon.skin));
+    Label link1 = new Label(gnuBgLink, GnuBackgammon.skin);
+    link1.addListener(new ClickListener() {
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        GnuBackgammon.Instance.nativeFunctions.openURL(gnuBgLink);
+      };
+    });
+    t.row();
+    t.add(link1);
+    t.row();
+    t.add(new Label(" ", GnuBackgammon.skin)).fill().expand();
+    t.row();
+    t.add(new Label("Its source code is released under a GPLv3 License", GnuBackgammon.skin));
+    Label link2 = new Label(gplLink, GnuBackgammon.skin);
+    link2.addListener(new ClickListener() {
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        GnuBackgammon.Instance.nativeFunctions.openURL(gplLink);
+      };
+    });
+    t.row();
+    t.add(link2);
+    t.row();
+    t.add(new Label(" ", GnuBackgammon.skin)).fill().expand();
+    t.row();
+    t.add(new Label("and is available on GitHub at:", GnuBackgammon.skin));
+    Label link3 = new Label(githubLink1, GnuBackgammon.skin);
+    link3.addListener(new ClickListener() {
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        GnuBackgammon.Instance.nativeFunctions.openURL(githubLink1);
+      };
+    });
+    Label link4 = new Label(githubLink2, GnuBackgammon.skin);
+    link4.addListener(new ClickListener() {
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        GnuBackgammon.Instance.nativeFunctions.openURL(githubLink2);
+      };
+    });
+    t.row();
+    t.add(link3);
+    t.row();
+    t.add(link4);
+    t.row();
+    t.add(new Label(" ", GnuBackgammon.skin)).fill().expand();
+    t.row();
+    t.add(new Label("You can find a detailed description of game rules on Wikipedia:", GnuBackgammon.skin));
+    Label link5 = new Label(wikipediaLink, GnuBackgammon.skin);
+    link5.addListener(new ClickListener() {
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        GnuBackgammon.Instance.nativeFunctions.openURL(wikipediaLink);
+      };
+    });
+    t.row();
+    t.add(link5);
+    t.row();
+    t.add(new Label(" ", GnuBackgammon.skin)).fill().expand();
+    t.row();
+    t.add(new Label("If you enjoy our game support us rating on the Play Store", GnuBackgammon.skin));
+    t.row();
+    t.add(new Label(" ", GnuBackgammon.skin)).fill().expand();
+    t.row();
+    t.add(new Label("Copyright 2012 - Alca Soc. Coop.", GnuBackgammon.skin));
+
+
+    ScrollPane sc = new ScrollPane(t, GnuBackgammon.skin);
+    sc.setFadeScrollBars(false);
+    sc.setOverscroll(false, false);
+
+    float height = stage.getHeight() * 0.85f;
+    float width = stage.getWidth() * 0.95f;
+
+    instance.clear();
+    instance.row().padTop(width / 25);
+    instance.add(sc).colspan(3).expand().fill().align(Align.center).padTop(width / 25).padLeft(width / 35).padRight(width / 35);
+
+    instance.row().pad(width / 25);
+    instance.add();
+    instance.add(instance.bContinue).fill().expand().height(height * 0.15f).width(width / 4);
+    instance.add();
+
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+
+    stage.addActor(instance);
+    instance.setY(stage.getHeight());
+    instance.addAction(Actions.sequence(
+        MyActions.sequence(
+            Actions.parallel(
+                Actions.color(new Color(1, 1, 1, alpha), 0.2f),
+                Actions.moveTo((stage.getWidth() - width) / 2, (stage.getHeight() - height) / 2, 0.2f))),
+        Actions.run(new Runnable() {
+          @Override
+          public void run() {
+            Gdx.graphics.setContinuousRendering(true);
+          }
+        })
+        ));
+  }
+
+
+  public static void getOptionsDialog() {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.evt = Events.NOOP;
+    instance.quitWindow = false;
+    instance.leaveWindow = false;
+    instance.optionsWindow = true;
+    instance.dicesWindow = false;
+    instance.remove();
+
+    instance.opts.initFromPrefs();
+
+
+    float width = stage.getWidth() * 0.85f;
+    float height = stage.getHeight() * 0.98f;
+    if (GnuBackgammon.Instance.ss == 2) {
+      width = stage.getWidth() * 0.95f;
+      height = stage.getHeight() * 1.05f;
+    }
+
+    instance.clear();
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    instance.add(instance.opts).fillY().expand();
+
+    stage.addActor(instance);
+    instance.setY(stage.getHeight());
+    instance.addAction(MyActions.sequence(Actions.run(new Runnable() {
+      public void run() {
+        GnuBackgammon.Instance.nativeFunctions.showAds(false);
+      }
+    }), Actions.parallel(Actions.color(new Color(1, 1, 1, alpha), 0.2f),
+        Actions.moveTo((stage.getWidth() - width) / 2, (stage.getHeight() - height) / 2, 0.2f))));
+  }
+
+
+  public static boolean isOpened() {
+    return instance.hasParent();
+  }
+
+  public static void getLoginDialog() {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.evt = Events.NOOP;
+    instance.quitWindow = false;
+    instance.leaveWindow = false;
+    instance.optionsWindow = true;
+    instance.remove();
+
+    String usr = "";
+    String pwd = "";
+
+    if (GnuBackgammon.Instance.server.equals("fibs.com")) {
+      usr = GnuBackgammon.Instance.fibsPrefs.getString("fusername");
+      pwd = GnuBackgammon.Instance.fibsPrefs.getString("fpassword");
+    } else {
+      usr = GnuBackgammon.Instance.fibsPrefs.getString("tusername");
+      pwd = GnuBackgammon.Instance.fibsPrefs.getString("tpassword");
+    }
+
+    float width = stage.getWidth() * 0.65f;
+    float height = stage.getHeight() * 0.6f;
+
+    instance.clear();
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    instance.add(new Label("Logint to server..", GnuBackgammon.skin)).colspan(3);
+
+    instance.row();
+    instance.add().colspan(3).expand().fill();
+
+    instance.row();
+    instance.add(new Label("Username:", GnuBackgammon.skin));
+    final TextField username = new TextField(usr, GnuBackgammon.skin);
+    instance.add(username).colspan(2).fillX().expandX();
+
+    instance.row();
+    instance.add(new Label("Password:", GnuBackgammon.skin));
+    final TextField password = new TextField(pwd, GnuBackgammon.skin);
+    instance.add(password).colspan(2).fillX().expandX();
+
+    instance.row();
+    instance.add().colspan(3).expand().fill();
+
+    instance.row();
+    TextButtonStyle tl = GnuBackgammon.skin.get("button", TextButtonStyle.class);
+    TextButton t1 = new TextButton("Cancel", tl);
+    TextButton t2 = new TextButton("Create", tl);
+    TextButton t3 = new TextButton("Login", tl);
+    instance.add(t1).fill().expand();
+    instance.add(t2).fill().expand();
+    instance.add(t3).fill().expand();
+
+
+    t1.addListener(new ClickListener() {
+      @Override
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        GnuBackgammon.fsm.processEvent(Events.FIBS_CANCEL, null);
+        instance.remove();
+        super.clicked(event, x, y);
+      }
+    });
+
+    t2.addListener(new ClickListener() {
+      @Override
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        UIDialog.getCreateAccountDialog();
+        super.clicked(event, x, y);
+      }
+    });
+
+    t3.addListener(new ClickListener() {
+      @Override
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        String u = username.getText();
+        String p = password.getText();
+        if (u.length() > 0 && p.length() > 0) {
+          GnuBackgammon.Instance.commandDispatcher.sendLogin(u, p);
+          instance.remove();
+        }
+        super.clicked(event, x, y);
+      }
+    });
+
+    Gdx.graphics.setContinuousRendering(true);
+    stage.addActor(instance);
+    instance.addAction(Actions.alpha(alpha, 0.3f));
+  }
+
+
+  public static void getCreateAccountDialog() {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.evt = Events.NOOP;
+    instance.quitWindow = false;
+    instance.leaveWindow = false;
+    instance.optionsWindow = true;
+    instance.remove();
+
+    float width = stage.getWidth() * 0.65f;
+    float height = stage.getHeight() * 0.6f;
+
+    instance.clear();
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    instance.add(new Label("Create Account..", GnuBackgammon.skin)).colspan(3);
+
+    instance.row();
+    instance.add().colspan(3).expand().fill();
+
+    instance.row();
+    instance.add(new Label("Username:", GnuBackgammon.skin));
+    final TextField username = new TextField("", GnuBackgammon.skin);
+    instance.add(username).colspan(2).fillX().expandX();
+
+    instance.row();
+    instance.add(new Label("Password:", GnuBackgammon.skin));
+    final TextField password = new TextField("", GnuBackgammon.skin);
+    instance.add(password).colspan(2).fillX().expandX();
+
+    instance.row();
+    instance.add(new Label("Password:", GnuBackgammon.skin));
+    final TextField password2 = new TextField("", GnuBackgammon.skin);
+    instance.add(password2).colspan(2).fillX().expandX();
+
+    instance.row();
+    instance.add().colspan(3).expand().fill();
+
+    instance.row();
+    TextButtonStyle tl = GnuBackgammon.skin.get("button", TextButtonStyle.class);
+    TextButton t1 = new TextButton("Cancel", tl);
+    TextButton t2 = new TextButton("Create", tl);
+    instance.add(t1).fill().expand();
+    instance.add().fill().expand();
+    instance.add(t2).fill().expand();
+
+    t1.addListener(new ClickListener() {
+      @Override
+      public void clicked(InputEvent event, float x, float y) {
+        GnuBackgammon.Instance.snd.playMoveStart();
+        GnuBackgammon.fsm.processEvent(Events.FIBS_CANCEL, null);
+        instance.remove();
+        super.clicked(event, x, y);
+      }
+    });
+
+
+    stage.addActor(instance);
+    Gdx.graphics.setContinuousRendering(true);
+    instance.addAction(Actions.alpha(alpha, 0.3f));
+  }
+
+  public static void getInviteClickedDialog(String username) {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.quitWindow = false;
+    instance.optionsWindow = false;
+    instance.leaveWindow = false;
+    instance.remove();
+    instance.setText("User \"" + username + "\" invited you...");
+
+    float height = stage.getHeight() * 0.4f;
+    float width = stage.getWidth() * 0.6f;
+
+    instance.clear();
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+
+    instance.row().padTop(width / 25);
+    instance.add(instance.label).colspan(5).expand().align(Align.center);
+
+    instance.row().pad(width / 25);
+    instance.add();
+    instance.add(instance.bReject).fill().expand().height(height * 0.25f).width(width / 4);
+    instance.add();
+    instance.add(instance.bAccept).fill().expand().height(height * 0.25f).width(width / 4);
+    instance.add();
+
+    stage.addActor(instance);
+    instance.addAction(MyActions.alpha(alpha, 0.3f));
+  }
+
+
+  public static void setButtonsStyle(String b) {
+    instance.bContinue.setStyle(GnuBackgammon.skin.get("button-" + b, TextButtonStyle.class));
+    instance.bYes.setStyle(GnuBackgammon.skin.get("button-" + b, TextButtonStyle.class));
+    instance.bNo.setStyle(GnuBackgammon.skin.get("button-" + b, TextButtonStyle.class));
+    instance.bCancel.setStyle(GnuBackgammon.skin.get("button-" + b, TextButtonStyle.class));
+    instance.bExport.setStyle(GnuBackgammon.skin.get("button-" + b, TextButtonStyle.class));
+    instance.bAccept.setStyle(GnuBackgammon.skin.get("button-" + b, TextButtonStyle.class));
+    instance.bReject.setStyle(GnuBackgammon.skin.get("button-" + b, TextButtonStyle.class));
+    instance.opts.setButtonsStyle(b);
+  }
+
+
+  public static void getDicesDialog(Boolean cb) {
+    Stage stage = GnuBackgammon.Instance.currentScreen.getStage();
+    instance.visible = true;
+    instance.evt = Events.NOOP;
+    instance.quitWindow = false;
+    instance.leaveWindow = false;
+    instance.optionsWindow = false;
+    instance.dicesWindow = true;
+    instance.remove();
+
+    float height = stage.getHeight() * 0.94f;
+    float width = stage.getWidth() * 0.92f;
+
+    instance.setWidth(width);
+    instance.setHeight(height);
+    instance.setX((stage.getWidth() - width) / 2);
+    instance.setY((stage.getHeight() - height) / 2);
+    instance.clear();
+
+    Table t = new Table();
+
+    instance.add(t).fill().expand();
+    float cellWidth = width / 7.2f;
+    float cellHeight = height / 7.5f;
+
+    for (int i = 1; i < 7; i++) {
+      t.row().space(cellHeight * 0.125f);
+      for (int j = 1; j < 7; j++) {
+        if ((i == 2) && (j == 5)) {
+          t.add().width(cellWidth).height(cellHeight).fill();
+          t.add().width(cellWidth).height(cellHeight).fill();
+          t.add(instance.randomDicesButton).width(cellWidth * 2).colspan(2).right().fill().height(cellHeight);
+        }
+        if (j <= i) {
+          t.add(instance.diceButtonMap.get(i + "x" + j)).width(cellWidth).height(cellHeight).fill();
+        }
+      }
+      if (i == 1) {
+        instance.diceLabel.setText("Choose " + GnuBackgammon.Instance.gameScreen.getCurrentPinfo() + " dices");
+        t.add(instance.diceLabel).right().top().colspan(5);
+      }
+    }
+
+    stage.addActor(instance);
+    instance.addAction(MyActions.sequence(Actions.run(new Runnable() {
+      @Override
+      public void run() {
+        // MANUAL DICES OPEN
+        GnuBackgammon.Instance.nativeFunctions.showAds(false);
+      }
+    }), Actions.alpha(alpha, 0.3f)));
+  }
+  public Actor hit(float x, float y, boolean touchable) {
+    Actor hit = super.hit(x, y, touchable);
+    if (visible) {
+      if (hit != null)
+        return hit;
+      else {
+        return this;
+      }
+
+    } else {
+      return hit;
+    }
+  }
+}
+core/src/it/alcacoop/backgammon/fsm/GServiceFSM.java
+public class GServiceFSM extends BaseFSM implements Context, GServiceMessages {
+
+  private Board board;
+  public State currentState;
+  public static boolean noEndGameLayer = false;
+  private static long waitTime;
+  private static int d1, d2;
+  private static int[] bufferedMoves = { -1, -1, -1, -1, -1, -1, -1, -1 };
+  private static boolean isBufferedMoves = false;
+  private static int moves[][];
+  private static int obPlayAgain;
+  static Timer pingTimer;
+
+
+  public enum States implements State {
+
+    REMOTE_TURN {
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+          case GSERVICE_ACCEPT:
+            GnuBackgammon.fsm.board().waiting(true);
+            boolean resp = (Boolean)params;
+            if (resp) {
+              MatchState.UpdateMSCubeInfo(MatchState.nCube * 2, 0);
+              ctx.board().doubleCube();
+              GServiceClient.getInstance().queue.pull(Events.GSERVICE_ROLL);
+            } else {
+              MatchState.resignValue = -1;
+              GnuBackgammon.fsm.state(States.MATCH_OVER);
+            }
+            GServiceClient.getInstance().sendMessage(GServiceMessages.GSERVICE_ACCEPT + " " + (resp ? 1 : 0));
+            break;
+
+          case GSERVICE_ROLL:
+            int[] dices = (int[])params;
+            int d1 = Math.max(dices[0], dices[1]);
+            int d2 = Math.min(dices[0], dices[1]);
+            GnuBackgammon.Instance.snd.playRoll();
+            ctx.board().animateDices(d1, d2, true);
+            break;
+
+          case DICES_ROLLED:
+            ctx.board().dices.animating = false;
+            dices = (int[])params;
+            int mv[][] = AICalls.Locking.GenerateMoves(ctx.board()._board[0], ctx.board()._board[1], dices[0], dices[1]);
+            if ((mv == null) || (mv.length == 0)) {
+              UIDialog.getFlashDialog(Events.NO_MORE_MOVES, "Your opponent has no legal moves", 0.8f);
+            } else {
+              GServiceClient.getInstance().queue.pull(Events.GSERVICE_MOVES);
+            }
+            break;
+
+
+          case GSERVICE_MOVES:
+            ctx.board().waiting(false);
+            int moves[] = (int[])params;
+            ctx.board().setMoves(moves);
+            break;
+
+          case PERFORMED_MOVE:
+            ctx.board().updatePInfo();
+            ctx.board().performNextMove();
+            break;
+
+          case NO_MORE_MOVES: // END TURN
+            ctx.board().waiting(false);
+            GnuBackgammon.Instance.board.dices.clear();
+            GnuBackgammon.fsm.state(States.SWITCH_TURN);
+            break;
+
+          default:
+            return false;
+        }
+        return true;
+      }
+    },
+
+    CUBE_REQUEST {
+      @Override
+      public void enterState(Context ctx) {
+        ctx.board().removeActor(ctx.board().rollBtn);
+        ctx.board().waiting(true);
+      }
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+          case GSERVICE_ACCEPT:
+            int resp = (Integer)params;
+            ctx.board().waiting(false);
+            if (resp == 1) {
+              MatchState.UpdateMSCubeInfo(MatchState.nCube * 2, 1);
+              ctx.board().doubleCube();
+
+              GnuBackgammon.fsm.state(States.LOCAL_TURN);
+              UIDialog.getFlashDialog(Events.ROLL_DICE, "Your opponent accepted double");
+            } else {
+              UIDialog.getFlashDialog(Events.CPU_DOUBLE_NOT_ACCEPTED, "Double not accepted");
+            }
+            break;
+          case CPU_DOUBLE_NOT_ACCEPTED:
+            MatchState.resignValue = 1;
+            GnuBackgammon.fsm.state(States.MATCH_OVER);
+            break;
+          default:
+            return false;
+        }
+        return true;
+      }
+    },
+
+    LOCAL_TURN {
+      @Override
+      public boolean processEvent(Context ctx, GServiceFSM.Events evt, Object params) {
+        switch (evt) {
+          case ROLL_DICE:
+            int dices[] = AICalls.Locking.RollDice();
+            GServiceClient.getInstance().sendMessage(GSERVICE_ROLL + " " + dices[0] + " " + dices[1]);
+            /*
+            String s = "";
+            for (int i = 1; i >= 0; i--)
+              for (int j = 0; j < 25; j++) {
+                s += " " + ctx.board()._board[i][j];
+              }
+            GServiceClient.getInstance().sendMessage(GSERVICE_BOARD + s);
+            */
+            GnuBackgammon.fsm.processEvent(Events.GSERVICE_ROLL, dices);
+            break;
+
+          case GSERVICE_ROLL:
+            GServiceFSM.d1 = 0;
+            GServiceFSM.d2 = 0;
+            dices = (int[])params;
+            GServiceFSM.d1 = Math.max(dices[0], dices[1]);
+            GServiceFSM.d2 = Math.min(dices[0], dices[1]);
+            AICalls.GenerateMoves(ctx.board(), GServiceFSM.d1, GServiceFSM.d2);
+            break;
+
+
+          case GENERATE_MOVES:
+            /*
+            moves = (int[][])params;
+            if ((moves != null) && (moves.length > 0) && (ctx.board().getPIPS(0) != 167)) {
+              GnuBackgammon.fsm.state(BOARD_SYNC);
+            } else {
+              // NO WAY TO SYNC
+              GnuBackgammon.fsm.processEvent(Events.GSERVICE_BOARD_SYNCED, null);
+            }
+            */
+            moves = (int[][])params;
+            GnuBackgammon.fsm.processEvent(Events.GSERVICE_BOARD_SYNCED, null);
+            break;
+
+
+          case GSERVICE_BOARD_SYNCED:
+            GnuBackgammon.Instance.snd.playRoll();
+            ctx.board().animateDices(GServiceFSM.d1, GServiceFSM.d2, true);
+            break;
+
+
+          case DICES_ROLLED:
+            if ((moves != null) && (moves.length > 0)) {
+              ctx.board().availableMoves.setMoves(moves);
+
+              if ((GnuBackgammon.fsm.greedyMoves = ctx.board().getGreedyBearoffMove(moves)) != null)
+                GnuBackgammon.fsm.state(States.GREEDY_BEAROFF); // START GREEDY BEAROFF
+
+            } else {
+              UIDialog.getFlashDialog(Events.NO_MORE_MOVES, "No legal moves available", 0.8f);
+            }
+            ctx.board().dices.animating = false;
+            break;
+
+
+          case POINT_TOUCHED:
+            if (!ctx.board().availableMoves.hasMoves())
+              break;
+            if (GnuBackgammon.Instance.optionPrefs.getString("AMOVES", "Tap").equals("Auto")) {
+              int orig = (Integer)params;
+              if ((orig == -1) || (ctx.board()._board[MatchState.fMove][orig] == 0))
+                break;
+              int dest = ctx.board().getAutoDestination(orig);
+              if (dest != -2) {
+                int m[] = { orig, dest, -1, -1, -1, -1, -1, -1 };
+
+                int idx = GnuBackgammon.fsm.hnmove;
+                GnuBackgammon.fsm.hmoves[idx * 2] = orig;
+                GnuBackgammon.fsm.hmoves[idx * 2 + 1] = dest;
+                GnuBackgammon.fsm.hnmove++;
+
+                ctx.board().availableMoves.dropDice(orig - dest);
+                GnuBackgammon.fsm.state(States.HUMAN_CHECKER_MOVING);
+                ctx.board().humanMove(m);
+              }
+            } else { // TAP MODE
+              if (ctx.board().points.get((Integer)params).isTarget) { // MOVE CHECKER
+                int origin = ctx.board().selected.boardX;
+                int dest = (Integer)params;
+                int m[] = { origin, dest, -1, -1, -1, -1, -1, -1 };
+
+                int idx = GnuBackgammon.fsm.hnmove;
+                GnuBackgammon.fsm.hmoves[idx * 2] = origin;
+                GnuBackgammon.fsm.hmoves[idx * 2 + 1] = dest;
+                GnuBackgammon.fsm.hnmove++;
+
+                GnuBackgammon.fsm.state(States.HUMAN_CHECKER_MOVING);
+                ctx.board().humanMove(m);
+                ctx.board().availableMoves.dropDice(origin - dest);
+              } else { // SELECT NEW CHECKER
+                if ((Integer)params != -1)
+                  ctx.board().selectChecker((Integer)params);
+              }
+            }
+            break;
+
+          case NO_MORE_MOVES:
+            ctx.board().dices.clear();
+            GnuBackgammon.fsm.state(States.SWITCH_TURN);
+            break;
+
+          case DICE_CLICKED:
+            ctx.board().dices.clear();
+            String m = "" + GSERVICE_MOVE;
+            for (int i = 0; i < 8; i++)
+              m += " " + GnuBackgammon.fsm.hmoves[i];
+
+            GServiceClient.getInstance().sendMessage(m);
+            GnuBackgammon.fsm.state(States.SWITCH_TURN);
+            break;
+
+          default:
+            return false;
+        }
+
+        return true;
+      }
+    },
+
+    GREEDY_BEAROFF {
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+          case GREEDY_MOVE:
+            int idx = GnuBackgammon.fsm.hnmove;
+            int gm[] = (int[])params;
+            int m[] = { gm[0], gm[1], -1, -1, -1, -1, -1, -1 };
+            GnuBackgammon.fsm.hmoves[idx * 2] = gm[0];
+            GnuBackgammon.fsm.hmoves[idx * 2 + 1] = gm[1];
+            GnuBackgammon.fsm.hnmove++;
+            ctx.board().availableMoves.dropDice(gm[0] - gm[1]);
+            ctx.board().humanMove(m);
+            break;
+
+          case PERFORMED_MOVE:
+            ctx.board().updatePInfo();
+            int mv[] = { -1, -1 };
+            for (int i = 0; i < 4; i++) {
+              if (GnuBackgammon.fsm.greedyMoves[i * 2] != -1) {
+                mv[0] = GnuBackgammon.fsm.greedyMoves[i * 2];
+                mv[1] = GnuBackgammon.fsm.greedyMoves[(i * 2) + 1];
+                GnuBackgammon.fsm.greedyMoves[i * 2] = -1;
+                GnuBackgammon.fsm.greedyMoves[(i * 2) + 1] = -1;
+                break;
+              }
+            }
+            if (mv[0] != -1)
+              GnuBackgammon.fsm.processEvent(Events.GREEDY_MOVE, mv);
+            else
+              GnuBackgammon.fsm.processEvent(Events.NO_MORE_MOVES, null);
+            break;
+
+          case NO_MORE_MOVES:
+            GnuBackgammon.fsm.state(States.LOCAL_TURN);
+            GnuBackgammon.fsm.processEvent(Events.DICE_CLICKED, null);
+            break;
+
+          default:
+            return false;
+        }
+        return true;
+      }
+
+      @Override
+      public void enterState(Context ctx) {
+        GnuBackgammon.fsm.processEvent(Events.PERFORMED_MOVE, null);
+      }
+    },
+
+
+    HUMAN_CHECKER_MOVING { // HERE ALL TOUCH EVENTS ARE IGNORED!
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+
+          case PERFORMED_MOVE:
+            ctx.board().updatePInfo();
+            GnuBackgammon.fsm.state(States.LOCAL_TURN);
+            break;
+
+          default:
+            return false;
+        }
+        return true;
+      }
+    },
+
+
+    /*
+    BOARD_SYNC {
+      @Override
+      public void enterState(Context ctx) {
+        GServiceClient.getInstance().queue.pull(Events.GSERVICE_BOARD);
+      }
+
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        if (evt == Events.GSERVICE_BOARD) {
+          int b[][] = (int[][])params;
+          // SYNC...
+          boolean differ = false;
+          for (int i = 0; i < 2; i++)
+            for (int j = 0; j < 25; j++)
+              if (ctx.board()._board[i][j] != b[i][j]) {
+                differ = true;
+                break;
+              }
+          if (differ) {
+            ctx.board().initBoard(b[0], b[1]);// RESYNC!
+            AICalls.Locking.SetBoard(ctx.board()._board[1], ctx.board()._board[0]);
+          }
+          GnuBackgammon.fsm.back();
+          GnuBackgammon.fsm.processEvent(Events.GSERVICE_BOARD_SYNCED, null);
+          return true;
+        }
+        return false;
+      }
+    },
+    */
+
+    SWITCH_TURN {
+      public void enterState(Context ctx) {
+        // GServiceClient.getInstance().debug();
+        for (int i = 0; i < 8; i++)
+          GnuBackgammon.fsm.hmoves[i] = -1;
+        GnuBackgammon.fsm.hnmove = 0;
+
+        if (ctx.board().gameFinished()) {
+          GnuBackgammon.fsm.state(States.MATCH_OVER);
+        } else {
+          // SWITCH TURN
+          ctx.board().switchTurn();
+          if (MatchState.fTurn == 0) {
+            GnuBackgammon.fsm.state(States.LOCAL_TURN);
+
+            if ((MatchState.fCubeOwner == -1) || (MatchState.fCubeOwner == 0)) {// AVAILABLE CUBE
+              ctx.board().addActor(ctx.board().rollBtn);
+              ctx.board().addActor(ctx.board().doubleBtn);
+            } else {
+              GnuBackgammon.fsm.processEvent(Events.ROLL_DICE, null);
+            }
+          } else {
+            GnuBackgammon.fsm.state(States.REMOTE_TURN);
+            ctx.board().waiting(true);
+            GServiceClient.getInstance().queue.pull(Events.GSERVICE_DOUBLE, Events.GSERVICE_ROLL);
+          }
+        }
+      }
+    },
+
+
+    OPENING_ROLL {
+      @Override
+      public void enterState(Context ctx) {
+        GServiceFSM.obPlayAgain = -1;
+        ctx.board().waiting(false);
+        GnuBackgammon.Instance.nativeFunctions.hideProgressDialog();
+        ctx.board().rollBtn.remove();
+        ctx.board().doubleBtn.remove();
+        GnuBackgammon.fsm.hnmove = 0;
+        MatchState.UpdateMSCubeInfo(1, -1);
+        GnuBackgammon.Instance.optionPrefs.putString("SHOWHELP", "No");
+        GnuBackgammon.Instance.optionPrefs.flush();
+        GServiceClient.getInstance().queue.pull(Events.GSERVICE_FIRSTROLL);
+      }
+
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+
+          case GSERVICE_FIRSTROLL:
+            MatchState.SetCubeUse(1);
+            MatchState.UpdateMSCubeInfo(1, -1);
+            ctx.board().initBoard(0);
+            MatchState.SetGameVariant(0);
+            AICalls.Locking.SetBoard(ctx.board()._board[0], ctx.board()._board[1]);
+
+            int pars[] = (int[])params;
+            int dices[] = { pars[1], pars[2] };
+            int turn = pars[0] == 1 ? 0 : 1;
+
+            MatchState.fMove = turn;
+            MatchState.fTurn = turn;
+            MatchState.nMatchTo = 1;
+            AICalls.Locking.SetGameTurn(turn, turn);
+            GameMenuPopup.setDisabledButtons();
+
+            if (turn == 0) {
+              GnuBackgammon.fsm.state(States.LOCAL_TURN);
+            } else {
+              GnuBackgammon.fsm.state(States.REMOTE_TURN);
+              ctx.board().waiting(true);
+            }
+            GnuBackgammon.fsm.processEvent(Events.GSERVICE_ROLL, dices);
+            break;
+
+          default:
+            return false;
+
+        }
+        return true;
+      }
+    },
+
+
+    MATCH_OVER {
+      @Override
+      public void enterState(Context ctx) {
+        if (GnuBackgammon.fsm.previousState == MATCH_OVER) // TODO: WORKAROUND.. PROBABLY NEED FIX
+          return;
+
+        ctx.board().waiting(false);
+        GnuBackgammon.Instance.FibsOpponent = "";
+
+        if (MatchState.resignValue > 10)
+          MatchState.resignValue -= 10; // NORMALIZE RESIGN VALUE!
+
+        GServiceClient.instance.reset();
+        GnuBackgammon.Instance.gameScreen.chatBox.hardHide();
+        if ((ctx.board().getPIPS(0) <= 0) || (MatchState.resignValue > 0)) { // YOU WIN!
+
+          int nPoints = MatchState.nCube * MatchState.resignValue;
+          if (MatchState.resignValue == 0)
+            nPoints = MatchState.nCube * ctx.board().gameScore(1);
+
+          MatchState.anScore[0] += nPoints;
+          GnuBackgammon.Instance.gameScreen.pInfo[1].setScore();
+
+
+          AchievementsManager.getInstance().checkAchievements(true);
+          ELORatingManager.getInstance().updateRating(true);
+          GnuBackgammon.Instance.gameScreen.endLayer.show(0, nPoints);
+        } else if ((ctx.board().getPIPS(0) > 0) && (MatchState.resignValue <= 0)) {
+
+          int nPoints = MatchState.nCube * -MatchState.resignValue;
+          if (MatchState.resignValue == 0)
+            nPoints = MatchState.nCube * ctx.board().gameScore(0);
+
+          MatchState.anScore[1] += nPoints;
+          GnuBackgammon.Instance.gameScreen.pInfo[0].setScore();
+
+          AchievementsManager.getInstance().checkAchievements(false);
+          GnuBackgammon.Instance.gameScreen.endLayer.show(1, nPoints);
+        }
+
+        MatchState.resignValue = 0;
+        if (GServiceFSM.obPlayAgain != -1) {
+          GnuBackgammon.fsm.processEvent(Events.GSERVICE_PLAY_AGAIN, GServiceFSM.obPlayAgain);
+          GServiceFSM.obPlayAgain = -1;
+        }
+      }
+
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        EndGameLayer endLayer = ((GameScreen)GnuBackgammon.Instance.currentScreen).endLayer;
+        switch (evt) {
+
+          case GSERVICE_PLAY_AGAIN:
+            ((GameScreen)GnuBackgammon.Instance.currentScreen).initNewMatch();
+            int response = (Integer)params;
+            if (response == 0) {
+              endLayer.opponentAbandoned();
+            } else {
+              if (endLayer.isWaiting()) {
+                GnuBackgammon.fsm.processEvent(Events.GSERVICE_RETURN_GAME, null);
+                endLayer.hide();
+              } else {
+                endLayer.opponentAvailable();
+              }
+            }
+            break;
+
+          case GSERVICE_RETURN_GAME:
+            ctx.board().waiting(true);
+            GServiceClient.getInstance().sendMessage(GSERVICE_INIT_RATING + " " + GnuBackgammon.Instance.optionPrefs.getString("multiboard", "0"));
+            GServiceClient.getInstance().queue.pull(Events.GSERVICE_INIT_RATING);
+            break;
+
+          case GSERVICE_INIT_RATING:
+            double opponentRating = (Double)params;
+            ELORatingManager.getInstance().setRatings(opponentRating);
+
+            Random gen = new Random();
+            waitTime = gen.nextLong();
+            GServiceClient.getInstance().sendMessage(GSERVICE_HANDSHAKE + " " + waitTime + " " + GnuBackgammon.Instance.nativeFunctions.getAppVersionCode());
+            GServiceClient.getInstance().queue.pull(Events.GSERVICE_HANDSHAKE);
+            break;
+
+          case GSERVICE_HANDSHAKE:
+            long _params[] = (long[])params;
+            long remoteWaitTime = _params[0];
+            GnuBackgammon.fsm.state(States.OPENING_ROLL);
+            if (waitTime > remoteWaitTime) {
+              int dices[] = { 0, 0 };
+              while (dices[0] == dices[1])
+                dices = AICalls.Locking.RollDice();
+              int[] p = { (dices[0] > dices[1] ? 1 : 0), dices[0], dices[1] };
+
+              GServiceClient.getInstance().queue.post(Events.GSERVICE_FIRSTROLL, p);
+              GServiceClient.getInstance().sendMessage(GSERVICE_OPENING_ROLL + " " + (dices[0] > dices[1] ? 0 : 1) + " " + dices[0] + " " + dices[1]);
+            }
+            break;
+
+          default:
+            return false;
+
+        }
+        return true;
+      }
+    },
+
+
+    ABANDON_MATCH {
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        if (evt == Events.HUMAN_RESIGNED) {
+          GnuBackgammon.fsm.state(States.MATCH_OVER);
+        }
+        return true;
+      }
+    },
+
+
+    DIALOG_HANDLER {
+      @Override
+      public void enterState(Context ctx) {
+        GServiceFSM.isBufferedMoves = false;
+      }
+
+      @Override
+      public boolean processEvent(Context ctx, Events evt, Object params) {
+        switch (evt) {
+
+          case GSERVICE_MOVES:
+            GServiceFSM.bufferedMoves = (int[])params;
+            GServiceFSM.isBufferedMoves = true;
+            break;
+
+          case ABANDON_MATCH: // QUIT MATCH
+            if ((Boolean)params) { // ABANDON
+              GnuBackgammon.Instance.gameScreen.chatBox.hardHide();
+              if (ctx.board().getPIPS(0) > ctx.board().getPIPS(1)) {
+                GServiceClient.getInstance().sendMessage(GSERVICE_ABANDON + " 13");// FUCK YOU DROPPER!
+              } else {
+                GServiceClient.getInstance().sendMessage(GSERVICE_ABANDON + " 11");
+              }
+              GnuBackgammon.fsm.processEvent(Events.GSERVICE_BYE, null);
+            } else { // CANCEL
+              GnuBackgammon.fsm.back();
+              if (GServiceFSM.isBufferedMoves) {
+                GServiceFSM.isBufferedMoves = false;
+                GnuBackgammon.fsm.processEvent(Events.GSERVICE_MOVES, GServiceFSM.bufferedMoves);
+              }
+            }
+            break;
+
+          case GET_RESIGN_VALUE:
+            int ret = (Integer)params;
+            MatchState.resignValue = ret;
+            String s = "Really resign the game?";
+            if (ret == 2)
+              s = "Really resign a gammon game?";
+            if (ret == 3)
+              s = "Really resign a backgammon game?";
+            UIDialog.getYesNoDialog(Events.HUMAN_RESIGNED, s);
+            break;
+
+          case HUMAN_RESIGNED:
+            if ((Boolean)params) {
+              GServiceClient.getInstance().sendMessage(GSERVICE_ABANDON + " " + MatchState.resignValue);
+              GnuBackgammon.fsm.state(States.MATCH_OVER);
+            } else {
+              GnuBackgammon.fsm.back();
+            }
+            MatchState.resignValue = -MatchState.resignValue;
+            break;
+
+          case DOUBLE_REQUEST:
+            GnuBackgammon.fsm.state(States.CUBE_REQUEST);
+            GServiceClient.getInstance().sendMessage(GServiceMessages.GSERVICE_DOUBLE + " ");
+            GServiceClient.getInstance().queue.pull(Events.GSERVICE_ACCEPT);
+            break;
+
+          default:
+            return false;
+        }
+        return true;
+      }
+    },
+
+
+    STOPPED {
+      @Override
+      public void enterState(Context ctx) {
+        super.enterState(ctx);
+        ctx.board().waiting(false);
+      }
+    };
+
+    // DEFAULT IMPLEMENTATION
+    public boolean processEvent(Context ctx, Events evt, Object params) {
+      return false;
+    }
+    public void enterState(Context ctx) {}
+    public void exitState(Context ctx) {}
+  };
+
+
+  public GServiceFSM(Board _board) {
+    board = _board;
+  }
+
+
+  public void start() {
+    super.start();
+    MatchState.SetCubeUse(1);
+    MatchState.UpdateMSCubeInfo(1, -1);
+    GnuBackgammon.Instance.goToScreen(4);
+    pingTimer = new Timer();
+
+    pingTimer.schedule(new TimerTask() {
+      @Override
+      public void run() {
+        GServiceClient.getInstance().sendMessage("PING");
+      }
+    }, 0, 2500);
+  }
+
+
+  public void stop() {
+    pingTimer.cancel();
+    state(States.STOPPED);
+  }
+
+  public Board board() {
+    return board;
+  }
+
+
+  @Override
+  public void processEvent(final Events evt, final Object params) {
+    Gdx.app.postRunnable(new Runnable() {
+      @Override
+      public void run() {
+        switch (evt) {
+          case GSERVICE_PLAY_AGAIN:
+            if (GnuBackgammon.fsm.currentState == States.MATCH_OVER) {
+              GServiceFSM.obPlayAgain = -1;
+              state().processEvent(GServiceFSM.this, evt, params);
+            } else {
+              GServiceFSM.obPlayAgain = (Integer)params;
+            }
+            break;
+
+          case GSERVICE_DOUBLE:
+            UIDialog.getYesNoDialog(Events.GSERVICE_ACCEPT, "Opponent is asking for double. Accept?");
+            GnuBackgammon.fsm.board().waiting(false);
+            break;
+
+          case GSERVICE_CHATMSG:
+            GnuBackgammon.Instance.snd.playMessage();
+            ((GameScreen)GnuBackgammon.Instance.currentScreen).chatBox.appendMessage(
+                GnuBackgammon.Instance.gameScreen.pInfo[0].getPName(), (String)params, false);
+            break;
+
+          case GSERVICE_ERROR:
+            EndGameLayer endLayer = ((GameScreen)GnuBackgammon.Instance.currentScreen).endLayer;
+            int errorCode = (Integer)params;
+            String message = "";
+            switch (errorCode) {
+              case 0:
+                message = "Network error: opponent disconnected!";
+                break;
+              case 1:
+                message = "Network Error: you disconnected!";
+                break;
+              case 2:
+                message = "Match stopped. You have to reinvite!";
+                break;
+            }
+            if (errorCode != 0) { // LOCAL ERROR
+              if (endLayer.isVisible()) {
+                processEvent(Events.GSERVICE_BYE, null);
+              } else {
+                UIDialog.getFlashDialog(Events.GSERVICE_BYE, message);
+              }
+            } else { // REMOTE ERROR
+              if (endLayer.isVisible())
+                endLayer.opponentAbandoned();
+              else
+                GnuBackgammon.fsm.processEvent(Events.GSERVICE_ABANDON, 11);
+            }
+            break;
+
+          case GSERVICE_ABANDON:
+            int status = (Integer)params;
+            MatchState.resignValue = status;
+
+            String msg = "";
+            if (MatchState.resignValue > 0) {
+              switch (MatchState.resignValue) {
+                case 1:
+                  msg = "Opponent resigned the game";
+                  state(States.ABANDON_MATCH);
+                  UIDialog.getFlashDialog(Events.HUMAN_RESIGNED, msg);
+                  break;
+                case 2:
+                  msg = "Opponent resigned a gammon game";
+                  state(States.ABANDON_MATCH);
+                  UIDialog.getFlashDialog(Events.HUMAN_RESIGNED, msg);
+                  break;
+                case 3:
+                  msg = "Opponent resigned a backgammon game";
+                  state(States.ABANDON_MATCH);
+                  UIDialog.getFlashDialog(Events.HUMAN_RESIGNED, msg);
+                  break;
+
+                case 11:
+                case 13:
+                  ((GameScreen)GnuBackgammon.Instance.currentScreen).endLayer.opponentAbandoned();
+                  GnuBackgammon.fsm.state(States.MATCH_OVER);
+                  break;
+              }
+            }
+            break;
+
+          case GSERVICE_BYE:
+            MatchState.resignValue = 0;
+            GnuBackgammon.Instance.nativeFunctions.gserviceResetRoom();
+            GServiceClient.instance.dispose();
+            GnuBackgammon.Instance.invitationId = "";
+            GnuBackgammon.Instance.gameScreen.chatBox.hardHide();
+            GnuBackgammon.Instance.nativeFunctions.showAds(false);
+            GnuBackgammon.Instance.nativeFunctions.showInterstitial();
+            GnuBackgammon.Instance.setFSM("MENU_FSM");
+            GnuBackgammon.fsm.state(MenuFSM.States.TWO_PLAYERS);
+            break;
+
+          default:
+            state().processEvent(GServiceFSM.this, evt, params);
+            break;
+        }
+      }
+    });
+  }
+
+
+}
+core/src/it/alcacoop/backgammon/logic/AICalls.java
+public class AICalls {
+  private static ExecutorService dispatchExecutor;
+
+  static {
+    dispatchExecutor = Executors.newSingleThreadExecutor();
+  }
+
+
+  /* LOCKING IMPLEMENTATIONS */
+  public static class Locking {
+    public static int InitRNG(final int type) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.InitRNG(type);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+    public static int SetAILevel(final int l) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.SetAILevel(l);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+    public static int SetBoard(final int b1[], final int b2[]) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.SetBoard(b1, b2);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+    public static int UpdateMSCubeInfo(final int nCube, final int fCubeOwner) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.UpdateMSCubeInfo(nCube, fCubeOwner);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+    public static int SetMatchScore(final int AIScore, final int HumanScore) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.SetMatchScore(AIScore, HumanScore);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+    public static int SetGameTurn(final int fTurn, final int fMove) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.SetGameTurn(fTurn, fMove);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+    public static int[] RollDice() {
+      Future<int[]> f = dispatchExecutor.submit(new Callable<int[]>() {
+        @Override
+        public int[] call() throws Exception {
+          int[] ds = { 0, 0 };
+          GnubgAPI.RollDice(ds);
+          return ds;
+        }
+      });
+      int d[] = { 0, 0 };
+      try {
+        d = f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+      return d;
+    }
+
+    public static int[][] GenerateMoves(final int b1[], final int b2[], final int d1, final int d2) {
+      Future<int[][]> f = dispatchExecutor.submit(new Callable<int[][]>() {
+        @Override
+        public int[][] call() throws Exception {
+          int[][] mv = GnubgAPI.GenerateMoves(b1, b2, d1, d2);
+          return mv;
+        }
+      });
+      int mv[][] = { {}, {} };
+      try {
+        mv = f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+      return mv;
+    }
+
+    public static int SetCubeUse(final int fCubeUse) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.SetCubeUse(fCubeUse);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+    public static int SetCrawford(final int fCrawford) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.SetCrawford(fCrawford);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+
+    public static int SetAILevel(final AILevels l) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.SetAILevel(l.ordinal());
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+
+    public static int InitializeEnvironment(final String s) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.InitializeEnvironment(s);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+
+    public static int SetGameVariant(final int type) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.SetGameVariant(type);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+
+    public static int SetMatchTo(final int nMatchTo) {
+      Future<Integer> f = dispatchExecutor.submit(new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          GnubgAPI.SetMatchTo(nMatchTo);
+          return 1;
+        }
+      });
+      try {
+        return f.get();
+      } catch (Exception e) {
+        e.printStackTrace();
+        return 0;
+      }
+    }
+
+  }
+
+  /* END LOCKING IMPLEMENTATIONS */
+
+
+  /* MESSAGE SENDING IMPLEMENTATIONS */
+  public static void GetResignValue(final int b1[], final int b2[]) {
+    dispatchExecutor.submit(new Runnable() {
+      BaseFSM fsm = GnuBackgammon.fsm;
+
+      @Override
+      public void run() {
+        if (fsm != GnuBackgammon.fsm)
+          return;
+        GnubgAPI.SetBoard(b1, b2);
+        int resign = 1;
+        while (GnubgAPI.AcceptResign(resign) != resign)
+          resign++;
+
+        final int r = resign;
+
+        Gdx.app.postRunnable(new Runnable() {
+          @Override
+          public void run() {
+            if (fsm == GnuBackgammon.fsm)
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.GET_RESIGN_VALUE, r);
+          }
+        });
+      }
+    });
+  }
+
+
+  public static void AcceptResign(final int r) {
+    dispatchExecutor.submit(new Runnable() {
+      BaseFSM fsm = GnuBackgammon.fsm;
+
+      @Override
+      public void run() {
+        if (fsm != GnuBackgammon.fsm)
+          return;
+        final int ret = GnubgAPI.AcceptResign(r);
+        Gdx.app.postRunnable(new Runnable() {
+          @Override
+          public void run() {
+            if (fsm == GnuBackgammon.fsm)
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.ACCEPT_RESIGN, ret);
+          }
+        });
+      }
+    });
+  }
+
+
+  public static void AcceptDouble() {
+    dispatchExecutor.submit(new Runnable() {
+      BaseFSM fsm = GnuBackgammon.fsm;
+
+      @Override
+      public void run() {
+        if (fsm != GnuBackgammon.fsm)
+          return;
+        final int ret = GnubgAPI.AcceptDouble();
+        Gdx.app.postRunnable(new Runnable() {
+          @Override
+          public void run() {
+            if (fsm == GnuBackgammon.fsm)
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.ACCEPT_DOUBLE, ret);
+          }
+        });
+      }
+    });
+  }
+
+
+  public static void UpdateMSCubeInfo(final int nCube, final int fCubeOwner) {
+    dispatchExecutor.submit(new Runnable() {
+      BaseFSM fsm = GnuBackgammon.fsm;
+
+      @Override
+      public void run() {
+        if (fsm != GnuBackgammon.fsm)
+          return;
+        GnubgAPI.UpdateMSCubeInfo(nCube, fCubeOwner);
+        Gdx.app.postRunnable(new Runnable() {
+          @Override
+          public void run() {
+            if (fsm == GnuBackgammon.fsm)
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.UPDATE_MS_CUBEINFO, 1);
+          }
+        });
+      }
+    });
+  }
+
+
+  public static void AskForResignation() {
+    dispatchExecutor.submit(new Runnable() {
+      BaseFSM fsm = GnuBackgammon.fsm;
+
+      @Override
+      public void run() {
+        if (fsm != GnuBackgammon.fsm)
+          return;
+        final int ret = GnubgAPI.AskForResignation();
+        Gdx.app.postRunnable(new Runnable() {
+          @Override
+          public void run() {
+            if (fsm == GnuBackgammon.fsm)
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.ASK_FOR_RESIGNATION, ret);
+          }
+        });
+      }
+    });
+  }
+
+
+  public static void AskForDoubling() {
+    dispatchExecutor.submit(new Runnable() {
+      BaseFSM fsm = GnuBackgammon.fsm;
+
+      @Override
+      public void run() {
+        if (fsm != GnuBackgammon.fsm)
+          return;
+        final int ret = GnubgAPI.AskForDoubling();
+        Gdx.app.postRunnable(new Runnable() {
+          @Override
+          public void run() {
+            if (fsm == GnuBackgammon.fsm)
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.ASK_FOR_DOUBLING, ret);
+          }
+        });
+      }
+    });
+  }
+
+
+  public static void EvaluateBestMove(final int dices[]) {
+    dispatchExecutor.submit(new Runnable() {
+      BaseFSM fsm = GnuBackgammon.fsm;
+      int moves[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+      @Override
+      public void run() {
+        if (fsm != GnuBackgammon.fsm)
+          return;
+        GnubgAPI.EvaluateBestMove(dices, moves);
+        Gdx.app.postRunnable(new Runnable() {
+          @Override
+          public void run() {
+            if (fsm == GnuBackgammon.fsm)
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.EVALUATE_BEST_MOVE, moves);
+          }
+        });
+      }
+    });
+  }
+
+
+  public static void SetMatchScore(final int AIScore, final int HumanScore) {
+    dispatchExecutor.submit(new Runnable() {
+      BaseFSM fsm = GnuBackgammon.fsm;
+
+      @Override
+      public void run() {
+        if (fsm != GnuBackgammon.fsm)
+          return;
+        GnubgAPI.SetMatchScore(AIScore, HumanScore);
+        Gdx.app.postRunnable(new Runnable() {
+          @Override
+          public void run() {
+            if (fsm == GnuBackgammon.fsm)
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.SET_MATCH_SCORE, 1);
+          }
+        });
+      }
+    });
+  }
+
+
+  public static void SetGameTurn(final int fTurn, final int fMove) {
+    dispatchExecutor.submit(new Runnable() {
+      BaseFSM fsm = GnuBackgammon.fsm;
+
+      @Override
+      public void run() {
+        if (fsm != GnuBackgammon.fsm)
+          return;
+        GnubgAPI.SetGameTurn(fTurn, fMove);
+        Gdx.app.postRunnable(new Runnable() {
+          @Override
+          public void run() {
+            if (fsm == GnuBackgammon.fsm)
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.SET_GAME_TURN, 1);
+          }
+        });
+      }
+    });
+  }
+
+  public static void GenerateMoves(final Board b, final int d1, final int d2) {
+    dispatchExecutor.submit(new Runnable() {
+      BaseFSM fsm = GnuBackgammon.fsm;
+
+      @Override
+      public void run() {
+        if (fsm != GnuBackgammon.fsm)
+          return;
+        final int mv[][];
+
+        if (MatchState.fMove == 1)
+          mv = GnubgAPI.GenerateMoves(b._board[0], b._board[1], d1, d2);
+        else
+          mv = GnubgAPI.GenerateMoves(b._board[1], b._board[0], d1, d2);
+
+        Gdx.app.postRunnable(new Runnable() {
+          @Override
+          public void run() {
+            if (fsm == GnuBackgammon.fsm)
+              GnuBackgammon.fsm.processEvent(GameFSM.Events.GENERATE_MOVES, mv);
+          }
+        });
+      }
+    });
+  }
+
+
+}
+core/src/it/alcacoop/backgammon/GnuBackgammon.java
+public class GnuBackgammon extends Game implements ApplicationListener {
+
+  public GameScreen gameScreen;
+  private MatchOptionsScreen matchOptionsScreen;
+  public MainMenuScreen menuScreen;
+  public TwoPlayersScreen twoplayersScreen;
+  private OptionsScreen optionsScreen;
+  private WelcomeScreen welcomeScreen;
+  private AppearanceScreen appearanceScreen;
+  private GeneralStatsScreen generalStatsScreen;
+  private DiceStatsScreen diceStatsScreen;
+  public FibsScreen fibsScreen;
+  public static int chatHeight = 20;
+
+  public int appVersionCode = 0;
+
+  private int resolutions[][] = {
+      { 1280, 800 },
+      { 800, 480 },
+      { 480, 320 }
+  };
+  public int ss;
+  private String[] resname = { "hdpi", "mdpi", "ldpi" };
+  public int resolution[];
+
+  private GameFSM gameFSM;
+  private SimulationFSM simulationFSM;
+  private MenuFSM menuFSM;
+  private FIBSFSM fibsFSM;
+  private GServiceFSM gserviceFSM;
+  private OldGServiceFSM oldGserviceFSM;
+
+  public static BitmapFont font;
+  public static TextureAtlas atlas;
+  public static Skin skin;
+  public static GnuBackgammon Instance;
+  public static BaseFSM fsm;
+
+  public Board board;
+  public BaseScreen currentScreen;
+  public JSONProperties jp;
+  public Preferences optionPrefs, appearancePrefs;
+
+  public SoundManager snd;
+  public NativeFunctions nativeFunctions;
+
+  public Preferences fibsPrefs;
+
+  public MatchRecorder rec;
+  public String fname;
+  public String server;
+
+  public CommandDispatcherImpl commandDispatcher;
+  public FibsNetHandler fibs;
+  public String FibsUsername;
+  public String FibsPassword;
+  public String FibsOpponent;
+  public Pool<Player> fibsPlayersPool;
+
+  private boolean skipSplashScreen;
+  public String invitationId = "";
+
+  public boolean interstitialVisible = false;
+
+  public GnuBackgammon(NativeFunctions n) {
+    nativeFunctions = n;
+  }
+
+  public void isCR() {
+    GnuBackgammon.out.println("CR: " + Gdx.graphics.isContinuousRendering());
+  }
+
+  private Timer transitionTimer;
+
+
+  public static class out {
+    private static boolean isDebuggable;
+    static {
+      isDebuggable = GnuBackgammon.Instance.nativeFunctions.isDebuggable();
+      System.out.println("===> DEBUGGABLE: " + isDebuggable);
+    }
+
+    public static void print(String msg) {
+      if (isDebuggable)
+        System.out.print(msg);
+    }
+    public static void println(String msg) {
+      if (isDebuggable)
+        System.out.println(msg);
+    }
+  }
+
+
+  @Override
+  public void create() {
+    Instance = this;
+    optionPrefs = Gdx.app.getPreferences("GameOptions");
+    appearancePrefs = Gdx.app.getPreferences("Appearance");
+    fibsPrefs = Gdx.app.getPreferences("FibsPreferences");
+
+    // CHECK SCREEN DIM AND SELECT CORRECT ATLAS
+    int pWidth = Gdx.graphics.getWidth();
+    if (pWidth <= 480)
+      ss = 2;
+    else if (pWidth <= 800)
+      ss = 1;
+    else
+      ss = 0;
+    resolution = resolutions[ss];
+    transitionTimer = new Timer();
+
+    if (!skipSplashScreen) {
+      setScreen(new SplashScreen(resname[ss] + "/alca.png"));
+    } else {
+      GnuBackgammon.Instance.nativeFunctions.initEngine();
+      GnuBackgammon.Instance.initAssets();
+      GnuBackgammon.Instance.goToScreen(6);
+    }
+  }
+
+
+  public void initAssets() {
+    Gdx.graphics.setContinuousRendering(false);
+    Gdx.graphics.requestRendering();
+
+    atlas = new TextureAtlas(Gdx.files.internal(resname[ss] + "/pack.atlas"));
+
+    fibsPlayersPool = new Pool<Player>(50) {
+      @Override
+      protected Player newObject() {
+        return new Player();
+      }
+    };
+
+
+    snd = new SoundManager();
+    rec = new MatchRecorder();
+
+    fibs = new FibsNetHandler();
+
+    commandDispatcher = new CommandDispatcherImpl();
+
+    fname = nativeFunctions.getDataDir() + "/data/match.";
+
+    GnuBackgammon.Instance.jp = new JSONProperties(Gdx.files.internal(GnuBackgammon.Instance.getResName() + "/pos.json"));
+    skin = new Skin(Gdx.files.internal(resname[ss] + "/myskin.json"));
+    font = new BitmapFont(Gdx.files.internal(resname[ss] + "/checker.fnt"), false);
+    TextureRegion r = font.getRegion();
+    r.getTexture().setFilter(TextureFilter.Linear, TextureFilter.Linear);
+
+    BitmapFont f = skin.getFont("default-font");
+    f.getRegion().getTexture().setFilter(TextureFilter.Linear, TextureFilter.Linear);
+
+    GnuBackgammon.atlas.addRegion("board", atlas.findRegion("B1"));
+    GnuBackgammon.atlas.addRegion("boardbg", atlas.findRegion("B1-BG"));
+    GnuBackgammon.atlas.addRegion("cb", atlas.findRegion("CS1-B"));
+    GnuBackgammon.atlas.addRegion("cw", atlas.findRegion("CS1-W"));
+    GnuBackgammon.atlas.addRegion("ch", atlas.findRegion("CS1-H"));
+
+    board = new Board();
+
+    gameFSM = new GameFSM(board);
+    simulationFSM = new SimulationFSM(board);
+    menuFSM = new MenuFSM(board);
+    fibsFSM = new FIBSFSM(board);
+    gserviceFSM = new GServiceFSM(board);
+    oldGserviceFSM = new OldGServiceFSM(board);
+
+    fsm = simulationFSM;
+
+    gameScreen = new GameScreen();
+    matchOptionsScreen = new MatchOptionsScreen();
+    menuScreen = new MainMenuScreen();
+    twoplayersScreen = new TwoPlayersScreen();
+    optionsScreen = new OptionsScreen();
+    welcomeScreen = new WelcomeScreen();
+    appearanceScreen = new AppearanceScreen();
+    fibsScreen = new FibsScreen();
+    generalStatsScreen = new GeneralStatsScreen();
+    diceStatsScreen = new DiceStatsScreen();
+
+    nativeFunctions.injectBGInstance();
+  }
+
+  @Override
+  public void setScreen(final Screen screen) {
+    if (currentScreen != null) {
+      ((BaseScreen)screen).initialize();
+      currentScreen.fadeOut();
+      TimerTask task = new TimerTask() {
+        @Override
+        public void run() {
+          ((BaseScreen)(screen)).fixBGImg();
+          GnuBackgammon.super.setScreen(screen);
+        }
+      };
+      transitionTimer.schedule(task, (long)(currentScreen.animationTime * 1000));
+    } else {
+      super.setScreen(screen);
+    }
+  }
+
+
+  public String getResName() {
+    return resname[ss];
+  }
+
+  public void goToScreen(final int s) {
+    switch (s) {
+      case 0:
+        GnuBackgammon.Instance.setScreen(welcomeScreen);
+        currentScreen = welcomeScreen;
+        break;
+
+      case 1:
+        setScreen(optionsScreen);
+        currentScreen = optionsScreen;
+        break;
+
+      case 2:
+        setScreen(menuScreen);
+        currentScreen = menuScreen;
+        break;
+
+      case 3:
+        setScreen(matchOptionsScreen);
+        currentScreen = matchOptionsScreen;
+        break;
+
+      case 4:
+        setScreen(gameScreen);
+        currentScreen = gameScreen;
+        break;
+
+      case 6:
+        setScreen(welcomeScreen);
+        currentScreen = welcomeScreen;
+        break;
+
+      case 7:
+        setScreen(appearanceScreen);
+        currentScreen = appearanceScreen;
+        break;
+
+      case 8:
+        setScreen(fibsScreen);
+        currentScreen = fibsScreen;
+        break;
+
+      case 9:
+        setScreen(twoplayersScreen);
+        currentScreen = twoplayersScreen;
+        break;
+
+      case 10:
+        setScreen(generalStatsScreen);
+        currentScreen = generalStatsScreen;
+        break;
+
+      case 11:
+        setScreen(diceStatsScreen);
+        currentScreen = diceStatsScreen;
+        break;
+    }
+  }
+
+
+  public void setFSM(String type) {
+    if (fsm != null)
+      fsm.stop();
+
+    if (type == "SIMULATED_FSM")
+      fsm = simulationFSM;
+    else if (type == "MENU_FSM")
+      fsm = menuFSM;
+    else if (type == "GAME_FSM")
+      fsm = gameFSM;
+    else if (type == "FIBS_FSM")
+      fsm = fibsFSM;
+    else if (type == "GSERVICE_FSM")
+      fsm = gserviceFSM;
+    else if (type == "OLD_GSERVICE_FSM")
+      fsm = oldGserviceFSM;
+    fsm.start();
+  }
+
+  public void appendChatMessage(String msg, boolean direction) {
+    if (MatchState.matchType == 2)
+      commandDispatcher.send("tell " + FibsOpponent + " " + msg);
+    else if (MatchState.matchType == 3)
+      GServiceClient.getInstance().sendMessage("90 " + msg);
+
+    appendChatMessage(GnuBackgammon.Instance.gameScreen.pInfo[1].getPName(), msg, direction);
+  }
+
+  public void appendChatMessage(String username, String msg, boolean direction) {
+    gameScreen.chatBox.appendMessage(username, msg, direction);
+  }
+
+  public void reloadStats() {
+    generalStatsScreen.initTable();
+    diceStatsScreen.initTable();
+  }
+
+}
+core/src/it/alcacoop/backgammon/logic/AvailableMoves.java
+public class AvailableMoves {
+
+  public ArrayList<Integer> dices;
+  private ArrayList<int[]> moves;
+  private Board b;
+
+
+  public AvailableMoves(Board _b) {
+    dices = new ArrayList<Integer>();
+    moves = new ArrayList<int[]>();
+    b = _b;
+  }
+
+  public void setMoves(int _moves[][]) {
+    int _dices[] = b.dices.get();
+    moves.clear();
+    dices.clear();
+
+    if (_moves != null) {
+        Collections.addAll(moves, _moves);
+      evaluatePlayableDices(_dices);
+    }
+  }
+
+
+  private void evaluatePlayableDices(int d[]) {
+    boolean all_presents = false;
+    int max_moves = 0;
+    for (int i = 0; i < moves.size(); i++) {
+      for (int j = 0; j < 4; j++) {
+        if (moves.get(i)[j * 2] != -1)
+          max_moves = (j + 1);
+      }
+      if (((d.length == 4) && (max_moves == 4)) || ((d.length == 2) && (max_moves == 2))) {
+        all_presents = true;
+        break;
+      }
+    }
+
+    if (all_presents) {
+      for (int i = 0; i < d.length; i++)
+        dices.add(d[i]);
+    } else { // NOT ALL DICES ARE PLAYABLE
+      if (d.length == 4) { // DOUBLING
+        for (int i = 0; i < max_moves; i++)
+          dices.add(d[0]);
+        for (int i = 0; i < 4 - max_moves; i++)
+          b.dices.disable(d[0]);
+      } else { // NON DOUBLING ROLL
+        int dice = moves.get(0)[0] - moves.get(0)[1];
+        if ((dice != d[0]) && (dice != d[1])) {// BEAR OFF
+          if (d[0] >= dice) {
+            dices.add(d[0]);
+            b.dices.disable(d[1]);
+          } else {
+            dices.add(d[1]);
+            b.dices.disable(d[0]);
+          }
+        } else {
+          if (d[0] == dice) {
+            dices.add(d[0]);
+            b.dices.disable(d[1]);
+          } else {
+            dices.add(d[1]);
+            b.dices.disable(d[0]);
+          }
+        }
+      }
+    }
+  }
+
+
+  public int[] getPoints(int nPoint) {
+
+    ArrayList<Integer> ret = new ArrayList<Integer>();
+
+    if (moves.size() == 0)
+      return null; // NO MOVES AVAILABLE
+    if ((b._board[MatchState.fMove][24] > 0) && (nPoint != 24)) // CHECKERS ON BAR
+      return null;
+
+    for (int k = 0; k < dices.size(); k++) {
+      for (int i = 0; i < moves.size(); i++) {
+        for (int j = 0; j < 4; j++) {
+
+          if (moves.get(i)[2 * j] == nPoint) {
+            int max_point = b.bearingOff();
+            if (max_point == -1) { // STANDARD MOVE...
+              if ((moves.get(i)[2 * j] - moves.get(i)[2 * j + 1] == dices.get(k)) && (moves.get(i)[2 * j + 1] != -1)) {
+                ret.add(moves.get(i)[2 * j + 1]);
+              }
+            } else { // BOFF
+              if (moves.get(i)[2 * j] - moves.get(i)[2 * j + 1] == dices.get(k)) {
+                // STANDARD BEAROFF
+                ret.add(moves.get(i)[2 * j + 1]);
+              }
+              else if ((moves.get(i)[2 * j] - moves.get(i)[2 * j + 1] <= dices.get(k)) && (nPoint == max_point) && (moves.get(i)[2 * j + 1] < 0)) {
+                // BEARFOFF WITH BIGGER DICE
+                ret.add(moves.get(i)[2 * j + 1]);
+              }
+
+            }
+          }
+        }
+      }
+    }
+
+    List<Integer> unique = new ArrayList<Integer>(new HashSet<Integer>(ret));
+    // RETURN unique AS STANDARD ARRAY
+    int[] r = new int[unique.size()];
+    for (int i = 0; i < unique.size(); i++) {
+      r[i] = unique.get(i);
+    }
+    return r;
+  }
+
+
+  public void dropDice(int d) {
+    int idx = dices.indexOf(d);
+    if (idx == -1) {// BEARING OFF WITH GREATER DICE
+      Iterator<Integer> itr = dices.iterator();
+      while (itr.hasNext()) {
+        if (itr.next() > d) {
+          itr.remove();
+          break;
+        }
+      }
+    } else
+      // REMOVE PLAYED DICE
+      dices.remove(idx);
+  }
+
+
+  public boolean hasMoves() {
+    return (!dices.isEmpty() && (!b.gameFinished()));
+  }
+
+
+  public ArrayList<int[]> removeMoves(int orig, int dest) {
+    ArrayList<int[]> removed = new ArrayList<int[]>();
+    Iterator<int[]> itr = moves.iterator();
+    while (itr.hasNext()) {
+      boolean matched = false;
+      int mv[] = itr.next();
+      for (int i = 0; i < 4; i++) {
+        if ((mv[2 * i] == orig) && (mv[2 * i + 1] == dest)) {
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        itr.remove();
+        removed.add(mv);
+      }
+    }
+    return removed;
+  }
+
+
+  public void restoreMoves(ArrayList<int[]> rm) {
+    for (int i = 0; i < rm.size(); i++)
+      moves.add(rm.get(i));
+  }
+
+  public int getSize() {
+    return moves.size();
+  }
+}
+core/src/it/alcacoop/backgammon/logic/Move.java
+public class Move {
+  
+  public int from, to;
+  public boolean hitted = false;
+  int dice = 0;
+  Board b;
+  int color;
+  public ArrayList<int[]> removedMoves;
+
+  public Move(Board _b, int _from, int _to) {
+    removedMoves = new ArrayList<int[]>();
+    b = _b;
+    from = _from;
+    to = _to;
+    color = MatchState.fMove;
+  }
+
+  public void setDice(int d) {
+    dice = d;
+  }
+  
+  public void setRemovedMoves(ArrayList<int[]> rm) {
+    removedMoves = rm;
+  }
+  
+  public void undo() {
+    b.availableMoves.restoreMoves(removedMoves);
+    
+    b.points.reset();
+    if (b.selected!=null) {
+      b.selected.highlight(false);
+      b.selected = null;
+    }
+      
+    Checker c = b.getChecker(color, to);
+    
+    if (hitted) {
+      int _c = c.getSpecularColor();
+      int _x = c.getSpecularPosition();
+      Checker ch = b.getChecker(_c, 24); //PICK HITTED FROM THE BAR
+      b._board[_c][24]--;
+      int y = b._board[_c][_x]++;
+      ch.reset(_x, y, 0.2f);
+    }
+    
+    if (to!=-1) b._board[color][to]--;
+    else b.bearedOff[color]--;
+    int y = b._board[color][from]++;
+    
+    c.reset(from, y, 0.2f);
+    b.dices.enable(dice);
+    b.availableMoves.dices.add(dice);
+  }
+}

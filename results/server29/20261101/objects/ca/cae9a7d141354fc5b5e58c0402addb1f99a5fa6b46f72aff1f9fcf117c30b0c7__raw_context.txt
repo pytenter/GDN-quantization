@@ -1,0 +1,2443 @@
+src/ch/eonum/pipeline/core/DataSet.java
+public class DataSet<E extends Instance> extends Vector<E> implements List<E> {
+
+	private static final long serialVersionUID = -5639580196102995883L;
+
+	/**
+	 * Empty constructor.
+	 */
+	public DataSet() {}
+
+	/**
+	 * Add all instances of another data set or collection of instances to this
+	 * data set.
+	 * 
+	 * @param values
+	 */
+	public void addData(Collection<E> values) {
+		this.addAll(values);
+	}
+
+	/**
+	 * Add an instance to this data set.
+	 * 
+	 * @param instance
+	 */
+	public void addInstance(E instance) {
+		this.add(instance);
+	}
+
+	/**
+	 * Remove a certain feature from each instance
+	 * 
+	 * @param feature
+	 */
+	public void removeFeature(String feature) {
+		for (Instance each : this)
+			each.remove(feature);
+	}
+
+	/**
+	 * Print all instances to a file.
+	 * 
+	 * @param fileName
+	 * @throws IOException 
+	 */
+	public void writeToFile(String fileName) throws IOException {
+		PrintStream p = new PrintStream(new FileOutputStream(fileName));
+		for (Instance each : this)
+			p.println(each);
+		p.close();
+	}
+
+	/**
+	 * Get a deep copy of this data set. Every instance is deep copied.
+	 * 
+	 * @return
+	 */
+	@SuppressWarnings("unchecked")
+	public DataSet<E> deepCopy() {
+		DataSet<E> newSet = new DataSet<E>();
+		for (Instance each : this)
+			newSet.add((E) each.copy()); // #TODO implement without cast
+		return newSet;
+	}
+
+	/**
+	 * For 2 class problems ("1" and "0") only. return the ratio of the number
+	 * of zeros and the number of ones.
+	 * 
+	 * @return
+	 */
+	public double getRatio() {
+		double one = 1.0;
+		double zero = 1.0;
+		for (Instance each : this) {
+			if ("1".equals(each.groundTruth))
+				one++;
+			else
+				zero++;
+		}
+		return zero / one;
+	}
+
+	/**
+	 * Union of all features of all instances in this data set.
+	 * 
+	 * @return
+	 */
+	public Set<String> features() {
+		HashSet<String> set = new HashSet<String>();
+		for (E each : this)
+			set.addAll(each.features());
+		return set;
+	}
+
+	/**
+	 * Shuffle the data set. The data set is changed.
+	 * Shuffling is deterministic.
+	 */
+	public void shuffle() {
+		this.shuffle(44);
+	}
+	
+	/**
+	 * Shuffle the data set. The data set is changed.
+	 * Use your own seed.
+	 */
+	public void shuffle(int seed) {
+		Collections.shuffle(this, new Random(seed));
+	}
+
+	/**
+	 * Get the minimum of a certain feature
+	 * 
+	 * @param feature
+	 * @return minimum
+	 */
+	public double min(String feature) {
+		double min = Double.POSITIVE_INFINITY;
+		for (Instance each : this)
+			if (each.get(feature) < min)
+				min = each.get(feature);
+		return min;
+	}
+
+	/**
+	 * Get the maximum of a certain feature
+	 * 
+	 * @param feature
+	 * @return maximum
+	 */
+	public double max(String feature) {
+		double max = Double.NEGATIVE_INFINITY;
+		for (Instance each : this)
+			if (each.get(feature) > max)
+				max = each.get(feature);
+		return max;
+	}
+
+	/**
+	 * Create a data structure readable for a JSON serializer.
+	 * @return
+	 */
+	public Map<String, Object> asTree() {
+		LinkedHashMap<String, Object> map = new LinkedHashMap<String, Object>();
+		List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
+		for (E each : this)
+			list.add(each.asTree());
+		map.put("instances", list);
+		return map;
+	}
+
+	/**
+	 * extract a sub set (e.g. validation set). All instances which are
+	 * extracted for the sub set will be randomly removed from this set.
+	 * 
+	 * The data set is changed.
+	 * 
+	 * @param p
+	 *            percentage of elements which will be used for the sub set.
+	 *            range = [0.0,1.0]
+	 * @return
+	 */
+	public DataSet<E> extractSubSet(double p) {
+		DataSet<E> ds = new DataSet<E>();
+		double i = 0;
+		double j = 0;
+		for (E each : this) {
+			i++;
+			if (j / i < p) {
+				j++;
+				ds.addInstance(each);
+			}
+		}
+		for (Instance each : ds)
+			this.remove(each);
+		return ds;
+	}
+	
+	/**
+	 * Remove randomly selected elements with probability d (0,1].
+	 * @param d
+	 */
+	public void shrink(double d, int seed) {
+		Random r = new Random(seed);
+		List<E> remove = new ArrayList<E>();
+		for (E each : this)
+			if(r.nextDouble() < d)
+				remove.add(each);
+		for(Instance e : remove)
+			remove(e);
+	}
+
+	/**
+	 * Get this data set as a double[][] matrix. Each row represents an
+	 * instance. Each column represents a feature.
+	 * 
+	 * @param features
+	 * @return
+	 */
+	public double[][] asDoubleArrayMatrix(Features features) {
+		double[][] matrix = new double[this.size()][];
+		for (int i = 0; i < this.size(); i++)
+			matrix[i] = get(i).asArray(features);
+
+		return matrix;
+	}
+
+	/**
+	 * Get this data set as a Jama matrix. Each row represents an instance. Each
+	 * column represents a feature.
+	 * 
+	 * @param features
+	 * @return
+	 */
+	public Matrix asMatrix(Features features) {
+		return new Matrix(this.asDoubleArrayMatrix(features));
+	}
+
+	/**
+	 * Get a set of all classes in this data set.
+	 * 
+	 * @return
+	 */
+	public Set<String> collectClasses() {
+		Set<String> classes = new HashSet<String>();
+		for (Instance e : this)
+			classes.add(e.groundTruth);
+		return classes;
+	}
+
+
+	/**
+	 * Remove all features in all instances, which are not in the provided
+	 * feature set
+	 * 
+	 * @param feature
+	 *            set
+	 */
+	public void reduceFeatures(Features features) {
+		for (Instance inst : this)
+			inst.reduceFeatures(features);
+	}
+
+	/**
+	 * Split this data set into N subsets. The subsets reference the instances
+	 * in this set. No copies of instances are made.
+	 * 
+	 * The set is not changed.
+	 * 
+	 * @param numNetsTotal
+	 * @return
+	 */
+	public List<DataSet<E>> splitIntoNSubsets(int n) {
+		List<DataSet<E>> subsets = new ArrayList<DataSet<E>>(n);
+		for (int i = 0; i < n; i++)
+			subsets.add(new DataSet<E>());
+		int i = 0;
+		for (E each : this) {
+			i++;
+			subsets.get(i % n).addInstance(each);
+		}
+
+		return subsets;
+	}
+
+	/**
+	 * Rename a result feature in all instances.
+	 * @param oldFeatureName
+	 * @param newFeatureName
+	 */
+	public void renameResults(String oldFeatureName, String newFeatureName) {
+		for (Instance each : this){
+			each.putResult(newFeatureName, each.getResult(oldFeatureName));
+			each.putResult(oldFeatureName, 0.);
+		}
+	}
+
+	/**
+	 * create a shallow copy of this data set. Instances are not copied.
+	 * 
+	 * @return
+	 */
+	public DataSet<E> shallowCopy() {
+		DataSet<E> newSet = new DataSet<E>();
+		for (E each : this)
+			newSet.addInstance(each);
+		return newSet;
+	}
+
+	/**
+	 * get all outcomes as array.
+	 * 
+	 * @return
+	 */
+	public double[] outComesAsArray() {
+		double[] outcomes = new double[this.size()];
+		for (int i = 0; i < size(); i++)
+			outcomes[i] = get(i).outcome;
+		return outcomes;
+	}
+
+	/**
+	 * This is equivalent to the SQL "LEFT JOIN USING(id)". Get all the
+	 * additional features from the provided data set and merge them with the
+	 * instance with the same id in this data set if it exists.
+	 * 
+	 * @param data
+	 */
+	public void mergeInstances(DataSet<Instance> data) {
+		Map<String, Instance> idMap = new HashMap<String, Instance>();
+		for (Instance each : this)
+			idMap.put(each.id, each);
+		for (Instance each : data)
+			if (idMap.containsKey(each.id))
+				for (String feature : each.features())
+					idMap.get(each.id).put(feature, each.get(feature));
+	}
+
+	/**
+	 * Get all distinct values of a certain feature. NaN and infinite values
+	 * will be ignored.
+	 * 
+	 * @param feature
+	 * @param tolerance
+	 *            range within a value is not counted as a distinct value.
+	 * @return
+	 */
+	public List<Double> distinct(String feature, double tolerance) {
+		List<Double> di = new ArrayList<Double>();
+		for (Instance each : this) {
+			double value = each.get(feature);
+			if (Double.isNaN(value) || Double.isInfinite(value))
+				continue;
+			boolean notInList = true;
+			for (Double d : di)
+				if (Math.abs(value - d) < tolerance)
+					notInList = false;
+			if (notInList)
+				di.add(value);
+		}
+		return di;
+	}
+
+	/**
+	 * Save the whole data in a CSV file using only the provided features.
+	 * Additionally there will be a column with the outcome and one with the
+	 * class.
+	 * 
+	 * @param features
+	 * @param fileName
+	 * @throws FileNotFoundException
+	 */
+	public void saveDataAsCSV(Features features, String fileName,
+			String delimiter) throws FileNotFoundException {
+		PrintStream ps = new PrintStream(new File(fileName));
+
+		ps.print("class" + delimiter + "outcome");
+		for (int i = 0; i < features.size(); i++)
+			ps.print(delimiter + features.getFeatureByIndex(i));
+		ps.println();
+
+		for (Instance inst : this) {
+			ps.print(inst.groundTruth + delimiter + inst.outcome);
+			for (int i = 0; i < features.size(); i++)
+				ps.print(delimiter + inst.get(features.getFeatureByIndex(i)));
+			ps.println();
+		}
+
+		ps.close();
+
+	}
+
+	/**
+	 * Get the mean value of a certain feature.
+	 * @param feature
+	 * @return
+	 */
+	public double mean(String feature) {
+		double sum = 0.0;
+		for (Instance each : this)
+			sum += each.get(feature);
+		return sum / this.size();
+	}
+
+	/**
+	 * calculate the results class rank. All instances have to be classified
+	 * including the classification results for all classes.
+	 */
+	public void calculateRanks(Set<String> classes) {
+		for(E e : this){
+			List<ClassProbability> ranking = new ArrayList<ClassProbability>();
+			for(String className : classes)
+				ranking.add(new ClassProbability(className, e.getResult("classProb" + className)));
+			Collections.sort(ranking);
+			Collections.reverse(ranking);
+			double rank = ranking.size();
+			for(int i = 0; i < ranking.size(); i++)
+				if(e.groundTruth.equals(ranking.get(i).className)){
+					rank = i;
+					break;
+				}
+			e.putResult("rank", rank);
+		}	
+	}
+
+	/**
+	 * Equalize the class distribution. All classes will have the same number of
+	 * samples in this data set after the application of this function. This is
+	 * done by duplicating randomly selected samples from each class until the
+	 * number of samples in the respective class is equals the number of samples
+	 * in the largest class.
+	 */
+	@SuppressWarnings("unchecked")
+	public void equalizeClassDistribution(int seed) {
+		/** get number of samples by class. */
+		Map<String, Integer> classSizes = new HashMap<String, Integer>();
+		Map<String, List<E>> samplesByClass = new HashMap<String, List<E>>();
+		for(E each : this){
+			String gt = each.groundTruth;
+			if(classSizes.containsKey(gt))
+				classSizes.put(gt, classSizes.get(gt) + 1);
+			else {
+				classSizes.put(gt, 1);
+				samplesByClass.put(gt, new ArrayList<E>());
+			}
+			samplesByClass.get(gt).add(each);
+		}
+		/** get max number of samples by class. */
+		int max = Integer.MIN_VALUE;
+		for(Integer i : classSizes.values())
+			max = Math.max(max, i);
+		
+		/** add samples to classes until the have max number of samples. */
+		Random rand = new Random(seed);
+		for(String className : classSizes.keySet()){
+			int n = classSizes.get(className);
+			List<E> samples = samplesByClass.get(className);
+			for(int i = n; i < max; i++){
+				E sample = samples.get(rand.nextInt(n));
+				this.add((E) sample.copy());
+			}
+		}
+	}
+}
+src/ch/eonum/pipeline/core/Features.java
+public class Features {
+	private List<String> featuresByIndex;
+	private Map<String, Integer> indicesByFeature;
+	private Map<String, String> descriptions;
+
+	/**
+	 * Constructor. Create empty feature set.
+	 */
+	public Features() {
+		this.featuresByIndex = new ArrayList<String>();
+		this.indicesByFeature = new LinkedHashMap<String, Integer>();
+		this.descriptions = new HashMap<String, String>();
+	}
+
+	/**
+	 * Constructor. Initialize using an existing list of features.
+	 * @param list
+	 */
+	public Features(List<String> list) {
+		this();
+		for(String e : list)
+			this.addFeature(e);
+		this.recalculateIndex();
+	}
+
+	/**
+	 * get the index from a certain feature.
+	 * 
+	 * @param feature
+	 * @return
+	 */
+	public int getIndexFromFeature(String feature) {
+		return this.indicesByFeature.get(feature);
+	}
+
+	/**
+	 * get the feature label from a certain index.
+	 * 
+	 * @param index
+	 * @return
+	 */
+	public String getFeatureByIndex(int index) {
+		return this.featuresByIndex.get(index);
+	}
+
+	/**
+	 * Get the description of a feature. Return the feature itself if there is
+	 * no description for this feature.
+	 * 
+	 * @param dim
+	 * @return
+	 */
+	public String getDescription(String feature) {
+		return this.descriptions.containsKey(feature) ? this.descriptions
+				.get(feature) : feature;
+	}
+
+	/**
+	 * Print all features to a file.
+	 * 
+	 * @param fileName
+	 */
+	public void writeToFile(String fileName) {
+		try {
+			FileWriter fstream = new FileWriter(fileName);
+			BufferedWriter out = new BufferedWriter(fstream);
+			for (int i = 0; i < this.featuresByIndex.size(); i++)
+				out.write(i + ":" + featuresByIndex.get(i) + ":"
+						+ this.getDescription(featuresByIndex.get(i)) + "\n");
+
+			out.close();
+		} catch (Exception e) {
+			Log.warn(e.getMessage());
+		}
+	}
+
+	/**
+	 * Read a features file into memory. All lines of a features file are in the
+	 * format: "index:feature_label:description" Example:
+	 * "23:los:Length of stay" The indices are not read. They are asserted
+	 * to be equal to the line number -1. The only purpose of the indices in the
+	 * features file is better readability.
+	 * 
+	 * @param fileName
+	 * @return
+	 */
+	public static Features readFromFile(String fileName) {
+		Features dimensions = new Features();
+
+		FileInputStream fstream;
+		try {
+			fstream = new FileInputStream(fileName);
+
+			DataInputStream in = new DataInputStream(fstream);
+			BufferedReader br = new BufferedReader(new InputStreamReader(in));
+			String line;
+
+			while ((line = br.readLine()) != null) {
+				String[] split = line.split(":");
+				dimensions.addFeature(split[1]);
+				if (split.length > 2)
+					dimensions.addDescription(split[1], split[2]);
+			}
+			in.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.exit(-1);
+		}
+		return dimensions;
+	}
+
+	/**
+	 * Add a description to a feature
+	 * 
+	 * @param feature
+	 * @param description
+	 */
+	private void addDescription(String feature, String description) {
+		this.descriptions.put(feature, description);
+	}
+
+	/**
+	 * Create a feature object from a list of strings, usually extracted
+	 * using a FeatureExtractor
+	 * 
+	 * @param fileName
+	 * @return
+	 */
+	public static Features createFromList(List<String> feats) {
+		return new Features(feats);
+	}
+
+	/**
+	 * Get the number of features.
+	 * 
+	 * @return
+	 */
+	public int size() {
+		return this.featuresByIndex.size();
+	}
+
+	/**
+	 * Load descriptions of features from a separate file. format (one line):
+	 * feature:description
+	 * 
+	 * @param fileName
+	 *            file name of the descriptions file
+	 */
+	public void loadDescriptionFile(String fileName) {
+		FileInputStream fstream;
+		try {
+			fstream = new FileInputStream(fileName);
+
+			DataInputStream in = new DataInputStream(fstream);
+			BufferedReader br = new BufferedReader(new InputStreamReader(in));
+			String line;
+
+			while ((line = br.readLine()) != null) {
+				String[] split = line.split(":");
+				if (split.length >= 2) {
+					String description = "";
+					for (int i = 1; i < split.length; i++)
+						description += split[i];
+					this.addDescription(split[0], description);
+				} else
+					Log.warn("Unexpected description format in line: " + line);
+			}
+			in.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+	}
+
+	/**
+	 * Remove a feature. The index is not recalculated. You have to do this
+	 * separately by calling {@link #recalculateIndex()}
+	 * 
+	 * @param feature
+	 */
+	public void removeFeature(String feature) {
+		this.indicesByFeature.remove(feature);
+	}
+
+	/**
+	 * Add a feature. If you try to add an existing feature, this method has no
+	 * effect.
+	 * 
+	 * @param feature
+	 */
+	public void addFeature(String feature) {
+		if (!this.featuresByIndex.contains(feature)) {
+			this.featuresByIndex.add(feature);
+			this.indicesByFeature.put(feature, this.featuresByIndex.size() - 1);
+		}
+	}
+
+	/**
+	 * Recalculate the index. this is typically done after removing some
+	 * features.
+	 */
+	public void recalculateIndex() {
+		this.featuresByIndex = new ArrayList<String>(
+				this.indicesByFeature.keySet());
+		this.indicesByFeature = new HashMap<String, Integer>();
+		for (int i = 0; i < this.featuresByIndex.size(); i++)
+			this.indicesByFeature.put(this.featuresByIndex.get(i), i);
+	}
+
+	/**
+	 * Create a data set with an instance for each feature. An instance has only
+	 * one feature with the value 1.0
+	 * 
+	 * @return
+	 */
+	public DataSet<SparseInstance> createDataSet() {
+		DataSet<SparseInstance> ds = new DataSet<SparseInstance>();
+		for (String feature : this.featuresByIndex) {
+			HashMap<String, Double> data = new HashMap<String, Double>();
+			data.put(feature, 1.0);
+			ds.add(new SparseInstance(feature, feature, data));
+		}
+		return ds;
+	}
+
+	/**
+	 * Check if a feature exists in this feature set.
+	 * @param feature
+	 * @return
+	 */
+	public boolean hasFeature(String feature) {
+		return this.featuresByIndex.contains(feature);
+	}
+
+	/**
+	 * Get a copy of the list of all feature identifiers.
+	 * @return
+	 */
+	public List<String> getListOfFeaturesCopy() {
+		return new ArrayList<String>(this.featuresByIndex);
+	}
+
+	@Override
+	public String toString() {
+		String ret = "";
+		for (int i = 0; i < this.featuresByIndex.size(); i++)
+			ret += i + ":" + featuresByIndex.get(i) + ":"
+					+ this.getDescription(featuresByIndex.get(i)) + "\n";
+		return ret;
+	}
+
+	/**
+	 * Create a feature set that has all features that exist in one of the
+	 * provided data sets.
+	 * 
+	 * @param dataSets
+	 * @return
+	 */
+	@SafeVarargs
+	public static Features createFromDataSets(DataSet<? extends Instance> ... dataSets) {
+		Features features = new Features();
+		for (DataSet<? extends Instance> ds : dataSets)
+			for (Instance each : ds)
+				for (String feature : each.features())
+					features.addFeature(feature);
+		features.recalculateIndex();
+		return features;
+	}
+
+	/**
+	 * Create a deep copy of this feature list.
+	 * @return
+	 */
+	public Features copy() {
+		Features newF = new Features();
+		for (String feature : this.featuresByIndex)
+			newF.addFeature(feature);
+		newF.recalculateIndex();
+		return newF;
+	}
+
+	/**
+	 * Create a feature set for each class in the provided sparse data sets.
+	 * @param dataSets
+	 * @return
+	 */
+	@SafeVarargs
+	public static Map<String, Features> createFromDataSetsPerClass(DataSet<? extends SparseInstance> ... dataSets) {
+		Map<String, Features> features = new HashMap<String, Features>();
+		for (DataSet<? extends SparseInstance> ds : dataSets)
+			for (SparseInstance each : ds) {
+				if (!features.containsKey(each.className))
+					features.put(each.className, new Features());
+				for (String feature : each.features())
+					features.get(each.className).addFeature(feature);
+			}
+		for (Features f : features.values())
+			f.recalculateIndex();
+		return features;
+	}
+
+	/**
+	 * Remove all features that contain only constant values or are highly
+	 * correlated with another feature. Use this to avoid the problem of
+	 * multicollinearity in linear regression problems (there is no inverse
+	 * matrix if two or more features are perfectly correlated or one or more
+	 * features is constant.)
+	 * 
+	 * @param features
+	 * @param dataSet
+	 * @return
+	 */
+	public static Features removeConstantAndPerfectlyCorrellatedFeatures(
+			Features features, DataSet<? extends Instance> dataSet) {
+		Features newFeatures = new Features();
+		double[][] data = dataSet.asDoubleArrayMatrix(features);
+		Set<String> constantFeatures = new HashSet<String>();
+		for (int f = 0; f < features.size(); f++) {
+			double value = data[0][f];
+			boolean constant = true;
+			for (double[] each : data)
+				if (Math.abs(value - each[f]) > 0.00001) {
+					constant = false;
+					break;
+				}
+			if (constant) {
+				String feature = features.getFeatureByIndex(f);
+				Log.warn("Constant feature " + feature + " will be removed.");
+				constantFeatures.add(feature);
+			}
+		}
+		double[] means = new double[features.size()];
+		for (int f = 0; f < features.size(); f++) {
+			double sum = 0.0;
+			for (double[] each : data)
+				sum += each[f];
+			means[f] = sum / data.length;
+		}
+
+		for (int f = 0; f < features.size(); f++) {
+			String feature = features.getFeatureByIndex(f);
+			boolean correlates = false;
+			for (int f2a = 0; f2a < newFeatures.size(); f2a++) {
+				String feature2 = newFeatures.getFeatureByIndex(f2a);
+				int f2 = features.getIndexFromFeature(feature2);
+				double cov = 0.0;
+				double sd1 = 0.0;
+				double sd2 = 0.0;
+				for (double[] each : data) {
+					double diff1 = each[f] - means[f];
+					double diff2 = each[f2] - means[f2];
+					cov += diff1 * diff2;
+					sd1 += diff1 * diff1;
+					sd2 += diff2 * diff2;
+				}
+				cov /= data.length;
+				sd1 /= data.length;
+				sd2 /= data.length;
+
+				double corr = cov / (Math.sqrt(sd1) * Math.sqrt(sd2));
+
+				if (Math.abs(corr) > 0.99) {
+					Log.warn("Correlated features " + feature + " and "
+							+ feature2 + " " + corr + "\n" + feature
+							+ " will be removed.");
+					correlates = true;
+					break;
+				}
+			}
+			if (!correlates) {
+				newFeatures.addFeature(feature);
+				newFeatures.recalculateIndex();
+			}
+		}
+		for (String f : constantFeatures)
+			newFeatures.removeFeature(f);
+		newFeatures.recalculateIndex();
+
+		return newFeatures;
+	}
+
+	/**
+	 * Get all feature identifiers as a set of strings.
+	 * @return
+	 */
+	public Set<String> asSet() {
+		return this.indicesByFeature.keySet();
+	}
+
+	/**
+	 * Get all feature identifiers as a list of strings.
+	 * @return
+	 */
+	public List<String> asStringList() {
+		List<String> list = new ArrayList<String>();
+		for(int i = 0; i < this.size(); i++)
+			list.add(this.getFeatureByIndex(i));
+		return list;
+	}
+
+}
+src/ch/eonum/pipeline/validation/ParameterValidation.java
+public class ParameterValidation {
+
+	private Parameters[] parameters;
+	private String name;
+	private double start;
+	private double end;
+	private double min;
+	private double max;
+	private double initialvalue;
+	private double stepSize;
+	private boolean log2Space;
+	private double range;
+
+	/**
+	 * 
+	 * @param parameters all parameter objects which are to be updated
+	 * @param name the parameter's name
+	 * @param start start range
+	 * @param end end range
+	 * @param min minimum value
+	 * @param max maximum value
+	 * @param initialValue initial value
+	 * @param stepSize step size
+	 * @param log2Space are all the above values in log2 space or not
+	 */
+	public ParameterValidation(Parameters[] parameters, String name,
+			double start, double end, double min, double max, double initialValue, double stepSize, boolean log2Space) {
+		this.parameters = parameters;
+		this.name = name;
+		this.start = start;
+		this.end = end;
+		this.min = min;
+		this.max = max;
+		this.initialvalue = initialValue;
+		this.stepSize = stepSize;
+		this.log2Space = log2Space;
+		this.range = end - start;
+	}
+	
+	public Parameters[] getParameters() {
+		return parameters;
+	}
+
+	public void setParameters(Parameters[] parameters) {
+		this.parameters = parameters;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public double getStart() {
+		return start;
+	}
+
+	public void setStart(double start) {
+		this.start = start;
+	}
+
+	public double getEnd() {
+		return end;
+	}
+
+	public void setEnd(double end) {
+		this.end = end;
+	}
+
+	public double getMin() {
+		return min;
+	}
+
+	public void setMin(double min) {
+		this.min = min;
+	}
+
+	public double getMax() {
+		return max;
+	}
+
+	public void setMax(double max) {
+		this.max = max;
+	}
+
+	public double getInitialvalue() {
+		return initialvalue;
+	}
+
+	public void setInitialvalue(double initialvalue) {
+		this.initialvalue = initialvalue;
+	}
+
+	public double getStepSize() {
+		return stepSize;
+	}
+
+	public void setStepSize(double stepSize) {
+		this.stepSize = stepSize;
+	}
+
+	public boolean isLog2Space() {
+		return log2Space;
+	}
+
+	public void setLog2Space(boolean log2Space) {
+		this.log2Space = log2Space;
+	}
+
+	public double getRange() {
+		return this.range;
+	}
+
+	/**
+	 * set all parameters to the optimised value;
+	 * @param params
+	 */
+	public static void updateParameters(Map<ParameterValidation, Double> params) {
+		for(ParameterValidation each : params.keySet())
+			for(Parameters p : each.getParameters())
+				if(each.isLog2Space())
+					p.putParameter(each.getName(), Math.pow(2, params.get(each)));
+				else
+					p.putParameter(each.getName(), params.get(each));
+	}
+
+}
+src/ch/eonum/pipeline/util/FileUtil.java
+public class FileUtil {
+
+	/**
+	 * Create a folder if it does not already exist.
+	 * @param string
+	 */
+	public static void mkdir(String folderName) {
+		File folder = new File(folderName);
+		if(!folder.exists())
+			folder.mkdir();
+		if(!folder.isDirectory()){
+			Log.error(folderName + " is supposed to be a folder, but it is not.");
+			System.exit(-11);
+		}
+	}
+
+}
+src/ch/eonum/pipeline/core/Parameters.java
+public class Parameters {
+
+	private Map<String, Double> doubleParameters;
+	private Map<String, Integer> intParameters;
+	private Map<String, String> stringParameters;
+	private Map<String, Boolean> booleanParameters;
+	
+	/**
+	 * Constructor. Initialize empty parameter sets.
+	 */
+	public Parameters() {
+		this.doubleParameters = new HashMap<String, Double>();
+		this.intParameters = new HashMap<String, Integer>();
+		this.stringParameters = new HashMap<String, String>();
+		this.booleanParameters = new HashMap<String, Boolean>();
+		this.setSupportedParameters(new HashMap<String, String>());
+	}
+	
+	/**
+	 * a list with all supported parameters and their description (should also
+	 * contain the default value)
+	 */
+	private Map<String, String> supportedParameters;
+	
+	/**
+	 * Check if the used parameter is supported. If the parameter is not
+	 * supported the application exits.
+	 * 
+	 * @param param
+	 */
+	private void checkParam(String param) {
+		if(!supportedParameters.containsKey(param))
+			Log.error("The parameter " + param + " is not supported");
+	}
+
+	/**
+	 * Set a double parameter.
+	 * 
+	 * @param param
+	 * @param value
+	 */
+	public void putParameter(String param, double value) {
+		checkParam(param);
+		this.doubleParameters.put(param, value);
+	}
+	
+	/**
+	 * Set an integer parameter.
+	 * 
+	 * @param param
+	 * @param value
+	 */
+	public void putParameter(String param, int value) {
+		checkParam(param);
+		this.intParameters.put(param, value);
+	}
+	
+	/**
+	 * Set a string parameter.
+	 * 
+	 * @param param
+	 * @param value
+	 */
+	public void putParameter(String param, String value) {
+		checkParam(param);
+		this.stringParameters.put(param, value);
+	}
+	
+	/**
+	 * Set a boolean parameter.
+	 * 
+	 * @param param
+	 * @param value
+	 */
+	public void putParameter(String param, boolean value) {
+		checkParam(param);
+		this.booleanParameters.put(param, value);
+	}
+
+	/**
+	 * Get the value of double parameter param.
+	 * 
+	 * @param param
+	 * @return
+	 */
+	public synchronized double getDoubleParameter(String param) {
+		return this.doubleParameters.get(param);
+	}
+	
+	/**
+	 * Get the value of integer parameter param.
+	 * @param param
+	 * @return
+	 */
+	public synchronized int getIntParameter(String param) {
+		return this.intParameters.get(param);
+	}
+	
+	/**
+	 * Get the value of string parameter param.
+	 * 
+	 * @param param
+	 * @return
+	 */
+	public synchronized String getStringParameter(String param) {
+		return this.stringParameters.get(param);
+	}
+	
+	/**
+	 * Get the value of boolean parameter param. 
+	 * 
+	 * @param param
+	 * @return
+	 */
+	public synchronized boolean getBooleanParameter(String param) {
+		return this.booleanParameters.get(param);
+	}
+	
+	/**
+	 * print all parameters into a file.
+	 * 
+	 * @param file
+	 * @throws IOException 
+	 */
+	public void printParameters(File file) throws IOException {
+		JSON.writeJSON(file, this.asMap());
+	}
+
+	/**
+	 * Get all parameters as a nested map containing one sub map for each
+	 * parameter type. Used for JSON-serialization.
+	 * 
+	 * @return
+	 */
+	public Map<String, Object> asMap() {
+		Map<String, Object> dbo = new HashMap<String, Object>();
+		dbo.put("stringParams", this.stringParameters);
+		dbo.put("doubleParams", this.doubleParameters);
+		dbo.put("intParams", this.intParameters);
+		dbo.put("booleanParams", this.booleanParameters);
+		return dbo;
+	}
+
+	/**
+	 * Print parameters to file.
+	 * @param fileName
+	 * @throws IOException
+	 */
+	public void printParameters(String fileName) throws IOException{
+		this.printParameters(new File(fileName));
+	}
+	
+	/**
+	 * Load parameters from file.
+	 * @param file
+	 * @throws IOException 
+	 */
+	public void load(File file) throws IOException {
+		Map<String, Object> data = JSON.readJSON(file);
+		this.load(data);
+	}
+	
+	/**
+	 * Load parameters from a map as produced by {@link #asMap()}. 
+	 * @param data
+	 */
+	@SuppressWarnings("unchecked")
+	protected void load(Map<String, Object> data) {
+		this.booleanParameters = (Map<String, Boolean>) data.get("booleanParams");
+		this.stringParameters = (Map<String, String>) data.get("stringParams");
+		this.doubleParameters = (Map<String, Double>) data.get("doubleParams");
+		this.intParameters = (Map<String, Integer>) data.get("intParams");
+	}
+
+	/**
+	 * load parameters from file as produced by
+	 * {@link #printParameters(File file)} (JSON).
+	 * 
+	 * @param fileName
+	 * @throws IOException
+	 */
+	public void load(String fileName) throws IOException {
+		this.load(new File(fileName));
+	}
+
+	/**
+	 * Set a map of supported parameters (keys) and their description (values).
+	 * 
+	 * @param supportedParameters
+	 */
+	public void setSupportedParameters(Map<String, String> supportedParameters) {
+		this.supportedParameters = supportedParameters;
+	}
+
+	/**
+	 * Get a map of supported parameters (keys) and their description (values).
+	 * 
+	 * @return
+	 */
+	public Map<String, String> getSupportedParameters() {
+		return supportedParameters;
+	}
+}
+src/ch/eonum/pipeline/reader/LetterReader.java
+public class LetterReader {
+
+	/**
+	 * 
+	 * @param filename
+	 * @param predictionAfter begin prediction after X letters
+	 * @param lineByLine make one sequence for each line
+	 * @param addNewLine add line breaks as letters
+	 * @param features all allowed characters
+	 * @return
+	 * @throws IOException
+	 * @throws ParseException
+	 */
+	public static SequenceDataSet<DenseSequence> readTraining(String filename, boolean lineByLine, 
+			boolean addNewLine, Features features) throws IOException,
+			ParseException {
+		SequenceDataSet<DenseSequence> data = new SequenceDataSet<DenseSequence>();
+		
+		FileInputStream fstream = new FileInputStream(filename);
+
+		DataInputStream in = new DataInputStream(fstream);
+		BufferedReader br = new BufferedReader(new InputStreamReader(in));
+		
+		String line;
+				
+		DenseSequence seq = createSequence(features);
+		
+		int lineNumber = 0;
+		
+		while ((line = br.readLine()) != null) {
+			line = line.trim().toLowerCase();
+			if(line.length() <= 1)
+				continue;
+			
+			for(int i = 0; i < line.length(); i++){
+				String c = "" + line.charAt(i);
+				if(features.hasFeature(c)){
+					double[] point = new double[features.size()];
+					point[features.getIndexFromFeature(c)] = 1.0;
+					seq.addTimePoint(point);
+				}
+			}
+			
+			if(addNewLine && features.hasFeature("\n")){
+				double[] point = new double[features.size()];
+				point[features.getIndexFromFeature("\n")] = 1.0;
+				seq.addTimePoint(point);
+			}	
+			
+			lineNumber++;
+			if(lineByLine){
+				seq.id = "line" + lineNumber;
+				data.addInstance(seq);
+				seq = createSequence(features);
+			}	
+		}
+		
+		if(!lineByLine)
+			data.addInstance(seq);
+		
+		in.close();
+		
+		return data;
+	}
+
+	private static DenseSequence createSequence(Features features) {
+		DenseSequence seq = new DenseSequence("dataset", "all",
+				new HashMap<String, Double>(), features);
+		return seq;
+	}
+}
+src/ch/eonum/pipeline/core/SequenceDataSet.java
+public class SequenceDataSet<E extends Sequence> extends DataSet<E> {
+
+	private static final long serialVersionUID = -6190330850640598339L;
+	
+	/**
+	 * Create from standard data set. Many readers read standard data sets only
+	 * and hence have to be transformed into a SequenceDataSet
+	 * 
+	 * @param data
+	 */
+	public SequenceDataSet(DataSet<E> data) {
+		this.addAll(data);
+	}
+
+	public SequenceDataSet() {}
+
+	/**
+	 * Level/Flat the time series data. By leveling, a sequence can be used with
+	 * standard classifiers which cannot process time series. Level Average, Max
+	 * and Min. 
+	 */
+	public void levelSequences() {
+		for (Sequence each : this) {
+			each.levelAverage();
+			each.levelMax();
+			each.levelMin();
+		}
+	}
+
+	/**
+	 * Level/Flat the time series data. By leveling, a sequence can be used with
+	 * standard classifiers which cannot process time series. Level Average,
+	 * Max, Min and Standard deviation
+	 */
+	public void levelSequencesAll() {
+		for (Sequence each : this) {
+			each.levelAverage();
+			each.levelMax();
+			each.levelMin();
+			each.levelStd();
+		}
+	}
+
+	/**
+	 * Level/Flat the time series data. By leveling, a sequence can be used with
+	 * standard classifiers which cannot process time series. Level Average,
+	 * Max, Min, standard deviation and center of mass
+	 */
+	public void levelSequencesAllwithCOM(Features features) {
+		for (Sequence each : this) {
+			each.levelAverage();
+			each.levelMax();
+			each.levelMin();
+			each.levelStd();
+			each.levelCenterOfMass(features);
+		}
+	}
+
+	/**
+	 * Level/Flat the time series data. By leveling, a sequence can be used with
+	 * standard classifiers which cannot process time series. Level a time
+	 * window: precondition: every sequence must have the same length. For each
+	 * element in the sequence a new set of features is created.
+	 * 
+	 * @see Sequence#levelTimeWindow()
+	 */
+	public void levelSequencesTimeWindow() {
+		for (Sequence each : this) {
+			each.levelTimeWindow();
+		}
+	}
+
+	/**
+	 * Inverse operation to levelSequences. Push all data in the flat instance
+	 * to each time point in a sequence.
+	 * 
+	 * @see Sequence#pushUp()
+	 */
+	public void pushUp() {
+		for (Sequence each : this) {
+			each.pushUp();
+		}
+	}
+
+	/**
+	 * Delete the time series data.
+	 */
+	public void deleteSequence() {
+		for (Sequence each : this) {
+			each.deleteSequence();
+		}
+	}
+	
+	/**
+	 * Return a data set with all sequences unrolled as instances. No copies of
+	 * data is made. Hence operations on the resulting data set affect this
+	 * data set. This is convenient to apply feature transformations like
+	 * normalizations, which have been designed for instance data sets, on
+	 * sequence data.
+	 * 
+	 * @see Sequence#getDataSetFromTimePoints()
+	 * 
+	 * @return
+	 */
+	public DataSet<SparseInstance> createDataSetFromSequences() {
+		DataSet<SparseInstance> ds = new DataSet<SparseInstance>();
+		for (Sequence each : this)
+			ds.addAll(each.getDataSetFromTimePoints());
+		return ds;
+	}
+	
+	/**
+	 * invert the temporal order of all sequences in this data set.
+	 * 
+	 * @see Sequence#invertTemporalOrder()
+	 */
+	public void invertSequences() {
+		for (Sequence each : this)
+			each.invertTemporalOrder();
+	}
+
+	/**
+	 * push the master (instance) data on top of the sequence data.
+	 * Precondition: all instances in this data set are sequences.
+	 * 
+	 * @see Sequence#pushMasterOnTop()
+	 */
+	public void pushMasterOnTop() {
+		for (Sequence each : this)
+			each.pushMasterOnTop();
+	}
+
+	/**
+	 * put the master (instance) data at the bottom of the sequence data.
+	 * Precondition: all instances in this data set are sequences.
+	 * 
+	 * @see Sequence#putMasterAtBottom()
+	 */
+	public void putMasterAtBottom() {
+		for (Sequence each : this)
+			each.putMasterAtBottom();
+	}
+
+	/**
+	 * Add a copy of the sequence at the end of the sequence. Some extra context
+	 * in both directions can be obtained by this.
+	 * 
+	 * @see Sequence#duplicateSequence()
+	 */
+	public void duplicateSequences() {
+		for (Sequence each : this)
+			each.duplicateSequence();
+	}
+
+	/**
+	 * create a target sequence for each sequence by copying the sequence with a
+	 * given time lag. Hence we can can train to predict the sequence. The last
+	 * timeLag points will be NaN, because we do not know the targets.
+	 * 
+	 * @see Sequence#createTargetForPrediction(int, Features)
+	 * 
+	 * @param timeLag
+	 *            in number of points in time.
+	 * @param features
+	 *            features which should be predicted. Usually the same set as
+	 *            the input feature set.
+	 */
+	public void setTimeLag(int timeLag, Features features) {
+		for (Sequence each : this)
+			each.createTargetForPrediction(timeLag, features);
+	}
+
+}
+src/ch/eonum/pipeline/classification/lstm/LSTMClassifier.java
+public class LSTMClassifier<E extends Sequence> extends LSTM<E> {
+	private boolean targetSequence = false;
+	
+	public LSTMClassifier(){
+		super();
+		classify = true;
+	}
+	
+	@Override
+	public void train(){
+		if(!targetSequence )
+			this.prepareClasses();
+		super.train();
+	}
+	
+	/**
+	 * set the classes. use this, if your class labels are not in the master
+	 * data, but in the target sequence.
+	 * 
+	 * @param features
+	 */
+	public void setClasses(Features features){
+		this.targetSequence = true;
+		this.classes = features;
+	}
+	
+	@Override
+	protected double[][][] loadTargets(DataSet<E> set) {
+		double data[][][] = new double[set.size()][][];
+		for(int i = 0; i < set.size(); i ++){
+			Sequence seq = set.get(i);
+			int length = Math.max(1, seq.getSequenceLength());
+			
+			data[i] = new double[length][classes.size()];
+	
+			if(seq.hasSequenceTarget()){
+				if (!this.targetSequence)
+					throw new AssertionError(
+							"Sequence has target sequence, but no target sequence classes are specified.");
+				if (classes.size() != seq.outputSize())
+					throw new AssertionError(
+							"Number of classes does not fit the number of outputs for sequence: "
+									+ seq);
+				for(int j = 0; j < length; j++)
+					for(int k = 0; k < classes.size(); k++)
+						data[i][j][k] = seq.groundTruthAt(j, k);
+			} else {
+				for(int j = 0; j < length; j++)
+					for(int k = 0; k < data[i][j].length; k++)
+						data[i][j][k] = Double.NaN;
+				for (int k = 0; k < data[i][length - 1].length; k++)
+					data[i][length - 1][k] = 0.0;
+				data[i][length-1][classes.getIndexFromFeature(seq.groundTruth)] = 1.0;
+			}
+		}
+		return data;
+	}
+	
+	@Override
+	protected void fillResults(int numNetsTotal) {
+		for(Instance each : this.testDataSet){
+			double maxProb = Double.NEGATIVE_INFINITY;
+			for(int i = 0; i < classes.size(); i++){
+				if(each.getResult("classProb" + i) > maxProb){
+					each.label = classes.getFeatureByIndex(i);
+					maxProb = each.getResult("classProb" + i);
+				}
+				each.putResult("classProb" + i, each.getResult("classProb" + i) / numNetsTotal);
+			}
+			each.putResult("result", maxProb / numNetsTotal);
+		}
+	}
+	
+	/**
+	 * set the result of one net for a sequence
+	 * @param seq
+	 * @param outputUnit
+	 * @param activation
+	 */
+	@Override
+	public synchronized void setResults(Sequence seq, int outputUnit,
+			double activation, String threadName) {
+		seq.putResult("classProb" + outputUnit, seq.getResult("classProb" + outputUnit)
+				+ activation);
+	}
+	
+	@Override
+	protected LSTMCore<E> createNet(String name, String folder, int seed) {
+		LSTMCore<E> core = super.createNet(name, folder, seed);
+		core.useSoftMaxOutputLayer();
+		return core;
+	}
+
+	
+}
+src/ch/eonum/pipeline/core/DenseSequence.java
+public class DenseSequence extends Sequence {
+	/** time series data. */
+	private double[][] sequence;
+	/**
+	 * ground truth, if ground truth is a sequence. if not, the ground truth is
+	 * stored in Instance.groundtruth.
+	 */
+	private double[][] groundTruthSequence;
+	private double[][] sequenceResults;
+	private Features features;
+
+	/**
+	 * constructor with master data.
+	 * 
+	 * @param id
+	 * @param groundTruth
+	 * @param masterData
+	 * @param features
+	 */
+	public DenseSequence(String id, String groundTruth,
+			Map<String, Double> masterData, Features features) {
+		super(id, groundTruth, masterData);
+		this.features = features;
+	}
+
+	/**
+	 * constructor without master data.
+	 * 
+	 * @param id
+	 * @param groundTruth
+	 * @param features
+	 */
+	public DenseSequence(String id, String groundTruth, Features features) {
+		this(id, groundTruth, new HashMap<String, Double>(), features);
+	}
+
+	/**
+	 * copy constructor. !! only shallow copy !!
+	 * 
+	 * @param seq
+	 */
+	public DenseSequence(DenseSequence seq) {
+		super(seq.id, seq.groundTruth, new HashMap<String, Double>(seq.vector));
+		this.className = seq.className;
+		this.weight = seq.weight;
+		this.outcome = seq.outcome;
+		this.sequence = seq.sequence;
+		if(seq.groundTruthSequence != null)
+			this.groundTruthSequence = seq.groundTruthSequence;
+	}
+	
+	/**
+	 * Add a new time point. This method is not very efficient using dense
+	 * sequences.. Please use initSequence and then put(t, f, v) if you know the
+	 * sequence length.
+	 * 
+	 * @param point
+	 */
+	@Override
+	public void addTimePoint(Map<String, Double> point){
+		double[] pointArray = new double[features.size()];
+		for(int i = 0; i < features.size(); i++)
+			if(point.containsKey(features.getFeatureByIndex(i)))
+				pointArray[i] = point.get(features.getFeatureByIndex(i));
+		this.addTimePoint(pointArray);
+	}
+	
+	/**
+	 * Add a new time point. This method is not very efficient using dense
+	 * sequences. Please use initSequence and then put(t, f, v) if you know the
+	 * sequence length.
+	 * 
+	 * @param point
+	 */
+	public void addTimePoint(double[] point) {
+		if(this.sequence == null)
+			sequence = new double[0][];
+		double[][] newSequence = new double[sequence.length + 1][];
+		for(int i = 0; i < this.sequence.length; i++)
+			newSequence[i] = sequence[i];
+		newSequence[sequence.length] = point;
+		this.sequence = newSequence;
+	}
+	
+	/**
+	 * initialize a sequence with length size and all values set to NaN
+	 * 
+	 * @param size
+	 */
+	public void initSequence(int size) {
+		this.sequence = new double[size][features.size()];
+		for(int i = 0; i < sequence.length; i++)
+			for(int j = 0; j < sequence[i].length; j++)
+				sequence[i][j] = Double.NaN;
+		
+	}
+	
+	/**
+	 * Get the sequence length / number of time steps.
+	 * @return
+	 */
+	@Override
+	public int getSequenceLength(){
+		return this.sequence.length;
+	}
+	
+	/**
+	 * Set the value of a feature of a time point.
+	 * @param t time point
+	 * @param feature name
+	 * @param value
+	 */
+	@Override
+	public void put(int t, String feature, double value){
+		this.sequence[t][features.getIndexFromFeature(feature)] = value;
+	}
+	
+	/**
+	 * Set the value of a feature of a time point.
+	 * @param t time point
+	 * @param feature index
+	 * @param value
+	 */
+	public void put(int t, int feature, double value){
+		this.sequence[t][feature] = value;
+	}
+	
+	@Override
+	public double get(int t, String feature){
+		return this.sequence[t][features.getIndexFromFeature(feature)];
+	}
+
+	@Override
+	public double groundTruthAt(int t, int f) {
+		return groundTruthSequence[t][f];
+	}
+
+	@Override
+	public int outputSize() {
+		if(groundTruthSequence == null)
+			return 1;
+		return this.groundTruthSequence[0].length;
+	}
+	
+	@Override
+	public boolean hasGroundTruthSequence() {
+		return this.groundTruthSequence != null;
+	}
+	
+	@Override
+	public int getGroundTruthLength() {
+		if(this.groundTruthSequence == null)
+			return -1;
+		return this.groundTruthSequence.length;
+	}
+	
+	@Override
+	public Set<String> features(){
+		Set<String> f = new LinkedHashSet<String>();
+		for(int i = 0; i < features.size(); i++)
+			f.add(features.getFeatureByIndex(i));
+		return f;
+	}
+
+	/**
+	 * Sort the time points according the specified feature in ascending order.
+	 * @param feature
+	 */
+	@Override
+	public void sortTimePoints(final String feature) {
+		List<double[]> c = Arrays.asList(sequence);
+		final int i = features.getIndexFromFeature(feature);
+		Collections.sort(c, new Comparator<double[]>(){
+			@Override
+			public int compare(double[] o1, double[] o2) {
+				return ((Double)o1[i]).compareTo(o2[i]);
+			}
+		});
+		for(int h = 0; h < c.size(); h++)
+			sequence[h] = c.get(h);
+	}
+	
+	@Override
+	public void duplicateSequence(){
+		double[][] newSeq = new double[sequence.length*2][sequence[0].length];
+		for (int i = 0; i < sequence.length; i++){
+			newSeq[i] = sequence[i];
+			newSeq[i*2] = sequence[i];
+		}
+		sequence = newSeq;
+	}
+
+	@Override
+	public void levelAverage() {
+		for(double[] each : this.sequence)
+			for(int i = 0; i < each.length; i++){
+				String f = "m" + features.getFeatureByIndex(i);
+				this.put(f, this.get(f) + each[i]);
+			}
+		for (int f = 0; f < features.size(); f++)
+			this.put("m" + features.getFeatureByIndex(f),
+					this.get("m" + features.getFeatureByIndex(f))
+							/ this.sequence.length);
+		this.put("seqLength", this.sequence.length);
+	}
+
+	@Override
+	public void levelMax() {
+		for(double[] each : this.sequence)
+			for(int i = 0; i < each.length; i++){
+				String f = "max" + features.getFeatureByIndex(i);
+				this.put(f, Math.max(this.get(f), each[i]));
+			}
+	}
+
+	@Override
+	public void levelMin() {
+		for(double[] each : this.sequence)
+			for(int i = 0; i < each.length; i++){
+				String f = "min" + features.getFeatureByIndex(i);
+				this.put(f, Math.min(this.get(f), each[i]));
+			}
+	}
+	
+	/**
+	 * standard deviation
+	 */
+	@Override
+	public void levelStd() {
+		Map<String, Double> avgs = new HashMap<String, Double>();
+		for(double[] each : this.sequence)
+			for(int i = 0; i < each.length; i++){
+				String f = features.getFeatureByIndex(i);
+				if(!avgs.containsKey(f))
+					avgs.put(f, 0.0);
+				avgs.put(f, avgs.get(f) + each[i]);
+			}
+		for(int f = 0; f < features.size(); f++){
+			String feature = features.getFeatureByIndex(f);
+			avgs.put(feature, avgs.get(feature)/this.sequence.length);
+		}
+			
+		for(double[] each : this.sequence)
+			for(int f = 0; f < features.size(); f++){
+				String feature = "std" + features.getFeatureByIndex(f);
+				this.put(feature, this.get(feature) + Math.pow(each[f] - avgs.get(feature), 2.0));
+			}
+		for(int f = 0; f < features.size(); f++){
+			String feature = features.getFeatureByIndex(f);
+			this.put(feature, Math.sqrt(this.get(feature)/this.sequence.length));
+		}
+	}
+	
+	/**
+	 * get the normed (by sequence length) center of mass of all features in the
+	 * given features object.
+	 * 
+	 * @param features
+	 */
+	@Override
+	public void levelCenterOfMass(Features features) {
+			for (int f = 0; f < features.size(); f++) {
+				String feature = features.getFeatureByIndex(f);
+				double totalMass = 0.0;
+				double com = 0.0;
+				int position = 0;
+				for(double[] each : this.sequence){
+					double value = each[f];
+					totalMass += value;
+					com += value * position;
+					position++;
+				}
+				if(totalMass == 0.0)
+					com = 0.;
+				else {
+					com /= totalMass;
+					com /= position;
+				}
+				put("com" + feature, com);
+			}
+	}
+	
+	@Override
+	public void levelTimeWindow() {
+		for(int i = 0; i < sequence.length; i++){
+			for (int f = 0; f < features.size(); f++) {
+				String feature = features.getFeatureByIndex(f);
+				put(i + feature, sequence[i][f]);
+			}
+		}
+	}
+	
+	/**
+	 * #TODO reverse the order of the time lag
+	 * #TODO This function does not work yet, if the feature set for the targets
+	 * is different than the feature set of the inputs.
+	 */
+	@Override
+	public void createTargetForPrediction(int timeLag, Features features) {
+		int length = features.size();
+		this.groundTruthSequence = new double[sequence.length][length];
+		if(timeLag > this.sequence.length)
+			timeLag = this.sequence.length;
+		for(int i = 0; i < timeLag; i++)
+			for(int j = 0; j < length; j++)
+				this.groundTruthSequence[i][j] = Double.NaN;
+		for(int i = timeLag; i < sequence.length; i++)
+			for(int j = 0; j < length; j++)
+				this.groundTruthSequence[i][j] = sequence[i - timeLag][j];
+			
+		assert(this.groundTruthSequence.length == this.sequence.length);
+	}
+
+	/**
+	 * Get a data set where each time point is a single instance. All data is
+	 * copied and no references to this sequence is kept.
+	 * 
+	 * @return
+	 */
+	@Override
+	public DataSet<SparseInstance> createDataSetFromTimePoints() {
+		DataSet<SparseInstance> set = new DataSet<SparseInstance>();
+		for(int i = 0; i < sequence.length; i++){
+			HashMap<String, Double> pointCopy = new HashMap<String, Double>();
+			for (int f = 0; f < features.size(); f++) {
+				String feature = features.getFeatureByIndex(f);
+				pointCopy.put(feature, sequence[i][f]);
+			}
+			SparseInstance inst = new SparseInstance(this.id, this.groundTruth, pointCopy, this.className);
+			inst.outcome = outcome;
+			set.addInstance(inst);
+		}
+		return set;
+	}
+	
+	/**
+	 * Get a data set where each time point is a single instance. The instances
+	 * hold the same feature maps as the time points.
+	 * 
+	 * You can use this to apply basic feature transformers. (Normalization, PCA
+	 * ..)
+	 * 
+	 * @return
+	 */
+	@Override
+	public DataSet<SparseInstance> getDataSetFromTimePoints() {
+		throw new UnsupportedOperationException("DenseSequence does not support this operation");
+	}
+
+	@Override
+	public void invertTemporalOrder() {
+		double[][] newSequence = new double[sequence.length][];
+		int j = 0;
+		for(int i = this.sequence.length - 1; i >= 0; i--)
+			newSequence[j++] = sequence[i];
+		this.sequence = newSequence;
+	}
+
+	@Override
+	public void pushMasterOnTop() {
+		double[][] newSequence = new double[sequence.length + 1][];
+		for(int i = 0; i < this.sequence.length; i++)
+			newSequence[i] = sequence[i];
+		for (int f = 0; f < features.size(); f++)
+			newSequence[sequence.length][f] = this.get(features.getFeatureByIndex(f));
+		this.sequence = newSequence;
+	}
+
+	@Override
+	public void putMasterAtBottom() {
+		double[][] newSequence = new double[sequence.length + 1][];
+		for(int i = 1; i < this.sequence.length + 1; i++)
+			newSequence[i] = sequence[i];
+		for (int f = 0; f < features.size(); f++)
+			newSequence[0][f] = this.get(features.getFeatureByIndex(f));
+		this.sequence = newSequence;
+	}
+
+	@Override
+	public void shuffle() {
+		Collections.shuffle(Arrays.asList(this.sequence));
+	}
+
+	/**
+	 * group / add all time points with the same value of feature groupFeature.
+	 * After grouping, the sequence is sorted according groupFeature.
+	 * 
+	 * @param groupFeature
+	 */
+	@Override
+	public void groupBy(String groupFeature) {
+		int f = features.getIndexFromFeature(groupFeature);
+		double[][] seq = this.sequence;
+		double[][] tempSequence = new double[seq.length][features.size()];
+		int iTemp = 0;
+		for(double[] pointAdd : seq){
+			boolean found = false;
+			for(int tp = 0; tp < iTemp; tp++){
+				if(Math.abs(pointAdd[f] - tempSequence[tp][f]) < 0.00000001){
+					found = true;
+					for(int i = 0; i < pointAdd.length; i++) {
+						if (f != i)
+							tempSequence[tp][i] += pointAdd[i];
+					}
+					break;
+				}
+			}
+			if(!found)
+				tempSequence[iTemp++] = pointAdd;
+		}
+		
+		sequence = new double[iTemp][features.size()];
+		for(int i = 0; i < iTemp; i++)
+			sequence[i] = tempSequence[i];
+		
+		this.sortTimePoints(groupFeature);
+	}
+
+	@Override
+	public void clearSequence() {
+		this.sequence = null;
+	}
+	
+	@Override
+	public String toString(){
+		String seq = "";
+		if (this.groundTruthSequence != null
+				&& this.groundTruthSequence.length != this.sequence.length)
+			return "Invalid format: sequence size is " + this.sequence.length
+					+ " and groundtruth sequence size is "
+					+ this.groundTruthSequence.length;
+		for(int i = 0; i < this.sequence.length; i++){
+			seq += Arrays.toString(this.sequence[i]);
+			if(this.groundTruthSequence != null)
+				seq += " => " + Arrays.toString(this.groundTruthSequence[i]);
+			seq += "\n";
+		}
+		return "master: " + super.toString() + "\n" + seq;
+	}
+	
+	@Override
+	public DenseSequence copy() {
+		Map<String, Double> newVector = new HashMap<String, Double>(vector);
+		DenseSequence inst = new DenseSequence(id, groundTruth, newVector,
+				features);
+		inst.sequence = new double[sequence.length][features.size()];
+		for (int p = 0; p < sequence.length; p++)
+			inst.sequence[p] = Arrays.copyOf(sequence[p], sequence[p].length);
+		if (groundTruthSequence != null) {
+			inst.groundTruthSequence = new double[groundTruthSequence.length][groundTruthSequence[0].length];
+			for (int p = 0; p < groundTruthSequence.length; p++)
+				inst.groundTruthSequence[p] = Arrays.copyOf(
+						groundTruthSequence[p], groundTruthSequence[p].length);
+		}
+		inst.outcome = outcome;
+		return inst;
+	}
+	
+	/**
+	 * exchange a certain feature with another instance.
+	 * Used for randomization (random permutation) of certain features.
+	 * @param feature
+	 * @param instance
+	 */
+	@Override
+	public void exchangeFeature(String feature, Instance instance) {
+		super.exchangeFeature(feature, instance);
+		int f = features.getIndexFromFeature(feature);
+		double value;
+		double[][] instSeq = ((DenseSequence)instance).sequence;
+		Random rand = new Random(1234);
+		double[][] copy = new double[sequence.length][features.size()];
+		for (int p = 0; p < sequence.length; p++)
+			copy[p] = Arrays.copyOf(sequence[p], sequence[p].length);
+		
+		for(int i = 0; i < sequence.length; i++) {
+			double[] point2 = instSeq[rand.nextInt(instSeq.length)];
+			value = point2[f];
+			sequence[i][f] = value;
+		}
+		for(int i = 0; i < instSeq.length; i++) {
+			double[] point2 = sequence[rand.nextInt(sequence.length)];
+			value = point2[f];
+			instSeq[i][f] = value;
+		}
+	}
+	
+	@Override
+	public double remove(String feature) {
+		for(double[] point : this.sequence)
+			if(features.hasFeature(feature))
+				point[features.getIndexFromFeature(feature)] = 0;
+		return super.remove(feature);
+	}
+
+	@Override
+	public void initSequenceResults() {
+		this.sequenceResults = new double[this.groundTruthSequence.length][this.outputSize()];
+		for(int i = 0; i < sequenceResults.length; i++)
+			for(int j = 0; j < sequenceResults[i].length; j++)
+				sequenceResults[i][j] = Double.NaN;
+	}
+
+	@Override
+	public void addSequenceResult(int t, int f, double result) {
+		if(this.sequenceResults != null)
+			this.sequenceResults[t][f] = result;
+	}
+	
+	@Override
+	public double resultAt(int t, int f) {
+		return this.sequenceResults[t][f];
+	}
+
+	@Override
+	public double[][] getDenseRepresentation(Features features) {
+		if(features.size() != this.features.size()){
+			throw new IllegalArgumentException("Error: feature size does not match");
+		}
+		return sequence;
+	}
+
+	@Override
+	public boolean hasSequenceTarget() {
+		return (groundTruthSequence != null && groundTruthSequence.length == sequence.length);
+	}
+
+	@Override
+	public void pushUp() {
+		for(String feature : vector.keySet())
+			for(double[] point : this.sequence)
+				point[features.getIndexFromFeature(feature)] = this.get(feature);
+	}
+
+	@Override
+	public void deleteSequence() {
+		this.sequence = null;
+	}
+
+	@Override
+	public void addGroundTruth(int t, int f, double result) {
+		this.groundTruthSequence[t][f] = result;
+	}
+
+	@Override
+	public void initGroundTruthSequence() {
+		this.groundTruthSequence = new double[this.sequence.length][this.outputSize()];
+		for(int i = 0; i < groundTruthSequence.length; i++)
+			for(int j = 0; j < groundTruthSequence[i].length; j++)
+				groundTruthSequence[i][j] = Double.NaN;
+	}
+
+	public void setFeatures(Features features) {
+		this.features = features;
+	}
+
+}
+src/ch/eonum/pipeline/util/Log.java
+public class Log {
+
+	public static void puts(Object object){
+		System.out.println(object);
+	}
+	
+	public static void warn(Object object){
+		System.err.println("Warning: " + object);
+	}
+	
+	public static void error(Object object){
+		System.err.println("Error: " + object);
+		System.exit(-1);
+	}
+
+	public static void printf(String format, Object ... args) {
+		System.out.printf(format, args);
+	}
+}
+src/ch/eonum/pipeline/evaluation/Evaluator.java
+public interface Evaluator<E extends Instance> {
+	/**
+	 * evaluate a data set and return the main measure. The higher the evaluation
+	 * measure, the better. Optimization algorithms maximize this measure. If
+	 * you have a measure to be minimized, return the negative value.
+	 * 
+	 * @param dataset
+	 * @return evaluation measure
+	 */
+	public double evaluate(DataSet<E> dataset);
+	/**
+	 * print the measurement with optional measurements to file.
+	 * @param fileName
+	 */
+	public void printResults(String fileName);
+	/**
+	 * execute printResults and gnuplot the results in the same folder.
+	 * @param fileName
+	 */
+	public void printResultsAndGnuplot(String fileName);
+}
+src/ch/eonum/pipeline/validation/SystemValidator.java
+public class SystemValidator<E extends Instance> {
+	private DataPipeline<E> system;
+	private Evaluator<E> evaluator;
+	private String baseDir;
+	
+	public SystemValidator(DataPipeline<E> system, Evaluator<E> evaluator){
+		this.system = system;
+		this.evaluator = evaluator;
+	}
+	
+	public double evaluate(){
+		return this.evaluate(false, null);
+	}
+	
+	public double evaluate(boolean printResults, String name){
+		system.trainSystem(false);
+		DataSet<E> test = system.testSystem();
+		double ret = evaluator.evaluate(test);
+		if(printResults)
+			evaluator.printResultsAndGnuplot(this.getBaseDir() + name);
+		return ret;
+	}
+
+	public void setBaseDir(String baseDir) {
+		this.baseDir = baseDir;
+	}
+
+	public String getBaseDir() {
+		return baseDir;
+	}
+
+	/**
+	 * Validate a system along a range of a certain parameter and return the value
+	 * of the parameter where the optimum is reached.
+	 * 
+	 * @param parameters Parameters objects, which have to be adjusted
+	 * @param param Parameter which is to be validated
+	 * @param start start of range
+	 * @param stop end of range
+	 * @param step step size
+	 * @param logSpace 
+	 * @param parentResultsFolder 
+	 * @return parameter optimum
+	 */
+	public double validateParameter(Parameters[] parameters, String param,
+			double start, double stop, double step) {
+		return this.validateParameter(parameters, param, start, stop, step, null, false);
+	}
+	
+	/**
+	 * Validate a system along a range of a certain parameter and return the value
+	 * of the parameter where the optimum is reached.
+	 * This method additionally outputs all values and gnuplots them.
+	 * 
+	 * @param parameters Parameters objects, which have to be adjusted
+	 * @param param Parameter which is to be validated
+	 * @param start start of range
+	 * @param stop end of range
+	 * @param step stepsize
+	 * @param parentResultsFolder parent result folder
+	 * @return parameter optimum
+	 */
+	public double validateAndGnuplotParameter(Parameters[] parameters,
+			String param, Double start, Double stop, double step,
+			String parentResultsFolder) {
+		return this.validateParameter(parameters, param, start, stop, step, parentResultsFolder, false);
+	}
+	
+	/**
+	 * Validate a system along a range in log2 space of a certain parameter and return the value
+	 * of the parameter where the optimum is reached.
+	 * This method additionally outputs all values and gnuplots them.
+	 * 
+	 * @param parameters Parameters objects, which have to be adjusted
+	 * @param param Parameter which is to be validated
+	 * @param start start of range in log2 space
+	 * @param stop end of range in log2 space
+	 * @param step step size in log2 space
+	 * @param parentResultsFolder parent result folder
+	 * @return parameter optimum in real space
+	 */
+	public double validateAndGnuplotParameterLogSpace(Parameters[] parameters,
+			String param, Double start, Double stop, double step,
+			String parentResultsFolder) {
+		return this.validateParameter(parameters, param, start, stop, step, parentResultsFolder, true);
+	}
+
+	private double validateParameter(Parameters[] parameters, String param,
+			double start, double stop, double step, String parentResultsFolder, boolean logSpace) {
+		int istart = (int)(start/step);
+		int istop = (int)(stop/step);
+		
+		double maxParam = start;
+		double maxValue = Double.NEGATIVE_INFINITY;
+		
+		List<Double> parameterValues = new ArrayList<Double>();
+		Map<Double, Double> parameterMeasures = new HashMap<Double, Double>();
+		
+		for(int i = istart; i <= istop; i++){
+			double p = i*step;
+			double pReal = p;
+			if(logSpace)
+				pReal = Math.pow(2, p);
+			for(Parameters each : parameters)
+				each.putParameter(param, pReal);
+			double value = this.evaluate();
+			parameterValues.add(p);
+			parameterMeasures.put(p, value);
+			System.out.println((p) + " = " + value);
+			if(value > maxValue){
+				maxValue = value;
+				maxParam = pReal;
+			}
+		}
+		for(Parameters each : parameters)
+			each.putParameter(param, maxParam);
+		
+		if(parentResultsFolder != null){
+			FileUtil.mkdir(parentResultsFolder + param);
+			try {
+				FileWriter fstream = new FileWriter(parentResultsFolder + param + "/validation.txt");
+				BufferedWriter out = new BufferedWriter(fstream);
+				for(Double each : parameterValues){
+					out.write(each + "	" + parameterMeasures.get(each) + "\n");
+				}
+				out.close();
+			} catch (Exception e) {
+				System.err.println("Error: " + e.getMessage());
+			}
+			Gnuplot.plotOneDimensionalCurve(parentResultsFolder + param + "/validation.txt", "Validation of " + param);
+		}
+		return maxParam;
+	}
+
+	/**
+	 * Find out the local optimum for all meta parameters. 
+	 * @param params
+	 * @param nIterations
+	 * @param dir directory for results
+	 * @return
+	 */
+	public Map<ParameterValidation, Double> parameterSearch(
+			List<ParameterValidation> params, int nIterations, String dir) {
+		
+		Map<ParameterValidation, Double> values = new HashMap<ParameterValidation, Double>();
+		for(ParameterValidation each : params)
+			values.put(each, each.getInitialvalue());
+		
+		FileUtil.mkdir(dir);
+		
+		try {
+			PrintStream p = new PrintStream(new FileOutputStream(dir
+					+ "parameterSearch.txt"));
+
+			for(int i = 1; i <= nIterations; i++){
+				boolean changed = false;
+				
+				Log.puts("Iteration " + i);
+				p.println("Iteration " + i);
+				for (ParameterValidation each : params) {
+					double newValue = this.validateParameter(
+							each.getParameters(), each.getName(), each.getStart(),
+							each.getEnd(), each.getStepSize(), dir, each.isLog2Space());
+					if(each.isLog2Space())
+						newValue = Math.log(newValue)/Math.log(2);
+					
+					if(Math.abs(newValue - values.get(each)) > 0.0000001){
+						changed = true;
+						values.put(each, newValue);
+					}
+					System.out.println("Maximum for " + each.getName() + ": " + newValue);
+					p.println("Maximum for " + each.getName() + ": " + newValue);
+				}
+	
+				// check if something has changed. when nothing changes we can finish
+				if(!changed)
+					break;
+	
+				// adapt ranges
+				for(ParameterValidation each : params){
+					double newStart = values.get(each) - each.getRange()/2.0;
+					each.setStart(newStart > each.getMin() ? newStart : each.getMin());
+					
+					double newEnd = values.get(each) + each.getRange()/2.0;
+					each.setEnd(newEnd < each.getMax() ? newEnd : each.getMax());
+				}
+			}
+			p.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+		return values;
+	}
+	
+	/**
+	 * find out the optimum for two parameters using an exhaustive grid search.
+	 * @param param1 parameter validation 1
+	 * @param param2 parameter validation 2
+	 * @param dir directory for results
+	 * @return
+	 */
+	public Map<ParameterValidation, Double> gridSearch(
+			ParameterValidation param1, ParameterValidation param2, String dir) {
+		
+		Map<ParameterValidation, Double> values = new HashMap<ParameterValidation, Double>();
+		values.put(param1, param1.getInitialvalue());
+		values.put(param2, param2.getInitialvalue());
+		
+		FileUtil.mkdir(dir);
+		
+		try {
+			PrintStream p = new PrintStream(new FileOutputStream(dir
+					+ "grid.txt"));
+			
+			double max = Double.NEGATIVE_INFINITY;
+
+			int numSteps1 = (int)(param1.getRange()/param1.getStepSize());
+			for(int p1 = 0; p1 <= numSteps1; p1++){
+				double p1d = param1.getStart() + p1 * param1.getStepSize();
+				int numSteps2 = (int)(param2.getRange()/param2.getStepSize());
+				for(int p2 = 0; p2 <= numSteps2; p2++){
+					double p2d = param2.getStart() + p2 * param2.getStepSize();
+					double p1r = p1d;
+					if(param1.isLog2Space()) p1r = Math.pow(2.0, p1d);
+					double p2r = p2d;
+					if(param2.isLog2Space()) p2r = Math.pow(2.0, p2d);
+					for(Parameters each : param1.getParameters())
+						each.putParameter(param1.getName(), p1r);
+					for(Parameters each : param2.getParameters())
+						each.putParameter(param2.getName(), p2r);
+					double m = this.evaluate();
+					if(m > max){
+						max = m;
+						values.put(param1, p1d);
+						values.put(param2, p2d);
+					}
+					Log.puts("[" + param1.getName() + " = " + p1d + ", " + param2.getName() + " = " + p2d + "] => " + m);
+					p.println(p1d + " " + p2d + " " + m);
+				}
+			}
+			
+			p.close();
+			Gnuplot.plotGrid(dir + "grid.txt", "grid");
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+		return values;
+	}
+}
+src/ch/eonum/pipeline/evaluation/RecognitionRateSequence.java
+public class RecognitionRateSequence<E extends Sequence> implements Evaluator<E> {
+
+	@Override
+	public double evaluate(DataSet<E> dataset) {
+		double ok = 0.0;
+		double n = 0;
+		for(Sequence seq : dataset){
+			for(int x = 0; x < seq.getGroundTruthLength(); x++){
+				if(Double.isNaN(seq.groundTruthAt(x, 0)))
+					continue;
+				int maxGT = -1;
+				double maxGTValue = Double.NEGATIVE_INFINITY;
+				int maxRes = -1;
+				double maxResValue = Double.NEGATIVE_INFINITY;
+				n++;
+				
+				for(int y = 0; y < seq.outputSize(); y++){
+					if(maxGTValue < seq.groundTruthAt(x, y)){
+						maxGT = y;
+						maxGTValue = seq.groundTruthAt(x, y);
+					}
+				}
+				
+				for(int y = 0; y < seq.outputSize(); y++){
+					if(maxResValue < seq.resultAt(x, y)){
+						maxRes = y;
+						maxResValue = seq.resultAt(x, y);
+					}
+				}
+				
+				if(maxGT == maxRes) ok++;
+			}
+		}
+		ok /= n;
+		return ok;
+	}
+
+
+	@Override
+	public void printResults(String fileName) {
+		// do nothing
+	}
+
+	@Override
+	public void printResultsAndGnuplot(String fileName) {
+		// do nothing
+	}
+
+}

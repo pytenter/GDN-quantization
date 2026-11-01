@@ -1,0 +1,1 @@
+lambda _cls, category, letter, word: _tuple_new(_cls, (category, letter, word))

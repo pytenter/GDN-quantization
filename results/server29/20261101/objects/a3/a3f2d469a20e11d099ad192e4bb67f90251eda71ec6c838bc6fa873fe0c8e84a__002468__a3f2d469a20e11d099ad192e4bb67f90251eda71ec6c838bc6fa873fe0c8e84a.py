@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(parameters={self.parameters!r}, buffers={self.buffers!r}, user_inputs={self.user_inputs!r}, user_outputs={self.user_outputs!r}, inputs_to_parameters={self.inputs_to_parameters!r}, inputs_to_buffers={self.inputs_to_buffers!r}, buffers_to_mutate={self.buffers_to_mutate!r}, user_inputs_to_mutate={self.user_inputs_to_mutate!r}, in_spec={self.in_spec!r}, out_spec={self.out_spec!r}, backward_signature={self.backward_signature!r}, input_tokens={self.input_tokens!r}, output_tokens={self.output_tokens!r})"
+ return __repr__

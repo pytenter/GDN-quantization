@@ -1,0 +1,1 @@
+lambda _cls, inner_name, other_names: _tuple_new(_cls, (inner_name, other_names))

@@ -1,0 +1,1 @@
+lambda _cls, on, device, is_device_map_set, is_scriptable, generated_methods, module_rref: _tuple_new(_cls, (on, device, is_device_map_set, is_scriptable, generated_methods, module_rref))

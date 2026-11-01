@@ -1,0 +1,1292 @@
+你现在执行一个**仅限 premeasurement input preparation / freeze 的 amendment**。
+
+本任务不是新的科学实验，不运行 frozen-drive replay，不执行任何 propagation measurement。
+
+已有实验必须全部保留原 verdict，不覆盖、不重写、不删除。
+
+---
+
+# 0. Context
+
+当前实验：
+
+```text
+QWEN_GDN_FROZEN_DRIVE_COUNTERFACTUAL_REPLAY_V1
+```
+
+最近一次 preflight 得到：
+
+```text
+PARENT_SEAL_INTEGRITY_GATE = PASS
+
+FROZEN_INPUT_IDENTITY_GATE = FAIL
+
+DRIVE_FACTORIZATION_GATE = NOT_EVALUATED
+CAPTURE_INTEGRITY_GATE = NOT_EVALUATED
+FP_REPLAY_PARITY_GATE = NOT_EVALUATED
+PHYSICAL_TRANSITION_ROTATION_INVARIANCE_GATE = NOT_EVALUATED
+COUNTERFACTUAL_DECOMPOSITION_GATE = NOT_EVALUATED
+REPLAY_DETERMINISM_GATE = NOT_EVALUATED
+STREAMING_REDUCER_PARITY_GATE = NOT_EVALUATED
+
+DISCOVERY_COMPLETE = 0/48
+
+FINAL_ACTION = FAIL_AND_STOP
+```
+
+这个 FAIL 必须永久保留。
+
+它不是 scientific failure。
+
+失败原因已经确定为：
+
+```text
+Parent propagation V1 stopped before the
+premeasurement input-freeze phase.
+
+Therefore:
+
+Discovery docs:
+NOT_SELECTED
+
+12-condition rotation bank:
+NOT_CREATED
+
+PREMEASUREMENT_COMMIT_SHA:
+null
+```
+
+重要：
+
+旧 parent protocol 中存在：
+
+```text
+Discovery-document selection logic / definitions
+
+H / C5R / C6R / C7 anchor definitions
+
+proposed Cayley interpolation coefficients /
+bank-construction information
+```
+
+但这些规则以前没有真正被执行为：
+
+```text
+selected + materialized + SHA256-frozen
+scientific Discovery inputs
+```
+
+因此本 amendment 的唯一任务是：
+
+> 在 scientific measurement 仍然为 0 的前提下，
+> 根据已有 prospective rules，
+> 完成一次正式的 premeasurement input preparation and freeze。
+
+---
+
+# 1. Amendment identity
+
+创建：
+
+```text
+AMENDMENT =
+QWEN_GDN_FROZEN_DRIVE_COUNTERFACTUAL_REPLAY_V1_PREMEASUREMENT_INPUT_FREEZE_AMENDMENT_V1
+
+TARGET_EXPERIMENT =
+QWEN_GDN_FROZEN_DRIVE_COUNTERFACTUAL_REPLAY_V1
+
+PARENT_EXPERIMENT =
+QWEN_GDN_PROPAGATION_SURROGATE_VALIDATION_V1
+
+ENGINEERING_PREDECESSOR =
+QWEN_GDN_DETERMINISTIC_CUMSUM_CLOSURE_V1
+```
+
+固定状态：
+
+```text
+PREVIOUS_PREFLIGHT_FAIL_PRESERVED = YES
+
+PARENT_STOP_PRESERVED = YES
+
+OLD_CUMSUM_CLOSURE_FAIL_PRESERVED = YES
+
+SCIENTIFIC_MEASUREMENT_BEFORE_AMENDMENT = 0
+
+NEW_TRAINING = NO
+
+OPTIMIZER_STEP = 0
+
+NEW_AIME_GENERATION = 0
+
+NEW_FREE_GENERATION = 0
+
+NEW_C8_TRAINING_AUTHORIZED = NO
+
+PARENT_PROPAGATION_RESUME_AUTHORIZED = NO
+
+CONFIRMATION_AUTHORIZED = NO
+```
+
+---
+
+# 2. Critical correction to previous preregistration
+
+上一版 preflight 中以下规则过强：
+
+```text
+"If the parent does not already contain materialized
+and SHA-frozen Discovery docs and a 12-condition
+rotation bank, immediately FAIL_AND_STOP."
+```
+
+现在明确修订为：
+
+```text
+If parent inputs were already prospectively materialized
+and frozen:
+    reuse them exactly.
+
+Else if parent stopped before input-freeze and
+scientific measurement count is still exactly zero:
+    prospective input preparation is allowed,
+    but only by executing pre-existing deterministic
+    selection/construction rules.
+
+Else:
+    FAIL_AND_STOP.
+```
+
+这个 amendment：
+
+```text
+DOES NOT RETROACTIVELY TURN THE PREVIOUS FAIL INTO PASS
+```
+
+而是建立一个新的、可审计的：
+
+```text
+PREMEASUREMENT_INPUT_FREEZE
+```
+
+阶段。
+
+---
+
+# 3. Absolute scope restriction
+
+本任务只允许完成：
+
+```text
+1. parent evidence audit
+
+2. Discovery-document rule recovery
+
+3. Discovery-document deterministic selection
+
+4. 12-condition rotation-bank rule recovery
+
+5. rotation-bank deterministic materialization
+
+6. metric / epsilon / probe-count /
+   tolerance-policy premeasurement freeze
+
+7. SHA256 sealing
+
+8. preregistration commit
+
+9. final amendment report
+```
+
+本任务明确禁止：
+
+```text
+drive factorization implementation
+
+frozen-drive capture
+
+GDN replay
+
+FP replay parity
+
+counterfactual decomposition
+
+J_ACC_FD
+
+J_HISTORY_FD
+
+J_INJ_REF_FD
+
+J_INJ_PATH_FD
+
+J_ALIGN_FD
+
+rotation ranking
+
+2K measurement
+
+8K measurement
+
+32K measurement
+
+Discovery replay
+
+Confirmation replay
+
+AIME
+
+free generation
+
+training
+
+optimizer step
+
+C8
+
+new learned rotation
+```
+
+即使 input freeze 全部 PASS：
+
+```text
+STOP AFTER FREEZE
+```
+
+不要自动继续下一阶段。
+
+---
+
+# 4. Preserve all old evidence first
+
+先只读验证以下三套证据：
+
+```text
+QWEN_GDN_PROPAGATION_SURROGATE_VALIDATION_V1
+
+QWEN_GDN_DETERMINISTIC_CUMSUM_CLOSURE_V1
+
+QWEN_GDN_FROZEN_DRIVE_COUNTERFACTUAL_REPLAY_V1
+previous preflight attempt
+```
+
+必须记录：
+
+```text
+authoritative paths
+file counts
+SHA256 manifests
+final verdicts
+commit identities
+```
+
+并输出：
+
+```text
+pre_amendment_evidence_inventory.json
+```
+
+必须证明：
+
+```text
+PARENT_SEAL_INTEGRITY_GATE = PASS
+
+CUMSUM_CLOSURE_SEAL_INTEGRITY_GATE = PASS
+
+PREVIOUS_PREFLIGHT_SEAL_INTEGRITY_GATE = PASS
+```
+
+如果任意 authoritative artifact 被修改：
+
+```text
+FINAL_ACTION = FAIL_AND_STOP
+```
+
+不得修复旧 evidence。
+
+---
+
+# 5. Confirm zero scientific measurement
+
+这是允许本 amendment 的最重要前提。
+
+必须证明当前没有产生任何：
+
+```text
+J_ACC_FD
+J_HISTORY_FD
+J_INJ_PATH_FD
+J_INJ_REF_FD
+J_ALIGN_FD
+
+rotation ranking
+
+horizon measurement
+
+Discovery replay result
+```
+
+并输出：
+
+```text
+scientific_measurement_audit.json
+```
+
+要求：
+
+```text
+SCIENTIFIC_MEASUREMENT_COUNT = 0
+DISCOVERY_COMPLETE = 0/48
+CONFIRMATION_DOCS_EXECUTED = 0
+```
+
+如果发现 scientific results 已经存在：
+
+```text
+PROSPECTIVE_INPUT_FREEZE_ELIGIBLE = NO
+FINAL_ACTION = FAIL_AND_STOP
+```
+
+不得继续选 inputs。
+
+---
+
+# 6. Recover the original Discovery-document rule
+
+只读搜索 parent experiment、preregistration、protocol、manifests、commits 和 relevant source。
+
+目标：
+
+> 恢复在任何 scientific result 产生以前已经写下的 Discovery-document selection rule。
+
+生成：
+
+```text
+discovery_selection_rule_recovery.md
+discovery_selection_rule_recovery.json
+```
+
+必须记录：
+
+```text
+source artifact
+source commit
+exact rule
+candidate pool
+eligibility criteria
+ordering rule
+seed if any
+tie policy
+exclusion rule
+expected Discovery count
+expected Confirmation count
+```
+
+不要根据现在的实验结果设计新规则。
+
+禁止使用：
+
+```text
+C6R vs H endpoint outcome
+C7 endpoint outcome
+Ling 32K result
+frozen-drive hypothetical result
+```
+
+来选择 documents。
+
+---
+
+# 7. Discovery docs: deterministic selection
+
+如果已有 parent rule 可以唯一决定 Discovery docs：
+
+机械执行。
+
+目标仍然应当是 parent protocol 要求的：
+
+```text
+4 Discovery docs
+```
+
+必须得到：
+
+```text
+DISCOVERY_DOC_COUNT = 4
+```
+
+为每个 doc 记录：
+
+```text
+document_id
+source dataset
+source path / record identity
+selection rank
+selection reason from frozen rule
+raw/source hash if applicable
+normalized input hash
+tokenization identity if relevant
+```
+
+输出：
+
+```text
+protocol/frozen_fresh_documents.json
+protocol/frozen_fresh_documents.sha256
+```
+
+其状态改为：
+
+```text
+status = SELECTED_AND_FROZEN
+count = 4
+```
+
+---
+
+# 8. If old rule does NOT uniquely select four docs
+
+不得自行挑选。
+
+如果存在：
+
+```text
+rule specified but ambiguous
+candidate pool not uniquely recoverable
+tie rule missing
+seed missing
+dataset revision ambiguous
+```
+
+则必须：
+
+```text
+DISCOVERY_DOCUMENT_RULE_RECOVERY_GATE = FAIL
+FINAL_ACTION = FAIL_AND_STOP
+```
+
+不要新发明一个有利于当前研究的 selection rule。
+
+只有一个例外：
+
+如果 parent evidence 明确规定：
+
+```text
+a deterministic general selection procedure
+```
+
+但以前只是因为 runtime STOP 而没有执行，那么执行它是允许的。
+
+---
+
+# 9. Confirmation docs protection
+
+Confirmation inputs是 holdout。
+
+原则：
+
+```text
+CONFIRMATION_DOCS_READ = NO
+CONFIRMATION_DOCS_EXECUTED = 0
+```
+
+不要：
+
+```text
+inspect Confirmation contents
+compute Confirmation token statistics
+run model on Confirmation
+use Confirmation to calibrate epsilon
+use Confirmation to choose Discovery docs
+```
+
+如果 parent rule 在纯 metadata 层面已经记录 confirmation IDs，而且读取该 manifest 不暴露 content，则只允许验证：
+
+```text
+Discovery set and Confirmation set do not overlap
+```
+
+但不得执行 Confirmation。
+
+如果无需读取 confirmation identity 即可完成本 amendment，优先不读取。
+
+---
+
+# 10. Recover the original 12-condition rotation-bank rule
+
+只读恢复 parent 中已经存在的：
+
+```text
+anchor definitions:
+H
+C5R
+C6R
+C7
+
+Cayley parameterization
+
+proposed interpolation coefficients
+
+bank construction rule
+
+condition ordering
+```
+
+生成：
+
+```text
+rotation_bank_rule_recovery.md
+rotation_bank_rule_recovery.json
+```
+
+明确区分：
+
+```text
+RULE_ALREADY_SPECIFIED
+```
+
+与：
+
+```text
+NEWLY_INVENTED_RULE
+```
+
+后者禁止。
+
+---
+
+# 11. Rotation bank materialization
+
+只有当旧证据足以唯一生成完整 12-condition bank 时，才允许 materialize。
+
+必须机械执行原规则。
+
+不得根据 downstream endpoint：
+
+```text
+FP 52/60
+H 41/60
+C6R 40/60
+C7 33/60
+```
+
+重新调整 interpolation positions。
+
+不得为了：
+
+```text
+增加 C6R 附近 density
+增加 extreme rotations
+强调 32K
+```
+
+修改 bank。
+
+目标：
+
+```text
+ROTATION_BANK_COUNT = 12
+```
+
+---
+
+# 12. Every rotation must be audited
+
+每个 condition 至少记录：
+
+```text
+condition_id
+
+condition_type
+
+anchor / interpolation provenance
+
+coefficient(s)
+
+source checkpoint if applicable
+
+Cayley parameter identity
+
+matrix shape
+
+dtype
+
+SHA256
+
+orthogonality residual
+
+native-basis mapping metadata
+```
+
+复用已经验证的 Cayley implementation。
+
+不得重新训练。
+
+不得优化矩阵。
+
+不得改变 learned parameters。
+
+如果旧 experiment 已经有 byte-exact reconstruction evidence，应复用并引用，而不是重新解释训练 provenance。
+
+---
+
+# 13. Orthogonality gate
+
+对全部 12 conditions 验证：
+
+```text
+R^T R ≈ I
+```
+
+沿用 parent 已经使用过的 frozen gate：
+
+```text
+max orthogonality residual <= 1e-4
+```
+
+除非 authoritative parent protocol 明确指定更严格标准。
+
+不得看到 matrix 后修改门限。
+
+输出：
+
+```text
+rotation_bank_orthogonality.json
+```
+
+如果任意 condition FAIL：
+
+```text
+ROTATION_BANK_MATERIALIZATION_GATE = FAIL
+FINAL_ACTION = FAIL_AND_STOP
+```
+
+---
+
+# 14. Rotation identity freeze
+
+完成后创建：
+
+```text
+protocol/frozen_rotation_bank.json
+protocol/frozen_rotation_bank.sha256
+```
+
+要求：
+
+```text
+status = CREATED_AND_FROZEN
+
+ROTATION_BANK_COUNT = 12
+```
+
+固定 ordering。
+
+以后 scientific replay 必须使用 exact condition IDs / hashes。
+
+---
+
+# 15. Freeze remaining metric metadata
+
+上一轮 audit 发现 parent 中至少存在：
+
+```text
+epsilon = NOT_FROZEN
+probe_count = NOT_FROZEN
+```
+
+本 amendment 可以且必须在 scientific measurement 前解决。
+
+但选择原则必须完全与结果无关。
+
+优先顺序：
+
+```text
+1. reuse parent-defined values if hidden elsewhere
+
+2. reuse existing validated project-wide convention
+   if clearly applicable
+
+3. derive prospectively from dtype /
+   algebraic numerical requirements
+
+4. if no defensible pre-result rule exists:
+   FAIL_AND_STOP
+```
+
+绝对禁止：
+
+```text
+run replay
+look at error distribution
+then choose epsilon
+```
+
+因为 replay 在本 task 中本来就禁止。
+
+---
+
+# 16. epsilon semantics
+
+如果 epsilon 用于：
+
+```text
+near-zero denominator stabilization
+relative errors
+cosine/alignment stability
+```
+
+必须分别明确它的数学作用。
+
+不要为了方便让一个 epsilon 同时承担不相容的语义。
+
+记录：
+
+```text
+name
+formula location
+dtype rationale
+value
+source/rationale
+whether inherited or newly frozen
+```
+
+输出：
+
+```text
+protocol/frozen_numerical_policy.json
+```
+
+---
+
+# 17. probe_count semantics
+
+如果 probe_count 用于后续 engineering parity gate：
+
+必须根据：
+
+```text
+coverage need
+layer count
+token position classes
+chunk boundary coverage
+```
+
+prospectively 定义。
+
+不能根据 future replay results 选 probe。
+
+必须记录 deterministic probe-selection rule。
+
+例如：
+
+```text
+first/last recurrent layer
+representative middle layer
+pre-boundary
+boundary
+post-boundary
+```
+
+但不要机械采用这个例子。
+
+优先恢复已有项目规则。
+
+只有确实不存在规则时，才能根据工程 coverage 定义新的 prospective rule，并明确标记：
+
+```text
+NEW_ENGINEERING_ONLY_PREMEASUREMENT_RULE
+```
+
+它不得依赖 scientific result。
+
+---
+
+# 18. Freeze future metric definitions
+
+把下一阶段 frozen-drive replay 将使用的数学定义写入：
+
+```text
+protocol/frozen_fd_metric_definitions.md
+protocol/frozen_fd_metric_definitions.json
+```
+
+只定义公式，不计算任何数据。
+
+至少冻结：
+
+```text
+S_t^FP
+S_t^Q,R
+
+E_{t+1}
+H_{t+1}
+I_{t+1}^PATH
+I_{t+1}^REF
+
+ACC_ENERGY
+HISTORY_ENERGY
+PATH_INJECTION_ENERGY
+REF_INJECTION_ENERGY
+ALIGNMENT_TERM
+STATE_DEPENDENT_INJECTION_INTERACTION
+```
+
+其中：
+
+```text
+E = H + I_PATH
+```
+
+以及：
+
+```text
+||E||²
+=
+||H||²
++
+||I_PATH||²
++
+2<H,I_PATH>
+```
+
+必须作为 future algebra closure 定义。
+
+本 amendment 禁止实际计算这些量。
+
+---
+
+# 19. Freeze horizon protocol
+
+保持：
+
+```text
+T = 2048
+T = 8192
+T = 32768
+```
+
+三个 horizon。
+
+一个 replay trajectory 跑到：
+
+```text
+32768
+```
+
+并在：
+
+```text
+2048
+8192
+32768
+```
+
+读取。
+
+不得改成 32K-only。
+
+记录：
+
+```text
+HORIZON_POLICY_SOURCE =
+PARENT_QWEN_PROTOCOL
+```
+
+不是：
+
+```text
+LING_32K_RESULT
+```
+
+---
+
+# 20. Preserve original J_ACC / J_INJ definitions
+
+Parent 中已经有：
+
+```text
+J_ACC
+J_INJ
+```
+
+及原 inclusive `[1024,T]` averaging window。
+
+必须把这些 original definitions 原样保存到 provenance documentation。
+
+但是 frozen-drive future metric 必须明确使用新名字：
+
+```text
+J_ACC_FD
+J_INJ_REF_FD
+J_INJ_PATH_FD
+J_HISTORY_FD
+J_ALIGN_FD
+```
+
+除非以后通过正式 parity gate 证明某个定义完全等价。
+
+本 amendment 不进行 parity measurement，因此：
+
+```text
+PARENT_METRIC_EQUIVALENCE =
+NOT_EVALUATED
+```
+
+---
+
+# 21. No scientific calculations
+
+本 task 中任何脚本如果试图计算：
+
+```text
+Spearman
+concordance
+rotation ranking
+accumulated error
+history energy
+alignment
+J_ACC_FD
+```
+
+必须视为 scope violation。
+
+输出：
+
+```text
+SCIENTIFIC_METRIC_EXECUTION_COUNT = 0
+```
+
+---
+
+# 22. Freeze manifest
+
+所有 input-preparation 完成且 gates PASS 后，生成：
+
+```text
+PREMEASUREMENT_FREEZE_MANIFEST.json
+```
+
+至少包含：
+
+```text
+4 Discovery doc identities + hashes
+
+12 rotation condition identities + hashes
+
+model checkpoint identity
+
+source identity
+
+quantizer identity
+
+C128 semantics
+
+metric-definition hashes
+
+numerical-policy hash
+
+horizon policy
+
+probe policy
+
+confirmation untouched status
+
+parent verdict identities
+```
+
+然后生成：
+
+```text
+SHA256SUMS
+```
+
+---
+
+# 23. Git preregistration commit
+
+在任何 future capture/replay 之前：
+
+```text
+git status
+```
+
+确保 amendment artifacts 完整。
+
+commit，例如：
+
+```text
+experiment(qwen): freeze frozen-drive discovery inputs
+```
+
+记录：
+
+```text
+PREMEASUREMENT_COMMIT_SHA = <actual SHA>
+```
+
+如果有 remote 且当前 workflow允许 push，可以 push。
+
+如果没有明确授权，不要把：
+
+```text
+PUSH_PERFORMED = YES
+```
+
+伪造出来。
+
+准确记录：
+
+```text
+PUSH_PERFORMED =
+YES / NO
+```
+
+---
+
+# 24. Final amendment gates
+
+最后必须打印：
+
+```text
+AMENDMENT =
+QWEN_GDN_FROZEN_DRIVE_COUNTERFACTUAL_REPLAY_V1_PREMEASUREMENT_INPUT_FREEZE_AMENDMENT_V1
+
+PREVIOUS_PREFLIGHT_FAIL_PRESERVED =
+
+PARENT_STOP_PRESERVED =
+
+OLD_CUMSUM_CLOSURE_FAIL_PRESERVED =
+
+PARENT_SEAL_INTEGRITY_GATE =
+
+CUMSUM_CLOSURE_SEAL_INTEGRITY_GATE =
+
+PREVIOUS_PREFLIGHT_SEAL_INTEGRITY_GATE =
+
+SCIENTIFIC_MEASUREMENT_COUNT_BEFORE_FREEZE =
+
+PROSPECTIVE_INPUT_FREEZE_ELIGIBLE =
+
+DISCOVERY_DOCUMENT_RULE_RECOVERY_GATE =
+
+DISCOVERY_DOCUMENT_FREEZE_GATE =
+
+DISCOVERY_DOC_COUNT =
+
+ROTATION_BANK_RULE_RECOVERY_GATE =
+
+ROTATION_BANK_MATERIALIZATION_GATE =
+
+ROTATION_BANK_ORTHOGONALITY_GATE =
+
+ROTATION_BANK_COUNT =
+
+NUMERICAL_POLICY_FREEZE_GATE =
+
+METRIC_DEFINITION_FREEZE_GATE =
+
+HORIZON_POLICY_FREEZE_GATE =
+
+PREMEASUREMENT_FREEZE_MANIFEST_GATE =
+
+PREMEASUREMENT_COMMIT_SHA =
+
+PREMEASUREMENT_FREEZE_COMPLETE =
+
+FROZEN_INPUT_IDENTITY_GATE =
+
+SCIENTIFIC_METRIC_EXECUTION_COUNT =
+
+DISCOVERY_COMPLETE =
+0/48
+
+CONFIRMATION_DOCS_READ =
+
+CONFIRMATION_DOCS_EXECUTED =
+0
+
+PARENT_PROPAGATION_EXPERIMENT_AUTHORIZED_TO_RESUME =
+NO
+
+NEW_C8_TRAINING_AUTHORIZED =
+NO
+
+NEW_AIME_GENERATION =
+0
+
+NEW_FREE_GENERATION =
+0
+
+NEXT_AUTHORIZED_PHASE =
+
+FINAL_ACTION =
+```
+
+---
+
+# 25. Allowed successful verdict
+
+只有所有 premeasurement freeze gates PASS 时，允许：
+
+```text
+FROZEN_INPUT_IDENTITY_GATE = PASS
+
+PREMEASUREMENT_FREEZE_COMPLETE = YES
+
+SCIENTIFIC_METRIC_EXECUTION_COUNT = 0
+
+DISCOVERY_COMPLETE = 0/48
+
+NEXT_AUTHORIZED_PHASE =
+DRIVE_FACTORIZATION_PREFLIGHT_ONLY
+
+FINAL_ACTION =
+PREMEASUREMENT_FREEZE_COMPLETE_STOP
+```
+
+注意：
+
+这**不等于**：
+
+```text
+DISCOVERY_AUTHORIZED
+```
+
+更不等于：
+
+```text
+PARENT_PROPAGATION_RESUME_AUTHORIZED
+```
+
+下一次必须另行明确授权：
+
+```text
+drive factorization
+capture smoke
+replay engineering gates
+```
+
+---
+
+# 26. Fail-closed conditions
+
+以下任意情况立即 STOP：
+
+```text
+old evidence changed
+
+scientific measurements already exist
+
+old Discovery selection rule cannot be recovered
+
+old rule cannot uniquely determine four docs
+
+rotation bank construction rule cannot be recovered
+
+12 conditions cannot be uniquely materialized
+
+rotation matrix hash/provenance ambiguous
+
+orthogonality gate fails
+
+confirmation content is accidentally executed
+
+epsilon/tolerance requires looking at measured replay errors
+
+metric definitions cannot be frozen without outcome-driven choice
+
+parent J_INJ/J_ACC semantics are silently changed
+
+any training occurs
+
+any AIME/free generation occurs
+
+any propagation/replay metric is computed
+```
+
+输出真实失败状态。
+
+不要为了让这个 amendment PASS 而创造新的 scientific input policy。
+
+---
+
+# 27. Critical interpretation rule
+
+本 amendment 的逻辑是：
+
+```text
+previous attempt:
+input did not exist
+→ correct FAIL
+
+this amendment:
+before any measurement
+execute already-existing prospective rules
+→ materialize + freeze inputs
+```
+
+这不是修改历史。
+
+也不是把旧 FAIL 改成 PASS。
+
+应该保留如下证据链：
+
+```text
+Attempt 0
+PREMEASUREMENT PREFLIGHT
+FROZEN_INPUT_IDENTITY_GATE = FAIL
+
+        ↓
+
+Amendment V1
+prospective input preparation
+scientific measurements still = 0
+
+        ↓
+
+if successful:
+FROZEN_INPUT_IDENTITY_GATE = PASS
+for future execution
+```
+
+不要删除 Attempt 0。
+
+---
+
+# 28. Do not continue automatically
+
+即使最终：
+
+```text
+PREMEASUREMENT_FREEZE_COMPLETE = YES
+```
+
+也必须停止。
+
+不要执行：
+
+```text
+DRIVE_FACTORIZATION_GATE
+
+CAPTURE_INTEGRITY_GATE
+
+FP_REPLAY_PARITY_GATE
+
+PHYSICAL_TRANSITION_ROTATION_INVARIANCE_GATE
+
+COUNTERFACTUAL_DECOMPOSITION_GATE
+
+REPLAY_DETERMINISM_GATE
+
+STREAMING_REDUCER_PARITY_GATE
+
+Discovery 48
+```
+
+最终只报告：
+
+```text
+inputs are or are not now prospectively frozen
+```
+
+然后 STOP，等待下一条明确指令。

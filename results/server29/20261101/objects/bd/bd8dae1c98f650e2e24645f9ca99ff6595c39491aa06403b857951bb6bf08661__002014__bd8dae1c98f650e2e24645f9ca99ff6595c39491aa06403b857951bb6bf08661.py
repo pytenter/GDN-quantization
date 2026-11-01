@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self.name,self.associated_component,self.contents,self.dotted_quad_file_version,self.download_uri,self.full_description,self.full_name,self.global_message_strings,self.guid,self.information_uri,self.is_comprehensive,self.language,self.localized_data_semantic_version,self.locations,self.minimum_required_localized_data_semantic_version,self.notifications,self.organization,self.product,self.product_suite,self.properties,self.release_date_utc,self.rules,self.semantic_version,self.short_description,self.supported_taxonomies,self.taxa,self.translation_metadata,self.version,)==(other.name,other.associated_component,other.contents,other.dotted_quad_file_version,other.download_uri,other.full_description,other.full_name,other.global_message_strings,other.guid,other.information_uri,other.is_comprehensive,other.language,other.localized_data_semantic_version,other.locations,other.minimum_required_localized_data_semantic_version,other.notifications,other.organization,other.product,other.product_suite,other.properties,other.release_date_utc,other.rules,other.semantic_version,other.short_description,other.supported_taxonomies,other.taxa,other.translation_metadata,other.version,)
+  return NotImplemented
+ return __eq__

@@ -1,0 +1,54 @@
+{
+  "status": "PASS_FRESH_EXACT_EXISTING_CUPTI_ELF_AND_HEADER_BINDINGS",
+  "execution_root": "/dev/shm/qwen_wscale_rowbal_cupti_repair_20261025",
+  "files": [
+    {
+      "path": "/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/nvidia/cuda_cupti/lib/libcupti.so.12",
+      "bytes": 7419504,
+      "sha256": "abc63100e9cf516b8ed1fa25354ae53dbfe8df4838ac525d8d738332c2198dc2",
+      "inode": 6340260354,
+      "device": 64770,
+      "mtime_ns": 1766570349871304191,
+      "symlink": false,
+      "canonical_path": "/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/nvidia/cuda_cupti/lib/libcupti.so.12"
+    }
+  ],
+  "header": {
+    "path": "/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/nvidia/cuda_cupti/include/cupti_activity.h",
+    "bytes": 311866,
+    "sha256": "a9555acef38965b0cccef6ea812f2799a1cde206b10163b61c0ffc0fbf95a62c",
+    "inode": 5389195893,
+    "device": 64770,
+    "mtime_ns": 1766570349786304197,
+    "symlink": false,
+    "canonical_path": "/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/nvidia/cuda_cupti/include/cupti_activity.h"
+  },
+  "API_header_excerpt": "d to check the support for a device based on\n* it's compute capability. It sets the \\p support when the compute\n* capability is supported by the current version of CUPTI, and clears\n* it otherwise. This version of CUPTI might not support all GPUs sharing\n* the same compute capability. It is suggested to use API \\ref\n* cuptiDeviceSupported which provides correct information.\n*\n* \\param major The major revision number of the compute capability\n* \\param minor The minor revision number of the compute capability\n* \\param support Pointer to an integer to return the support status\n*\n* \\retval CUPTI_SUCCESS\n* \\retval CUPTI_ERROR_INVALID_PARAMETER if \\p support is NULL\n*\n* \\sa ::cuptiDeviceSupported\n*/\nCUptiResult CUPTIAPI cuptiComputeCapabilitySupported(int major, int minor, int *support);\n\n/**\n* \\brief Check support for a compute device\n*\n* This function is used to check the support for a compute device.\n* It sets the \\p support when the device is supported by the current\n* version of CUPTI, and clears it otherwise.\n*\n* \\param dev The device handle returned by CUDA Driver API cuDeviceGet\n* \\param support Pointer to an integer to return the support status\n*\n* \\retval CUPTI_SUCCESS\n* \\retval CUPTI_ERROR_INVALID_PARAMETER if \\p support is NULL\n* \\retval CUPTI_ERROR_INVALID_DEVICE if \\p dev is not a valid device\n*\n* \\sa ::cuptiComputeCapabilitySupported\n*/\nCUptiResult CUPTIAPI cuptiDeviceSupported(CUdevice dev, int *support);\n\n/**\n * This indicates the virtualization mode in which CUDA device is running\n */\ntypedef enum {\n  /**\n   * No virtualization mode isassociated with the device\n   * i.e. it's a baremetal GPU\n   */\n  CUPTI_DEVICE_VIRTUALIZATION_MODE_NONE = 0,\n  /**\n   * The device is associated with the pass-through GPU.\n   * In this mode, an entire physical GPU is directly assigned\n   * to one virtual machine (VM).\n   */\n  CUPTI_DEVICE_VIRTUALIZATION_MODE_PASS_THROUGH = 1,\n  /**\n   * The device is associated with the virtual GPU (vGPU).\n   * In this mode multiple virtual machines (VMs) have simultaneous,\n   * direct access to a single physical GPU.\n   */\n  CUPTI_DEVICE_VIRTUALIZATION_MODE_VIRTUAL_GPU = 2,\n\n  CUPTI_DEVICE_VIRTUALIZATION_MODE_FORCE_INT = 0x7fffffff\n} CUpti_DeviceVirtualizationMode;\n\n/**\n * \\brief Query the virtualization mode of the device\n *\n * This function is used to query the virtualization mode of the CUDA device.\n *\n * \\param dev The device handle returned by CUDA Driver API cuDeviceGet\n * \\param mode Pointer to an CUpti_DeviceVirtualizationMode to return the virtualization mode\n *\n * \\retval CUPTI_SUCCESS\n * \\retval CUPTI_ERROR_INVALID_DEVICE if \\p dev is not a valid device\n * \\retval CUPTI_ERROR_INVALID_PARAMETER if \\p mode is NULL\n *\n */\nCUptiResult CUPTIAPI cuptiDeviceVirtualizationMode(CUdevice dev, CUpti_DeviceVirtualizationMode *mode);\n\n/**\n * \\brief Detach CUPTI from the running process\n *\n * This API detaches the CUPTI from the running process. It destroys and cleans up all the\n * resources associated with CUPTI in the current process. After CUPTI detaches from the process,\n * the process will keep on running with no CUPTI attached to it.\n * For safe operation of the API, it is recommended this API is invoked from the exit callsite\n * of any of the CUDA Driver or Runtime API. Otherwise CUPTI client needs to make sure that\n * required CUDA synchronization and CUPTI activity buffer flush is done before calling the API.\n * Sample code showing the usage of the API in the cupti callback handler code:\n * \\code\n  void CUPTIAPI\n  cuptiCallbackHandler(void *userdata, CUpti_CallbackDomain domain,\n      CUpti_CallbackId cbid, void *cbdata)\n  {\n    const CUpti_CallbackData *cbInfo = (CUpti_CallbackData *)cbdata;\n\n    // Take this code path when CUPTI detach is requested\n    if (detachCupti) {\n      switch(domain)\n      {\n        case CUPTI_CB_DOMAIN_RUNTIME_API:\n        case CUPTI_CB_DOMAIN_DRIVER_API:\n          if (cbInfo->callbackSite == CUPTI_API_EXIT) {\n              // call the CUPTI detach API\n              cuptiFinalize();\n          }\n          break;\n        default:\n          break;\n      }\n    }\n  }\n \\endcode\n */\nCUptiResult CUPTIAPI cuptiFinalize(void);\n\n/**\n * \\brief Push an external correlation id",
+  "elf_build_id_lines": [],
+  "clock_anchors": [
+    {
+      "CLOCK_MONOTONIC": 71523015.68875915,
+      "CLOCK_MONOTONIC_RAW": 71522948.99448441,
+      "CLOCK_BOOTTIME": 71523015.68876436,
+      "CLOCK_REALTIME": 1792921459.2257216
+    },
+    {
+      "CLOCK_MONOTONIC": 71523015.68876842,
+      "CLOCK_MONOTONIC_RAW": 71522948.99449214,
+      "CLOCK_BOOTTIME": 71523015.688771,
+      "CLOCK_REALTIME": 1792921459.2257278
+    },
+    {
+      "CLOCK_MONOTONIC": 71523015.68877359,
+      "CLOCK_MONOTONIC_RAW": 71522948.99449721,
+      "CLOCK_BOOTTIME": 71523015.68877603,
+      "CLOCK_REALTIME": 1792921459.2257328
+    }
+  ],
+  "proc_uptime": "71523015.72 3321391629.27",
+  "GPU_calls": 0,
+  "CUDA_Driver_API_calls": 0,
+  "CUPTI_API_calls": 0,
+  "model_loads": 0,
+  "remote_writes": 0
+}

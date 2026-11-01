@@ -1,0 +1,9 @@
+# Applied native-admission repair
+
+This is a version of the same Group64 four-codec project, authorized by the latest request to repair server29 code. Old failed source9069/permit/seal/worker exits stay byte-identical, with zero qualification/AIME credit. Nothing resets or resumes that failed controller. The revised current attempt has its own source/permit/one-shot lifecycle and temporary-reference namespace, and reruns the finite38 qualification units before the original conditional120formal.
+
+Actual fixes: NVML and same580.178.04 compute allocator/compiler helpers are bound individually by SHA/bytes/stat; strict mapped native checker is unchanged. Production loader now explicitly selects the migrated original transformers/src, rather than accidentally selecting environment-installed transformers through a missing editable .pth. All canonical function/class ASTs and six mathematical/runtime/sampler modules remain unchanged. Only source locator and temporary-reference namespace differ in production Python.
+
+Two fresh CPU processes each passed113 mathematical/TinyQwen/Sampler checks,45production-control checks,5actual mapped-native positive/strict-negative checks,34production-loader/real31tokenizer checks. Model creation and GPU identity are explicitly mocked in CPU-only tests; they are not GPU qualification. Production9B qualification remains required. No altered quantization, H normalization, GDN, method/seed/prompt/sampling/score, GPU5/6 UUID or token cap. Current original30question15/15UUID mapping and rotated bundle order are unchanged.
+
+Use current revision SOURCE_FREEZE/GPU_PERMIT/actual process receipts, not old top-level ROOT preparation status. A complete new120 is needed for full accuracy. PRIOR_FAILED_ATTEMPT_COST is historical cost separately retained, never treated as0 physicalGPUh or PASS. Only this explicit human-requested repair attempt is authorized; no future automatic patch-and-retry after its unique start.

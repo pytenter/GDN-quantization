@@ -1,0 +1,1 @@
+lambda _cls, ioclass, value: _tuple_new(_cls, (ioclass, value))

@@ -1,0 +1,19 @@
+{
+  "phase": "static_source_before_gpu",
+  "C5_LOSS_STANDARD_OUTPUT_DEPENDENCY": "PARTIAL",
+  "final_model_logits_in_C5_loss_expression": false,
+  "same_GDN_block_returned_output_in_its_internal_state_loss_expression": false,
+  "upstream_decoder_outputs_may_feed_downstream_GDN_internal_state": true,
+  "root_and_late_block_output_path_guaranteed_to_be_traversed_by_C5_backward": false,
+  "source_chain": [
+    "run_fsdp_recurrent_smoke.py:81-105: 32-token rollout, captured_losses, c5_loss.backward; forward_student returns cache only",
+    "run_recurrent_dense.py:243-276: _wrap captures student_prev and state_losses from internal recurrent state/recovered state",
+    "run_recurrent_dense.py:279-289: out_proj hook captures functional_losses separately",
+    "run_recurrent_dense.py:332-341: captured_losses returns state as C5, functional + 0.1*state as C6",
+    "run_recurrent_dense.py:366-374: forward_student executes model but discards ordinary logits, returns past_key_values cache",
+    "modeling_qwen3_5.py:754-790: decoder block returns residual/MLP hidden_states, not the internal recurrent state"
+  ],
+  "interpretation": "C5 has no explicit dependency on final logits or same block returned output; state for a downstream GDN can still depend on upstream decoder returned outputs. This is a plausible hook-bypass mechanism, not proof of the parent H4 failure.",
+  "dynamic_graph_check": "PENDING_SINGLE_GPU_H1",
+  "FAILED_STORAGE_OWNER": "UNKNOWN"
+}

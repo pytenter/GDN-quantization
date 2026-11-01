@@ -1,0 +1,1 @@
+lambda _cls, ssl_context, use_forwarding_for_https, assert_hostname, assert_fingerprint: _tuple_new(_cls, (ssl_context, use_forwarding_for_https, assert_hostname, assert_fingerprint))

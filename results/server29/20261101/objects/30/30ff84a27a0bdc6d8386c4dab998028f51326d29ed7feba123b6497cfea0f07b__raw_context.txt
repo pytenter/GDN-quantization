@@ -1,0 +1,404 @@
+MalwareAnalyzer/views.py
+def MalwareCheck(urllist):
+    RESULT = {}
+    domainlist = list()
+    try:
+        domainlist = getDomains(urllist)
+        if domainlist:
+            if isInternetAvailable():
+                UpdateDB()
+            else:
+                print "\n[WARNING] No Internet Connection. Skipping Malware Database Update."
+            DB = os.path.join(MALWARE_DB_DIR, 'malwaredomainlist')
+            with io.open(DB, mode='r', encoding="utf8", errors="ignore") as f:
+                entry_list = f.readlines()
+            for entry in entry_list:
+                enlist = entry.split('","')
+                if len(enlist) > 5:
+                    details_dict = dict()
+                    details_dict["domain_or_url"] = enlist[1]
+                    details_dict["ip"] = enlist[2]
+                    details_dict["desc"] = enlist[4]
+                    details_dict["bad"] = "yes"
+                    for domain in domainlist:
+                        if (domain in details_dict["domain_or_url"]) or (domain in details_dict["ip"]):
+                            RESULT[domain] = details_dict
+            for domain in domainlist:
+                if domain not in RESULT:
+                    x = dict()
+                    x["bad"] = "no"
+                    RESULT[domain] = x
+    except:
+        PrintException("[ERROR] Performing Malware Check")
+    return RESULT
+MobSF/utils.py
+def isBase64(str):
+    return re.match('^[A-Za-z0-9+/]+[=]{0,2}$', str)
+DynamicAnalyzer/views/android/android_dyn_shared.py
+def web_proxy(apk_dir, ip_address, port):
+    """Run MITM Proxy"""
+    print "\n[INFO] Starting Web Proxy"
+    try:
+        Proxy(ip_address, port, apk_dir, "on")
+    except:
+        PrintException("[ERROR] Starting Web Proxy")
+DynamicAnalyzer/views/android/android_dyn_shared.py
+def get_identifier():
+    """Get Device Type"""
+    try:
+        if settings.ANDROID_DYNAMIC_ANALYZER == "MobSF_REAL_DEVICE":
+            return settings.DEVICE_IP + ":" + str(settings.DEVICE_ADB_PORT)
+        elif settings.ANDROID_DYNAMIC_ANALYZER == "MobSF_AVD":
+            return 'emulator-' + str(settings.AVD_ADB_PORT)
+        else:
+            return settings.VM_IP + ":" + str(settings.VM_ADB_PORT)
+    except:
+        PrintException(
+            "[ERROR] Getting ADB Connection Identifier for Device/VM")
+DynamicAnalyzer/views/android/android_virtualbox_vm.py
+def refresh_vm(uuid, snapshot_uuid, vbox_exe):
+    """Refresh VirtualBox based VMs"""
+    print "\n[INFO] Refreshing MobSF VM"
+    try:
+        # Close VM
+        args = [vbox_exe, 'controlvm', uuid, 'poweroff']
+        subprocess.call(args)
+        # changed by davidblus
+        time.sleep(2)
+        print "\n[INFO] VM Closed"
+        # Restore Snapshot
+        args = [vbox_exe, 'snapshot', uuid, 'restore', snapshot_uuid]
+        subprocess.call(args)
+        print "\n[INFO] VM Restore Snapshot"
+        # Start Fresh VM
+        args = [vbox_exe, 'startvm', uuid]
+        subprocess.call(args)
+        print "\n[INFO] VM Starting"
+    except:
+        PrintException("[ERROR] Refreshing MobSF VM")
+DynamicAnalyzer/views/android/android_dyn_shared.py
+def get_res():
+    """Get Screen Resolution or Device or VM"""
+    print "\n[INFO] Getting Screen Resolution"
+    try:
+        toolsdir = os.path.join(
+            settings.BASE_DIR, 'DynamicAnalyzer/tools/')  # TOOLS DIR
+        adb = getADB(toolsdir)
+        resp = subprocess.check_output(
+            [adb, "-s", get_identifier(), "shell", "dumpsys", "window"])
+        resp = resp.split("\n")
+        res = ""
+        for line in resp:
+            if "mUnrestrictedScreen" in line:
+                res = line
+                break
+        res = res.split("(0,0)")[1]
+        res = res.strip()
+        res = res.split("x")
+        if len(res) == 2:
+            return res[0], res[1]
+            # width, height
+        return "", ""
+    except:
+        PrintException("[ERROR] Getting Screen Resolution")
+        return "", ""
+DynamicAnalyzer/pyWebProxy/pywebproxy.py
+def Proxy(IP, PORT, LOG, STAT):
+    global kill, log
+    if STAT == "on":
+        log = LOG
+        kill = False
+        print "\n[INFO] Started Web Proxy at " + IP + ":" + PORT
+        threading.Thread(target=startTornado, kwargs=dict(
+            IP=IP, PORT=PORT, log=log)).start()
+    else:
+        print "\n[INFO] Stopping any running instance of WebProxy"
+        kill = True
+MobSF/utils.py
+def getADB(TOOLSDIR):
+    """Get ADB binary path"""
+    try:
+        if len(settings.ADB_BINARY) > 0 and isFileExists(settings.ADB_BINARY):
+            return settings.ADB_BINARY
+        else:
+            adb = 'adb'
+            if platform.system() == "Darwin":
+                adb_dir = os.path.join(TOOLSDIR, 'adb/mac/')
+                subprocess.call(["chmod", "777", adb_dir])
+                adb = os.path.join(TOOLSDIR, 'adb/mac/adb')
+            elif platform.system() == "Linux":
+                adb_dir = os.path.join(TOOLSDIR, 'adb/linux/')
+                subprocess.call(["chmod", "777", adb_dir])
+                adb = os.path.join(TOOLSDIR, 'adb/linux/adb')
+            elif platform.system() == "Windows":
+                adb = os.path.join(TOOLSDIR, 'adb/windows/adb.exe')
+            return adb
+    except:
+        PrintException("[ERROR] Getting ADB Location")
+        return "adb"
+StaticAnalyzer/models.py
+class StaticAnalyzerAndroid(models.Model):
+    TITLE = models.TextField()
+    APP_NAME = models.TextField()
+    SIZE = models.CharField(max_length=50)
+    MD5 = models.CharField(max_length=32)
+    SHA1 = models.TextField()
+    SHA256 = models.TextField()
+    PACKAGENAME = models.TextField()
+    MAINACTIVITY = models.TextField()
+    TARGET_SDK = models.CharField(max_length=50)
+    MAX_SDK = models.CharField(max_length=50)
+    MIN_SDK = models.CharField(max_length=50)
+    ANDROVERNAME = models.CharField(max_length=100)
+    ANDROVER = models.CharField(max_length=50)
+    MANIFEST_ANAL = models.TextField()
+    PERMISSIONS = models.TextField()
+    BIN_ANALYSIS = models.TextField()
+    FILES = models.TextField()
+    CERTZ = models.TextField()
+    ACTIVITIES = models.TextField()
+    RECEIVERS = models.TextField()
+    PROVIDERS = models.TextField()
+    SERVICES = models.TextField()
+    LIBRARIES = models.TextField()
+    BROWSABLE = models.TextField()
+    CNT_ACT = models.CharField(max_length=50)
+    CNT_PRO = models.CharField(max_length=50)
+    CNT_SER = models.CharField(max_length=50)
+    CNT_BRO = models.CharField(max_length=50)
+    CERT_INFO = models.TextField()
+    ISSUED = models.CharField(max_length=10)
+    NATIVE = models.CharField(max_length=50)
+    DYNAMIC = models.CharField(max_length=50)
+    REFLECT = models.CharField(max_length=50)
+    CRYPTO = models.CharField(max_length=50)
+    OBFUS = models.CharField(max_length=50)
+    API = models.TextField()
+    DANG = models.TextField()
+    URLS = models.TextField()
+    DOMAINS = models.TextField()
+    EMAILS = models.TextField()
+    STRINGS = models.TextField()
+    ZIPPED = models.TextField()
+    MANI = models.TextField()
+    EXPORTED_ACT = models.TextField()
+    E_ACT = models.CharField(max_length=50)
+    E_SER = models.CharField(max_length=50)
+    E_BRO = models.CharField(max_length=50)
+    E_CNT = models.CharField(max_length=50)
+    APK_ID = models.TextField()
+DynamicAnalyzer/views/android/android_avd.py
+def stop_avd(adb):
+    """Stop AVD"""
+    print "\n[INFO] Stopping MobSF Emulator"
+    try:
+        # adb -s emulator-xxxx emu kill
+        FNULL = open(os.devnull, 'w')
+        args = [adb, '-s', get_identifier(), 'emu', 'kill']
+        subprocess.call(args, stderr=FNULL)
+    except:
+        PrintException("[ERROR] Stopping MobSF Emulator")
+DynamicAnalyzer/views/android/android_avd.py
+def refresh_avd(adb, avd_path, reference_name, dup_name, emulator):
+    """Refresh AVD"""
+    print "\n[INFO] Refreshing MobSF Emulator"
+    try:
+        # Stop existing emulator on the spesified port
+        stop_avd(adb)
+
+        # Windows has annoying lock system, it takes time for it to remove the locks after we stopped the emulator
+        if platform.system() == 'Windows':
+            time.sleep(3)
+
+        # Delete old emulator
+        delete_avd(avd_path, dup_name)
+
+        # Copy and replace the contents of the reference machine
+        duplicate_avd(avd_path, reference_name, dup_name)
+
+        # Start emulator
+        start_avd(emulator, dup_name, settings.AVD_ADB_PORT)
+    except:
+        PrintException("[ERROR] Refreshing MobSF VM")
+MobSF/utils.py
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        pass
+    try:
+        unicodedata.numeric(s)
+        return True
+    except (TypeError, ValueError):
+        pass
+    return False
+DynamicAnalyzer/views/android/android_avd.py
+def avd_load_wait(adb):
+    """Wait for AVD Load"""
+    try:
+        emulator = get_identifier()
+
+        print "[INFO] Wait for emulator to load"
+        args = [adb,
+                "-s",
+                emulator,
+                "wait-for-device"]
+        subprocess.call(args)
+
+        print "[INFO] Wait for dev.boot_complete loop"
+        while True:
+            args = [adb,
+                    "-s",
+                    emulator,
+                    "shell",
+                    "getprop",
+                    "dev.bootcomplete"]
+            try:
+                result = subprocess.check_output(args)
+            except:
+                result = None
+            if result is not None and result.strip() == "1":
+                break
+            else:
+                time.sleep(1)
+
+        print "[INFO] Wait for sys.boot_complete loop"
+        while True:
+            args = [adb,
+                    "-s",
+                    emulator,
+                    "shell",
+                    "getprop",
+                    "sys.boot_completed"]
+            try:
+                result = subprocess.check_output(args)
+            except:
+                result = None
+            if result is not None and result.strip() == "1":
+                break
+            else:
+                time.sleep(1)
+
+        print "[INFO] Wait for svc.boot_complete loop"
+        while True:
+            args = [adb,
+                    "-s",
+                    emulator,
+                    "shell",
+                    "getprop",
+                    "init.svc.bootanim"]
+            try:
+                result = subprocess.check_output(args)
+            except:
+                result = None
+            if result is not None and result.strip() == "stopped":
+                break
+            else:
+                time.sleep(1)
+        time.sleep(5)
+        # Remount the partitions for RW
+        subprocess.call([adb, "-s", emulator, "remount"])
+        return True
+    except:
+        PrintException("[ERROR] emulator did not boot properly")
+        return False
+DynamicAnalyzer/views/android/android_dyn_shared.py
+def connect(toolsdir):
+    """Connect to VM/Device"""
+    print "\n[INFO] Connecting to VM/Device"
+    try:
+        adb = getADB(toolsdir)
+        subprocess.call([adb, "kill-server"])
+        subprocess.call([adb, "start-server"])
+        print "\n[INFO] ADB Started"
+        wait(5)
+        print "\n[INFO] Connecting to VM/Device"
+        result = subprocess.call([adb, "connect", get_identifier()])
+        if settings.ANDROID_DYNAMIC_ANALYZER == "MobSF_REAL_DEVICE" and result != 0:
+            subprocess.call([adb, "tcpip", str(settings.DEVICE_ADB_PORT)])
+            subprocess.call([adb, "connect", get_identifier()])
+        subprocess.call([adb, "-s", get_identifier(), "wait-for-device"])
+        print "\n[INFO] Mounting"
+        if settings.ANDROID_DYNAMIC_ANALYZER == "MobSF_REAL_DEVICE":
+            subprocess.call([adb, "-s", get_identifier(), "shell",
+                             "su", "-c", "mount", "-o", "rw,remount,rw", "/system"])
+        else:
+            subprocess.call([adb, "-s", get_identifier(), "shell",
+                             "su", "-c", "mount", "-o", "rw,remount,rw", "/system"])
+            # This may not work for VMs other than the default MobSF VM
+            subprocess.call([adb, "-s", get_identifier(), "shell", "mount",
+                             "-o", "rw,remount", "-t", "rfs", "/dev/block/sda6", "/system"])
+    except:
+        print traceback.format_exc()
+        PrintException("[ERROR]  Connecting to VM/Device")
+MobSF/utils.py
+def python_list(value):
+    if not value:
+        value = []
+    if isinstance(value, list):
+        return value
+    return ast.literal_eval(value)
+DynamicAnalyzer/views/android/android_dyn_shared.py
+def install_and_run(toolsdir, apk_path, package, launcher, is_activity):
+    """Install APK and Run it"""
+    print "\n[INFO] Starting App for Dynamic Analysis"
+    # try:
+    adb = getADB(toolsdir)
+    print "\n[INFO] Installing APK"
+    install_result = subprocess.check_output([adb, "-s", get_identifier(),
+                     "install", "-r", apk_path])
+    print install_result
+    # 如果是未签名的错误，则对其进行签名并安装，
+    # 签名命令示例：jarsigner -verbose -keystore davidblus_android.keystore -storepass davidblus -signedjar app_signed.apk app.apk davidblus_android.keystore
+    if 'INSTALL_PARSE_FAILED_NO_CERTIFICATES' in install_result:
+        signed_apk_path = sign_apk(apk_path)
+        install_result = subprocess.check_output([adb, "-s", get_identifier(),
+                         "install", "-r", signed_apk_path])
+        print install_result
+    if 'Success' not in install_result:
+        raise Exception('Install Error')
+    if is_activity:
+        run_app = package + "/" + launcher
+        print "\n[INFO] Launching APK Main Activity"
+        subprocess.call([adb, "-s", get_identifier(),
+                         "shell", "am", "start", "-n", run_app])
+    else:
+        print "\n[INFO] App Doesn't have a Main Activity"
+        # Handle Service or Give Choice to Select in Future.
+    print "[INFO] Testing Environment is Ready!"
+    # except:
+    #     PrintException("[ERROR]  Starting App for Dynamic Analysis")
+DynamicAnalyzer/views/android/android_dyn_shared.py
+def wait(sec):
+    """Wait in Seconds"""
+    print "\n[INFO] Waiting for " + str(sec) + " seconds..."
+    time.sleep(sec)
+MobSF/utils.py
+def PrintException(msg, web=False):
+    try:
+        LOGPATH = settings.LOG_DIR
+    except:
+        LOGPATH = os.path.join(settings.BASE_DIR, "logs/")
+    if not os.path.exists(LOGPATH):
+        os.makedirs(LOGPATH)
+    exc_type, exc_obj, tb = sys.exc_info()
+    f = tb.tb_frame
+    lineno = tb.tb_lineno
+    filename = f.f_code.co_filename
+    linecache.checkcache(filename)
+    line = linecache.getline(filename, lineno, f.f_globals)
+    ts = time.time()
+    st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+    dat = '\n[' + st + ']\n' + msg + \
+        ' ({0}, LINE {1} "{2}"): {3}'.format(
+            filename, lineno, line.strip(), exc_obj)
+    if platform.system() == "Windows":
+        print dat
+    else:
+        if web:
+            print Color.BOLD + Color.ORANGE + dat + Color.END
+        else:
+            print Color.BOLD + Color.RED + dat + Color.END
+    with open(LOGPATH + 'MobSF.log', 'a') as f:
+        f.write(dat)

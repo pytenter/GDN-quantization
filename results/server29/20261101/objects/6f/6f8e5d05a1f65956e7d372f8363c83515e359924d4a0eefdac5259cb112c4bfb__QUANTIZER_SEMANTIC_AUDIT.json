@@ -1,0 +1,51 @@
+{
+  "QPARAM_COMPONENT_LOCALIZATION": "ALREADY_COLLAPSED_TO_SCALE",
+  "QUANTIZER_SEMANTIC_AUDIT": "PASS",
+  "amax_role": "DIRECT_INTERMEDIATE_OF_SCALE_NOT_AN_INDEPENDENT_QPARAM",
+  "clamping_rule": "torch.clamp(-127, 127) after rounding source/scale",
+  "dynamic_qparam_count": 1,
+  "dynamic_qparam_names": [
+    "scale"
+  ],
+  "epsilon_floor_symbol": "EPS",
+  "epsilon_floor_value": 1e-12,
+  "formal_path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/qwen_gdn/QWEN_C5_C6_AIME26_CANONICAL60_V1/scripts/run_qwen_c5_c6_formal.py",
+  "formal_sha256": "77b1e1f6dad8a0dd53a27cf5a47c02be86c26d2cf30732604ba6d3747e178f69",
+  "function": "quantize_c128",
+  "grouping_orientation": "one scale per [batch, head32, column128], reducing the row128 axis",
+  "independent_dynamic_clipping": false,
+  "independent_dynamic_range": false,
+  "independent_dynamic_zero_point": false,
+  "integer_range": [
+    -127,
+    127
+  ],
+  "keepdim": true,
+  "rounding_rule": "torch.round (nearest; ties-to-even as defined by PyTorch)",
+  "scale_formula": "scale = source.abs().amax(dim=-2, keepdim=True).clamp_min(EPS) / 127.0",
+  "scale_reduction_dimensions": [
+    -2
+  ],
+  "scale_shape_for_batch_1": [
+    1,
+    32,
+    1,
+    128
+  ],
+  "source_dtype": "torch.float32_from_state.detach()",
+  "source_statements": {
+    "codes": "codes = torch.round(source / scale).clamp(-127, 127)",
+    "dequant": "dequant = codes * scale",
+    "scale": "scale = source.abs().amax(dim=-2, keepdim=True).clamp_min(EPS) / 127.0",
+    "source": "source = state.detach().float()",
+    "state": "state = get_state(cache, layer_idx)"
+  },
+  "state_shape": [
+    "batch",
+    32,
+    128,
+    128
+  ],
+  "writeback_semantics": "codes*scale is cast to original state dtype and copied in-place; persistent semantics are every-token INT8 QDQ with dequantized values stored in FP32 carrier",
+  "zero_point": 0
+}

@@ -1,0 +1,497 @@
+tousix_manager/Administration/actions.py
+def generate_routeserver_conf(modeladmin, request, queryset):
+    """
+    Action for generating BIRD configuration files.
+    :param modeladmin:
+    :param request:
+    :param queryset:
+    :return:
+    """
+    # remove keyboard-chair errors
+    if modeladmin.model is Membre:
+        queryset = queryset.exclude(nommembre="TouIX")
+        data = render_conf_members(queryset)
+        return render(request, "members_list.html", context=data)
+    elif modeladmin.model is Hote:
+        queryset = queryset.exclude(idmembre__nommembre="TouIX")
+        data = render_conf_hosts(queryset)
+        return render(request, "members_list.html", context=data)
+tousix_manager/Database/models.py
+class Membre(models.Model):
+    """
+    The member model contains all the information needed about an entity which is member of the IXP.
+    """
+    idmembre = models.AutoField(db_column='idMembre', primary_key=True)
+    nommembre = models.CharField(db_column='NomMembre', max_length=30, blank=True, null=True, verbose_name="Nom membre")
+    url = models.URLField(null=True, verbose_name="Lien site web")
+    statut = models.CharField(db_column='Statut', max_length=12, blank=True, null=True)
+    asnumber = models.PositiveIntegerField(db_column='ASNumber', verbose_name="N°AS")
+    connexion_type = models.ForeignKey(ConnectionType, blank=True, null=True, verbose_name="Type de connexion")
+    fqdn_host = models.CharField(max_length=30, default="Undefined", verbose_name="FQDN Routeur")
+    idpop = models.ForeignKey(Pop, to_field='idpop', db_column='idPoP', null=True)
+    billing = models.OneToOneField(Contact, to_field='idcontact', related_name='billing', parent_link=True, blank=True, null=True, on_delete=models.SET_NULL)
+    noc = models.OneToOneField(Contact, to_field='idcontact', related_name='noc', parent_link=True, blank=True, null=True, on_delete=models.SET_NULL)
+    technical = models.OneToOneField(Contact, to_field='idcontact', related_name='technical', parent_link=True, blank=True, null=True, on_delete=models.SET_NULL)
+    approved = models.BooleanField(default=False)
+    login_external = models.CharField(max_length=35, default="guest")
+
+    class Meta:
+        db_table = 'Membre'
+tousix_manager/Administration/actions.py
+def download_csv(modeladmin, request, queryset):
+    """
+    Snippet from https://djangosnippets.org/snippets/2690/
+    :param modeladmin:
+    :param request:
+    :param queryset:
+    :return:
+    """
+    if not request.user.is_staff:
+        raise PermissionDenied
+    opts = queryset.model._meta
+    response = HttpResponse(content_type='text/csv')
+    # force download.
+    response['Content-Disposition'] = 'attachment;filename=export.csv'
+    # the csv writer
+    writer = csv.writer(response)
+    field_names = [field.name for field in opts.fields]
+    # Write a first row with header information
+    writer.writerow(field_names)
+    # Write data rows
+    for obj in queryset:
+        writer.writerow([getattr(obj, field) for field in field_names])
+    return response
+tousix_manager/Database/models.py
+class Port(models.Model):
+    """
+    Model for ports in :model:`Database.Switch`.
+    """
+    idport = models.AutoField(db_column='idPort', primary_key=True)
+    numport = models.IntegerField(db_column='numPort', blank=True, null=True)
+    typeport = models.CharField(db_column='TypePort', max_length=10, blank=True, null=True)
+    enabled = models.BooleanField(db_column='Usable')
+    backbone = models.BooleanField(db_column='backbone')
+    idswitch = models.ForeignKey(Switch, to_field='idswitch', db_column='idSwitch')
+
+    def switch(self):
+        """
+        Returns the string name of the :model:`Database.Switch` linked to this port.
+        :return: Switch name
+        """
+        return self.idswitch.nomswitch
+
+    def string_description(self):
+        """
+        Return a complete information about the location of the port.
+        :return: String port information
+        """
+        return "POP " + self.idswitch.idpop.nompop + ": " + self.idswitch.nomswitch + " port " + str(self.numport)
+
+    class Meta:
+        db_table = 'Port'
+tousix_manager/Administration/forms.py
+class HoteForm(forms.ModelForm):
+    """
+    ModelForm with custom router display.
+    This form handles the link between :model:`Database.Port` and :model:`Database.Hote`.
+    Depending of the context (relationship non-established, initial value), it will
+    create a custom list with complete description all the ports avaliable.
+    """
+    idport = PortChoiceField(queryset=Port.objects
+                             .filter(enabled=True), empty_label=None)
+
+    def __init__(self, data=None, files=None, auto_id='id_%s', prefix=None,
+                 initial=None, error_class=ErrorList, label_suffix=None,
+                 empty_permitted=False, instance=None, use_required_attribute=None):
+        super(HoteForm, self).__init__(data, files, auto_id, prefix,
+                                       initial, error_class, label_suffix,
+                                       empty_permitted, instance, use_required_attribute)
+        if self.instance.idhote is not None:
+            # Set idport editing value for instance
+            self.fields["idport"].queryset = Port.objects.filter(enabled=True)
+            if self.instance.idport is not None:
+                self.fields["idport"].initial = {self.instance.idport_id: self.instance.idport.string_description}
+
+    class Meta:
+        model = Hote
+        exclude = ["idmembre"]
+tousix_manager/Database/models.py
+class UserMembre(models.Model):
+    user = models.OneToOneField(User, unique=True)
+    membre = models.ForeignKey(Membre)
+
+    class Meta:
+        db_table = 'UserMembre'
+
+    def nommembre(self):
+        return self.membre.nommembre
+tousix_manager/Database/models.py
+class Contact(models.Model):
+    """
+    Model for Contact registration.
+    All the fields are optional.
+    """
+    idcontact = models.AutoField(db_column='idContact', primary_key=True)
+    nomcontact = models.CharField(db_column='NomContact', max_length=50, blank=True, null=True, verbose_name="Nom")
+    prenomcontact = models.CharField(db_column='PrenomContact', max_length=50, blank=True, null=True, verbose_name="Prénom")
+    adressecontact = models.CharField(db_column='AdresseContact', max_length=300, blank=True, null=True, verbose_name="Adresse")
+    mailcontact = models.EmailField(db_column='MailContact', max_length=100, blank=True, null=True, verbose_name="Mail")
+    telcontact = models.CharField(db_column='TelContact', max_length=14, blank=True, null=True, verbose_name="Téléphone")
+
+    class Meta:
+        db_table = 'Contact'
+tousix_manager/Database/models.py
+class Switchlink(models.Model):
+    """
+    This model is used for representing logical links between two :model:`Database.Switch`.
+    """
+    idport1 = models.OneToOneField(Port, to_field='idport', db_column='idPort1', related_name='idport1', unique=True)
+    idport2 = models.OneToOneField(Port, to_field='idport', db_column='idPort2', related_name='idport2', unique=True)
+    name = models.CharField(max_length=25, null=False, default='link')
+
+    class Meta:
+        db_table = 'SwitchLink'
+        unique_together = (('idport1', 'idport2'),)
+tousix_manager/Administration/actions.py
+def get_rules_list(modeladmin, request, queryset):
+    """
+    Action for display plain text rules selected in admin view.
+    """
+    text = ""
+    for rule in queryset:
+        text += rule.regle + "\n"
+    return render(request, "switches_list.html", context={"rules": text})
+tousix_manager/Administration/actions.py
+def generate_openflow_rules(modeladmin, request, queryset):
+    """
+    Action for generating openflow rules on switch.
+    :param modeladmin:
+    :param request:
+    :param queryset:
+    :return:
+    """
+    manager = RyuManager()
+    manager.create_rules(queryset)
+    modeladmin.message_user(request, "Les règles ont été mises à jour dans la base de données.")
+    return redirect('rules_confirm')
+tousix_manager/Administration/actions.py
+def apply_hote_on_production(modeladmin, request, queryset):
+    """
+    Action to apply openflow flow rules from selected hosts into the controller.
+    """
+    for hote in queryset:
+        if hote.valid is True:
+            if settings.APPLY_PRODUCTION_METHOD is 'Ryu':
+                manager = RyuManager()
+                manager.create_rules_single(Switch.objects.all(), hote)
+                deployment = RulesDeployment()
+                deployment.send_flowrules_single_host(Switch.objects.all(), hote)
+                modeladmin.message_user(request,"Les paramètres du router " + hote.nomhote + " ont été appliqués sur la production.")
+            elif settings.APPLY_PRODUCTION_METHOD is 'Faucet':
+                manager = FaucetManager()
+                manager.convert_table()
+                manager.generate_all_peers()
+                manager.dump_config()
+                modeladmin.message_user(request,"Les paramètres du router " + hote.nomhote + " ont été appliqués sur le fichier "+ settings.FAUCET_SETTINGS['faucet_config_path'] +". Veuiller relancer faucet pour appliquer la configuration")
+
+            else:
+                modeladmin.message_user(request, "Les paramètres n'ont pas pu être appliqués: mauvaise définition de APPLY_PRODUCTION_METHOD")
+                return None
+        else:
+            raise Exception("Not a valid router.")
+tousix_manager/Database/models.py
+class Regles(models.Model):
+    """
+    Model for saving rules associated with :model:`Database.Switch`.
+    It is recommended to keep up-to-date this model with the production,
+    as the controller could ask to apply the rules in the Database.
+    """
+    idregle = models.AutoField(db_column='idRegle', primary_key=True)
+    typeregle = models.CharField(db_column='TypeRegle', max_length=40, blank=True, null=True)
+    regle = models.TextField(db_column='Regle', blank=True, null=True)
+    idswitch = models.ForeignKey(Switch, to_field='idswitch', db_column='idSwitch')
+    source = models.ForeignKey(Hote, related_name="source", verbose_name="Source", null=True)
+    destination = models.ForeignKey(Hote, related_name="destination", verbose_name="Destination", null=True)
+    etat = FSMField(default="Production")
+
+    @transition(field=etat, source="Production", target="Deprecated")
+    def ChangeRulesStatus(self):
+        """
+        This transition method does nothing, it needs to be called just to make a transition for the etat field.
+        :return:
+        """
+        pass
+
+    def switch(self):
+        """
+        Return the name of the :model:`Database.Switch` associated with this rule.
+        :return:
+        """
+        return self.idswitch.nomswitch
+
+    class Meta:
+        db_table = 'Règles'
+        verbose_name = "Règle"
+tousix_manager/Administration/actions.py
+def change_hote_status(modeladmin, request, queryset):
+    """
+    This action is only present because the change status button
+    of an django application does not seem to work (django-fsm-admin).
+    """
+    for hote in queryset:
+        if hote.etat == "Changing":
+            hote.Apply()
+            hote.save()
+            modeladmin.message_user(request, "Le statut du routeur "+hote.nomhote+" a été changé.")
+        elif hote.etat == "Inactive":
+            hote.Deploy()
+            hote.save()
+            modeladmin.message_user(request, "Le statut du routeur "+hote.nomhote+" a été changé.")
+tousix_manager/Database/models.py
+class Switch(models.Model):
+    """
+    Model representing any type of switch (even the legacy ones could be referenced).
+    """
+    idswitch = PositiveBigIntegerField(db_column='idSwitch', primary_key=True)
+    dpid_switch = PositiveBigIntegerField(default=1)
+    nomswitch = models.CharField(db_column='nomSwitch', max_length=20, blank=True, null=True)
+    faucet_class = models.CharField(null=False, blank=True, max_length=35)
+    ipswitch = models.CharField(db_column='IPSwitch', max_length=39, blank=True, null=True)
+    idpop = models.ForeignKey(Pop, to_field='idpop', db_column='idPOP', blank=True, null=True)
+
+    class Meta:
+        db_table = 'Switch'
+tousix_manager/Administration/forms.py
+class PortForm(forms.ModelForm):
+    """
+    ModelForm for modify :model:`Database.Port` with custom fields.
+    """
+    idswitch = SwitchChoiceField(queryset=Switch.objects.all(), empty_label=None)
+
+    class Meta:
+        model = Port
+        fields = ['idswitch', 'numport', 'typeport', 'enabled', 'backbone']
+tousix_manager/Database/models.py
+class Pop(models.Model):
+    """
+    Model for referencing all the informations of POP.
+    It is advised to use a short name,
+    because the value is often used for logging and display information in a limited space.
+    """
+    idpop = models.AutoField(db_column='idPOP', primary_key=True)
+    nompop = models.CharField(db_column='NomPOP', max_length=30, blank=True, null=True)
+    adressepop = models.TextField(db_column='AdressePOP', max_length=300, blank=True, null=True)
+
+    class Meta:
+        db_table = 'POP'
+tousix_manager/Database/models.py
+class Hote(models.Model):
+    """
+    Model for routeurs present in the topology.
+    It is recommended, even if it is optional,
+    to fill all the fields before doing any actions with deployment and rules generation app.
+
+    It is also recommended to avoid to modify the etat field, unless you know what you are doing.
+    This field is linked with side effect methods.
+    """
+    idhote = models.AutoField(db_column='IdHote', primary_key=True)
+    nomhote = models.CharField(db_column='NomHote', max_length=30, blank=False, null=False, verbose_name="Nom routeur")
+    machote = MACAddressField(db_column='MACHote', verbose_name="Adresse MAC", blank=False, null=False)
+    ipv4hote = models.GenericIPAddressField(db_column='IPv4Hote', verbose_name="Adresse IPv4", null=True)
+    ipv6hote = models.GenericIPAddressField(db_column='IPv6Hote', verbose_name="Adresse IPv6", null=True)
+    idmembre = models.ForeignKey(Membre, to_field='idmembre', db_column='idMembre')
+    idport = models.ForeignKey(Port, to_field='idport', db_column='idPort', blank=True, null=True)
+    valid = models.BooleanField(default=False)
+    internal_server = models.BooleanField(default=False)
+    etat = FSMField(default="Inactive")
+
+    def membre(self):
+        """
+        Returns the member name associated with this router.
+        :return: Member name
+        """
+        return self.idmembre.nommembre
+
+    def switch(self):
+        """
+        Returns the string name of the :model:`Database.Switch` linked to this router, if it was defined by the administrator.
+        :return: Switch name
+        """
+        if self.idport is None:
+            return "Undefined"
+        else:
+            return self.idport.idswitch.nomswitch
+
+    def port(self):
+        """
+        Returns the string name of the :model:`Database.Port` number linked to this router, if it was defined by the administrator.
+        :return: Port number
+        """
+        if self.idport is None:
+            return "Undefined"
+        else:
+            return self.idport.numport
+
+    def pop(self):
+        """
+        Returns the string name of the :model:`Database.POP` which the router is linked, if it was defined by the administrator.
+        :return: POP name
+        """
+        if self.idport is None:
+            return "Undefined"
+        else:
+            return self.idport.idswitch.idpop.nompop
+
+    class Meta:
+        db_table = 'Hôte'
+        unique_together = (('idhote', 'idmembre'),)
+
+    @transition(field=etat, source="Inactive", target="Production")
+    def Deploy(self):
+        """
+        Transition method for deploy a router in the topology, pushing all the rules necessary.
+        :return:
+        """
+        if self.valid is True:
+            if settings.APPLY_PRODUCTION_METHOD is 'Ryu':
+
+                manager = Manager()
+                manager.create_rules(Switch.objects.all())
+                deployment = RulesDeployment()
+                deployment.send_rules(Switch.objects.all())
+        else:
+            raise Exception("Not a valid router.")
+
+    @transition(field=etat, source="Production", target="Changing", custom={"admin":False})
+    def Prepare(self):
+        """
+        Transition method for moving the rules of the previous configuration into a special state,
+        and applies rules for the new configuration.
+        :return:
+        """
+        #TODO write transition state for faucet
+        if settings.APPLY_PRODUCTION_METHOD is 'Ryu':
+
+            regles = Regles.objects.filter(Q(source=self) | Q(destination=self))
+            for regle in regles:
+                regle.ChangeRulesStatus()
+                regle.save()
+            manager = Manager()
+            manager.create_rules(Switch.objects.all())
+            deployment = RulesDeployment()
+            deployment.send_rules(Switch.objects.all())
+
+    @transition(field=etat, source="Changing", target="Production")
+    def Apply(self):
+        """
+        Transition method for removing rules applied for the previous configuration of the router.
+        :return:
+        """
+        if settings.APPLY_PRODUCTION_METHOD is 'Ryu':
+
+            regles_deprecated = Regles.objects.filter((Q(source=self) | Q(destination=self)) & Q(etat="Deprecated"))
+            regles_production = Regles.objects.filter((Q(source=self) | Q(destination=self)) & Q(etat="Production")).values("regle")
+            regles_invalides = regles_deprecated.exclude(Q(regle__in=regles_production))
+            deployment = RulesDeployment()
+            deployment.remove_rules(regles_invalides)
+            regles_deprecated.delete()
+tousix_manager/Administration/actions.py
+def get_percentile_hote(modeladmin, request, queryset):
+    billing = BillingView()
+    for hote in queryset:
+        modeladmin.message_user(request, "Bande passante consommé pour l'hôte " + hote.nomhote + ": " + str(billing.show_result(hote.idhote)) + " bit/s")
+tousix_manager/Database/models.py
+class ConnectionType(models.Model):
+    """
+    Model used for referencing all the connection types avaliable in the topology.
+    """
+    connection_type = models.CharField(max_length=20, null=False)
+
+    class Meta:
+        db_table = 'Connection_type'
+tousix_manager/Administration/actions.py
+def generate_faucet_config(modeladmin, request, queryset):
+    """
+    Action for generating openflow rules on switch.
+    :param modeladmin:
+    :param request:
+    :param queryset:
+    :return:
+    """
+    manager = FaucetManager()
+    data = manager.generate_all_peers()
+    manager.dump_config()
+    modeladmin.message_user(request, "Le fichier de configuration Faucet a été modifié. Veuillez recharger le service afin d'appliquer les modifications")
+    return render(request, "config_confirm.html", context={"data": data})
+tousix_manager/Administration/forms.py
+class MembreForm(forms.ModelForm):
+    """
+    ModelForm for modify :model:`Database.Membre` with custom fields.
+    """
+    idpop = PopChoiceField(queryset=Pop.objects.all())
+    connexion_type = ConnexionChoiceField(queryset=ConnectionType.objects.all())
+
+    class Meta:
+        model = Membre
+        fields = ["nommembre", "asnumber", "connexion_type", "fqdn_host", "idpop", "approved", "login_external"]
+tousix_manager/Administration/forms.py
+class SwitchForm(forms.ModelForm):
+    """
+    ModelForm for modify :model:`Database.Switch` with custom fields.
+    """
+    idpop = PopChoiceField(queryset=Pop.objects.all(), empty_label=None)
+
+    class Meta:
+        model = Switch
+        fields = ['nomswitch', 'dpid_switch', 'ipswitch', 'idpop', 'faucet_class']
+tousix_manager/Database/models.py
+class LogSwitch(models.Model):
+    """
+    This model contains all logs delivered by the :model:`Database.Switch` trough the web application.
+    The JSON field is optionnal, but it is recommended to fill it with the other informations when it is possible.
+    Additional methods could extract information from JSON data in the future.
+    """
+    idlog = models.AutoField(primary_key=True)
+    idswitch = models.ForeignKey(Switch, to_field='idswitch', db_column='idSwitch', unique=False)
+    time = models.DateTimeField(auto_now_add=True)
+    level = models.CharField(max_length=10)
+    message = models.TextField()
+    json = models.TextField(null=True)
+
+    def nomswitch(self):
+        return self.idswitch.nomswitch
+
+    class Meta:
+        db_table = "SwitchLog"
+tousix_manager/Administration/forms.py
+class UserMembreForm(forms.ModelForm):
+    membre = MemberChoiceField(queryset=Membre.objects.all(), empty_label=None)
+
+    class Meta:
+        model = UserMembre
+        fields = ['user', 'membre']
+tousix_manager/Administration/actions.py
+def download_csv_faucet(modeladmin, request, queryset):
+    """
+    Snippet from https://djangosnippets.org/snippets/2690/
+    :param modeladmin:
+    :param request:
+    :param queryset:
+    :return:
+    """
+    if not request.user.is_staff:
+        raise PermissionDenied
+    opts = queryset.model._meta
+    response = HttpResponse(content_type='text/csv')
+    # force download.
+    response['Content-Disposition'] = 'attachment;filename=export.csv'
+    # the csv writer
+    writer = csv.writer(response)
+    field_names = ["idrtr", "hostname", "addr_ipv4", "addr_ipv6", "macaddr", "membre", "pop", "switch", "port", "status"]
+    # Write a first row with header information
+    writer.writerow(field_names)
+    # Write data rows
+    for obj in queryset:
+        lookup = Hote.objects.get(idhote=obj.idhote)
+        writer.writerow([obj.idhote, obj.nomhote, obj.ipv4hote, obj.ipv6hote, obj.machote, lookup.membre(), lookup.pop(), lookup.switch(), lookup.port(), obj.etat])
+    return response

@@ -1,0 +1,1 @@
+lambda _cls, k, vr, val, is_size_like: _tuple_new(_cls, (k, vr, val, is_size_like))

@@ -1,0 +1,146 @@
+{
+  "TASK_ID": "QWEN_GDN_AIME26_STEPQUANT6_VS_H_DUALM_2SEED_V1",
+  "status": "DRAFT_PENDING_SOURCE_PLAN_AND_RUNTIME_QUALIFICATION",
+  "frozen": false,
+  "authorization": {
+    "GPU_EXECUTION_AUTHORIZED": true,
+    "devices": 4,
+    "class": "RTX3090_24GB",
+    "NO_SGLANG": true,
+    "NO_NEW_TRAINING": true,
+    "NO_AIME_BASED_CALIBRATION": true,
+    "NO_A800": true,
+    "NO_AUTOMATIC_ADDITIONAL_EXPERIMENTS": true,
+    "NO_GIT_PUSH": true
+  },
+  "sampling": {
+    "enable_thinking": true,
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 20,
+    "min_p": 0.0,
+    "presence_penalty": 1.5,
+    "presence_penalty_scope": "generated_output_tokens_only",
+    "repetition_penalty": 1.0,
+    "do_sample": true,
+    "max_new_tokens": 81920,
+    "seeds": [
+      1,
+      2
+    ],
+    "per_unit_independent_generator": true,
+    "top_k_ties": "include_scores_equal_to_kth_cutoff"
+  },
+  "design": {
+    "problems": 30,
+    "paired_units": 60,
+    "methods": [
+      "STEPQUANT6",
+      "H_DUALM"
+    ],
+    "generations": 120,
+    "same_pair_same_physical_GPU": true,
+    "one_model_per_single_GPU_worker": true,
+    "no_TP4": true,
+    "unit_order": "frozen original30problem order, seed1 then seed2 per problem",
+    "worker_assignment": "canonical_pair_index modulo4",
+    "per_GPU_pairs": 15,
+    "method_order": "local_pair_index even STEPQUANT6 then H_DUALM; odd reverse; independent cache and RNG per method",
+    "no_replacement_or_answer_based_retry": true
+  },
+  "GPU_binding": {
+    "0": "GPU-a78176ed-f97f-c54f-6201-5a01b570f422",
+    "1": "GPU-596e6591-b065-bb91-fd35-a1e90ba8f9e3",
+    "2": "GPU-b7ed673d-18ba-39ca-d7bc-c846af4f6b31",
+    "3": "GPU-30b07aba-a728-7649-4899-e09d33f8bc75"
+  },
+  "model_dtype": "BF16",
+  "methods": {
+    "STEPQUANT6": {
+      "definition": "Full official temporal mixed precision, FP16 pivots, key-row-aware weighted dual-axis fitting, value-column fitting",
+      "official_commit": "f2deac58131219e6aecff274f8eabe88e08d2e3c",
+      "plan_sha256": null,
+      "plan_status": "TO_BE_DERIVED_FROM_FIXED_NON_AIME_CALIBRATION_BEFORE_FORMAL",
+      "all8_w1_pivot0_substitute_forbidden": true,
+      "calibration_inputs_sha256": "99898dfcaf45392eea81bc9aca6e6ae6ef5485a9c50f0e3bf00f4ca005c0598f",
+      "plan_binding": "actual plan SHA must be PASS in calibration/PLAN_CPU_QUALIFICATION.json and exact authorization before post-calibration GPU"
+    },
+    "H_DUALM": {
+      "rotation": "HADAMARD_H128",
+      "bits": 8,
+      "importance_weight": 1,
+      "pivots": 0,
+      "row_scale": "FP16",
+      "column_scale": "FP16",
+      "definition": "Original qualified Dual-M LS/final re-encode/floor/clipping/rounding unchanged"
+    }
+  },
+  "common_GDN_state_timing": {
+    "prompt_prefill": "same trusted HF/manual batched prefill, prompt-internal states not per-token QDQ",
+    "after_prefill": "immediately QDQ all24 recurrent states using own method before any subsequent decode kernel",
+    "first_sample": "original current prefill logits; do not recompute current logits after state QDQ",
+    "decode": "each token original shared native GDN forward then own method QDQ/writeback; next token consumes stored reconstructed values",
+    "prefill_quantized": true,
+    "difference_from_historical_AIME": "Historical original runner explicitly prefill_quantized=false; historical52/41/40 etc reference only, not automatically same strict protocol",
+    "difference_from_historical_32K_streaming": "32K experiment QDQ after every prompt input token, so its history is not claimed identical"
+  },
+  "scoring": {
+    "scorer": "Exact historical Frozen V4 independent scoring after all120 legal complete generations",
+    "primary": "Accuracy_STEPQuant6 - Accuracy_H_DualM",
+    "denominator_per_method": 60,
+    "technical_failures": "INCOMPLETE, never counted as scientific wrong or silently dropped",
+    "length_cap": "valid81920 generation retained and scored by original FrozenV4",
+    "uncertainty_unit": "30problem cluster, retain both seeds together",
+    "greedy_or_simple_boxed_scoring_forbidden": true
+  },
+  "gates_before_formal": [
+    "official_full6_plan9B_CPU_source_identity",
+    "bothcodec_reference_parity",
+    "same_original_GDN_math_integration",
+    "prefill_then_per_token_QDQ_writeback_next_consumption",
+    "FP16_scale_pivot_safety",
+    "fresh_process128token_numeric",
+    "same_seed_sampler_effective",
+    "81920configuration_and_resource_safety",
+    "FrozenV4_independent_scoring",
+    "all4GPU_source_model_plan_env_bindings"
+  ],
+  "SOURCE_MANIFEST_sha256": null,
+  "FROZEN_AIME26_IDENTITY_sha256": null,
+  "runtime_numeric_contract": {
+    "Torch": "2.5.1+cu121",
+    "CUDA": "12.1",
+    "BF16_weights": true,
+    "FP32_reconstructed_QDQ_state": true,
+    "native_GDN_source_sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a",
+    "GDN_chunk_and_recurrent": "unchanged original native Torch fallback, no new/compensated scan or alternate recurrence",
+    "automatic_new_kernel_dispatch_forbidden": true,
+    "deterministic_algorithms": false,
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": false,
+    "matmul_allow_tf32": false,
+    "cudnn_allow_tf32": false,
+    "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+    "fresh128_contract": "Measured exact tokens/logits/state traces in two fresh processes on each same physical GPU; detFalse is not a universal mathematical determinism proof",
+    "resource_min_free_bytes": 1073741824,
+    "resource_contract": "Live-model full81K+maxprompt synthetic KV/workspace plus native SDPA; not a full81920 recurrent numeric trajectory. Real generations retain per-token finite/state/scale checks"
+  },
+  "calibration": {
+    "dataset": "Salesforce/wikitext:wikitext-2-raw-v1:train",
+    "revision": "b08601e04326c79dfdd32d625aee71d232d685c3",
+    "segments": 32,
+    "sequence_length": 2048,
+    "seed": 0,
+    "sample_every": 8,
+    "max_snapshots": 64,
+    "horizon": 2048,
+    "nominal_bits": 6,
+    "pivots": 32,
+    "gamma": 0.25,
+    "value_group_size": 32,
+    "fit_device": "cpu",
+    "native_model_outputs_unchanged": true,
+    "statistics": "unchanged official FP32 shadow replay on actual native-normalized q/k; no claim of exact native chunk intermediate states",
+    "no_AIME": true
+  }
+}

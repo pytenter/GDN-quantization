@@ -1,0 +1,1545 @@
+src/main/java/com/bazaarvoice/jless/ast/node/WhiteSpaceCollectionNode.java
+public class WhiteSpaceCollectionNode extends InternalNode {
+
+    public WhiteSpaceCollectionNode() {
+        super();
+    }
+
+    public WhiteSpaceCollectionNode(Node child) {
+        super(child);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/VariableReferenceNode.java
+public class VariableReferenceNode extends LeafNode {
+
+    private String _name;
+
+    public VariableReferenceNode(String name) {
+        _name = name;
+    }
+
+    /**
+     * Search up the scope tree to locate the variable's value. The parser has already verified that
+     * the variable is defined.
+     */
+    public String getValue() {
+        for (ScopeNode scope = NodeTreeUtils.getParentScope(this); scope != null; scope = NodeTreeUtils.getParentScope(scope)) {
+            ExpressionGroupNode value = scope.getVariable(_name);
+            if (value == null) {
+                continue;
+            }
+
+            return value.toString();
+        }
+
+        return _name; // Unable to find the variable's value, return the name for now (helpful for debugging)
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean visit(NodeNavigationVisitor visitor) {
+        return visitor.visit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/ArgumentsNode.java
+public class ArgumentsNode extends InternalNode {
+
+    public ArgumentsNode() {
+        super();
+    }
+
+    public ArgumentsNode(Node child) {
+        super(child);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/Node.java
+public abstract class Node implements MutableTreeNode<Node>, Cloneable {
+    private InternalNode _parent;
+    private boolean _visible = true;
+
+    @Override
+    public InternalNode getParent() {
+        return _parent;
+    }
+
+    public void setParent(InternalNode parent) {
+        _parent = parent;
+    }
+
+    public boolean isVisible() {
+        return _visible;
+    }
+
+    /**
+     * Controls whether the node and its children will be visited by a traversal visitor.
+     */
+    public boolean setVisible(boolean visible) {
+        _visible = visible;
+        return true;
+    }
+
+    /**
+     * This simplifies parsing rules by allowing you to always create nodes and call addChild(),
+     * and then the concrete node can report whether it actually contains data that should be
+     * added to the AST.
+     */
+    protected boolean hasData() {
+        return true;
+    }
+
+    public abstract boolean addChild(Node child);
+
+    protected abstract boolean add(NodeAdditionVisitor visitor);
+
+    protected abstract boolean visitInvisible(NodeNavigationVisitor visitor);
+
+    public abstract boolean filter(NodeNavigationVisitor visitor);
+
+    public abstract boolean traverse(NodeNavigationVisitor visitor);
+
+    @SuppressWarnings ({"unchecked", "CloneDoesntDeclareCloneNotSupportedException"})
+    @Override
+    public Node clone() {
+        Node node;
+        try {
+            // Clone any primitive fields
+            node = (Node) super.clone();
+        } catch (CloneNotSupportedException e) {
+            throw new IllegalStateException("Object is marked Cloneable, but super.clone() failed.");
+        }
+
+        // Reset internal state
+        node._parent = null;
+
+        return node;
+    }
+
+    @Override
+    public String toString() {
+        Printer p = new Printer() {
+            @Override
+            public boolean visitInvisible(Node node) {
+                return true; // Always print invisible nodes
+            }
+        };
+        traverse(p);
+        return p.toString();
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/InternalNode.java
+public abstract class InternalNode extends Node {
+
+    private List<Node> _children = new ArrayList<Node>();
+    private List<Node> _childrenView = Collections.unmodifiableList(_children);
+    private Stack<MutableChildIterator> _childIteratorStack = new Stack<MutableChildIterator>();
+    private NodeAdditionVisitor _additionVisitor = InclusiveNodeVisitor.getInstance();
+
+    public InternalNode() {
+    }
+
+    public InternalNode(Node node) {
+        addChild(node);
+    }
+
+    @Override
+    public List<Node> getChildren() {
+        return _childrenView;
+    }
+
+    /**
+     * Registers a visitor that will be called each time a child node is about to be added.
+     * If the visitor returns false from such a call, the child is not added. 
+     * @see com.bazaarvoice.jless.ast.visitor.NodeAdditionVisitor
+     */
+    protected void setAdditionVisitor(NodeAdditionVisitor additionVisitor) {
+        _additionVisitor = additionVisitor;
+    }
+
+    // ********** Modification **********
+
+    @Override
+    public boolean addChild(Node child) {
+        addChild(_children.size(), child);
+        return true;
+    }
+
+    public void addChildren(Collection<? extends Node> children) {
+        for (Node child : children) {
+            addChild(child);
+        }
+    }
+
+    @Override
+    public void addChild(int index, Node child) {
+        Preconditions.checkElementIndex(index, _children.size() + 1);
+
+        // ignore empty nodes
+        if (child == null || !child.hasData()) {
+            return;
+        }
+
+        // check addition visitor
+        if (!child.add(_additionVisitor)) {
+            return;
+        }
+
+        // detach new child from old parent
+        InternalNode parent = child.getParent();
+        if (parent == this) {
+            return;
+        }
+        if (parent != null) {
+            TreeUtils.removeChild(parent, child);
+        }
+
+        // attach new child
+        _children.add(index, child);
+        child.setParent(this);
+
+        // notify iterators
+        for (MutableChildIterator it : _childIteratorStack) {
+            it.addEvent(index, child);
+        }
+    }
+
+    @Override
+    public void setChild(int index, Node child) {
+        Preconditions.checkElementIndex(index, _children.size());
+
+        // ignore empty nodes
+        if (child == null) {
+            return;
+        }
+
+        // detach old child
+        Node old = _children.get(index);
+        if (old == child) {
+            return;
+        }
+        old.setParent(null);
+
+        // detach new child from old parent
+        InternalNode parent = child.getParent();
+        if (parent != null && parent != this) {
+            TreeUtils.removeChild(parent, child);
+        }
+
+        // attach new child
+        _children.set(index, child);
+        child.setParent(this);
+    }
+
+    @Override
+    public Node removeChild(int index) {
+        // remove and detach child
+        Preconditions.checkElementIndex(index, _children.size());
+        Node removed = _children.remove(index);
+        removed.setParent(null);
+
+        // notify iterators
+        for (MutableChildIterator it : _childIteratorStack) {
+            it.removeEvent(index);
+        }
+
+        return removed;
+    }
+
+    public void clearChildren() {
+        while (_children.size() > 0) {
+            removeChild(0);
+        }
+    }
+
+    // ********** Iteration **********
+
+    public boolean isIterating() {
+        return !_childIteratorStack.isEmpty();
+    }
+
+    public RandomAccessListIterator<Node> getLatestChildIterator() {
+        Preconditions.checkState(isIterating(), "There are no child iterators.");
+
+        return _childIteratorStack.peek();
+    }
+
+    public RandomAccessListIterator<Node> pushChildIterator() {
+        return pushChildIterator(false);
+    }
+
+    public RandomAccessListIterator<Node> pushChildIterator(boolean copyState) {
+        MutableChildIterator it = new MutableChildIterator();
+        
+        if (copyState) {
+            it.copy(getLatestChildIterator());
+        }
+
+        _childIteratorStack.push(it);
+
+        return it;
+    }
+
+    public void popChildIterator() {
+        _childIteratorStack.pop();
+    }
+
+    // ********** Visitors **********
+
+    protected abstract boolean enter(NodeNavigationVisitor visitor);
+
+    protected abstract boolean exit(NodeNavigationVisitor visitor);
+
+    @Override
+    public final boolean filter(NodeNavigationVisitor visitor) {
+        if (enter(visitor)) {
+            ListIterator<Node> it = pushChildIterator();
+            while (it.hasNext()) {
+                Node child = it.next();
+                if (!child.filter(visitor)) {
+                    it.remove();
+                }
+            }
+            popChildIterator();
+        }
+
+        return exit(visitor);
+    }
+
+    @Override
+    public final boolean traverse(NodeNavigationVisitor visitor) {
+        if (!isVisible() && !visitInvisible(visitor)) {
+            return true;
+        }
+
+        if (enter(visitor)) {
+            ListIterator<Node> it = pushChildIterator();
+            while (it.hasNext()) {
+                Node child = it.next();
+                if (!child.traverse(visitor)) {
+                    break;
+                }
+            }
+            popChildIterator();
+        }
+
+        return exit(visitor);
+    }
+
+    // ********** Cloning **********
+
+    /**
+     * Clones fields and child nodes, but ignores the iterator stack (since the new nodes are not attached
+     * to the tree and so should not be part of any kind of iteration).
+     */
+    @Override
+    public InternalNode clone() {
+        InternalNode node = (InternalNode) super.clone();
+
+        // Reset internal state
+        node._children = new ArrayList<Node>();
+        node._childrenView = Collections.unmodifiableList(node._children);
+        node._childIteratorStack = new Stack<MutableChildIterator>();
+
+        cloneChildren(node);
+
+        return node;
+    }
+
+    protected void cloneChildren(InternalNode node) {
+        // Copy all children
+        for (Node child : _children) {
+            TreeUtils.addChild(node, child.clone());
+        }
+    }
+
+    private class MutableChildIterator implements RandomAccessListIterator<Node> {
+
+        private int _cursor = 0;
+        private int _lastReturned = -1;
+
+        @Override
+        public boolean hasNext() {
+            return _cursor != _children.size();
+        }
+
+        @Override
+        public Node next() {
+            Preconditions.checkPositionIndex(_cursor + 1, _children.size());
+
+            _lastReturned = _cursor;
+
+            return _children.get(_cursor++);
+        }
+
+        @Override
+        public boolean hasPrevious() {
+            return _cursor != 0;
+        }
+
+        @Override
+        public Node previous() {
+            Preconditions.checkPositionIndex(_cursor - 1, _children.size());
+
+            _lastReturned = --_cursor;
+
+            return _children.get(_cursor);
+        }
+
+        @Override
+        public int nextIndex() {
+            return _cursor;
+        }
+
+        @Override
+        public int previousIndex() {
+            return _cursor - 1;
+        }
+
+        @Override
+        public void remove() {
+            removeChild(_lastReturned);
+        }
+
+        @Override
+        public Node remove(int relativeIndex) {
+            return removeChild(_cursor + relativeIndex);
+        }
+
+        private void removeEvent(int index) {
+            // update cursor
+            if (index < _cursor) {
+                _cursor--;
+            }
+            _lastReturned = -1;
+        }
+
+        @Override
+        public void set(Node child) {
+            setChild(_lastReturned, child);
+        }
+
+        @Override
+        public void set(int relativeIndex, Node child) {
+            setChild(_cursor + relativeIndex, child);
+        }
+
+        @Override
+        public void add(Node child) {
+            addChild(_cursor, child);
+        }
+
+        @Override
+        public void add(int relativeIndex, Node child) {
+            addChild(_cursor + relativeIndex, child);
+        }   
+
+        private void addEvent(int index, Node child) {
+            // update cursor
+            if (index <= _cursor) {
+                _cursor++;
+            }
+            _lastReturned = -1;
+        }
+
+        @Override
+        public void copy(ListIterator<Node> iterator) {
+            _cursor = iterator.nextIndex();
+        }
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/SelectorNode.java
+public class SelectorNode extends InternalNode {
+
+    public SelectorNode() {
+        super();
+        setAdditionVisitor();
+    }
+
+    public SelectorNode(Node child) {
+        this();
+        addChild(child);
+    }
+
+    private void setAdditionVisitor() {
+        setAdditionVisitor(new InclusiveNodeVisitor() {
+            /**
+             * Absorb all children of the given selector. This assumes that cloning is not necessary.
+             */
+            @Override
+            public boolean add(SelectorNode selector) {
+                // If the first segment is a universal ("*") segment, it must remain first in the list
+                SelectorSegmentNode sourceSegment = NodeTreeUtils.getFirstChild(selector, SelectorSegmentNode.class);
+                if (sourceSegment.isUniversal()) {
+                    // If the first destination segment is not a sub-element selector and it has no combinator,
+                    // switch it to the descendant combinator before absorbing the universal segment.
+                    setCombinatorIfNotSubElement(SelectorNode.this);
+                    // Add the universal HTML segment at the front of the list
+                    addChild(0, sourceSegment);
+                }
+
+                // If the first source segment is not a sub-element selector and it has no combinator,
+                // switch it to the descendant combinator before absorbing the segments.
+                setCombinatorIfNotSubElement(selector);
+
+                NodeTreeUtils.moveChildren(selector, SelectorNode.this);
+                return false; // Don't add the original selector itself
+            }
+        });
+    }
+
+    private void setCombinatorIfNotSubElement(SelectorNode selector) {
+        SelectorSegmentNode sourceSegment = NodeTreeUtils.getFirstChild(selector, SelectorSegmentNode.class);
+        if (!sourceSegment.isSubElementSelector() && sourceSegment.getCombinator().equals(SelectorSegmentNode.NO_COMBINATOR)) {
+            sourceSegment.setCombinator(SelectorSegmentNode.DESCENDANT_COMBINATOR);
+        }
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+
+    /**
+     * The internal state of this node will be rebuilt as cloned children are added by the super class.
+     */
+    @Override
+    public SelectorNode clone() {
+        return (SelectorNode) super.clone();
+    }
+
+    /**
+     * Recreate internal state before children are cloned.
+     */
+    @Override
+    protected void cloneChildren(InternalNode node) {
+        SelectorNode selector = (SelectorNode) node;
+
+        // Reset internal state
+        selector.setAdditionVisitor();
+
+        super.cloneChildren(node);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/SelectorSegmentNode.java
+public class SelectorSegmentNode extends LeafNode {
+
+    public static final String NO_COMBINATOR = "";
+    public static final String DESCENDANT_COMBINATOR = " ";
+
+    private String _combinator;
+    private String _simpleSelector;
+    private boolean _subElementSelector;
+    private boolean _universal;
+
+    public SelectorSegmentNode(String combinator) {
+        _combinator = combinator;
+    }
+
+    public SelectorSegmentNode(String combinator, String simpleSelector) {
+        _combinator = combinator;
+        _simpleSelector = simpleSelector;
+    }
+
+    public String getCombinator() {
+        return _combinator;
+    }
+
+    public boolean setCombinator(String combinator) {
+        _combinator = combinator;
+        return true;
+    }
+
+    public String getSimpleSelector() {
+        return _simpleSelector;
+    }
+
+    public boolean setSimpleSelector(String simpleSelector) {
+        _simpleSelector = simpleSelector;
+        return true;
+    }
+
+    /**
+     * Implies that the simple selector starts with some sub-element selection, such as an attribute or pseudo-class.
+     */
+    public boolean isSubElementSelector() {
+        return _subElementSelector;
+    }
+
+    public boolean setSubElementSelector(boolean subElementSelector) {
+        _subElementSelector = subElementSelector;
+        return true;
+    }
+
+    public boolean isUniversal() {
+        return _universal;
+    }
+
+    public boolean setUniversal(boolean universal) {
+        _universal = universal;
+        return true;
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean visit(NodeNavigationVisitor visitor) {
+        return visitor.visit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/FunctionNode.java
+public class FunctionNode extends InternalNode {
+
+    private String _name;
+
+    public FunctionNode(String name) {
+        _name = name;
+    }
+
+    public String getName() {
+        return _name;
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/RuleSetNode.java
+public class RuleSetNode extends InternalNode {
+
+    public RuleSetNode() {
+        super();
+    }
+
+    public RuleSetNode(Node child) {
+        super(child);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/SimpleNode.java
+public class SimpleNode extends LeafNode {
+
+    private String _value;
+
+    public SimpleNode(String value) {
+        _value = value;
+    }
+
+    public String getValue() {
+        return _value;
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean visit(NodeNavigationVisitor visitor) {
+        return visitor.visit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/exception/UndefinedVariableException.java
+public class UndefinedVariableException extends ActionException {
+
+    public UndefinedVariableException(String name) {
+        super("The variable " + name + " has not been defined.");
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/PlaceholderNode.java
+public class PlaceholderNode extends InternalNode {
+
+    public PlaceholderNode() {
+        super();
+    }
+
+    public PlaceholderNode(Node child) {
+        super(child);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/ExpressionGroupNode.java
+public class ExpressionGroupNode extends InternalNode {
+
+    public ExpressionGroupNode() {
+        super();
+    }
+
+    public ExpressionGroupNode(Node node) {
+        super(node);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/VariableDefinitionNode.java
+public class VariableDefinitionNode extends InternalNode {
+
+    private String _name;
+
+    public VariableDefinitionNode(String name) {
+        _name = name;
+    }
+
+    public String getName() {
+        return _name;
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/ScopeNode.java
+public class ScopeNode extends InternalNode {
+
+    private static final String FILTER_PROPERTY = "filter";
+
+    private Map<String, ExpressionGroupNode> _variableNameToValueMap = new HashMap<String, ExpressionGroupNode>();
+    private Map<String, RuleSetNode> _selectorToRuleSetMap = new HashMap<String, RuleSetNode>();
+    private List<VariableDefinitionNode> _parameterDefinitions = new ArrayList<VariableDefinitionNode>();
+    private Map<String, PropertyNode> _propertyNameToNodeMap = new HashMap<String, PropertyNode>();
+    private ScopeNode _parentScope;
+    private boolean _bracketsDisplayed = true;
+
+    public ScopeNode() {
+        super();
+        setAdditionVisitor();
+    }
+
+    public ScopeNode(Node node) {
+        this();
+        addChild(node);
+    }
+
+    public ScopeNode(Collection<Node> nodeCollection) {
+        this();
+        addChildren(nodeCollection);
+    }
+
+    public boolean isVariableDefined(String name) {
+        return _variableNameToValueMap.containsKey(name);
+    }
+
+    public ExpressionGroupNode getVariable(String name) {
+        return _variableNameToValueMap.get(name);
+    }
+
+    public RuleSetNode getRuleSet(String selectorGroup) {
+        return _selectorToRuleSetMap.get(selectorGroup);
+    }
+
+    public ScopeNode getParentScope() {
+        return _parentScope;
+    }
+
+    public void setParentScope(ScopeNode parentScope) {
+        _parentScope = parentScope;
+    }
+
+    public boolean isBracketsDisplayed() {
+        return _bracketsDisplayed;
+    }
+
+    public void setBracketsDisplayed(boolean bracketsDisplayed) {
+        _bracketsDisplayed = bracketsDisplayed;
+    }
+
+    /**
+     * Creates a clone of this scope to be attached to the tree at the site of a mixin reference. If an ArgumentsNode is passed,
+     * each of its values override those defined by the mixin's parameters.
+     */
+    public ScopeNode callMixin(String name, ArgumentsNode arguments) {
+        List<ExpressionGroupNode> argumentList = (arguments != null) ? NodeTreeUtils.getChildren(arguments, ExpressionGroupNode.class) : Collections.<ExpressionGroupNode>emptyList();
+        if (argumentList.size() > _parameterDefinitions.size()) {
+            throw new IllegalMixinArgumentException(name, _parameterDefinitions.size());
+        }
+
+        // Clone scope and filter out any white space
+        ScopeNode mixinScope = clone();
+        NodeTreeUtils.filterLineBreaks(mixinScope);
+
+        // If arguments were passed, apply them
+        for (int i = 0; i < argumentList.size(); i++) {
+            ExpressionGroupNode argument = argumentList.get(i);
+            // Replace the value of the definition
+            VariableDefinitionNode parameter = mixinScope._parameterDefinitions.get(i);
+            parameter.clearChildren();
+            parameter.addChild(argument);
+        }
+
+        // Mark this scope's containing rule set as invisible since it has been used as a mixin
+        getParent().setVisible(false);
+
+        return mixinScope;
+    }
+
+    /**
+     * Some nodes are captured in additional structures to aid later resolution.
+     */
+    private void setAdditionVisitor() {
+        setAdditionVisitor(new InclusiveNodeVisitor() {
+            /**
+             * Add parameter set as a child for printing input, but also add each defined value to the variable map.
+             */
+            @Override
+            public boolean add(ParametersNode node) {
+                for (VariableDefinitionNode variable : NodeTreeUtils.getChildren(node, VariableDefinitionNode.class)) {
+                    _parameterDefinitions.add(variable);
+                    add(variable);
+                }
+                return super.add(node);
+            }
+
+            /**
+             * Store the rule set's scope by selector group
+             */
+            @Override
+            public boolean add(RuleSetNode node) {
+                SelectorGroupNode selectorGroup = NodeTreeUtils.getFirstChild(node, SelectorGroupNode.class);
+                for (SelectorNode selectorNode : NodeTreeUtils.getChildren(selectorGroup, SelectorNode.class)) {
+                    StringBuilder sb = new StringBuilder();
+                    for (Node selectorChild : selectorNode.getChildren()) {
+                        sb.append(selectorChild.toString());
+                    }
+                    String selector = sb.toString();
+                    // Mixins lock on first definition
+                    if (!_selectorToRuleSetMap.containsKey(selector)) {
+                        _selectorToRuleSetMap.put(selector, node);
+                    }
+                }
+                return super.add(node);
+            }
+
+            /**
+             * Absorb all children of the given scope. This assumes that cloning is not necessary.
+             */
+            @Override
+            public boolean add(ScopeNode node) {
+                NodeTreeUtils.moveChildren(node, ScopeNode.this);
+                return false; // Don't add the original scope itself
+            }
+
+            /**
+             * Store variable definitions in a map by name
+             */
+            @Override
+            public boolean add(VariableDefinitionNode node) {
+                String name = node.getName();
+                // "Variables" lock on first definition
+                if (!_variableNameToValueMap.containsKey(name)) {
+                    _variableNameToValueMap.put(name, NodeTreeUtils.getFirstChild(node, ExpressionGroupNode.class));
+                }
+                return super.add(node);
+            }
+
+            /**
+             * Store property nodes by name. If there are multiple properties for a given name, only retain the last one.
+             */
+            @Override
+            public boolean add(PropertyNode node) {
+                String name = node.getName();
+
+                // If this is the IE-specific "filter" property, always add it
+                if (name.equals(FILTER_PROPERTY)) {
+                    return super.add(node);
+                }
+
+                // If the value of this property node is a vendor-specific keyword, always add it
+                if (node.getChildren().get(0).toString().startsWith("-")) {
+                    return super.add(node);
+                }
+
+                // Check if this property has been seen before
+                if (_propertyNameToNodeMap.containsKey(name)) {
+                    PropertyNode oldPropertyNode = _propertyNameToNodeMap.get(name);
+                    int oldPropertyIndex = getChildren().indexOf(oldPropertyNode);
+
+                    if (oldPropertyNode.isVisible()) {
+                        // Hide the unneeded property
+                        oldPropertyNode.setVisible(false);
+
+                        // Attempt to hide one surrounding white space node
+                        if (!hideWhiteSpaceNode(oldPropertyIndex - 1)) {
+                            hideWhiteSpaceNode(oldPropertyIndex + 1);
+                        }
+                    }
+                }
+
+                // Store the property as the latest for this name
+                _propertyNameToNodeMap.put(name, node);
+
+                return super.add(node);
+            }
+        });
+    }
+
+    private boolean hideWhiteSpaceNode(int index) {
+        if (index < 0 || index >= getChildren().size()) {
+            return false;
+        }
+
+        Node node = getChildren().get(index);
+        if (!(node instanceof WhiteSpaceCollectionNode || node instanceof SpacingNode) || !node.isVisible()) {
+            return false;
+        }
+
+        node.setVisible(false);
+        return true;
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+
+    /**
+     * The internal state of this node will be rebuilt as cloned children are added by the super class.
+     */
+    @Override
+    public ScopeNode clone() {
+        return (ScopeNode) super.clone();
+    }
+
+    /**
+     * Recreate internal state before children are cloned.
+     */
+    @Override
+    protected void cloneChildren(InternalNode node) {
+        ScopeNode scope = (ScopeNode) node;
+
+        // Reset internal state
+        scope._variableNameToValueMap = new HashMap<String, ExpressionGroupNode>();
+        scope._selectorToRuleSetMap = new HashMap<String, RuleSetNode>();
+        scope._parameterDefinitions = new ArrayList<VariableDefinitionNode>();
+        scope._propertyNameToNodeMap = new HashMap<String, PropertyNode>();
+        scope.setAdditionVisitor();
+
+        super.cloneChildren(node);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/FilterArgumentNode.java
+public class FilterArgumentNode extends InternalNode {
+
+    private String _name;
+
+    public FilterArgumentNode(String name) {
+        _name = name;
+    }
+
+    public String getName() {
+        return _name;
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/MediaQueryNode.java
+public class MediaQueryNode extends InternalNode {
+
+    public MediaQueryNode() {
+        super();
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/MediaTypeRestriction.java
+public class MediaTypeRestriction extends InternalNode {
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/PropertyNode.java
+public class PropertyNode extends InternalNode {
+
+    private String _name;
+
+    public PropertyNode(String name) {
+        _name = name;
+    }
+
+    public String getName() {
+        return _name;
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/util/NodeTreeUtils.java
+public final class NodeTreeUtils {
+
+    private NodeTreeUtils() {}
+
+    public static boolean parentHasNext(Node node) {
+        InternalNode parent = node.getParent();
+        return parent != null && parent.isIterating() && parent.getLatestChildIterator().hasNext();
+    }
+
+    public static boolean parentHasAnyFollowing(Node node, Class targetClass) {
+        InternalNode parent = node.getParent();
+
+        if (!parent.isIterating()) {
+            return false;
+        }
+
+        boolean found = false;
+
+        RandomAccessListIterator<Node> it = parent.pushChildIterator(true);
+
+        // Search ahead for an instance of the target class
+        while (it.hasNext()) {
+            if (targetClass.isInstance(it.next())) {
+                found = true;
+                break;
+            }
+        }
+
+        return found;
+    }
+
+    public static ScopeNode getParentScope(Node node) {
+        if (node instanceof ScopeNode) {
+            ScopeNode parentScope = ((ScopeNode) node).getParentScope();
+            if (parentScope != null) {
+                return parentScope;
+            }
+        }
+
+        for (Node current = node.getParent(); current != null; current = current.getParent()) {
+            if (current instanceof ScopeNode) {
+                return (ScopeNode) current;
+            }
+        }
+
+        return null;
+    }
+
+    public static <C extends Node> List<C> getChildren(InternalNode parent, Class<C> targetClass) {
+        List<C> filteredChildren = new ArrayList<C>();
+
+        for (Node child : parent.getChildren()) {
+            if (targetClass.isInstance(child)) {
+                //noinspection unchecked
+                filteredChildren.add((C) child);
+            }
+        }
+
+        return filteredChildren;
+    }
+
+    public static <C extends Node> List<C> getAndRemoveChildren(InternalNode parent, Class<C> targetClass) {
+        List<C> filteredChildren = new ArrayList<C>();
+        List<Node> children = parent.getChildren();
+        boolean founded;
+
+        do {
+            founded = false;
+            for (int i = 0; i < children.size(); i++) {
+                Node child = children.get(i);
+                if (targetClass.isInstance(child)) {
+                    //noinspection unchecked
+                    filteredChildren.add((C) child);
+                    parent.removeChild(i);
+                    founded = true;
+                    break;
+                }
+            }
+        } while (founded);
+
+        return filteredChildren;
+    }
+
+    public static List<Node> getChildrenWithVisibility(InternalNode parent, boolean visibility) {
+        List<Node> filteredChildren = new ArrayList<Node>();
+
+        for (Node child : parent.getChildren()) {
+            if (child.isVisible() == visibility) {
+                //noinspection unchecked
+                filteredChildren.add(child);
+            }
+        }
+
+        return filteredChildren;
+    }
+
+    public static <C extends Node> C getFirstChild(InternalNode parent, Class<C> targetClass) {
+        for (Node child : parent.getChildren()) {
+            if (targetClass.isInstance(child)) {
+                //noinspection unchecked
+                return (C) child;
+            }
+        }
+
+        return null;
+    }
+
+    public static void moveChildren(InternalNode source, InternalNode destination) {
+        ListIterator<Node> it = source.pushChildIterator();
+        while (it.hasNext()) {
+            Node child = it.next();
+            destination.addChild(child);
+        }
+        source.popChildIterator();
+    }
+
+    public static InternalNode filterLineBreaks(InternalNode node) {
+        node.filter(new InclusiveNodeVisitor() {
+            @Override
+            public boolean visit(LineBreakNode node) {
+                return false;
+            }
+        });
+        return node;
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/ExpressionNode.java
+public class ExpressionNode extends InternalNode {
+
+    public ExpressionNode(Node child) {
+        super(child);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/exception/UndefinedMixinException.java
+public class UndefinedMixinException extends ActionException {
+
+    public UndefinedMixinException(String name) {
+        super("The mixin " + name + " has not been defined.");
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/SelectorGroupNode.java
+public class SelectorGroupNode extends InternalNode {
+
+    public SelectorGroupNode(Node child) {
+        super(child);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/SpacingNode.java
+public class SpacingNode extends SimpleNode {
+
+    public SpacingNode(String text) {
+        super(text);
+    }
+
+    @Override
+    protected boolean hasData() {
+        return getValue().length() > 0;
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean visit(NodeNavigationVisitor visitor) {
+        return visitor.visit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/ExpressionPhraseNode.java
+public class ExpressionPhraseNode extends InternalNode {
+
+    public ExpressionPhraseNode(Node child) {
+        super(child);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/MediaTypeNode.java
+public class MediaTypeNode extends InternalNode  {
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/LineBreakNode.java
+public class LineBreakNode extends LeafNode {
+    
+    private int _lineBreaks;
+
+    public LineBreakNode(String text) {
+        _lineBreaks = StringUtils.countMatches(text, "\n");
+    }
+
+    public LineBreakNode(int count) {
+        _lineBreaks = count;
+    }
+
+    @Override
+    protected boolean hasData() {
+        return _lineBreaks > 0;
+    }
+
+    public int getLineBreaks() {
+        return _lineBreaks;
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean visit(NodeNavigationVisitor visitor) {
+        return visitor.visit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}
+src/main/java/com/bazaarvoice/jless/ast/node/ParametersNode.java
+public class ParametersNode extends InternalNode {
+
+    public ParametersNode() {
+        super();
+    }
+
+    public ParametersNode(Node child) {
+        super(child);
+    }
+
+    @Override
+    protected boolean add(NodeAdditionVisitor visitor) {
+        return visitor.add(this);
+    }
+
+    @Override
+    protected boolean enter(NodeNavigationVisitor visitor) {
+        return visitor.enter(this);
+    }
+
+    @Override
+    protected boolean exit(NodeNavigationVisitor visitor) {
+        return visitor.exit(this);
+    }
+
+    @Override
+    protected boolean visitInvisible(NodeNavigationVisitor visitor) {
+        return visitor.visitInvisible(this);
+    }
+}

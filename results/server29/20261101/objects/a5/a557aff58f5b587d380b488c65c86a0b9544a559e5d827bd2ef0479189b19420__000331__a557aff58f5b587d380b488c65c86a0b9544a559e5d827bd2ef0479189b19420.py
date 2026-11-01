@@ -1,0 +1,1 @@
+lambda _cls, orig_args, in_spec, out_spec: _tuple_new(_cls, (orig_args, in_spec, out_spec))

@@ -1,0 +1,1213 @@
+diff --git a/cleanroom_common.py b/cleanroom_common.py
+new file mode 100644
+index 0000000..f4aae8b
+--- /dev/null
++++ b/cleanroom_common.py
+@@ -0,0 +1,54 @@
++"""Small control-plane primitives; no model or numerical implementation."""
++from pathlib import Path
++import hashlib,json,os,sys,time,tempfile,fcntl,subprocess
++W=Path(__file__).resolve().parent
++D=Path(os.environ['LING_PROSPECTIVE_RESULTS']).resolve()
++TASK='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1'
++PYTHON='/data/zypan/envs/ling-kda/bin/python'
++
++def read(path):return json.loads(Path(path).read_text())
++def sha(path):
++ h=hashlib.sha256()
++ with Path(path).open('rb') as f:
++  for b in iter(lambda:f.read(8*1024**2),b''):h.update(b)
++ return h.hexdigest()
++def publish(path,value,replace=False):
++ path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
++ fd,tmp=tempfile.mkstemp(dir=path.parent,suffix='.partial')
++ try:
++  with os.fdopen(fd,'w') as f:json.dump(value,f,ensure_ascii=False,indent=2,sort_keys=True,allow_nan=False);f.write('\n');f.flush();os.fsync(f.fileno())
++  if replace:os.replace(tmp,path)
++  else:os.link(tmp,path);os.unlink(tmp)
++ finally:
++  if os.path.exists(tmp):os.unlink(tmp)
++def stop(reason,**kw):
++ if not (D/'STOP.json').exists():
++  try:publish(D/'STOP.json',dict(status='STOP',task=TASK,reason=str(reason),epoch=time.time(),no_retry=True,**kw))
++  except FileExistsError:pass
++ return read(D/'STOP.json')
++def event(state,**kw):
++ row=dict(state=state,epoch=time.time(),**kw)
++ with (D/'events.jsonl').open('a') as f:
++  fcntl.flock(f,fcntl.LOCK_EX);f.write(json.dumps(row,ensure_ascii=False,allow_nan=False)+'\n');f.flush();os.fsync(f.fileno())
++ publish(D/'CURRENT_STATE.json',row,replace=True)
++ print(json.dumps(row,ensure_ascii=False),flush=True)
++def environment(uuid):
++ from frozen_runtime_profile import profile_environment
++ cfg=read(D/'EXECUTION_ROUTING.json');env=dict(os.environ)
++ env.update(PYTHONHASHSEED='0',CUBLAS_WORKSPACE_CONFIG=':4096:8',LING_GATED_RMSNORM_FIXED_CONFIG='BT16_W8',PYTHONDONTWRITEBYTECODE='1',CUDA_VISIBLE_DEVICES=str(cfg['authorized_devices'][uuid]),LING_TARGET_GPU_UUID=uuid,LING_PROSPECTIVE_RESULTS=str(D))
++ env.update(profile_environment());env.pop('LING_EXECUTION_LANE',None)
++ return env
++
++def compare_exact(parent,fresh,uuid):
++ assert parent['status']==fresh['status']=='PASS'
++ assert parent['begin']==0 and fresh['begin']==8192 and parent['endpoint']==fresh['endpoint']==8256
++ assert parent['observer_enabled'] is True and fresh['observer_enabled'] is False
++ assert parent['document']==fresh['document'] and parent['condition']==fresh['condition']
++ assert parent['host']['gpu_uuid']==fresh['host']['gpu_uuid']==uuid
++ fields=['uninterrupted_suffix_full_logit_sha256','final_full_native_cache_sha256','audit_state_fingerprint','checkpoint_sha256']
++ assert all(parent[x]==fresh[x] for x in fields),'EXACT_FRESH64_NUMERICAL_FAILURE'
++ for key in ['kernel','driver','torch','cuda_runtime','selector']:assert parent['host'][key]==fresh['host'][key]
++ if parent['condition']!='FP':
++  for j in [parent,fresh]:
++   q=j['integrity'];assert q['passed'] and q['every_token_layer_qdq_count']==8256*18 and q['actual_next_kernel_equal_post_qdq_count']==8255*18
++ return True
+diff --git a/cleanroom_finalize.py b/cleanroom_finalize.py
+new file mode 100644
+index 0000000..cefe6d6
+--- /dev/null
++++ b/cleanroom_finalize.py
+@@ -0,0 +1,182 @@
++"""CPU verification and result delivery; no additional GPU execution."""
++import csv,hashlib,io,json,math,os,statistics,subprocess,time
++from pathlib import Path
++from cleanroom_common import D,W,TASK,read,sha,publish
++
++def text(path,value):
++ with Path(path).open('x') as f:f.write(value);f.flush();os.fsync(f.fileno())
++def csv_export(path,rows):
++ if not rows:return
++ out=io.StringIO();writer=csv.DictWriter(out,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows);text(path,out.getvalue())
++def main():
++ assert os.environ['CUDA_VISIBLE_DEVICES']==''
++ complete=(D/'COMPLETE.json').exists();assert complete!=(D/'STOP.json').exists()
++ from gpu_admission import proc_identity
++ receipts=[read(p) for p in sorted((D/'jobs').glob('*.EXIT.json'))]
++ for launch in (D/'jobs').glob('*.LAUNCH.json'):
++  ident=read(launch)['identity']
++  try:live=proc_identity(ident['pid'])==ident
++  except (OSError,ValueError):live=False
++  assert not live,'OWN_GPU_WORKER_STILL_ACTIVE'
++  assert launch.with_name(launch.name.replace('.LAUNCH.json','.EXIT.json')).exists(),'EXIT_RECEIPT_MISSING'
++ freeze=read(D/'SOURCE_CODE_FREEZE.json');assert subprocess.check_output(['git','status','--porcelain'],cwd=W,text=True)==''
++ for n,h in freeze['files'].items():assert sha(W/n)==h,n
++ status_files={r['tag']:r for r in receipts}
++ for r in receipts:
++  assert r['wall_seconds']==r['completed_monotonic']-r['started_monotonic']
++  if r['status']=='PASS':
++   assert sha(r['result_path'])==r['result_sha256']
++   assert sha(Path(r['result_path']).with_suffix('.PROFILE.json'))==r['profile_sha256']
++ ledger=read(D/'gpu_resource_ledger.json');assert not ledger['active_workers']
++ assert ledger['actual_new_GPU_hours']<=36
++ positions=[8192+64*k for k in range(384)]
++ spec=read(D/'FROZEN_SPEC.json');selection=read(D/'FROZEN_4DOC_SELECTION.json');routing=read(D/'EXECUTION_ROUTING.json')
++ assert spec['primary']['positions']==positions and positions[-1]==32704
++ qrows=[];FP=students=0;units=[];docrows=[];posrows=[];CP=[];resolution=(D/'resolution_contract.json').exists()
++ for u in spec['new_units']:
++  key=u['document']+'__'+u['rotation'];p=D/'qualification_units'/(key+'.json');cp=D/'runs'/(key+'__8192.pt')
++  if p.exists():
++   q=read(p)
++   from cleanroom_common import compare_exact
++   compare_exact(read(D/'runs'/(key+'__parent.json')),read(D/'runs'/(key+'__resumed_parity.json')),q['qualified_gpu_uuid'])
++   assert sha(cp)==q['checkpoint_sha256'] and sha(D/'runs'/(key+'__parent.json'))==q['parent_sha256'] and sha(D/'runs'/(key+'__resumed_parity.json'))==q['resumed_sha256']
++   qrows.append(q)
++  else:qrows.append(dict(document=u['document'],rotation=u['rotation'],status='NOT_COMPLETED',INT8_QDQ='INCOMPLETE' if u['rotation']!='FP' else 'N/A_FP'))
++  if cp.exists():CP.append(dict(document=u['document'],condition=u['rotation'],cursor=8192,path=str(cp),resolved_path=str(cp.resolve()),bytes=cp.stat().st_size,sha256=sha(cp),prefix_source='REUSED_VERIFIED_FP' if cp.is_symlink() else 'NEW_OWN_HISTORY'))
++  long=D/'checkpoints'/(key+'__16384.pt')
++  if long.exists():
++   metadata=read(long.with_suffix('.json'));assert metadata['sha256']==sha(long)
++   CP.append(dict(document=u['document'],condition=u['rotation'],cursor=16384,path=str(long),bytes=long.stat().st_size,sha256=sha(long),logical_reducer_and_native_state=True))
++ import torch
++ assert not torch.cuda.is_initialized()
++ for doc in selection['documents']:
++  name=doc['document'];valid={};token_path=Path(doc['document_identity']['token_file_path']);tokens=read(token_path)
++  for condition in ['FP',doc['P1_predicted_rotation'],doc['L7_predicted_rotation']]:
++   tag=name+'__'+condition+'__formal2';receipt=status_files.get(tag)
++   if not receipt or receipt['status']!='PASS':continue
++   j=read(receipt['result_path']);assert j['status']=='PASS' and j['all_finite'] and j['endpoint']==32768
++   assert j['sample_positions']==positions and j['vocabulary_dimension']==157184
++   assert j['token_sha256']==sha(token_path) and j['primary_spec_sha256']==sha(D/'FROZEN_SPEC.json')
++   assert j['gpu_uuid']==routing['document_devices'][name]
++   assert j['formal_observer_uninterrupted_parity_PASS'] and j['observer_qualified_before_first_primary_reduction']
++   assert j['final_cache_inventory']['cache_bytes']==2033025024
++   proof=read(D/'segments'/(name+'__'+condition+'__long_resume_exact.json'));assert proof['status']=='PASS_EXACT_64_LOGITS_NATIVE_CACHE_AUDIT_RNG'
++   if condition=='FP':
++    assert len([r for r in j['references'] if r['logits']])==384
++    assert [r['position'] for r in j['references']]==sorted(set(positions)|{8192,16383,24575,32767})
++    digest=hashlib.sha256()
++    for r in j['references']:
++     path=Path(r['path']);assert sha(path)==r['sha256'] and path.stat().st_size==r['bytes']
++     payload=torch.load(path,map_location='cpu',weights_only=False);assert payload['position']==r['position'] and payload['token']==tokens[r['position']]
++     if r['logits']:
++      x=payload['logits'];assert tuple(x.shape)==(1,1,157184) and x.dtype==torch.float32 and bool(torch.isfinite(x).all())
++      digest.update(r['position'].to_bytes(8,'little'));digest.update(x.contiguous().numpy().tobytes())
++     del payload
++    assert digest.hexdigest()==j['sampled_logits_content_sha256'];FP+=1
++   else:
++    samples=j['primary_samples'];assert len(samples)==384 and [v['position'] for v in samples]==positions
++    assert all(math.isfinite(v['KL']) and v['vocabulary_dimension']==157184 for v in samples)
++    assert sum(v['KL'] for v in samples)/384==j['primary_mean_KL']
++    integrity=j['persistent_integrity'];assert integrity['passed'] and integrity['every_token_layer_qdq_count']==32768*18 and integrity['actual_next_kernel_equal_post_qdq_count']==32767*18
++    students+=1
++    for x in samples:posrows.append(dict(document=name,condition=condition,position=x['position'],KL=x['KL'],vocabulary_dimension=157184,result_sha256=sha(receipt['result_path'])))
++   units.append(dict(document=name,condition=condition,status='COMPLETE',UUID=j['gpu_uuid'],result_path=receipt['result_path'],sha256=sha(receipt['result_path']),checkpoint_sha256=j['checkpoint_sha256'],long_resume_proof_sha256=sha(D/'segments'/(name+'__'+condition+'__long_resume_exact.json'))))
++   valid[condition]=j
++  p,l=doc['P1_predicted_rotation'],doc['L7_predicted_rotation'];base=dict(Doc=name,P1_Rotation=p,Original_L7_Rotation=l,K_P1=None,K_L7=None,Delta=None,Winner='NOT_RUN',status='NOT_RUN')
++  if len(valid)==3:
++   kp,kl=valid[p]['primary_mean_KL'],valid[l]['primary_mean_KL'];delta=kp-kl
++   threshold=3.3300064494019496e-6
++   winner='P1' if delta < -threshold else 'L7' if delta>threshold else 'NUMERICALLY_UNRESOLVED'
++   base.update(K_P1=kp,K_L7=kl,Delta=delta,Winner=winner,status='COMPLETE',relative_delta_over_K_L7=delta/kl if kl!=0 else None,numerical_resolution=threshold,resolution_evidence='new exact replay, frozen profile and historical arithmetic threshold; no new32K error calibration')
++  docrows.append(base)
++ valid_docs=[r for r in docrows if r['status']=='COMPLETE'];P1=sum(r['Winner']=='P1' for r in valid_docs);L7=sum(r['Winner']=='L7' for r in valid_docs);ties=len(valid_docs)-P1-L7
++ qcount=sum(r['status']=='PASS' for r in qrows);int8q=[r for r in qrows if r['rotation']!='FP']
++ classification='P1_DIRECTIONALLY_SUPPORTED' if len(valid_docs)==4 and P1>=3 else 'P1_INCREMENTAL_VALUE_NOT_SUPPORTED' if len(valid_docs)==4 and L7>=3 else 'MIXED_OR_INCONCLUSIVE'
++ if complete:assert qcount==12 and FP==4 and students==8 and len(valid_docs)==4 and len(posrows)==8*384
++ totals=dict(TASK=TASK,EXECUTION_ID=D.name,MAX_CONCURRENT_GPUS=1,SCIENTIFIC_PROTOCOL_IDENTITY='PASS',ENGINEERING_IMPLEMENTATION='CLEANROOM_CONTROL_ONLY',GPU_RESOURCE_ADMISSION='PASS' if len([p for p in (D/'admission').glob('*.json') if not p.name.endswith('.PASS.json')])==len(list((D/'admission').glob('*.PASS.json'))) and (complete or read(D/'STOP.json').get('stage')!='RUNNING_RESOURCE_SAFETY') else 'FAIL',FLA_NUMERICAL_PROFILE='PASS' if (D/'G1_CANARY_COMPLETE.json').exists() else 'INCOMPLETE',MODEL_AND_ROTATION_IDENTITY='PASS' if read(D/'audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json')['status']=='PASS_ACTUAL_BYTES' else 'FAIL',FRESH64_QUALIFICATION=f'{qcount}/12',INT8_PERSISTENT_QDQ_QUALIFICATION='PASS' if len(int8q)==8 and all(r['status']=='PASS' for r in int8q) else 'INCOMPLETE',FORMAL_FP_COMPLETE=f'{FP}/4',FORMAL_STUDENT_COMPLETE=f'{students}/8',ACTUAL_VALID_DOCUMENTS=f'{len(valid_docs)}/4',PRIMARY_384_SCORE_REPRODUCTION='PASS' if students else 'NOT_RUN',P1_WINS=P1,L7_WINS=L7,TIE_UNRESOLVED=ties,MISSING_DOCUMENTS=4-len(valid_docs),NEW_GPU_HOURS_USED=ledger['actual_new_GPU_hours'],MAX_GPU_HOURS=36.,FINAL_SCIENTIFIC_CLASSIFICATION=classification,FINAL_EXECUTION_STATUS='COMPLETE_AND_STOP' if complete else 'PARTIAL_STOP' if qcount or units else 'FAIL_CLOSED_STOP')
++ deltas=[r['Delta'] for r in valid_docs]
++ judgment=('本次没有完成四篇，尚不能回答P1增量预测价值；工程/资源停止不作为selector科学负例。' if len(valid_docs)<4 else '三篇或四篇支持P1，仅是有限文档方向性信号；应结合平均/中位Delta和每篇效应，不等于总体平均优势或泛化确认。' if P1>=3 else '三篇或四篇Original L7胜出，本次不支持当前P1 selector的稳定增量；建议暂停该版本推进。' if L7>=3 else '结果混合或数值未分辨，未建立稳定增量；不支持据此扩大selector训练，也不能证明P1普遍无效。')
++ next_science=('若继续，先以独立更大预注册文档样本确认方向与效应稳定性。' if len(valid_docs)==4 and P1>=3 else '当前不自动开展训练或新实验；不足或混合的证据应先明确未回答问题，避免把工程失败或n4小样本当普遍结论。')
++ summary=dict(machine_status=totals,documents=docrows,valid_n=len(valid_docs),mean_Delta=statistics.mean(deltas) if deltas else None,median_Delta=statistics.median(deltas) if deltas else None,exact_sign_test='NOT_REPORTED: document independence and sign-symmetry are not established; no confirmatory p-value',four_of_four_theoretical_one_sided_p_if_independent_symmetric_null=0.0625,old_two_document_MIXED='PERMANENTLY_PRESERVED_NOT_COMBINED_N6')
++ publish(D/'final_scientific_results.json',summary);csv_export(D/'final_scientific_results.csv',valid_docs);csv_export(D/'positional_KL.csv',posrows)
++ publish(D/'qualification_matrix.json',dict(qualified=qcount,planned=12,units=qrows))
++ publish(D/'checkpoint_manifest.json',dict(checkpoints=CP,large_payloads_remote_only=True))
++ publish(D/'run_manifest.json',dict(task=TASK,source_commit=freeze['source_commit'],formal_units=units,GPU_workers=receipts,planned_formal_trajectories=12,actual_GPU_workers=len(receipts),extra_overlap_tokens_per_formal_trajectory=64,unique_logical_consumed_tokens_per_complete_trajectory=32768,actual_formal_worker_calls_per_complete_trajectory=2))
++ peaks=[];NVML=[]
++ for r in receipts:
++  if r.get('NVML_periodic_peak_owned_bytes') is not None:NVML.append(r['NVML_periodic_peak_owned_bytes'])
++  if r['status']=='PASS':
++   profile=read(Path(r['result_path']).with_suffix('.PROFILE.json'));peaks.append(profile['measured_CUDA_peak'])
++   j=read(r['result_path']);memory=j.get('memory',[])
++   if isinstance(memory,dict):memory=[memory]
++   peaks.extend(memory)
++ resource=dict(new_GPU_hours=ledger['actual_new_GPU_hours'],max_GPU_hours=36.,actual_GPU_worker_count=len(receipts),peak_measured_CUDA_allocated=max((v['peak_allocated'] for v in peaks),default=None),peak_measured_CUDA_reserved=max((v['peak_reserved'] for v in peaks),default=None),CUDA_scope='canary model-load+8token peak; frozen workers reset at loop; segment measurements aggregated; no universal lifetime peak claim',NVML_periodic_peak_owned_bytes=max(NVML) if NVML else None,NVML_scope='approximately10s exact owned PID samples, not instantaneous peak',launch_to_exit_includes_load_restore_teardown=True)
++ publish(D/'gpu_resource_summary.json',resource)
++ table='|Doc|P1 Rotation|Original L7 Rotation|K_P1|K_L7|Delta|Winner|\n|---|---|---|---:|---:|---:|---|\n'
++ for r in docrows:
++  v=[r[k] for k in ['Doc','P1_Rotation','Original_L7_Rotation','K_P1','K_L7','Delta','Winner']]
++  table+='|'+'|'.join('NOT_RUN' if x is None else format(x,'.17g') if isinstance(x,float) else str(x) for x in v)+'|\n'
++ blocker=json.dumps(read(D/'STOP.json'),ensure_ascii=False,indent=2) if not complete else 'NONE'
++ report=f'''# Ling/KDA 四文档 Clean-Room Final
++
++独立TASK：{TASK}；本次单卡执行身份：{D.name}；原科学ID：LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1。
++终态：{totals['FINAL_EXECUTION_STATUS']}。本轮仅更换控制层，旧execution01至05及前次Clean-Room STOP全部保留，未覆盖STOP/模型/CP。本次由用户新明确授权仅GPU3串行运行，不自动增加后续尝试。
++
++## 科学身份与执行
++
++原prereg54d6d24fbc3142a692ef1a6c04a5617cf6b0abe6702a662722f34fc1b6141722，四篇freeze a5c227d15918a249f8ae2059539c15f94668cb2afddf3aecd8a9f7e13851354b，FROZEN_SPEC 8ae8927ed37209efccbf19c672b9baeb46c0d7f272601f8f54d1f9609b64f3d1均实际SHA PASS。100/20/22/58输入流程与4篇×16=64冻结评分不变，无重排、重选或新训练。32份权重、raw/token、旋转及数学源码实际SHA见G0/source manifest。源码commit：{freeze['source_commit']}。
++
++冻结数学worker文件字节保持；正式编译入口仅添加已登记的checkpoint/cursor/输出原子化控制节点，逐项可逆还原整个原始源码，未改model_step/QDQ/rotation/observer/KL/原Python sum384。旧执行05的双零13点规则不追溯改变；新任务使用3次间隔采样，≤2%差异只提示，前提是无外部compute/身份异常、显存稳定且按历史max(reserved,NVML峰值)+至少2GiB空余准入。实际资源安全仍独立监督，每个模型进程来源/profile/UUID验证。
++
++每卡仅一次真实模型8-token canary，非科学轨迹。数值资格{qcount}/12；INT8资格{totals['INT8_PERSISTENT_QDQ_QUALIFICATION']}，FP audit=None为N/A。同一所选UUID上的既有FP8192 CP只在当前GPU fresh64合同实际PASS后复用，设备不同时重建其FP前缀；INT8各有自己的从token0 persistent-QDQ历史。FLA Conv BD8/W8、Gated RMSNorm BT16/W8固定，五个启动变量在新解释器前设置。8192原fresh64、observer/nativecache/RNG精确合同比较未放宽。
++
++正式逻辑顺序41603→2544→7987→26183，每篇FP→P1→OriginalL7，全局串行。新增一次计划16384 checkpoint，原cache/RNG/QDQ state及完整已处理评分列表/原reducer状态原子保存。第一段继续64步收集未中断对照，第二段fresh恢复16384，完整64 logits/cache/audit/RNG必须exact，重放评分不重复计入384数组。每条完整轨迹唯一逻辑consumed tokens32768，计划恢复验证额外64token单列计时；两个正式segment不冒充两条科学样本。非预期进程退出无静默重试。
++
++## 实际结果
++
++{table}
++
++原V157184，t=8192+64k (k0..383、末32704)，消费ids[t]预测ids[t+1]；原FP32 full-vocabulary KL(FP||student)，原Python sum/384。未完成项NOT_RUN，不填0、无空壳科学CSV。实际有效文档{len(valid_docs)}/4，FP{FP}/4、student{students}/8。P1胜{P1}、L7胜{L7}、数值未分辨{ties}、缺失{4-len(valid_docs)}。平均Delta={summary['mean_Delta']}，中位Delta={summary['median_Delta']}。每篇相对效应在真实JSON/CSV中，独立单位document，最多n4；不把384点/层/head伪重复，不合并旧2doc为n6。
++
++原阈值3.3300064494019496e-6为历史经验分辨率。正式结果揭示前依据冻结数学/软件/实际FLA profile、所选GPU self-KL零和各条件fresh64精确重复性冻结适用证据；这不是新32K误差上界校准。阈值内标NUMERICALLY_UNRESOLVED。原始完整精度Delta始终保留。未计算确认性sign-test；独立/对称假设未建立，即使4/4同向在该假设下单侧理论p也为0.0625。
++
++## 资源与文件
++
++{json.dumps(resource,ensure_ascii=False,indent=2)}
++
++预算硬上限36新增GPUh；含canary、加载、parent、fresh64、正式两段和恢复的每worker launch-to-exit，仅GPU3按真实launch-to-exit累计；历史GPUh不计本轮额度（前次Clean-Room新增0GPUh）。运行前和第一批真实parent后更新实际测量预测，保护性35.8GPUh提前停止留退出余量，没有提高36上限。所有实际CP和FP payload由manifest真实SHA绑定，大模型/CP只留服务器，不下载模型。仅一张GPU3，未杀其他用户/重置GPU。
++
++服务器目录：{D}；工作树：{W}。source_manifest、engineering_change_manifest、resource_admission、qualification_matrix、run_manifest、gpu_resource_ledger和hashes保存真实记录。完整8×384逐点校验仅在实际完成时为PASS，部分状态详见机器字段与原始数组。
++
++## 首失败及证据边界
++
++```json
++{blocker}
++```
++
++出现实质身份/数值/资源失败后保留首STOP及已合格资产，不扩大诊断，不修数学或改变容差，本次单卡授权以外不启动后续Clean-Room尝试。E_future/Hidden KL及新proxy不计算；FP32载体仅声明persistent-QDQ/writeback，不声称physical resident INT8 storage。
++
++## 五项科研判断
++
++1. P1是否在四篇预先冻结文档上更好？本轮实际分类 **{classification}**，胜负、完整Delta与缺失如上；不以工程通过代替科学答案。
++2. 与原2doc MIXED 1:1的关系？旧MIXED和posthoc永久保留。新四篇是同一冻结问题的独立前瞻扩展，条件筛选且n小，不合并确认性n6。
++3. 是否有足够增量值得继续？{judgment}
++4. 没有稳定增量是否停止当前路线？若完整结果多为L7胜，应暂停当前P1 selector推进；若混合或不完整，尚不能作普遍无效结论，但没有继续训练授权。
++5. 下一步科学验证？{next_science} 仅科研建议，未执行任何后续训练/新数据/旋转/L8/L9/STE/Cayley/AIME/free generation/Qwen。
++
++```json
++{json.dumps(totals,ensure_ascii=False,indent=2)}
++```
++'''
++ text(D/'FINAL_SCIENTIFIC_REPORT.md',report)
++ text(D/'FAILURE_HISTORY.md','# Failure history\n\nHistorical executions01-05 and previous Clean-Room STOP are read-only. This GPU3-only execution has new explicit human authorization. Current first STOP:\n\n```json\n'+blocker+'\n```\nNo further attempt beyond this explicitly authorized GPU3-only execution is launched.\n')
++ files={}
++ for p in sorted(D.rglob('*')):
++  if not p.is_file() or p.suffix=='.pt' or p.name.endswith('.lock') or '.partial' in p.name or p.name in ['artifact_sha256.txt','DELIVERY_VERIFICATION.json'] or p.name=='controller.log':continue
++  files[str(p.relative_to(D))]=dict(bytes=p.stat().st_size,sha256=sha(p))
++ manifest=dict(status='COMPLETE' if complete else 'STOP_ACTUAL_PARTIAL',task=TASK,source_commit=freeze['source_commit'],files=files,large_payloads=dict(checkpoints=str(D/'checkpoint_manifest.json'),FP_manifests=[u['result_path'] for u in units if u['condition']=='FP']),self_exclusion='manifest and SHA list excluded from manifest; SHA list includes manifest itself')
++ publish(D/'hashes/DELIVERY_VERIFICATION.json',manifest)
++ text(D/'hashes/artifact_sha256.txt',''.join(v['sha256']+'  '+n+'\n' for n,v in sorted(files.items()))+sha(D/'hashes/DELIVERY_VERIFICATION.json')+'  hashes/DELIVERY_VERIFICATION.json\n')
++ print(json.dumps(dict(status='CPU_DELIVERY_SEALED',final=totals,small_files=len(files))),flush=True)
++
++if __name__=='__main__':main()
+diff --git a/cleanroom_run.py b/cleanroom_run.py
+new file mode 100644
+index 0000000..e8240f5
+--- /dev/null
++++ b/cleanroom_run.py
+@@ -0,0 +1,189 @@
++"""One bounded Clean-Room controller: canary, 12 qualifications, serial science."""
++import concurrent.futures,copy,fcntl,json,os,signal,subprocess,sys,threading,time,traceback
++from pathlib import Path
++from cleanroom_common import D,W,PYTHON,read,publish,sha,stop,event,environment,compare_exact
++import gpu_admission as g
++from gpu_admission import sample
++
++
++TARGET_UUID='GPU-759526ed-efb2-e7f6-881c-ab098e0b05ae'
++TARGET_INDEX=3
++def validate_single_device_routing(routing):
++ assert routing['authorized_devices']=={TARGET_UUID:TARGET_INDEX},'GPU3_ONLY_AUTHORIZATION'
++ expected={'pg19-test-41603','pg19-test-2544','pg19-test-7987','pg19-test-26183'}
++ assert set(routing['document_devices'])==expected and set(routing['document_devices'].values())=={TARGET_UUID},'ALL_DOCUMENTS_MUST_USE_GPU3'
++ assert routing['formal_serial'] is True and routing['qualification_parallel_lanes']==1,'SINGLE_DEVICE_SERIAL_REQUIRED'
++ return [TARGET_UUID]
++
++def protected(fn,*args):
++ try:return fn(*args)
++ except BaseException as e:
++  stop(repr(e),stage='DEPENDENCY_FAIL_CLOSED',traceback=traceback.format_exc());raise
++
++class Controller:
++ def __init__(self):
++  self.lock=threading.RLock();self.active={};self.completed=[];self.routing=read(D/'EXECUTION_ROUTING.json')
++ def ledger(self):
++  now=time.time();done=sum(r['wall_seconds'] for r in self.completed);live=sum(time.monotonic()-r['started_monotonic'] for r in self.active.values())
++  j=dict(task='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1',execution_id=D.name,MAX_CONCURRENT_GPUS=1,MAX_GPU_HOURS=36.0,protective_STOP_at_GPUh=35.8,actual_new_GPU_hours=(done+live)/3600,completed_launch_to_exit_GPU_hours=done/3600,active_workers=copy.deepcopy(list(self.active.values())),completed_workers=copy.deepcopy(self.completed),scope='actual GPU-assigned worker launch-to-exit includes model loading/restore/teardown; CPU/admission excluded; concurrent devices summed',historical_GPU_hours_not_charged_to_new_budget=True,epoch=now)
++  publish(D/'gpu_resource_ledger.json',j,replace=True)
++  if (done+live)/3600>=35.8:stop('GPU_BUDGET_PROTECTIVE_STOP',used_GPUh=(done+live)/3600,hard_cap=36.0)
++  return j
++ def job(self,uuid,kind,doc,condition='FP'):
++  assert not (D/'STOP.json').exists(),'EXISTING_FIRST_STOP'
++  validate_single_device_routing(self.routing)
++  assert uuid==TARGET_UUID,'UNAUTHORIZED_NON_GPU3_LAUNCH'
++  freeze=read(D/'SOURCE_CODE_FREEZE.json')
++  for name,key in [('CALIBRATION_CONFIG.json','config_sha256'),('FROZEN_SPEC.json','scientific_spec_sha256'),('EXECUTION_ROUTING.json','routing_sha256')]:assert sha(D/name)==freeze[key],('FROZEN_CONTROL_IDENTITY_CHANGED',name)
++  tag=doc+'__'+condition+'__'+kind
++  if kind=='canary':result=D/'canary'/('gpu'+str(self.routing['authorized_devices'][uuid])+'.json')
++  elif kind in ['parent','fresh']:result=D/'runs'/(doc+'__'+condition+'__'+('parent' if kind=='parent' else 'resumed_parity')+'.json')
++  elif kind=='formal1':result=D/'segments'/(doc+'__'+condition+'__part1.json')
++  else:result=D/'formal'/(doc+'__'+condition+'__formal.json')
++  base=D/'jobs'/tag;base.parent.mkdir(exist_ok=True)
++  assert not Path(str(base)+'.LAUNCH.json').exists() and not result.exists(),'NO_SILENT_JOB_RETRY'
++  admitted=g.admit(uuid,tag);assert admitted['graphics_baseline']==read(D/'resource_baselines.json')[uuid]
++  assert not (D/'STOP.json').exists(),'GLOBAL_STOP_BEFORE_LAUNCH'
++  env=environment(uuid);command=[PYTHON,'-B','-u',str(W/'cleanroom_worker.py'),'--kind',kind,'--document',doc,'--condition',condition,'--result',str(result)]
++  log=Path(str(base)+'.log').open('x');start=time.time();start_mono=time.monotonic();process=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
++  identity=g.proc_identity(process.pid);launch=dict(tag=tag,kind=kind,document=doc,condition=condition,UUID=uuid,identity=identity,started_epoch=start,started_monotonic=start_mono,command=command,result_path=str(result),source_commit=read(D/'SOURCE_CODE_FREEZE.json')['source_commit'])
++  publish(str(base)+'.LAUNCH.json',launch)
++  with self.lock:
++   assert uuid not in self.active,'DUPLICATE_ACTIVE_UUID';self.active[uuid]=launch;self.ledger()
++  event('WORKER_LAUNCHED',tag=tag,UUID=uuid,PID=process.pid)
++  stop_seen=None;last_guard=0.;max_position=-1;last_progress=time.monotonic();nvml_peak=None;allocated_peak=None;reserved_peak=None;sample_count=0;timeout=900 if kind=='canary' else 7200 if kind in ['parent','fresh','formal1'] else 10800
++  failure=None
++  try:
++   raw=(Path('/proc')/str(process.pid)/'environ').read_bytes().decode(errors='surrogateescape').split('\0');observed=dict(x.split('=',1) for x in raw if '=' in x)
++   keys=['PYTHONHASHSEED','CUBLAS_WORKSPACE_CONFIG','LING_GATED_RMSNORM_FIXED_CONFIG','FLA_CACHE_MODE','FLA_CONFIG_DIR','CUDA_VISIBLE_DEVICES','LING_TARGET_GPU_UUID']
++   assert {k:observed.get(k) for k in keys}=={k:env[k] for k in keys},'ACTUAL_START_ENV_MISMATCH'
++   publish(str(base)+'.ENV.json',dict(environment={k:observed[k] for k in keys},identity=identity))
++   while process.poll() is None:
++    with self.lock:self.ledger()
++    now=time.time()
++    if now-last_guard>=10 and not (D/'STOP.json').exists():
++     try:
++      snap=sample(uuid);value=g.assess(snap,uuid,identity,admitted['graphics_baseline']);sample_count+=1
++      own=[p['usedGpuMemory'] for p in snap['direct_NVML_processes']['compute']['processes'] if p['pid']==identity['pid']]
++      if own:nvml_peak=max(own+[nvml_peak or 0])
++      with Path(str(base)+'.RESOURCE.jsonl').open('a') as f:f.write(json.dumps(dict(epoch=now,**value,owned_NVML_bytes=own))+'\n')
++     except BaseException as e:failure=repr(e);stop(failure,stage='RUNNING_RESOURCE_SAFETY',tag=tag)
++     last_guard=now
++    # A model's CUDA context may still be absent during CPU model setup; only
++    # foreign processes and headroom matter until its frozen in-worker guard.
++    tail=Path(str(base)+'.log').read_text()[-12000:]
++    for line in reversed(tail.splitlines()):
++     try:j=json.loads(line)
++     except (ValueError,TypeError):continue
++     if isinstance(j,dict) and 'position' in j:
++      pos=j['position']
++      if pos>max_position:max_position=pos;last_progress=time.monotonic()
++      break
++    if time.time()-start>timeout or time.monotonic()-last_progress>900:
++     failure='BOUNDED_WORKER_TIMEOUT';stop(failure,tag=tag,elapsed=time.time()-start)
++    if (D/'STOP.json').exists():
++     if stop_seen is None:stop_seen=time.monotonic()
++     waited=time.monotonic()-stop_seen
++     if waited>60 and process.poll() is None:
++      assert g.proc_identity(process.pid)==identity
++      process.send_signal(signal.SIGTERM)
++     if waited>75 and process.poll() is None:
++      assert g.proc_identity(process.pid)==identity
++      process.kill()
++    time.sleep(2)
++   rc=process.wait();end=time.time();end_mono=time.monotonic()
++  except BaseException as e:
++   failure=repr(e);stop(failure,stage='CONTROL_SUPERVISION',tag=tag,traceback=traceback.format_exc())
++   try:rc=process.wait(timeout=60)
++   except subprocess.TimeoutExpired:
++    assert g.proc_identity(process.pid)==identity;process.terminate()
++    try:rc=process.wait(timeout=15)
++    except subprocess.TimeoutExpired:
++     assert g.proc_identity(process.pid)==identity;process.kill();rc=process.wait(timeout=10)
++   end=time.time();end_mono=time.monotonic()
++  finally:log.close()
++  receipt=dict(**launch,completed_epoch=end,completed_monotonic=end_mono,wall_seconds=end_mono-start_mono,epoch_span_seconds=end-start,returncode=rc,NVML_periodic_peak_owned_bytes=nvml_peak,NVML_sample_count=sample_count,NVML_scope='periodic owned PID samples every approximately10s, not instantaneous peak')
++  try:
++   assert rc==0 and result.exists(),('WORKER_NONZERO_OR_MISSING_RESULT',rc)
++   j=read(result);assert j['status']=='PASS'
++   profile=result.with_suffix('.PROFILE.json');assert read(profile)['status']=='PASS_ACTUAL_FROZEN_PROFILE'
++   receipt.update(status='PASS',result_sha256=sha(result),profile_sha256=sha(profile),environment_sha256=sha(str(base)+'.ENV.json'))
++  except BaseException as e:
++   receipt.update(status='FAILED_OR_ABORTED',reason=repr(e),supervision_failure=failure);stop(repr(e),stage=kind,tag=tag)
++  publish(str(base)+'.EXIT.json',receipt)
++  with self.lock:self.completed.append(receipt);del self.active[uuid];self.ledger()
++  assert receipt['status']=='PASS',receipt
++  event('WORKER_COMPLETE',tag=tag,UUID=uuid,wall_seconds=receipt['wall_seconds'])
++  return read(result)
++ def lane(self,uuid):
++  units=read(D/'FROZEN_SPEC.json')['new_units']
++  for u in units:
++   doc,cond=u['document'],u['rotation']
++   if self.routing['document_devices'][doc]!=uuid:continue
++   key=doc+'__'+cond
++   if key in read(D/'reused_FP_bindings.json')['units']:
++    b=read(D/'reused_FP_bindings.json')['units'][key];assert sha(b['original_checkpoint'])==b['checkpoint_sha256'] and sha(b['original_parent'])==b['parent_sha256']
++    parent=read(D/'runs'/(key+'__parent.json'))
++   else:parent=self.job(uuid,'parent',doc,cond)
++   fresh=self.job(uuid,'fresh',doc,cond);compare_exact(parent,fresh,uuid)
++   row=dict(status='PASS',document=doc,rotation=cond,qualified_gpu_uuid=uuid,parent_sha256=sha(D/'runs'/(key+'__parent.json')),resumed_sha256=sha(D/'runs'/(key+'__resumed_parity.json')),checkpoint_sha256=sha(D/'runs'/(key+'__8192.pt')),observer_ON_OFF_exact=True,full64_logits_native_cache_checkpoint_RNG='PASS_FROZEN_CONTRACT',INT8_QDQ='N/A_FP' if cond=='FP' else 'PASS_EVERY_TOKEN_WRITEBACK_AND_NEXT_KERNEL_CONSUMPTION')
++   publish(D/'qualification_units'/(key+'.json'),row);event('CONDITION_QUALIFIED',document=doc,condition=cond,UUID=uuid)
++   self.forecast()
++ def forecast(self):
++  with self.lock:ledger=self.ledger()
++  parents=[read(p) for p in (D/'runs').glob('*__parent.json')]
++  existing_cp=len(list((D/'runs').glob('*__8192.pt')));qualified=len(list((D/'qualification_units').glob('*.json')))
++  parent_est=max([1500.]+[p['elapsed_seconds'] for p in parents])*1.25
++  hist=read(D/'preregistration.json')['historical_formal_worker_seconds']
++  late_rates=[]
++  for parent in parents:
++   memories=parent.get('memory',[])
++   for a,b in zip(memories[-4:],memories[-4:][1:]):
++    if b['position']>a['position']:late_rates.append((b['elapsed']-a['elapsed'])/(b['position']-a['position']))
++  current_formal_prediction=max(late_rates,default=0.)*24576*1.35+max([60.]+[p.get('loading_seconds',0.) for p in parents])
++  formal_est=max(max(hist or [3600.])*1.5,current_formal_prediction)
++  done_formal=len(list((D/'formal').glob('*__formal.json')))
++  projected=ledger['actual_new_GPU_hours']+(12-existing_cp)*parent_est/3600+(12-qualified)*90/3600+(12-done_formal)*formal_est/3600
++  report=dict(epoch=time.time(),status='PASS_BUDGET_FORECAST' if projected<=36 else 'STOP_BUDGET_FORECAST',used_GPUh=ledger['actual_new_GPU_hours'],projected_total_GPUh=projected,cap_GPUh=36.,unbuilt_prefixes=12-existing_cp,qualifications_remaining=12-qualified,formal_remaining=12-done_formal,parent_seconds_estimate=parent_est,formal_continuation_seconds_estimate=formal_est,new_measured_late_token_seconds=late_rates,basis='actual completed parent launch-to-exit and previous same frozen full-model formal receipts; 25% parent/50% historical formal margins and new qualification late-token throughput*1.35 plus loading; not a deadline')
++  publish(D/'budget_forecast.json',report,replace=True)
++  if projected>36:stop('PROJECTED_BUDGET_EXCEEDS_36_GPUH',forecast=report);raise RuntimeError('BUDGET_FORECAST_STOP')
++
++def main():
++ hold=(D/'controller.lock').open('a');fcntl.flock(hold,fcntl.LOCK_EX|fcntl.LOCK_NB)
++ assert not (D/'STOP.json').exists() and not (D/'RUN_CONTROLLER.json').exists(),'INDEPENDENT_TASK_ALREADY_STARTED_NO_RETRY'
++ freeze=read(D/'SOURCE_CODE_FREEZE.json')
++ assert __import__('subprocess').check_output(['git','status','--porcelain'],cwd=W,text=True)==''
++ for n,h in freeze['files'].items():assert sha(W/n)==h,n
++ publish(D/'RUN_CONTROLLER.json',dict(identity=g.proc_identity(os.getpid()),source_commit=freeze['source_commit'],epoch=time.time(),max_concurrent_GPU_workers=1,max_new_GPUh=36.0,execution_id=D.name))
++ ctl=Controller();devices=validate_single_device_routing(ctl.routing);event('G1_REAL_MODEL_CANARY')
++ try:
++  with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
++   futures=[pool.submit(protected,ctl.job,u,'canary',next(d for d,v in ctl.routing['document_devices'].items() if v==u)) for u in devices]
++   for f in concurrent.futures.as_completed(futures):f.result()
++  publish(D/'G1_CANARY_COMPLETE.json',dict(status='PASS_ALL_SELECTED_REAL_MODEL_FORWARD_CANARIES',science_trajectory_count=0))
++  ctl.forecast();event('G2_QUALIFICATION_RUNNING')
++  with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
++   futures=[pool.submit(protected,ctl.lane,u) for u in devices]
++   for f in concurrent.futures.as_completed(futures):f.result()
++  units=[read(D/'qualification_units'/(u['document']+'__'+u['rotation']+'.json')) for u in read(D/'FROZEN_SPEC.json')['new_units']]
++  assert len(units)==12 and all(x['status']=='PASS' for x in units)
++  publish(D/'LONG_HORIZON_QUALIFICATION.json',dict(status='PASS',count=12,units=units))
++  publish(D/'QUALIFICATION_GATES_COMPLETED.json',dict(status='ALL_EIGHT_GATES_PASS',source='newCleanRoom G0/G1/G2 identity, environment, FP/INT8 fresh64 and physical gates',full32768='PENDING'))
++  publish(D/'resolution_contract.json',dict(status='SUPPORTED_BY_IDENTICAL_FROZEN_MATH_RUNTIME_PROFILE_AND_EXACT_FRESH64_REPLAY',threshold=3.3300064494019496e-6,threshold_origin='historical empirical arithmetic resolution, not statistical significance',new_evidence='the single authorized GPU3 actual frozen profile and zero self fullV FP32 KL; every FP/student condition exact full64 fresh replay on its own device before outcomes',limitations='not a new32K numerical error calibration; differences within the historical resolution remain NUMERICALLY_UNRESOLVED; no cross-device equality assumed'))
++  event('ALL_12_QUALIFIED_FORMAL_STARTING')
++  for doc in read(D/'FROZEN_4DOC_SELECTION.json')['execution_order']:
++   uuid=ctl.routing['document_devices'][doc['document']]
++   for condition in doc['conditions']:
++    ctl.forecast();ctl.job(uuid,'formal1',doc['document'],condition);ctl.job(uuid,'formal2',doc['document'],condition)
++  publish(D/'COMPLETE.json',dict(status='COMPLETE',FP=4,students=8,endpoint=32768,epoch=time.time()));event('SCIENCE_COMPLETE_CPU_VERIFICATION')
++ except BaseException as e:
++  stop(repr(e),stage='CLEANROOM_CONTROLLER',traceback=traceback.format_exc());event('FAIL_CLOSED_CPU_DELIVERY',reason=repr(e))
++ finally:
++  assert not ctl.active,'ACTIVE_WORKERS_MUST_EXIT_BEFORE_CPU_SEAL'
++  with ctl.lock:ctl.ledger()
++  env=dict(os.environ,CUDA_VISIBLE_DEVICES='')
++  r=subprocess.run([PYTHON,'-B','-u',str(W/'cleanroom_finalize.py')],env=env)
++  assert r.returncode==0,'CPU_DELIVERY_ERROR_PRESERVE_FIRST_STOP'
++  hold.close()
++
++if __name__=='__main__':main()
+diff --git a/cleanroom_worker.py b/cleanroom_worker.py
+new file mode 100644
+index 0000000..9a23a58
+--- /dev/null
++++ b/cleanroom_worker.py
+@@ -0,0 +1,58 @@
++"""Small launch envelope, actual model canary, and control-only planned segments."""
++import argparse,os,sys,time,hashlib,runpy
++from pathlib import Path
++from cleanroom_common import D,W,read,publish,sha,stop
++# Preload the new resource control API before the frozen worker prepends V4.
++import gpu_admission as resource
++from frozen_runtime_profile import validate_environment,validate_loaded_profile
++
++def canary(document,result):
++ import torch
++ import functional_worker as f
++ from prospective_common import verify,load_inputs
++ cfg=verify();gpu=resource.route(cfg);runtime=[f.initialize(torch,0)]
++ assert resource.device(gpu,cfg)['exclusive']
++ base=f.load_module(f.PRIOR/'run_short_horizon_proxy_v2.py','cleanroom_canary_base')
++ direction=f.load_module(base.DIRECTION_RUNNER,'cleanroom_canary_direction')
++ direction.GPU_UUIDS[gpu]=cfg['selected_gpu_uuid'];host=direction.gpu_guard(torch,gpu)
++ assert all(host[k]==cfg['runtime'][k] for k in ['kernel','driver','torch','cuda_runtime','selector'])
++ _,_,capture_module,core=direction.load_assets(gpu)
++ _,tokens,token_path,_,_=load_inputs(torch,cfg,document,['FP'])
++ # Count peak from immediately before model construction through all forwards.
++ torch.cuda.init();torch.cuda.reset_peak_memory_stats();capture=None
++ try:
++  capture=capture_module.Capture();capture.model.eval();cache=None;digest=hashlib.sha256()
++  assert not any(p.requires_grad for p in capture.model.parameters())
++  for position in range(8):
++   assert not (D/'STOP.json').exists()
++   cache,logits,_=direction.model_step(torch,capture,cache,tokens[position],position)
++   assert logits.shape[-1]==157184 and bool(torch.isfinite(logits).all())
++   assert f.engine.full_kl(torch,logits,logits)==0.0,'SELF_KL_NOT_EXACT_ZERO'
++   digest.update(position.to_bytes(8,'little'));digest.update(f.engine.tensor_bytes(torch,logits));del logits
++  torch.cuda.synchronize();profile=validate_loaded_profile(True)
++  identity=resource.proc_identity(os.getpid());guard=resource.device(gpu,cfg,os.getpid(),binding=identity,require_context=True,evidence=result.with_suffix('.GPU_EXCLUSIVITY.jsonl'));assert guard['exclusive'],guard['failure_conditions']
++  publish(result,dict(status='PASS',kind='REAL_MODEL_8_TOKEN_CANARY_NOT_SCIENCE',document=document,UUID=cfg['selected_gpu_uuid'],model_loaded=True,token_count=8,science_trajectory_count=0,numerical_qualification=False,full8_logits_sha256=digest.hexdigest(),self_fullV_FP32_KL_exact_zero=True,profile=profile,runtime=runtime,memory=dict(peak_allocated=torch.cuda.max_memory_allocated(),peak_reserved=torch.cuda.max_memory_reserved()),CUDA_peak_scope='model construction and 8-token canary, not a full32K lifetime peak',token_sha256=sha(token_path)))
++ finally:
++  if capture is not None:capture.close()
++
++def main():
++ p=argparse.ArgumentParser();p.add_argument('--kind',choices=['canary','parent','fresh','formal1','formal2'],required=True);p.add_argument('--document',required=True);p.add_argument('--condition',default='FP');p.add_argument('--result',type=Path,required=True);a=p.parse_args()
++ try:
++  assert not (D/'STOP.json').exists();profile=validate_environment();assert sys.flags.hash_randomization==0
++  if a.kind=='canary':canary(a.document,a.result)
++  elif a.kind in ['parent','fresh']:
++   sys.argv=[str(W/'functional_worker.py'),'--document',a.document,'--condition',a.condition,'--stage','parent' if a.kind=='parent' else 'resumed_parity']
++   runpy.run_path(str(W/'functional_worker.py'),run_name='__main__')
++  else:
++   sys.argv=[str(W/'formal_worker.py'),'--document',a.document,'--condition',a.condition]
++   from formal_checkpoint_control import execute
++   execute(a.document,a.condition,1 if a.kind=='formal1' else 2)
++  actual=validate_loaded_profile(True)
++  import torch
++  measured=dict(peak_allocated=torch.cuda.max_memory_allocated(),peak_reserved=torch.cuda.max_memory_reserved())
++  publish(a.result.with_suffix('.PROFILE.json'),dict(status='PASS_ACTUAL_FROZEN_PROFILE',profile=actual,initial_profile=profile,actual_environment={k:os.environ.get(k) for k in ['PYTHONHASHSEED','CUBLAS_WORKSPACE_CONFIG','LING_GATED_RMSNORM_FIXED_CONFIG','FLA_CACHE_MODE','FLA_CONFIG_DIR','CUDA_VISIBLE_DEVICES','LING_TARGET_GPU_UUID']},hash_randomization=sys.flags.hash_randomization,measured_CUDA_peak=measured,CUDA_scope='last frozen loop reset through completion including checkpoint operations; canary resets before model load',epoch=time.time()))
++ except BaseException as e:
++  import traceback
++  stop(repr(e),stage=a.kind,document=a.document,condition=a.condition,traceback=traceback.format_exc());raise
++
++if __name__=='__main__':main()
+diff --git a/formal_checkpoint_control.py b/formal_checkpoint_control.py
+new file mode 100644
+index 0000000..81a061d
+--- /dev/null
++++ b/formal_checkpoint_control.py
+@@ -0,0 +1,116 @@
++"""A single planned 16384 checkpoint/64-step overlap; frozen math is unchanged."""
++from pathlib import Path
++import ast,copy,gc,hashlib,os,pickle,random,sys
++from cleanroom_common import D,W,read,publish,sha
++METRICS=('scale','codes','injection','kl','state','refs','memory','suffix_parity_pass','runtime')
++
++def rng_hash(torch):
++ import numpy as np
++ return hashlib.sha256(pickle.dumps((torch.get_rng_state().numpy().tobytes(),torch.cuda.get_rng_state().cpu().numpy().tobytes(),random.getstate(),np.random.get_state()),protocol=4)).hexdigest()
++
++def atomic_torch_save(torch,value,path):
++ path=Path(path);tmp=path.with_name(path.name+'.partial');assert not tmp.exists()
++ with tmp.open('xb') as f:torch.save(value,f);f.flush();os.fsync(f.fileno())
++ if path.exists():
++  # A planned 64-step overlap may encounter one prewritten FP reference.
++  # It must have identical full tensor/metadata bytes; retain the original file.
++  import functional_worker as fw
++  previous=torch.load(path,map_location='cpu',weights_only=False)
++  assert fw.object_fingerprint(torch,previous)==fw.object_fingerprint(torch,value),'PLANNED_FP_REFERENCE_REPLAY_MISMATCH'
++  tmp.unlink()
++ else:os.link(tmp,path);tmp.unlink()
++
++class FormalControl:
++ def __init__(self,document,condition,segment):
++  assert segment in [1,2];self.document=document;self.condition=condition;self.segment=segment
++  self.start=8192 if segment==1 else 16384;self.end=16448 if segment==1 else 32768
++  self.key=document+'__'+condition;self.cp=D/'checkpoints'/(self.key+'__16384.pt')
++  self.proof=D/'segments'/(self.key+'__overlap64.json');self.digest=hashlib.sha256();self.restored=None;self.long_exact_pass=False
++ def identity(self):
++  routing=read(D/'EXECUTION_ROUTING.json')
++  return dict(document=self.document,condition=self.condition,UUID=os.environ['LING_TARGET_GPU_UUID'],source_commit=read(D/'SOURCE_CODE_FREEZE.json')['source_commit'],source_manifest_sha256=sha(D/'SOURCE_CODE_FREEZE.json'),frozen_spec_sha256=sha(D/'FROZEN_SPEC.json'),parent_manifest_sha256=sha(D/'runs'/(self.key+'__parent.json')),prefix8192_sha256=sha(D/'runs'/(self.key+'__8192.pt')),model=read(D/'FROZEN_SPEC.json')['model'])
++ def initial(self,torch,original_cp):
++  if self.segment==1:return torch.load(original_cp,map_location='cpu',weights_only=False)
++  index=read(self.cp.with_suffix('.json'));assert index['sha256']==sha(self.cp)
++  value=torch.load(self.cp,map_location='cpu',weights_only=False);assert value['identity']==self.identity(),'LONG_CHECKPOINT_IDENTITY_CHANGED'
++  native=value.pop('native');assert native['next_position']==16384 and native['frozen_spec_sha256']==sha(D/'FROZEN_SPEC.json')
++  self.restored=value;return native
++ def restore_metrics(self,torch,values,sample_bytes):
++  if self.segment==1:return values,sample_bytes
++  assert self.restored is not None
++  saved=self.restored['metrics'];assert saved['suffix_parity_pass'] is True
++  assert [x['position'] for x in saved['kl']]==self.restored['processed_score_positions']
++  assert sum(x['KL'] for x in saved['kl'])==self.restored['prefix_Python_sum']
++  saved['runtime']=saved['runtime']+values['runtime']
++  if self.condition=='FP':
++   import functional_worker as f
++   for ref in saved['refs']:
++    assert sha(ref['path'])==ref['sha256']
++    if ref['logits']:
++     payload=torch.load(ref['path'],map_location='cpu',weights_only=False)
++     sample_bytes.update(ref['position'].to_bytes(8,'little'));sample_bytes.update(f.engine.tensor_bytes(torch,payload['logits']))
++  return saved,sample_bytes
++ def observe(self,torch,position,logits):
++  if 16384<=position<16448:
++   import functional_worker as f
++   self.digest.update(position.to_bytes(8,'little'));self.digest.update(f.engine.tensor_bytes(torch,logits))
++ def after_token(self,position,local):
++  import functional_worker as f
++  torch=local['torch'];cache=local['cache'];audit=local['audit']
++  if position==16383:
++   assert self.segment==1 and local['suffix_parity_pass'] and local['deferred'] is None
++   native=f.checkpoint(torch,cache,audit,self.condition,position,local['cfg'],sha(D/'FROZEN_SPEC.json'),f.sha(local['token_path']),None if self.condition=='FP' else local['rotation_ids'][self.condition]['sha256'],None)
++   metrics={k:local[k] for k in METRICS}
++   payload=dict(schema='cleanroom_planned_full_native_checkpoint_v1',native=native,identity=self.identity(),metrics=metrics,processed_score_positions=[x['position'] for x in local['kl']],prefix_Python_sum=sum(x['KL'] for x in local['kl']),cursor=16384,original_prefix_full_logit_hash='NOT_COLLECTED_AFTER8192_NOT_INVENTED',reducer='original list of KL samples, final original Python sum/384')
++   atomic_torch_save(torch,payload,self.cp)
++   publish(self.cp.with_suffix('.json'),dict(status='PASS_ATOMIC_CHECKPOINT_SAVED',sha256=sha(self.cp),bytes=self.cp.stat().st_size,cursor=16384,identity=self.identity()))
++   del payload,native;gc.collect()
++  if position==16447:
++   value=dict(logits64_sha256=self.digest.hexdigest(),native_cache_sha256=f.object_fingerprint(torch,cache),audit_state_sha256=None if self.condition=='FP' else f.object_fingerprint(torch,f.audit_state(audit,self.condition)),RNG_sha256=rng_hash(torch),identity=self.identity(),positions=[16384,16448],checkpoint_sha256=sha(self.cp))
++   if self.segment==1:publish(self.proof,dict(status='PASS_UNINTERRUPTED_OVERLAP_COLLECTED',comparison=value))
++   else:
++    assert read(self.proof)['comparison']==value,'EXACT_PLANNED_LONG_CHECKPOINT_REPLAY_FAILURE'
++    self.long_exact_pass=True
++    publish(D/'segments'/(self.key+'__long_resume_exact.json'),dict(status='PASS_EXACT_64_LOGITS_NATIVE_CACHE_AUDIT_RNG',comparison=value))
++ def finish_first(self):
++  assert self.proof.exists() and self.cp.exists()
++  publish(D/'segments'/(self.key+'__part1.json'),dict(status='PASS',document=self.document,condition=self.condition,logical_saved_cursor=16384,actual_endpoint=16448,overlap_replayed_for_qualification=64,checkpoint_sha256=sha(self.cp),overlap_proof_sha256=sha(self.proof),identity=self.identity(),formal_complete=False))
++
++def adapted_source():
++ original=(W/'formal_worker.py').read_text();s=original
++ replacements=[
++  ("root/(tag+'.STARTED.json')","root/(tag+f'.part{CR.segment}.STARTED.json')"),
++  ("refdir.mkdir(); fp_manifest = None","refdir.mkdir(exist_ok=CR.segment==2); fp_manifest = None"),
++  ("saved = torch.load(cp,map_location='cpu',weights_only=False)","saved = CR.initial(torch,cp)"),
++  ("assert saved['next_position'] == 8192 and saved['token_sha256'] == w.sha(token_path)","assert saved['next_position'] == CR.start and saved['token_sha256'] == w.sha(token_path)"),
++  ("        deferred = None\n        def collect_metrics", "        deferred = None\n        control_values,sample_bytes = CR.restore_metrics(torch,{k:locals()[k] for k in ()},sample_bytes)\n        def collect_metrics"),
++  ("for position in range(8192,32768):","for position in range(CR.start,CR.end):"),
++  ("            del logits\n        assert suffix_parity_pass and deferred is None", "            CR.observe(torch,position,logits)\n            del logits\n            CR.after_token(position,locals())\n        if CR.segment == 1:\n            CR.finish_first()\n            return\n        assert CR.long_exact_pass\n        assert suffix_parity_pass and deferred is None"),
++ ]
++ # Explicit names avoid the separate scope of a locals() comprehension.
++ restored="        control_values,sample_bytes = CR.restore_metrics(torch,dict(scale=scale,codes=codes,injection=injection,kl=kl,state=state,refs=refs,memory=memory,suffix_parity_pass=suffix_parity_pass,runtime=runtime),sample_bytes)\n"
++ restored+="        scale,codes,injection,kl,state,refs,memory,suffix_parity_pass,runtime = [control_values[k] for k in CR_METRICS]\n"
++ for old,new in replacements:
++  assert s.count(old)==1,('FROZEN_CONTROL_INSERTION_BOUNDARY_CHANGED',old);s=s.replace(old,new)
++ s=s.replace("        control_values,sample_bytes = CR.restore_metrics(torch,{k:locals()[k] for k in ()},sample_bytes)\n",restored)
++ # Revert every registered edit and require the entire frozen source string.
++ reverse=s.replace(restored,"        control_values,sample_bytes = CR.restore_metrics(torch,{k:locals()[k] for k in ()},sample_bytes)\n")
++ for old,new in reversed(replacements):reverse=reverse.replace(new,old)
++ assert reverse==original,'UNREGISTERED_FORMAL_MATH_SOURCE_EDIT'
++ ast.parse(s)
++ return s
++
++def execute(document,condition,segment):
++ cr=FormalControl(document,condition,segment)
++ scope=dict(__name__='__main__',__file__=str(W/'formal_worker.py'),CR=cr,CR_METRICS=METRICS)
++ # Atomic payload orchestration only. The original torch serialization
++ # function is restored even if the scientific worker raises.
++ import torch
++ saved_torch_save=torch.save
++ def atomic(value,path,*args,**kw):
++  # Our atomic helper uses a file object; preserve the original serializer.
++  if hasattr(path,'write') or not Path(path).resolve().is_relative_to(D):return saved_torch_save(value,path,*args,**kw)
++  return atomic_torch_save(torch,value,path)
++ torch.save=atomic
++ try:exec(compile(adapted_source(),str(W/'formal_worker.py'),'exec'),scope)
++ finally:torch.save=saved_torch_save
+diff --git a/gpu_admission.py b/gpu_admission.py
+index f6ca781..a793587 100644
+--- a/gpu_admission.py
++++ b/gpu_admission.py
+@@ -1,120 +1,90 @@
+-"""Single bounded resource admission and original exact context ownership."""
+-import json
+-import os
+-import pathlib
+-import time
+-from gpu_telemetry import sample, observe, inventory
+-import v3_guard as legacy
++"""Prospectively frozen Clean-Room resource policy, independent of old gates."""
++import os,json,time,sys,threading
++from pathlib import Path
++from gpu_telemetry import sample as raw_sample,inventory
++TELEMETRY_LOCK=threading.Lock()
++def sample(uuid):
++ with TELEMETRY_LOCK:return raw_sample(uuid)
++from v3_guard import proc_identity
++from cleanroom_common import D,read,publish
++GIB=2**30
++HEADROOM=2*GIB
++# Maximum of recorded CUDA reserved and NVML owned-process peaks, plus 2 GiB.
++PEAK=max(20128464896,19536*2**20)
+ 
+-UUID='GPU-de53f243-b271-521c-d875-d96611ed8574'
+-
+-def graphics_allowed(s,baseline=None):
+-    if baseline is None:
+-        try:baseline=json.loads((pathlib.Path(os.environ['LING_PROSPECTIVE_RESULTS'])/'EXECUTION_ROUTING.json').read_text())['baseline_graphics'][s['uuid']]
+-        except (OSError,KeyError,ValueError):return False
+-    groups=s['direct_NVML_processes'];xml=s['SMI_all_processes']
+-    if any(g['status']!='PASS' for g in groups.values()) or xml['status']!='PASS':return False
+-    if groups['graphics']['processes']!=baseline['NVML_graphics']:return False
+-    graphics=[p for p in xml['processes'] if p['type']=='G']
+-    if graphics!=baseline['SMI_graphics']:return False
+-    owners={p['pid']:p for p in s['process_ownership']}
+-    return all(owners.get(p['pid'])==p for p in baseline['ownership'])
+-
+-def classify(s):
+-    try:
+-        if 'direct_NVML_processes' in s:
+-            groups=s['direct_NVML_processes']
+-            if any(g['status']!='PASS' for g in groups.values()) or s['SMI_all_processes']['status']!='PASS':
+-                return 'PROCESS_VISIBILITY_UNKNOWN'
+-            if groups['compute']['processes'] or any(p['type']!='G' for p in s['SMI_all_processes']['processes']):
+-                return 'BUSY_VISIBLE_PROCESS'
+-            if not graphics_allowed(s):return 'GRAPHICS_IDENTITY_NOT_QUALIFIED'
+-        if s['physical']['returncode'] != 0 or s['compute']['returncode'] != 0 or s['direct_NVML']['status'] != 'PASS':
+-            return 'DRIVER_OR_NVML_ERROR'
+-        t=s['target']; n=s['direct_NVML']
+-        if len(t)!=1 or t[0]['uuid']!=s['uuid']: return 'TELEMETRY_INCONSISTENT'
+-        t=t[0]; m=n['memory_v2']; v=n['memory']
+-        if 'used' not in m or 'used' not in v: return 'DRIVER_OR_NVML_ERROR'
+-        if m['total']!=m['free']+m['used']+m['reserved'] or v['used']!=m['used']+m['reserved']:
+-            return 'TELEMETRY_INCONSISTENT'
+-        if abs(m['used']/2**20-float(t['used_MiB']))>1 or m['total']/2**20!=float(t['total_MiB']):
+-            return 'TELEMETRY_INCONSISTENT'
+-        if t['name']!='NVIDIA GeForce RTX 3090' or float(t['total_MiB'])<24576:
+-            return 'INSUFFICIENT_MEMORY'
+-        processes=s['compute']['stdout'].strip()
+-        if processes: return 'BUSY_VISIBLE_PROCESS'
+-        a,b=float(t['GPU_util']),n['utilization']['gpu']
+-        if (a==0)!=(b==0): return 'TELEMETRY_INCONSISTENT'
+-        if a!=0 or b!=0: return 'BUSY_UNATTRIBUTED'
+-        if float(t['used_MiB'])>64 or m['used']>64*2**20: return 'BUSY_UNATTRIBUTED'
+-        if s['fuser']['returncode'] not in (0,1): return 'DRIVER_OR_NVML_ERROR'
+-        return 'AVAILABLE_VERIFIED'
+-    except (KeyError,TypeError,ValueError):
+-        return 'DRIVER_OR_NVML_ERROR'
+-
+-def classify_window(rows):
+-    if len(rows)<3: return 'TELEMETRY_INCONSISTENT'
+-    if len({r['uuid'] for r in rows})!=1: return 'TELEMETRY_INCONSISTENT'
+-    states=[classify(r) for r in rows]
+-    return 'AVAILABLE_VERIFIED' if states[-3:]==['AVAILABLE_VERIFIED']*3 else states[-1] if states[-1]!='AVAILABLE_VERIFIED' else 'TELEMETRY_INCONSISTENT'
+-
+-def choose(states, numerical_pass, preferred=UUID):
+-    ordered=[preferred]+sorted(u for u in states if u!=preferred)
+-    for u in ordered:
+-        if states.get(u)=='AVAILABLE_VERIFIED' and numerical_pass.get(u) is True:return u
+-    return None
++def graphics_identity(s):
++ groups=s['direct_NVML_processes'];xml=s['SMI_all_processes']
++ assert all(v['status']=='PASS' for v in groups.values()) and xml['status']=='PASS','PROCESS_VISIBILITY_UNKNOWN'
++ gs=groups['graphics']['processes'];owners={p['pid']:p for p in s['process_ownership']}
++ result=[]
++ for g in gs:
++  p=owners.get(g['pid']);assert p and p['status']=='PASS' and p['comm']=='Xorg','UNAUTHORIZED_GRAPHICS_PROCESS'
++  assert p['uid'] in [0,120] and g['usedGpuMemory']<=16*2**20,'GRAPHICS_BASELINE_NOT_SYSTEM_XORG'
++  result.append(p)
++ assert {int(p['pid']) for p in xml['processes'] if p['type']=='G'}=={g['pid'] for g in gs},'GRAPHICS_API_IDENTITY_MISMATCH'
++ return sorted(result,key=lambda x:x['pid'])
++def assess(s,uuid,owner=None,baseline=None):
++ assert s['uuid']==uuid and len(s['target'])==1 and s['target'][0]['uuid']==uuid,'DEVICE_IDENTITY_FAILURE'
++ t=s['target'][0];n=s['direct_NVML'];assert n['status']=='PASS' and n['memory_v2'].get('free') is not None,'NVML_UNAVAILABLE'
++ assert t['name']=='NVIDIA GeForce RTX 3090' and float(t['total_MiB'])>=24576,'UNAUTHORIZED_DEVICE_TYPE'
++ m=n['memory_v2'];assert m['total']==m['free']+m['used']+m['reserved'],'MEMORY_ARITHMETIC_FAILURE'
++ if owner is None:assert abs(m['used']/2**20-float(t['used_MiB']))<=64,'MATERIAL_MEMORY_TELEMETRY_MISMATCH'
++ # During owned model loading, these two non-atomic reads can legitimately
++ # straddle large allocations. Exact PID attribution and true free headroom
++ # govern safety; preserve the difference as telemetry, not a false conflict.
++ graphics=graphics_identity(s)
++ if baseline is not None:assert graphics==baseline,'GRAPHICS_IDENTITY_CHANGED'
++ union={p['pid'] for p in s['direct_NVML_processes']['compute']['processes']}
++ union.update(int(p['pid']) for p in s['SMI_all_processes']['processes'] if p['type']!='G')
++ allowed=set() if owner is None else {owner['pid']}
++ assert not (union-allowed),'UNAUTHORIZED_EXTERNAL_COMPUTE_PROCESS'
++ if owner is not None:
++  assert proc_identity(owner['pid'])==owner,'OWN_PROCESS_IDENTITY_CHANGED'
++  if m['used']>64*2**20:assert owner['pid'] in union,'MATERIAL_MEMORY_WITHOUT_ATTRIBUTABLE_COMPUTE_PID'
++ assert m['free']>=HEADROOM+(PEAK if owner is None else 0),'INSUFFICIENT_FREE_MEMORY_AND_2GIB_HEADROOM'
++ return dict(SMI_NVML_allocated_difference_bytes=m['used']-float(t['used_MiB'])*2**20,graphics=graphics,allocated_bytes=m['used'],free_bytes=m['free'],SMI_util=float(t['GPU_util']),NVML_util=n['utilization']['gpu'],compute_PIDs=sorted(union))
++def assess_window(rows,uuid):
++ assert len(rows)==3,'THREE_SAMPLES_REQUIRED'
++ values=[assess(s,uuid) for s in rows];base=values[0]['graphics']
++ assert all(v['graphics']==base for v in values),'GRAPHICS_IDENTITY_NOT_STABLE'
++ mem=[v['allocated_bytes'] for v in values]
++ assert max(mem)-min(mem)<=64*2**20,'UNATTRIBUTED_MEMORY_GROWTH'
++ assert all(v['allocated_bytes']<=64*2**20 for v in values),'UNATTRIBUTED_DEVICE_ALLOCATION'
++ util=[max(v['SMI_util'],v['NVML_util']) for v in values]
++ # Low <=2% differences are non-blocking; persistent higher use is unsafe.
++ assert sum(x>2 for x in util)<2 and util[-1]<=2,'SUSTAINED_OR_CURRENT_MATERIAL_GPU_OCCUPANCY'
++ return dict(status='PASS',UUID=uuid,sample_count=3,graphics_baseline=base,min_free_bytes=min(v['free_bytes'] for v in values),measured_peak_budget_bytes=PEAK,required_extra_headroom_bytes=HEADROOM,low_util_difference_warnings=[i for i,v in enumerate(values) if v['SMI_util']!=v['NVML_util']],values=values)
++def admit(uuid,tag):
++ path=D/'admission'/(tag+'.json');assert not path.exists(),'ADMISSION_ALREADY_DONE_NO_RETRY'
++ rows=[]
++ for i in range(3):
++  rows.append(sample(uuid))
++  if i<2:time.sleep(5)
++ publish(path,dict(samples=rows,epoch=time.time()))
++ result=assess_window(rows,uuid);result.update(epoch=time.time(),sample_path=str(path))
++ publish(D/'admission'/(tag+'.PASS.json'),result)
++ return result
+ 
+ def route(cfg):
+-    uuid=cfg.get('selected_gpu_uuid',UUID)
+-    rows,_=inventory(); targets=[r for r in rows if r['uuid']==uuid]
+-    assert len(targets)==1,'UUID_NOT_UNIQUELY_PRESENT'
+-    gpu=int(targets[0]['index']);cfg['gpu_uuids'][str(gpu)]=uuid
+-    return gpu
+-
+-def admit(cfg,path):
+-    uuid=cfg.get('selected_gpu_uuid',UUID)
+-    rows=observe([uuid],path)
+-    state=classify_window(rows)
+-    report=dict(status=state,uuid=uuid,index=rows[-1]['target'][0]['index'] if rows[-1]['target'] else None,
+-        completed_epoch=time.time(),sample_count=len(rows),states=[classify(s) for s in rows],
+-        execution=os.environ['LING_PROSPECTIVE_RESULTS'],driver=cfg['runtime']['driver'],
+-        window_sha256=__import__('recovery_state').sha(path),window_path=str(path))
+-    assert all(r['target'][0]['driver']==cfg['runtime']['driver'] for r in rows if r['target']),'DRIVER_CHANGED'
+-    from recovery_state import atomic_json
+-    atomic_json(ticket_path(uuid),report,replace=True)
+-    if state!='AVAILABLE_VERIFIED':raise RuntimeError(('GPU_ADMISSION_STOP',report))
+-    return report
+-
+-def ticket_path(uuid):
+-    return pathlib.Path(os.environ['LING_PROSPECTIVE_RESULTS'])/'admission_tickets'/(uuid+'.json')
+-
++ uuid=cfg['selected_gpu_uuid'];routing=read(D/'EXECUTION_ROUTING.json');rows,_=inventory();r=[r for r in rows if r['uuid']==uuid]
++ assert len(r)==1 and int(r[0]['index'])==routing['authorized_devices'][uuid],'FROZEN_UUID_INDEX_MAPPING_CHANGED'
++ index=int(r[0]['index']);cfg['gpu_uuids'][str(index)]=uuid
++ return index
+ def device(gpu,cfg,pid=None,*,binding=None,evidence=None,require_context=False):
+-    if binding is not None:
+-        result=legacy.device(gpu,cfg,pid,binding=binding,evidence=None,require_context=require_context)
+-        s=sample(cfg['gpu_uuids'][str(gpu)])
+-        groups=s['direct_NVML_processes'];xml=s['SMI_all_processes']
+-        visible=all(g['status']=='PASS' for g in groups.values()) and xml['status']=='PASS'
+-        listed={p['pid'] for p in groups['compute'].get('processes',[])}
+-        listed.update(int(p['pid']) for p in xml.get('processes',[]) if p['type']!='G')
+-        own=listed=={pid}
+-        if not visible or not own or not graphics_allowed(s):
+-            result['exclusive']=False;result['failure_conditions'].append('COMPUTE_GRAPHICS_EXACT_OWNERSHIP_OR_VISIBILITY_FAILED')
+-        result['compute_graphics_visibility']=s
+-        if evidence:
+-            with pathlib.Path(evidence).open('a') as f:f.write(json.dumps(result)+'\n');f.flush();os.fsync(f.fileno())
+-        return result
+-    p=ticket_path(cfg['gpu_uuids'][str(gpu)])
+-    try:
+-        ticket=json.loads(p.read_text());s=sample(cfg['gpu_uuids'][str(gpu)])
+-        state=classify(s)
+-        good=(ticket['status']=='AVAILABLE_VERIFIED' and ticket['uuid']==s['uuid']
+-            and ticket['execution']==os.environ['LING_PROSPECTIVE_RESULTS'] and 0<=time.time()-ticket['completed_epoch']<=20
+-            and state=='AVAILABLE_VERIFIED' and int(s['target'][0]['index'])==gpu)
+-        result=dict(exclusive=good,failure_conditions=[] if good else ['ADMISSION_TICKET_OR_CURRENT_TELEMETRY_FAILED'],
+-            gpu=gpu,gpu_uuid=s['uuid'],epoch=time.time(),ticket=ticket,telemetry=s)
+-    except Exception as e:result=dict(exclusive=False,failure_conditions=['ADMISSION_UNKNOWN'],error=repr(e))
+-    if evidence:
+-        with pathlib.Path(evidence).open('a') as f:f.write(json.dumps(result)+'\n');f.flush();os.fsync(f.fileno())
+-    return result
+-
+-proc_identity=legacy.proc_identity
++ uuid=cfg['selected_gpu_uuid'];assert route(cfg)==gpu
++ baseline=read(D/'resource_baselines.json')[uuid]
++ s=sample(uuid);owner=binding
++ if owner is None and pid is not None:owner=proc_identity(pid)
++ # Prelaunch may have this worker's CUDA context from helper imports, so only
++ # own exact PID is permitted; no foreign process can be accepted.
++ if owner is None:
++  current=proc_identity(os.getpid());union={p['pid'] for p in s['direct_NVML_processes']['compute'].get('processes',[])}
++  if current['pid'] in union:owner=current
++ try:
++  value=assess(s,uuid,owner,baseline)
++  if require_context:assert owner is not None and owner['pid'] in value['compute_PIDs'],'OWN_CUDA_CONTEXT_NOT_VISIBLE'
++  result=dict(exclusive=True,failure_conditions=[],gpu=gpu,gpu_uuid=uuid,epoch=time.time(),resource=value)
++ except Exception as e:result=dict(exclusive=False,failure_conditions=[repr(e)],gpu=gpu,gpu_uuid=uuid,epoch=time.time())
++ if evidence:
++  with Path(evidence).open('a') as f:f.write(json.dumps(dict(result,snapshot=s))+'\n');f.flush();os.fsync(f.fileno())
++ return result
+diff --git a/prepare_cleanroom.py b/prepare_cleanroom.py
+new file mode 100644
+index 0000000..7ebd0b6
+--- /dev/null
++++ b/prepare_cleanroom.py
+@@ -0,0 +1,83 @@
++"""CPU identity audit and prospective control registration, before any new GPU."""
++from pathlib import Path
++import ast,hashlib,json,os,subprocess,sys,time
++W=Path(__file__).resolve().parent;D=Path(os.environ['LING_PROSPECTIVE_RESULTS']);O=Path('/data/zypan/worktrees/ling-kda-prospective-execution05');H=Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1/execution_05')
++sys.dont_write_bytecode=True
++from cleanroom_common import read,sha,publish as new_publish
++def publish(path,value):
++ if Path(path).exists():
++  assert read(path)==value,('CPU_PREPARATION_IDENTITY_CONFLICT',str(path));return
++ new_publish(path,value)
++from gpu_telemetry import sample,inventory
++from gpu_admission import assess_window
++from frozen_runtime_profile import validate_files
++
++def main():
++ assert not (D/'RUN_CONTROLLER.json').exists() and not (D/'STOP.json').exists()
++ assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=O,text=True).strip()=='902d7974c89465df882403e96cc8dcc8dc1c0e85'
++ validate_files();assert read(D/'audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json')['status']=='PASS_ACTUAL_BYTES'
++ math_names=['functional_worker.py','formal_worker.py','persistent_engine_v1.py','v2_runtime.py','objective.py','run_matched_l7.py','frozen_runtime_profile.py','prospective_common.py']
++ math_audit={}
++ for n in math_names:
++  assert (W/n).read_bytes()==(O/n).read_bytes(),('MATHEMATICAL_IDENTITY_CONFLICT',n)
++  math_audit[n]=sha(W/n)
++ from formal_checkpoint_control import adapted_source
++ adapted=adapted_source()
++ assert 'primary = sum(x[\'KL\'] for x in kl)/384' in adapted
++ publish(D/'audits/MATHEMATICAL_IDENTITY.json',dict(status='PASS',unchanged_file_SHA256=math_audit,formal_control_adapter='registered reversible string edits; reversing every checkpoint/cursor/output hook exactly restores original source byte-for-byte',adapted_formal_AST_SHA256=hashlib.sha256(ast.dump(ast.parse(adapted),include_attributes=False).encode()).hexdigest(),mathematical_kernel_changes=False))
++ # Actual three-sample resource window; retain timestamps and both API values.
++ inventory_rows,_=inventory()
++ eligible=[r for r in inventory_rows if r['name']=='NVIDIA GeForce RTX 3090' and float(r['used_MiB'])<=64 and float(r['GPU_util'])<=2 and int(r['index'])!=6]
++ eligible.sort(key=lambda r:([2,3,0,1,4,5].index(int(r['index']))))
++ chosen=eligible[:2];assert chosen,'NO_IDLE_COMPATIBLE_GPU_AT_INITIAL_DISCOVERY'
++ uuids={r['uuid']:int(r['index']) for r in chosen}
++ publish(D/'audits/INITIAL_DEVICE_DISCOVERY.json',dict(status='INITIAL_SELECTION_NOT_MIGRATION',inventory=inventory_rows,chosen=chosen,prior_preferred_pair_rejected_before_any_binding_or_GPU_launch='GPU2 acquired by UID1003/PID2357739 during CPU preparation; no model worker was launched and no numerical gate retried',human_steering='找.29服务器上面的空闲的GPU来运行就可以了'))
++ rows={u:[] for u in uuids}
++ for i in range(3):
++  for u in uuids:rows[u].append(sample(u))
++  if i<2:time.sleep(5)
++ publish(D/'audits/INITIAL_RESOURCE_SAMPLES.json',dict(samples=rows))
++ results={u:assess_window(rows[u],u) for u in uuids}
++ for u,index in uuids.items():assert all(int(s['target'][0]['index'])==index for s in rows[u])
++ publish(D/'resource_admission.json',dict(status='PASS_INITIAL_THREE_SAMPLE_WINDOW',results=results,samples=rows))
++ publish(D/'resource_baselines.json',{u:j['graphics_baseline'] for u,j in results.items()})
++ selection=read(D/'FROZEN_4DOC_SELECTION.json')
++ expected=[('pg19-test-41603','H_to_L7_a50','H'),('pg19-test-2544','H_to_L6_a50','H_to_L7_a50'),('pg19-test-7987','H_to_L7_a50','H_to_L7R_a25'),('pg19-test-26183','H_to_L6_a50','H_to_L7R_a25')]
++ assert [(x['document'],x['P1_predicted_rotation'],x['L7_predicted_rotation']) for x in selection['documents']]==expected
++ ordered=list(uuids)
++ mapping={}
++ for name,index in [('pg19-test-41603',2),('pg19-test-26183',3)]:
++  same=[u for u,i in uuids.items() if i==index];mapping[name]=same[0] if same else min(ordered,key=lambda u:list(mapping.values()).count(u))
++ for name in ['pg19-test-2544','pg19-test-7987']:mapping[name]=min(ordered,key=lambda u:list(mapping.values()).count(u))
++ publish(D/'EXECUTION_ROUTING.json',dict(execution=str(D),source_worktree=str(W),reference_experiment=str(D),authorized_devices=uuids,document_devices=mapping,formal_global_order=selection['execution_order'],formal_serial=True,qualification_parallel_lanes=len(uuids),original_checkpoint_contract_sha256=sha(D/'FROZEN_SPEC.json'),initial_device_selection='latest human authorized idle compatible RTX3090s on .29; idle compatible devices selected before any new GPU run; same-UUID FP-prefix reuse prioritized'))
++ publish(D/'FP_PAIRING_CONTRACT_GATE.json',dict(status='PASS',reference_experiment=str(D),spec_sha256=sha(D/'FROZEN_SPEC.json'),mode='CLEANROOM_OWN_FP_SAME_DOC_UUID_FROZEN_RUNTIME'))
++ # Verify the two allowed historical FP assets before symlinking. No old writes.
++ import torch
++ import functional_worker as f
++ assert not torch.cuda.is_initialized()
++ reuse={};not_reused=[]
++ for doc,h in [('pg19-test-41603','367ad2083285fd5a74c69ead6b84e9dbe443dfd22e628ab038cf0966cc10a0a7'),('pg19-test-26183','2e6abbe74fc5266fd26c3b74da4977cdd3849382534852503fb68a10e0f77f4f')]:
++  key=doc+'__FP';cp=H/'runs'/(key+'__8192.pt');parent=H/'runs'/(key+'__parent.json');oldq=read(H/'qualification_units'/(key+'.json'))
++  assert sha(cp)==h==oldq['checkpoint_sha256'];p=read(parent);assert sha(parent)==oldq['parent_sha256']
++  if p['host']['gpu_uuid']!=mapping[doc]:
++   not_reused.append(dict(document=doc,reason='different initial selected UUID: rebuild own prefix, do not impose cross-GPU equality or grandfather labels',old_UUID=p['host']['gpu_uuid'],new_UUID=mapping[doc],old_checkpoint_sha256=h));continue
++  for stage in ['parent','resumed_parity']:
++   profile=read(H/'runs'/(key+'__'+stage+'.RUNTIME_PROFILE.json'));assert profile['status']=='PASS_ACTUAL_FROZEN_RUNTIME_PROFILE' and profile['forward_kernels_executed']
++  saved=torch.load(cp,map_location='cpu',weights_only=False);entry=next(x for x in selection['documents'] if x['document']==doc)
++  assert saved['next_position']==8192 and saved['frozen_spec_sha256']==sha(D/'FROZEN_SPEC.json') and saved['token_sha256']==entry['document_identity']['token_file_sha256']
++  assert saved['audit_state'] is None and saved['quantizer_state']['rotation_sha256'] is None
++  assert f.object_fingerprint(torch,saved['cache'])==saved['cache_fingerprint']
++  assert all(k in saved for k in ['torch_rng','cuda_rng','python_rng','numpy_rng'])
++  reuse[key]=dict(original_checkpoint=str(cp),checkpoint_sha256=h,original_parent=str(parent),parent_sha256=sha(parent),original_qualification_sha256=sha(H/'qualification_units'/(key+'.json')),current_fresh64_required=True)
++  (D/'runs'/(key+'__8192.pt')).symlink_to(cp);(D/'runs'/(key+'__parent.json')).symlink_to(parent)
++  del saved
++ publish(D/'reused_FP_bindings.json',dict(status='ELIGIBLE_SAME_UUID_FP_PREFIXES_VERIFIED_PENDING_CURRENT_FRESH64',units=reuse,not_reused=not_reused,other_historical_checkpoint_reuse=False))
++ old=Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_MIXED_OUTCOME_RESOLUTION_V1');hist=[]
++ for p in old.rglob('*__formal.NATURAL_EXIT.json'):
++  j=read(p)
++  if j.get('natural_exit'):hist.append(dict(path=str(p),sha256=sha(p),seconds=j['wall_seconds']))
++ publish(D/'preregistration.json',dict(TASK='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1',scientific_protocol='LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1',preregistration_sha256='54d6d24fbc3142a692ef1a6c04a5617cf6b0abe6702a662722f34fc1b6141722',selection_sha256=sha(D/'FROZEN_4DOC_SELECTION.json'),FROZEN_SPEC_sha256=sha(D/'FROZEN_SPEC.json'),frozen_epoch=selection['frozen_epoch'],FULL_32K_EXECUTION_AUTHORIZED=True,MAX_CONCURRENT_GPUS=2,MAX_TOTAL_NEW_GPUH=36.0,initial_devices=uuids,historical_formal_measurements=hist,historical_formal_worker_seconds=[r['seconds'] for r in hist],new_qualification_workers_planned=24-len(reuse),new_parent_workers=12-len(reuse),current_fresh64_workers=12,canary_model_workers=len(uuids),formal_workers=24,formal_scientific_trajectories=12,planned_long_checkpoint_cursor=16384,planned_overlap_tokens=64,global_formal_order=selection['execution_order'],no_new_scientific_keys=True,stats_unit='document',old_MIXED_not_combined_n6=True))
++ publish(D/'engineering_change_manifest.json',dict(status='REGISTERED_BEFORE_GPU',base_commit='902d7974c89465df882403e96cc8dcc8dc1c0e85',changes=['new single scheduler/launch envelope and budget ledger','new3sample resource admission with<=2% low-util warning','same frozen runtime/profile mathematical files','control-only atomic16384 checkpoint and64-step exact planned resume overlap','CPU result and SHA delivery'],unchanged_math=math_audit,formal_adapter_exact_source_reversibility=True,extra_headroom_bytes=2*2**30,low_util_threshold_percent=2,resource_window_samples=3,resource_sample_interval_seconds=5,hard_new_GPUh=36.,protective_stop_GPUh=35.8,own_process_graceful_stop_seconds=60,own_identity_verified_SIGTERM_then15seconds_SIGKILL_for_budget_or_safety_only=True,automatic_failed_science_retry=False,automatic_second_attempt=False,allowlisted_devices_frozen_before_gpu=uuids,epoch=time.time()))
++ print('CLEANROOM_CPU_PREPARATION_PASS; GPU_NOT_STARTED',len(hist))
++
++if __name__=='__main__':main()
+diff --git a/prepare_gpu3_single.py b/prepare_gpu3_single.py
+new file mode 100644
+index 0000000..7e079e4
+--- /dev/null
++++ b/prepare_gpu3_single.py
+@@ -0,0 +1,161 @@
++"""CPU-only identity registration for the newly authorized GPU3-only attempt.
++
++Copies frozen scientific bytes; never starts a model, worker, or CUDA context.
++The initial read-only admission window is single-shot and cannot select another GPU.
++"""
++from pathlib import Path
++import ast, hashlib, json, os, shutil, subprocess, sys, time, traceback
++sys.dont_write_bytecode=True
++W=Path(__file__).resolve().parent
++D=Path(os.environ['LING_PROSPECTIVE_RESULTS']).resolve()
++C=Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1')
++O=Path('/data/zypan/worktrees/ling-kda-prospective-execution05')
++H=Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1/execution_05')
++TARGET='GPU-759526ed-efb2-e7f6-881c-ab098e0b05ae'
++EXECUTION='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1_GPU3_SINGLE_V1'
++BASE='d03bd1b1122e93f89c5bc06b212b0b52b4974eed'
++from cleanroom_common import read, sha, publish as atomic_publish, compare_exact
++from frozen_runtime_profile import validate_files, CONFIG_SHA256
++
++def publish(path,value):
++    path=Path(path)
++    if path.exists():
++        assert read(path)==value,('PREPARATION_IDENTITY_CONFLICT',str(path))
++    else: atomic_publish(path,value)
++
++def copy_exact(source,target):
++    source,target=Path(source),Path(target)
++    assert source.is_file() and not source.is_symlink(),('NOT_PLAIN_FROZEN_ASSET',str(source))
++    target.parent.mkdir(parents=True,exist_ok=True)
++    if target.exists(): assert target.read_bytes()==source.read_bytes(),('COPY_CONFLICT',str(target))
++    else:
++        with target.open('xb') as f:f.write(source.read_bytes());f.flush();os.fsync(f.fileno())
++    return dict(source=str(source),destination=str(target),sha256=sha(target),bytes=target.stat().st_size)
++
++def main():
++    begin=time.time()
++    assert D.name==EXECUTION and W.name=='ling-kda-4doc-cleanroom-gpu3-single-v1'
++    assert not (D/'RUN_CONTROLLER.json').exists() and not (D/'STOP.json').exists()
++    assert not (D/'audits/PREPARATION_COMPLETE.json').exists(),'SINGLE_SHOT_PREPARATION_NO_REPEAT'
++    assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=W,text=True).strip()==BASE
++    assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=O,text=True).strip()=='902d7974c89465df882403e96cc8dcc8dc1c0e85'
++    old_stop='b831befc5b34d80143a5152ef85da1b84a8b904be0f14af72f13583e77d0afda'
++    old_manifest='1a14787eb60b7385cee5b37f1662feff2fc45aad2cff343b4fb331a3424b1889'
++    assert sha(C/'STOP.json')==old_stop and sha(C/'hashes/DELIVERY_VERIFICATION.json')==old_manifest
++    copied=[]
++    for n in ['CALIBRATION_CONFIG.json','FROZEN_SPEC.json','FROZEN_4DOC_SELECTION.json','SECONDARY_SPEC.json','MODEL_WEIGHT_SHA256.txt','SELECTION_FREEZE_RECEIPT.json']:
++        copied.append(copy_exact(C/n,D/n))
++    for p in sorted((C/'preregistration').rglob('*')):
++        if p.is_file():copied.append(copy_exact(p,D/'preregistration'/p.relative_to(C/'preregistration')))
++    for n,h in [('FROZEN_SPEC.json','8ae8927ed37209efccbf19c672b9baeb46c0d7f272601f8f54d1f9609b64f3d1'),('FROZEN_4DOC_SELECTION.json','a5c227d15918a249f8ae2059539c15f94668cb2afddf3aecd8a9f7e13851354b'),('preregistration/NEXT_PROSPECTIVE_4DOC_PREREGISTRATION.md','54d6d24fbc3142a692ef1a6c04a5617cf6b0abe6702a662722f34fc1b6141722')]:
++        assert sha(D/n)==h,('FROZEN_SCIENCE_SHA_CONFLICT',n)
++    publish(D/'audits/FROZEN_ASSET_COPY.json',dict(status='PASS_BYTE_IDENTICAL',files=copied,previous_attempt_read_only=True,no_historical_STOP_or_current_results_copied=True))
++    auth='用户在当前聊天明确授权：你就只使用一张GPU3来跑就行了。该授权在旧Clean-Room STOP交付及只读GPU空闲监控之后给出；本轮独立身份，仅GPU3，最多1个GPU worker，36.0新增GPUh硬预算及全部冻结科学/数值/资源门禁不变。不得复用旧STOP为当前状态，不覆盖历史、不自动迁移或开启失败后的第二轮。'
++    publish(D/'audits/GPU3_SINGLE_USER_AUTHORIZATION.json',dict(status='EXPLICIT_HUMAN_AUTHORIZATION',user_text='你就只使用一张GPU3来跑就行了',execution_id=EXECUTION,scientific_protocol='LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1',previous_cleanroom_STOP=dict(path=str(C/'STOP.json'),sha256=old_stop,delivery_manifest_sha256=old_manifest),MAX_CONCURRENT_GPUS=1,MAX_TOTAL_NEW_GPUH=36.0,authorized_devices={TARGET:3},interpretation=auth,scope='same frozen four-document32K experiment with independent new execution identity; not permission to relax any scientific or physical gate'))
++    validate_files()
++    math_names=['functional_worker.py','formal_worker.py','persistent_engine_v1.py','v2_runtime.py','objective.py','run_matched_l7.py','frozen_runtime_profile.py','prospective_common.py']
++    maths={}
++    for n in math_names:
++        assert (W/n).read_bytes()==(O/n).read_bytes(),('MATHEMATICAL_IDENTITY_CONFLICT',n)
++        maths[n]=sha(W/n)
++    from formal_checkpoint_control import adapted_source
++    adapted=adapted_source();assert "primary = sum(x['KL'] for x in kl)/384" in adapted
++    publish(D/'audits/MATHEMATICAL_IDENTITY.json',dict(status='PASS',unchanged_file_SHA256=maths,formal_control_adapter='unchanged CleanRoom reversible control hooks; source reversal restores original mathematical worker byte-for-byte',formal_adapter_source_sha256=sha(W/'formal_checkpoint_control.py'),adapted_formal_AST_SHA256=hashlib.sha256(ast.dump(ast.parse(adapted),include_attributes=False).encode()).hexdigest(),mathematical_kernel_changes=False))
++    actual=read(C/'audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json')
++    assert actual['status']=='PASS_ACTUAL_BYTES' and len(actual['model_files'])==32 and len(actual['input_and_rotation_files'])==24
++    checked={}
++    for name in ['model_files','input_and_rotation_files']:
++        checked[name]=[]
++        for row in actual[name]:
++            p=Path(row['path']);assert p.stat().st_size==row['bytes'] and sha(p)==row['sha256'],('ACTUAL_ASSET_SHA_FAILURE',str(p))
++            checked[name].append(dict(row))
++    spec=read(D/'FROZEN_SPEC.json');model=Path(spec['model']['path']);model_metadata=[]
++    for filename,key in [('config.json','config_sha256'),('generation_config.json','generation_config_sha256'),('tokenizer_config.json','tokenizer_config_sha256'),('tokenizer.json','tokenizer_sha256'),('model.safetensors.index.json','weight_index_sha256')]:
++        p=model/filename;assert sha(p)==spec['model'][key],('MODEL_METADATA_CHANGED',filename)
++        model_metadata.append(dict(path=str(p),sha256=sha(p),bytes=p.stat().st_size))
++    publish(D/'audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json',dict(status='PASS_ACTUAL_BYTES',**checked,model_metadata=model_metadata,elapsed_CPU_seconds=time.time()-begin,new_GPU_worker_count=0))
++    audit=read(C/'PREREGISTRATION_RECONCILIATION.json')
++    old_history=read(C/'audits/HISTORICAL_STOP_AND_MANIFEST_IDENTITIES.json')
++    for row in old_history['history']:
++        assert sha(Path(row['execution'])/'STOP.json')==row['STOP_sha256']
++        matches=[p for p in [Path(row['execution'])/'RESULT_AND_DELIVERY_HASHES.json',Path(row['execution'])/'delivery/RESULT_AND_DELIVERY_HASHES.json'] if p.exists() and sha(p)==row['manifest_sha256']]
++        assert matches,('HISTORICAL_MANIFEST_CHANGED',row['execution'])
++    old_history['history'].append(dict(execution=str(C),STOP_sha256=old_stop,manifest_sha256=old_manifest,manifest_path=str(C/'hashes/DELIVERY_VERIFICATION.json')))
++    publish(D/'audits/HISTORICAL_STOP_AND_MANIFEST_IDENTITIES.json',old_history)
++    for n,h in audit['frozen_protocol_files'].items():assert sha(Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_MIXED_OUTCOME_RESOLUTION_V1')/n)==h,n
++    for n,h in audit['scorer_source_SHA'].items():assert sha(n)==h,n
++    for row in audit['source_assets']:
++        p=Path(row['path']);s=p.stat();assert (s.st_size,s.st_mtime_ns)==(row['bytes'],row['mtime_ns']) and sha(p)==row['sha256'],('HISTORICAL_SOURCE_ASSET_CHANGED',str(p))
++    for n,h in audit['historical_STOP_preserved'].items():assert sha(n)==h,n
++    audit['historical_STOP_preserved'][str(C/'STOP.json')]=old_stop
++    audit.update(status='PASS',current_execution=str(D),authorization_reconciliation=auth,selected_GPU=3,selected_GPU_UUID=TARGET,selected_documents=[d['document'] for d in spec['documents']],CUDA_initialized=False,new_long_GPU_scientific_units=0,disk_free_bytes=shutil.disk_usage(D).free,elapsed_seconds=time.time()-begin,actual_gpu_inventory='Not inherited: current GPU3-only actual read-only samples are in audits/INITIAL_RESOURCE_SAMPLES.json',actual_compute_inventory='Not inherited: current GPU3-only actual process evidence is in audits/INITIAL_RESOURCE_SAMPLES.json')
++    assert audit['disk_free_bytes']>=audit['required_storage_plan_bytes']
++    publish(D/'PREREGISTRATION_RECONCILIATION.json',audit)
++    selection=read(D/'FROZEN_4DOC_SELECTION.json')
++    expected=[('pg19-test-41603','H_to_L7_a50','H'),('pg19-test-2544','H_to_L6_a50','H_to_L7_a50'),('pg19-test-7987','H_to_L7_a50','H_to_L7R_a25'),('pg19-test-26183','H_to_L6_a50','H_to_L7R_a25')]
++    assert [(x['document'],x['P1_predicted_rotation'],x['L7_predicted_rotation']) for x in selection['documents']]==expected
++    mapping={doc:TARGET for doc,_,_ in expected}
++    publish(D/'EXECUTION_ROUTING.json',dict(execution=str(D),execution_id=EXECUTION,source_worktree=str(W),reference_experiment=str(D),authorized_devices={TARGET:3},document_devices=mapping,formal_global_order=selection['execution_order'],formal_serial=True,qualification_parallel_lanes=1,MAX_CONCURRENT_GPUS=1,MAX_TOTAL_NEW_GPUH=36.0,original_checkpoint_contract_sha256=sha(D/'FROZEN_SPEC.json'),initial_device_selection='explicit new user authorization fixes GPU3 only before any current model worker; no discovery/migration/fallback to any other card'))
++    publish(D/'FP_PAIRING_CONTRACT_GATE.json',dict(status='PASS',reference_experiment=str(D),spec_sha256=sha(D/'FROZEN_SPEC.json'),mode='CLEANROOM_OWN_FP_SAME_DOC_UUID_FROZEN_RUNTIME_GPU3_ONLY'))
++    import torch
++    import functional_worker as f
++    assert not torch.cuda.is_initialized()
++    key='pg19-test-26183__FP';cp=H/'runs'/(key+'__8192.pt');parent=H/'runs'/(key+'__parent.json');fresh=H/'runs'/(key+'__resumed_parity.json');qpath=H/'qualification_units'/(key+'.json');oldq=read(qpath)
++    h='2e6abbe74fc5266fd26c3b74da4977cdd3849382534852503fb68a10e0f77f4f'
++    assert sha(cp)==h==oldq['checkpoint_sha256'] and sha(parent)==oldq['parent_sha256'] and sha(fresh)==oldq['resumed_sha256']
++    p=read(parent);oldfresh=read(fresh);compare_exact(p,oldfresh,TARGET)
++    profiles={}
++    for stage in ['parent','resumed_parity']:
++        path=H/'runs'/(key+'__'+stage+'.RUNTIME_PROFILE.json');profile=read(path)
++        assert profile['status']=='PASS_ACTUAL_FROZEN_RUNTIME_PROFILE' and profile['forward_kernels_executed']
++        assert profile['fixed_FLA_config_SHA256']==CONFIG_SHA256
++        assert profile['actually_used_forward_configurations']['causal_conv1d_update_kernel']==dict(kwargs={'BD':8},num_ctas=1,num_stages=3,num_warps=8)
++        assert profile['actually_used_forward_configurations']['layer_norm_gated_fwd_kernel']==dict(kwargs={'BT':16},num_ctas=1,num_stages=3,num_warps=8)
++        profiles[stage]=dict(path=str(path),sha256=sha(path))
++    saved=torch.load(cp,map_location='cpu',weights_only=False);entry=next(x for x in selection['documents'] if x['document']=='pg19-test-26183')
++    assert saved['schema']=='full_native_hybrid_cache_v1' and saved['next_position']==8192 and saved['last_position']==8191
++    assert saved['frozen_spec_sha256']==sha(D/'FROZEN_SPEC.json') and saved['token_sha256']==entry['document_identity']['token_file_sha256']
++    assert saved['recurrent_layers']==read(D/'CALIBRATION_CONFIG.json')['layers']
++    assert saved['audit_state'] is None and saved['quantizer_state']['rotation_sha256'] is None
++    assert f.object_fingerprint(torch,saved['cache'])==saved['cache_fingerprint']
++    rng={k:f.object_fingerprint(torch,saved[k]) for k in ['torch_rng','cuda_rng','python_rng','numpy_rng']}
++    assert torch.is_tensor(saved['torch_rng']) and saved['torch_rng'].dtype==torch.uint8 and saved['torch_rng'].device.type=='cpu'
++    assert torch.is_tensor(saved['cuda_rng']) and saved['cuda_rng'].dtype==torch.uint8 and saved['cuda_rng'].device.type=='cpu'
++    cache_fingerprint=saved['cache_fingerprint'];prefix=saved['prefix_full_logit_sha256'];del saved
++    reuse={key:dict(original_checkpoint=str(cp),checkpoint_sha256=h,original_parent=str(parent),parent_sha256=sha(parent),original_qualification_sha256=sha(qpath),current_fresh64_required=True)}
++    for suffix,source in [('__8192.pt',cp),('__parent.json',parent)]:
++        target=D/'runs'/(key+suffix);assert not target.exists() and not target.is_symlink();target.symlink_to(source)
++    publish(D/'audits/REUSED_FP_CPU_IDENTITY.json',dict(status='PASS_ACTUAL_CPU_BYTES_NATIVE_CACHE_PROFILE_RNG_IDENTITY',key=key,UUID=TARGET,checkpoint_sha256=h,cache_fingerprint=cache_fingerprint,prefix_full_logit_sha256=prefix,RNG_fingerprints=rng,profiles=profiles,old_exact64_historical_only=True,current_fresh64_required=True,current_qualification_not_yet_passed=True,CUDA_initialized=torch.cuda.is_initialized()))
++    publish(D/'reused_FP_bindings.json',dict(status='ELIGIBLE_SAME_UUID_FP_PREFIX_VERIFIED_PENDING_CURRENT_FRESH64',units=reuse,not_reused=[dict(document='pg19-test-41603',reason='old prefix UUID is GPU2; user authorizes only GPU3; rebuild own prefix instead of cross-device grandfathering',old_UUID='GPU-7d6246ed-c3d1-75bc-c2c7-d02eb2882cca',new_UUID=TARGET,old_checkpoint_sha256='367ad2083285fd5a74c69ead6b84e9dbe443dfd22e628ab038cf0966cc10a0a7')],other_historical_checkpoint_reuse=False))
++    hist=[]
++    for path in Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_MIXED_OUTCOME_RESOLUTION_V1').rglob('*__formal.NATURAL_EXIT.json'):
++        j=read(path)
++        if j.get('natural_exit'):hist.append(dict(path=str(path),sha256=sha(path),seconds=j['wall_seconds']))
++    publish(D/'preregistration.json',dict(TASK='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1',execution_id=EXECUTION,scientific_protocol='LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1',preregistration_sha256='54d6d24fbc3142a692ef1a6c04a5617cf6b0abe6702a662722f34fc1b6141722',selection_sha256=sha(D/'FROZEN_4DOC_SELECTION.json'),FROZEN_SPEC_sha256=sha(D/'FROZEN_SPEC.json'),frozen_epoch=selection['frozen_epoch'],FULL_32K_EXECUTION_AUTHORIZED=True,MAX_CONCURRENT_GPUS=1,MAX_TOTAL_NEW_GPUH=36.0,initial_devices={TARGET:3},historical_formal_measurements=hist,historical_formal_worker_seconds=[r['seconds'] for r in hist],new_qualification_workers_planned=23,new_parent_workers=11,current_fresh64_workers=12,canary_model_workers=1,formal_workers=24,formal_scientific_trajectories=12,planned_long_checkpoint_cursor=16384,planned_overlap_tokens=64,global_formal_order=selection['execution_order'],all_GPU_workers_serial=True,no_new_scientific_keys=True,stats_unit='document',old_MIXED_not_combined_n6=True,new_human_authorization=auth))
++    publish(D/'engineering_change_manifest.json',dict(status='REGISTERED_BEFORE_GPU',base_commit=BASE,changes=['fixed authorized GPU3 UUID for all four documents and every worker','maximum one scheduler GPU worker for canary,qualification,and formal','CPU registration for new explicit authorization and preserved oldSTOP; math/FLA/quantizer/KL/strict comparison unchanged'],unchanged_math=maths,formal_adapter_exact_source_reversibility=True,extra_headroom_bytes=2*2**30,low_util_threshold_percent=2,resource_window_samples=3,resource_sample_interval_seconds=5,hard_new_GPUh=36.,protective_stop_GPUh=35.8,automatic_failed_science_retry=False,automatic_second_attempt=False,allowlisted_devices_frozen_before_gpu={TARGET:3},epoch=time.time()))
++    assert not torch.cuda.is_initialized()
++    # One fixed read-only window. A busy result is retained and never changes cards.
++    from gpu_telemetry import sample,inventory
++    from gpu_admission import assess_window
++    inventory_rows,_=inventory();target=[r for r in inventory_rows if r['uuid']==TARGET]
++    assert len(target)==1 and int(target[0]['index'])==3,'AUTHORIZED_GPU3_UUID_MAPPING_CHANGED'
++    publish(D/'audits/INITIAL_DEVICE_DISCOVERY.json',dict(status='EXPLICIT_GPU3_ONLY_NO_SELECTION',target=target,human_steering='你就只使用一张GPU3来跑就行了',other_GPU_use_authorized=False))
++    rows=[]
++    for i in range(3):
++        rows.append(sample(TARGET))
++        if i<2:time.sleep(5)
++    publish(D/'audits/INITIAL_RESOURCE_SAMPLES.json',dict(samples={TARGET:rows}))
++    assert all(len(s['target'])==1 and int(s['target'][0]['index'])==3 for s in rows)
++    result=assess_window(rows,TARGET)
++    publish(D/'resource_admission.json',dict(status='PASS_INITIAL_THREE_SAMPLE_WINDOW',results={TARGET:result},samples={TARGET:rows}))
++    publish(D/'resource_baselines.json',{TARGET:result['graphics_baseline']})
++    assert not torch.cuda.is_initialized()
++    publish(D/'audits/PREPARATION_COMPLETE.json',dict(status='PASS_CPU_IDENTITIES_AND_FIXED_GPU3_READ_ONLY_INITIAL_WINDOW',execution_id=EXECUTION,CUDA_initialized=False,new_GPU_workers=0,parent_workers_planned=11,fresh64_workers_planned=12,all_workers_serial=True,elapsed_seconds=time.time()-begin,initial_window_min_free_bytes=result['min_free_bytes'],CPU_preparation_source_sha256=sha(__file__)))
++    print('GPU3_SINGLE_CPU_PREPARATION_PASS; GPU_MODEL_WORKERS_NOT_STARTED',flush=True)
++
++if __name__=='__main__':
++    try:main()
++    except BaseException as e:
++        if not (D/'audits/CPU_PREPARATION_FAILED.json').exists():
++            atomic_publish(D/'audits/CPU_PREPARATION_FAILED.json',dict(status='FAIL',reason=repr(e),traceback=traceback.format_exc(),epoch=time.time(),no_GPU_model_workers_launched=True,no_retry_or_GPU_migration=True))
++        raise
+diff --git a/test_cleanroom_control.py b/test_cleanroom_control.py
+new file mode 100644
+index 0000000..3269de2
+--- /dev/null
++++ b/test_cleanroom_control.py
+@@ -0,0 +1,111 @@
++"""Bounded CPU regressions for the new controls; never numerical GPU evidence."""
++import ast,copy,hashlib,json,os,subprocess,sys,tempfile,unittest
++from pathlib import Path
++from unittest.mock import patch
++from cleanroom_common import D,W,publish,stop,read,sha
++import gpu_admission as g
++
++def idle(smi=0,nvml=0):
++ total=24576*2**20;reserved=452*2**20;used=15*2**20
++ owner=dict(pid=4040,uid=120,start_ticks=3403,comm='Xorg',status='PASS')
++ return dict(uuid='GPU_TEST',target=[dict(uuid='GPU_TEST',name='NVIDIA GeForce RTX 3090',total_MiB='24576',used_MiB='15',GPU_util=str(smi))],direct_NVML=dict(status='PASS',memory_v2=dict(total=total,free=total-reserved-used,used=used,reserved=reserved),utilization=dict(gpu=nvml)),direct_NVML_processes=dict(compute=dict(status='PASS',processes=[]),graphics=dict(status='PASS',processes=[dict(pid=4040,usedGpuMemory=4677632)])),SMI_all_processes=dict(status='PASS',processes=[dict(pid='4040',type='G')]),process_ownership=[owner])
++
++class Controls(unittest.TestCase):
++ def test_low_util_nonatomic_1_0_is_admitted(self):self.assertEqual(g.assess_window([idle(),idle(1,0),idle()],'GPU_TEST')['status'],'PASS')
++ def test_2_1_nonblocking(self):self.assertEqual(g.assess_window([idle(2,1)]*3,'GPU_TEST')['status'],'PASS')
++ def test_foreign_compute_rejected(self):
++  x=idle();x['direct_NVML_processes']['compute']['processes']=[dict(pid=777,usedGpuMemory=1000)]
++  with self.assertRaisesRegex(AssertionError,'EXTERNAL_COMPUTE'):g.assess_window([x]*3,'GPU_TEST')
++ def test_sustained_use_rejected(self):
++  with self.assertRaisesRegex(AssertionError,'OCCUPANCY'):g.assess_window([idle(50,50)]*3,'GPU_TEST')
++ def test_headroom_counts_reserved_and_NVML(self):
++  x=idle();x['direct_NVML']['memory_v2']['free']=g.PEAK+g.HEADROOM-1;x['direct_NVML']['memory_v2']['reserved']=x['direct_NVML']['memory_v2']['total']-x['direct_NVML']['memory_v2']['used']-x['direct_NVML']['memory_v2']['free']
++  with self.assertRaisesRegex(AssertionError,'HEADROOM'):g.assess_window([x]*3,'GPU_TEST')
++ def test_unknown_process_visibility_rejected(self):
++  x=idle();x['direct_NVML_processes']['compute']['status']='UNKNOWN'
++  with self.assertRaises(AssertionError):g.assess_window([x]*3,'GPU_TEST')
++ def test_new_idle_GPU_index_maps_into_original_worker_cfg(self):
++  routing=read(D/'EXECUTION_ROUTING.json');uuid,index=next(iter(routing['authorized_devices'].items()))
++  cfg=dict(selected_gpu_uuid=uuid,gpu_uuids={})
++  with patch.object(g,'inventory',lambda:([dict(uuid=uuid,index=str(index))],None)):
++   self.assertEqual(g.route(cfg),index);self.assertEqual(cfg['gpu_uuids'][str(index)],uuid)
++ def test_uuid_mismatch_rejected(self):
++  with self.assertRaises(AssertionError):g.assess_window([idle()]*3,'OTHER')
++ def test_immutable_first_failure(self):
++  import cleanroom_common as c
++  with tempfile.TemporaryDirectory() as td,patch.object(c,'D',Path(td)):
++   c.stop('FIRST');h=c.sha(Path(td)/'STOP.json');c.stop('SECOND');self.assertEqual(c.sha(Path(td)/'STOP.json'),h)
++ def test_atomic_outputs_no_overwrite(self):
++  with tempfile.TemporaryDirectory() as td:
++   p=Path(td)/'data.json';publish(p,dict(value=1))
++   with self.assertRaises(FileExistsError):publish(p,dict(value=2))
++   self.assertEqual(read(p)['value'],1)
++ def test_formal_source_control_only_reversible(self):
++  from formal_checkpoint_control import adapted_source
++  src=adapted_source();old=(W/'formal_worker.py').read_text()
++  for marker in ["primary = sum(x['KL'] for x in kl)/384",'value = w.engine.full_kl(torch,ref_logits,student_logits)','cache,logits,_ = direction.model_step(torch,capture,cache,tokens[position],position)','metadata = audit.quantize(a.condition,cache,rotation,position,False)']:
++   self.assertIn(marker,src);self.assertIn(marker,old)
++ def test_checkpoint_array_state_roundtrip_CPU(self):
++  import torch
++  from formal_checkpoint_control import atomic_torch_save
++  import functional_worker as f
++  v=dict(cursor=16384,processed_score_positions=list(range(8192,16384,64)),kl=[dict(position=i,KL=float(i)/123456) for i in range(8192,16384,64)],state=torch.arange(12).reshape(3,4))
++  with tempfile.TemporaryDirectory() as td:
++   p=Path(td)/'cp.pt';atomic_torch_save(torch,v,p);again=torch.load(p,map_location='cpu',weights_only=False)
++   self.assertEqual(f.object_fingerprint(torch,v),f.object_fingerprint(torch,again));self.assertEqual(sum(x['KL'] for x in v['kl']),sum(x['KL'] for x in again['kl']))
++   atomic_torch_save(torch,v,p)
++   with self.assertRaises(AssertionError):atomic_torch_save(torch,dict(v,cursor=99),p)
++ def test_hard_budget_counts_both_active_devices_and_stops_early(self):
++  import cleanroom_run as runner,cleanroom_common as common,time
++  with tempfile.TemporaryDirectory() as td,patch.object(runner,'D',Path(td)),patch.object(common,'D',Path(td)):
++   d=Path(td);publish(d/'EXECUTION_ROUTING.json',dict(authorized_devices={}))
++   controller=runner.Controller();controller.completed=[dict(wall_seconds=35.7*3600)]
++   controller.active={'a':dict(started_monotonic=time.monotonic()-200),'b':dict(started_monotonic=time.monotonic()-200)}
++   value=controller.ledger();self.assertGreater(value['actual_new_GPU_hours'],35.8);self.assertLess(value['actual_new_GPU_hours'],36.0);self.assertTrue((d/'STOP.json').exists())
++ def test_slow_actual_parent_forecast_stops_before_large_work(self):
++  import cleanroom_run as runner,cleanroom_common as common
++  with tempfile.TemporaryDirectory() as td,patch.object(runner,'D',Path(td)),patch.object(common,'D',Path(td)):
++   d=Path(td);(d/'runs').mkdir();(d/'formal').mkdir();(d/'qualification_units').mkdir()
++   publish(d/'EXECUTION_ROUTING.json',dict(authorized_devices={}))
++   publish(d/'preregistration.json',dict(historical_formal_worker_seconds=[3000]))
++   publish(d/'runs/fixture__parent.json',dict(elapsed_seconds=2000,loading_seconds=10,memory=[dict(position=512,elapsed=1),dict(position=1024,elapsed=1000)]))
++   c=runner.Controller()
++   with self.assertRaisesRegex(RuntimeError,'BUDGET_FORECAST'):c.forecast()
++   self.assertGreater(read(d/'budget_forecast.json')['projected_total_GPUh'],36)
++ def test_only_gpu3_and_all_four_documents_serial(self):
++  import cleanroom_run as runner
++  routing=read(D/'EXECUTION_ROUTING.json')
++  self.assertEqual(runner.validate_single_device_routing(routing),[runner.TARGET_UUID])
++  for change in ['device','document','lanes']:
++   wrong=copy.deepcopy(routing)
++   if change=='device':wrong['authorized_devices']={'GPU_OTHER':2}
++   if change=='document':wrong['document_devices']['pg19-test-41603']='GPU_OTHER'
++   if change=='lanes':wrong['qualification_parallel_lanes']=2
++   with self.assertRaises(AssertionError):runner.validate_single_device_routing(wrong)
++ def test_no_other_uuid_can_reach_admission(self):
++  import cleanroom_run as runner
++  c=runner.Controller()
++  with patch.object(runner.g,'admit') as admit:
++   with self.assertRaisesRegex(AssertionError,'NON_GPU3'):c.job('GPU_OTHER','canary','pg19-test-41603')
++   admit.assert_not_called()
++ def test_controller_executor_is_single_worker(self):
++  code=ast.parse((W/'cleanroom_run.py').read_text())
++  pools=[n for n in ast.walk(code) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='ThreadPoolExecutor']
++  self.assertEqual(len(pools),2)
++  self.assertTrue(all(next(k.value.value for k in n.keywords if k.arg=='max_workers')==1 for n in pools))
++ def test_launch_environment_before_fresh_interpreter(self):
++  from cleanroom_common import environment
++  routing=read(D/'EXECUTION_ROUTING.json');u=next(iter(routing['authorized_devices']));env=environment(u);env['CUDA_VISIBLE_DEVICES']=''
++  command=[sys.executable,'-B','-c',"import os,sys,json;from frozen_runtime_profile import validate_environment;v=validate_environment();print(json.dumps(dict(hash=hash('cleanroom-fixed-seed'),flags=sys.flags.hash_randomization,env=v['environment'])))"]
++  values=[]
++  for unused in range(2):
++   p=subprocess.run(command,cwd=W,env=env,text=True,capture_output=True);self.assertEqual(p.returncode,0,p.stderr);values.append(json.loads(p.stdout))
++  self.assertEqual(values[0],values[1]);self.assertEqual(values[0]['flags'],0)
++  env.pop('PYTHONHASHSEED');p=subprocess.run(command,cwd=W,env=env,text=True,capture_output=True);self.assertNotEqual(p.returncode,0)
++
++if __name__=='__main__':
++ import io,time
++ stream=io.StringIO();result=unittest.TextTestRunner(stream=stream,verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(Controls))
++ out=Path(sys.argv[1]) if len(sys.argv)>1 else D/'audits/CPU_CONTROL_TESTS.json'
++ report=dict(status='PASS_CPU_CONTROL_ONLY' if result.wasSuccessful() else 'FAIL',tests=result.testsRun,skips=len(result.skipped),no_GPU_or_model=True,source_SHA256={n:sha(W/n) for n in ['gpu_admission.py','cleanroom_common.py','cleanroom_worker.py','formal_checkpoint_control.py','cleanroom_run.py','cleanroom_finalize.py','test_cleanroom_control.py']},log=stream.getvalue(),epoch=time.time())
++ publish(out,report);print(stream.getvalue());assert result.wasSuccessful() and not result.skipped

@@ -1,0 +1,2002 @@
+# CODEX TASK
+# QWEN_GDN_PROPAGATION_SURROGATE_VALIDATION_V1
+#
+# Goal:
+# Test whether propagation-aware quantization-error metrics predict
+# long-horizon recurrent-state accumulation better than instantaneous
+# QDQ/injection magnitude in Qwen3.5-9B GDN.
+#
+# IMPORTANT:
+# This is a mechanism-validation experiment.
+# NO training.
+# NO AIME generation.
+# NO free generation.
+# NO C8.
+#
+# This experiment runs IN PARALLEL with the Ling propagation experiment.
+# It must be scientifically independent of Ling outcomes.
+
+============================================================
+0. CURRENT SCIENTIFIC CONTEXT
+============================================================
+
+Repository:
+  pytenter/GDN-quantization
+
+Current Qwen working area:
+  /data/zypan/worktrees/qwen-gdn-formal-equivalent-mechanism-v2
+
+Create a NEW branch/worktree namespace:
+
+  exp/qwen-gdn-propagation-surrogate-validation-v1
+
+Experiment root:
+
+  experiments/QWEN_GDN_PROPAGATION_SURROGATE_VALIDATION_V1
+
+Current frozen endpoint context:
+
+  FP Canonical60          = 52/60
+  Hadamard                = 41/60
+  C6R                     = 40/60
+  C7                      = 33/60
+  Native INT8-C128        = 18/60
+
+Important frozen rotations:
+
+  C6R rotation SHA256 =
+  a886588b3613f66e6635e5874dbfaeaee26b850e05b4a1524da0bef952d22da6
+
+  C7 rotation SHA256 =
+  57e7a11714405806385064f07438e5e2ac6b5952dd421606332b894cef3ee6e8
+
+C5R artifact exists in the A800 clean-room parent experiment.
+Recover its exact identity from the parent artifacts.
+Do NOT invent or reconstruct it if the frozen artifact is unavailable.
+
+Historical H is the canonical fixed Hadamard comparator.
+
+Previous Qwen conclusions must remain unchanged:
+
+- C6R is the strongest learned rotation.
+- C7 did not outperform C6R.
+- C7-vs-C6R prefix KL/margin/LAST64/layer-location signals were not stable/specific.
+- C6R-vs-H State/Functional/FH signals were not endpoint-specific.
+- coarse QDQ localization existed descriptively.
+- 24-layer QDQ fine diagnosis found:
+    STRICT_CANDIDATE_LAYER_COUNT = 0
+    QWEN_SINGLE_LAYER_QDQ_SPECIFICITY_SIGNAL = NOT_PRESENT
+    QWEN_QDQ_GEOMETRY_SIGNAL = DIFFUSE_NOT_ENDPOINT_SPECIFIC
+- No C8 is currently authorized.
+
+This new experiment must NOT reinterpret or overwrite any of those verdicts.
+
+============================================================
+1. PRIMARY SCIENTIFIC QUESTION
+============================================================
+
+Test:
+
+Does a metric that explicitly propagates each real INT8 state-quantization
+injection through the future GDN recurrent dynamics rank long-horizon
+accumulated state distortion better than raw instantaneous QDQ error?
+
+In shorthand:
+
+  instantaneous error magnitude
+        versus
+  future dynamical impact of that error
+
+Primary comparison:
+
+  J_INJ
+  J_DECAY
+  J_PROP
+
+against ground truth:
+
+  J_ACC
+
+No reasoning endpoint is measured in this experiment.
+
+============================================================
+2. STRICT SCOPE
+============================================================
+
+Allowed:
+
+  NEW_MODEL_FORWARD = YES
+  NEW_TEACHER_FORCED_TRACE_CAPTURE = YES
+  NEW_RECURRENT_REPLAY = YES
+  NEW_GPU_MEASUREMENT = YES
+
+Forbidden:
+
+  NEW_FREE_GENERATION = 0
+  NEW_AIME_GENERATION = 0
+  NEW_TRAINING = NO
+  NEW_OPTIMIZER_STEP = 0
+  NEW_CHECKPOINT_SELECTION = NO
+  NEW_ROTATION_LEARNING = NO
+  NEW_C8 = NO
+  FROZEN_V4_SCORING = NO
+
+Do not:
+
+- train C8;
+- change C6R/C7/C5R;
+- tune a loss;
+- search layers/heads/groups;
+- perform AIME;
+- add metrics after seeing numerical outcomes;
+- change the rotation bank after measurement starts.
+
+Final action of this task is always STOP.
+
+============================================================
+3. HARDWARE / RUNTIME
+============================================================
+
+Use:
+
+  4 × RTX3090 24GB
+
+Qwen formal restrictions remain:
+
+  - manual Hugging Face path
+  - NO SGLang
+  - deterministic=True
+  - no topology-dependent model mutation
+  - do not introduce distributed training
+
+Use one independent worker per GPU when possible.
+
+Record:
+
+  GPU UUID
+  driver
+  CUDA
+  torch
+  transformers
+  triton
+  git SHA
+  model SHA
+  tokenizer SHA
+  quantizer source SHA
+  rotation artifact SHAs
+
+Gate:
+
+  QWEN_RUNTIME_IDENTITY_GATE = PASS
+
+============================================================
+4. PHASE A — RECOVER THE EXACT GDN RECURRENCE
+============================================================
+
+DO NOT implement GDN recurrence from this prompt.
+
+Recover the exact recurrent-state update from the actual Qwen3.5 source
+used by the frozen Qwen experiments.
+
+Inspect the actual source and parent mechanism artifacts.
+
+At minimum identify:
+
+  - recurrent layer IDs
+  - state tensor layout
+  - key-head count
+  - value-head count
+  - head-repeat semantics
+  - decay / gating term
+  - beta term
+  - key term
+  - value/write term
+  - delta-rule erase/correction term
+  - recurrent-state update order
+  - normalization order
+  - rotation placement
+  - QDQ placement
+  - physical/native basis
+  - quantized/rotated basis
+
+Expected from prior parent diagnosis, to VERIFY rather than assume:
+
+  recurrent layer count = 24
+
+  expected runtime recurrent layer IDs:
+    [0,1,2,4,5,6,8,9,10,12,13,14,
+     16,17,18,20,21,22,24,25,26,28,29,30]
+
+  observed historical state shape:
+    [1,32,128,128]
+
+  historical interpretation:
+    batch
+    × 32 value heads
+    × 128 key coordinates
+    × 128 value coordinates
+
+  historical key heads = 16
+  historical value heads = 32
+  key→value repeat = 2
+
+Do not trust these blindly.
+Verify all of them against the current exact source/config.
+
+Emit:
+
+  provenance/GDN_RECURRENCE_SOURCE_AUDIT.json
+
+including exact source path/ranges/SHA.
+
+Gate:
+
+  GDN_RECURRENCE_SOURCE_IDENTITY_GATE = PASS
+
+If the exact recurrence cannot be recovered unambiguously:
+
+  FINAL_ACTION = STOP
+
+============================================================
+5. DEFINE THE FROZEN-TRACE SYSTEM CORRECTLY
+============================================================
+
+This experiment does NOT claim to model the full autoregressive network
+as a globally fixed linear system.
+
+Use a frozen teacher-forced transition trace.
+
+For each fresh document:
+
+1. Run the FP teacher-forced model once.
+2. Capture every quantity required to replay the GDN recurrent transition.
+3. Freeze:
+     token IDs
+     upstream transition-driving records
+     GDN coefficients
+     writes
+     layer ordering
+4. For each candidate rotation, replay the recurrent state under its own
+   real INT8-C128 QDQ writeback.
+
+Therefore:
+
+  token / upstream trace = frozen
+  recurrent quantized state = rotation-specific closed loop
+  QDQ input distribution = rotation-specific
+  QDQ injection = rotation-specific
+
+Use exact wording:
+
+  ON_POLICY_WITH_RESPECT_TO_RECURRENT_STATE_AND_QDQ
+  UNDER_A_FROZEN_TEACHER_FORCED_TRANSITION_TRACE
+
+Do NOT write:
+
+  FULL_AUTOREGRESSIVE_ON_POLICY
+
+============================================================
+6. NATIVE PHYSICAL BASIS IS MANDATORY
+============================================================
+
+The existing Qwen rotation acts on the C128/key-coordinate side.
+
+The GDN delta-rule transition itself also depends on key-space structure.
+
+Therefore, before defining any propagation metric:
+
+All state errors and QDQ injections used by the propagation analysis
+must be represented in ONE common native physical basis.
+
+Audit exactly how:
+
+  rotated stored state
+  quantized state
+  native state
+
+map into one another.
+
+For every condition R, define diagnostics:
+
+  S_native_preQ
+  S_native_postQ
+
+without altering the actual replay state.
+
+Then:
+
+  eta_t(R)
+    =
+  S_native_postQ - S_native_preQ
+
+Do not compare propagation vectors expressed in different rotated bases.
+
+Gate:
+
+  NATIVE_BASIS_MAPPING_GATE = PASS
+
+============================================================
+7. CRITICAL QWEN-SPECIFIC QUESTION:
+   DOES R CHANGE THE PHYSICAL TRANSITION?
+============================================================
+
+Do NOT assume that the recurrent transition M_t is rotation-independent.
+
+Numerically and analytically verify whether, after canonicalization into
+the native physical basis:
+
+  M_t(R) == M_t
+
+for the actual implementation.
+
+Use at least:
+
+  H
+  C6R
+  C7
+
+in the premeasurement smoke.
+
+Possible verdicts:
+
+  PHYSICAL_TRANSITION_ROTATION_INVARIANCE = PASS
+
+or
+
+  PHYSICAL_TRANSITION_ROTATION_INVARIANCE = FAIL
+
+If PASS:
+
+  use the shared native transition M_t.
+
+If FAIL:
+
+  do NOT force invariance.
+
+  Then define propagation using the actual condition-specific
+  native-basis transition:
+
+    M_t(R)
+
+  and state explicitly that rotation changes both:
+
+    injection geometry
+    and effective physical propagation.
+
+This outcome is scientifically allowed.
+
+Do not stop solely because invariance fails.
+
+But the exact condition-specific transition must then be used.
+
+============================================================
+8. BUILD A ZERO-WRITE PROPAGATION OPERATOR
+============================================================
+
+Construct:
+
+  propagate_zero_write(
+      shadow_state,
+      frozen_transition_record,
+      rotation_condition_if_needed
+  )
+
+It must:
+
+  - use the exact production GDN state-transition semantics;
+  - propagate an existing state/error forward;
+  - REMOVE only the new-token write/additive input;
+  - preserve decay/gating;
+  - preserve beta/delta-rule erase;
+  - preserve head repetition semantics;
+  - preserve the correct basis.
+
+Do NOT implement an approximate matrix formula if the production
+transition helper can be safely reused.
+
+This operator represents:
+
+  existing error
+       ↓
+  one more GDN recurrent transition
+       ↓
+  no new error injected
+
+============================================================
+9. ZERO-WRITE LINEARITY / DIFFERENCE PARITY
+============================================================
+
+Before any rotation-bank measurement:
+
+Use a development/smoke trace that is NOT part of the fresh discovery
+or confirmation documents.
+
+For multiple layers/tokens and deterministic test states A,B:
+
+Compare:
+
+  UpdatePreQ(A, record_t)
+  -
+  UpdatePreQ(B, record_t)
+
+against:
+
+  propagate_zero_write(A-B, record_t)
+
+after canonicalization into the same physical basis.
+
+Also test actual replay:
+
+Let:
+
+  e_t = S_quant_native_t - S_fp_native_t
+
+and:
+
+  pre_diff_{t+1}
+    =
+  S_quant_native_preQ_{t+1}
+  -
+  S_fp_native_{t+1}
+
+Then verify:
+
+  pre_diff_{t+1}
+      ≈
+  propagate_zero_write(e_t, record_t)
+
+Finally verify the exact driven recurrence:
+
+  e_{t+1}
+      ≈
+  propagate_zero_write(e_t, record_t)
+      +
+  eta_{t+1}
+
+Use the repository's existing deterministic numerical-parity policy if
+one already exists.
+
+If no such tolerance exists:
+
+- define the tolerance prospectively;
+- base it on dtype / operation semantics;
+- freeze it in protocol/preregistration.json BEFORE reading the full
+  parity panel;
+- do not tune the threshold after seeing failures.
+
+Emit:
+
+  provenance/GDN_ZERO_WRITE_PARITY.json
+  provenance/GDN_ERROR_RECURRENCE_PARITY.json
+
+Gates:
+
+  GDN_ZERO_WRITE_TRANSITION_PARITY_GATE = PASS
+  GDN_DRIVEN_ERROR_RECURRENCE_GATE = PASS
+
+If either fails:
+
+  STOP before the scientific rotation-bank measurement.
+
+============================================================
+10. RECOVER THE EXISTING C128 QDQ SEMANTICS
+============================================================
+
+Do not reimplement a second quantizer.
+
+Reuse the exact C128 QDQ implementation from the parent Qwen experiments.
+
+Audit:
+
+  group size
+  axis
+  scale
+  amax
+  rounding
+  clipping
+  dequantization
+  writeback order
+
+Historical parent evidence indicates:
+
+  group size = 128
+  state reduction along key-coordinate axis
+  4096 groups/layer
+
+Verify rather than assume.
+
+Gate:
+
+  C128_QDQ_IDENTITY_GATE = PASS
+
+============================================================
+11. FRESH DOCUMENT POOL
+============================================================
+
+Use fresh non-AIME long-form text.
+
+Preferred source:
+
+  PG19 TEST / existing independent long-text pool
+
+Do NOT use AIME or reasoning endpoint data.
+
+Mechanically exclude every document used for any Qwen:
+
+  - training
+  - validation
+  - C5/C6/C5R/C6R/C7 calibration
+  - Shared16
+  - teacher-forced mechanism discovery
+  - historical M5 analysis
+  - Stage-B diagnostics
+  - any prior PG19 mechanism experiment
+  - any candidate selection
+  - any prior propagation experiment if one exists
+
+Also exclude Ling-used documents if a shared PG19 pool/manifests make
+this easy to audit.
+
+This cross-model exclusion is conservative, not mandatory for model
+independence, but use it if document identity is available.
+
+Before any measurement:
+
+select exactly 8 fresh docs by a deterministic pre-existing ordering.
+
+Freeze:
+
+  DISCOVERY_DOCS = first 4 eligible docs
+  CONFIRMATION_DOCS = next 4 eligible docs
+
+For each doc freeze at least:
+
+  32769 Qwen token IDs
+
+or whatever exact count is required for a 32768-step replay plus
+next-token bookkeeping.
+
+Emit:
+
+  protocol/frozen_fresh_documents.json
+
+Gates:
+
+  FRESH_DOCUMENT_SELECTION_GATE = PASS
+  DOCUMENT_OVERLAP_AUDIT_GATE = PASS
+
+============================================================
+12. CONFIRMATION MUST BE PRE-FROZEN
+============================================================
+
+All 8 documents must be selected and hashed before discovery begins.
+
+However:
+
+  CONFIRMATION_SCIENTIFIC_RESULTS_READ_BEFORE_SELECTION = NO
+
+It is allowed to prepare/capture immutable FP transition traces for all
+8 documents for engineering efficiency before discovery aggregation,
+provided:
+
+- no rotation-conditioned confirmation metric is computed/read;
+- confirmation docs cannot influence metric selection;
+- traces are immutable and hash-frozen.
+
+============================================================
+13. ROTATION PARAMETERIZATION AUDIT
+============================================================
+
+Use only frozen trusted A800-era rotations / H.
+
+Primary anchors:
+
+  H
+  C5R
+  C6R
+  C7
+
+Recover the exact archived trainable parameterization.
+
+Preferred case:
+
+Each learned rotation is represented as something equivalent to:
+
+  R_l = H_l @ Cayley(A_l)
+
+with an exact archived skew/Cayley parameter A_l.
+
+Do NOT infer a new parameterization if exact parameters already exist.
+
+Check:
+
+  - same Hadamard base
+  - exact endpoint reconstruction
+  - rotation matrix SHA parity
+  - orthogonality
+  - layer identity
+
+Gate:
+
+  ROTATION_PARAMETERIZATION_IDENTITY_GATE = PASS
+
+If exact interpolation-compatible parameterization cannot be recovered,
+STOP before generating derived rotations.
+
+Do NOT silently switch to arbitrary Euclidean matrix interpolation.
+
+============================================================
+14. FROZEN 12-CONDITION ROTATION BANK
+============================================================
+
+Create exactly 12 conditions.
+
+Anchors:
+
+  R00 = H
+  R01 = C5R
+  R02 = C6R
+  R03 = C7
+
+Derived rotations:
+
+Using the exact archived Cayley/skew parameterization.
+
+If:
+
+  R(A) = H @ Cayley(A)
+
+then use:
+
+  H→C6R:
+    R04 = R(0.20 * A_C6R)
+    R05 = R(0.40 * A_C6R)
+    R06 = R(0.60 * A_C6R)
+    R07 = R(0.80 * A_C6R)
+
+  H→C7:
+    R08 = R(0.50 * A_C7)
+
+  H→C5R:
+    R09 = R(0.50 * A_C5R)
+
+  C6R↔C7 parameter midpoint:
+    R10 = R(0.50*A_C6R + 0.50*A_C7)
+
+  C6R↔C5R parameter midpoint:
+    R11 = R(0.50*A_C6R + 0.50*A_C5R)
+
+All interpolation is layerwise using that layer's exact frozen
+parameter.
+
+Do NOT include Identity / Native purely to increase dynamic range.
+
+Reason:
+
+The scientific target is the near-useful rotation neighborhood around
+H and learned rotations, not trivial separation of catastrophic
+rotations.
+
+For all 12:
+
+  - verify orthogonality;
+  - verify finite values;
+  - verify unique byte/content identity;
+  - verify endpoint definitions;
+  - compute SHA256.
+
+Emit:
+
+  protocol/frozen_rotation_bank.json
+
+Gates:
+
+  ROTATION_BANK_COUNT = 12
+  ROTATION_BANK_FREEZE_GATE = PASS
+  ROTATION_BANK_ORTHOGONALITY_GATE = PASS
+  ROTATION_BANK_UNIQUENESS_GATE = PASS
+
+No derived rotation may be changed after scientific measurement begins.
+
+============================================================
+15. GPU ASSIGNMENT
+============================================================
+
+Use four independent RTX3090 workers.
+
+For discovery:
+
+  discovery doc 0 → GPU0
+  discovery doc 1 → GPU1
+  discovery doc 2 → GPU2
+  discovery doc 3 → GPU3
+
+All 12 rotation conditions for the SAME document must stay on the same
+physical GPU.
+
+Do not distribute different rotations of one document across GPUs.
+
+Do the same for confirmation docs.
+
+This avoids confounding rotation ranking with GPU identity.
+
+============================================================
+16. REPLAY HORIZON
+============================================================
+
+Each document × rotation is replayed ONCE to:
+
+  T_MAX = 32768
+
+Read scores at:
+
+  T = 2048
+  T = 8192
+  T = 32768
+
+Do NOT rerun separately for each horizon.
+
+Primary long-horizon result:
+
+  32768
+
+2K / 8K are horizon-sensitivity diagnostics frozen in advance.
+
+============================================================
+17. ACTUAL QUANTIZED RECURRENT REPLAY
+============================================================
+
+For each document and each R:
+
+Initialize from exactly the same frozen initial recurrent state.
+
+At every recurrent step:
+
+1. use the frozen teacher-forced transition record;
+2. update the rotation-specific recurrent state;
+3. apply the real production INT8-C128 QDQ;
+4. perform real quantized writeback;
+5. continue from that quantized state.
+
+Therefore the next pre-QDQ state depends on all previous quantized
+writebacks.
+
+Never compute candidate metrics by:
+
+  FP state
+    → apply candidate R offline
+    → quantize once
+
+That fixed-state shortcut is forbidden.
+
+============================================================
+18. DEFINE eta IN THE NATIVE PHYSICAL BASIS
+============================================================
+
+At each recurrent layer/token:
+
+  Y_t(R) =
+    actual pre-QDQ state in native physical basis
+
+  Q_t(R) =
+    actual post-QDQ/dequantized state mapped into native physical basis
+
+Define:
+
+  eta_t(R)
+      =
+  Q_t(R) - Y_t(R)
+
+This is the actual on-path quantization injection.
+
+Do not replace it with:
+
+  amax proxy
+  scale proxy
+  raw M5
+  simulated FP-state injection
+
+============================================================
+19. GROUND-TRUTH ACCUMULATED ERROR
+============================================================
+
+Let:
+
+  S_fp_t =
+    frozen FP reference recurrent state in native physical basis
+
+  S_R_t =
+    actual R-specific quantized recurrent state in native physical basis
+
+Define:
+
+  e_t(R)
+      =
+  S_R_t - S_fp_t
+
+Per layer/token normalized accumulated energy:
+
+  acc_energy_t,l
+      =
+  ||e_t,l||_F^2
+  /
+  (||S_fp_t,l||_F^2 + eps)
+
+Use the same frozen epsilon everywhere.
+
+Primary ground truth at horizon T:
+
+  J_ACC(R,T)
+      =
+  mean over recurrent layers
+  and tokens t ∈ [1024,T]
+  of acc_energy_t,l
+
+Also report secondary:
+
+  J_ACC_TAIL512(R,T)
+      =
+  mean over recurrent layers
+  and tokens [T-511,T]
+
+But:
+
+  PRIMARY ranking target = J_ACC
+
+Do not switch to TAIL512 after seeing results.
+
+============================================================
+20. BASELINE: J_INJ
+============================================================
+
+Per layer/token:
+
+  inj_energy_t,l
+      =
+  ||eta_t,l||_F^2
+  /
+  (||Y_t,l||_F^2 + eps)
+
+Define:
+
+  J_INJ(R,T)
+      =
+  mean over recurrent layers
+  and t ∈ [1024,T]
+  of inj_energy_t,l
+
+This is the instantaneous/local baseline that propagation-aware metrics
+must beat.
+
+Also report the historical relative-L2 form:
+
+  ||eta|| / ||Y||
+
+for interpretability only.
+
+Do NOT use it as the primary ranking statistic.
+
+============================================================
+21. CANDIDATE 1: DECAY-ONLY PROPAGATION
+============================================================
+
+This is a deliberately simplified lifetime baseline.
+
+From the exact source audit, determine whether GDN has a separable
+forget/decay-only transition component.
+
+If yes, implement:
+
+  propagate_decay_only(shadow, record_t)
+
+that:
+
+  - keeps only the genuine multiplicative decay/gating component;
+  - removes the delta-rule erase/correction;
+  - adds no write.
+
+Do NOT invent a scalar average decay if the production semantics provide
+a structured decay operator.
+
+If the source does NOT admit a meaningful canonical decay-only component:
+
+  J_DECAY_AVAILABLE = NO
+
+and do not fabricate one.
+
+This availability decision must be frozen before scientific rotation
+measurement.
+
+============================================================
+22. CANDIDATE 2: FULL GDN PROPAGATION
+============================================================
+
+Core metric:
+
+  J_PROP
+
+Use the exact:
+
+  propagate_zero_write
+
+operator.
+
+The goal is to estimate:
+
+  sum over past injections
+    of future propagated injection energy
+
+while intentionally removing cross-time interference terms.
+
+Use deterministic Rademacher shadow states.
+
+For each recurrent layer and probe r:
+
+  z_0^(r) = 0
+
+At each step:
+
+  z_{t+1}^(r)
+      =
+  propagate_zero_write(
+      z_t^(r),
+      record_t,
+      R if condition-specific propagation is required
+  )
+  +
+  xi[r,t+1,l] * eta_{t+1,l}
+
+where:
+
+  xi ∈ {-1,+1}
+
+comes from a counter-based deterministic sign generator.
+
+Sign schedule depends only on:
+
+  experiment fixed seed
+  document ID
+  layer ID
+  token index
+  probe index
+
+NOT on rotation.
+
+Every rotation on the same document uses the same sign schedule.
+
+============================================================
+23. FIXED PROBE COUNT
+============================================================
+
+Use:
+
+  K = 8 Rademacher probes
+
+unless a premeasurement memory feasibility smoke proves that K=8 cannot
+fit safely on a 24GB RTX3090.
+
+If K=8 cannot maintain:
+
+  >= 20% VRAM headroom
+
+during the state-only replay implementation:
+
+use:
+
+  K = 4
+
+The downgrade decision may depend ONLY on:
+
+  VRAM
+  OOM
+  throughput feasibility
+
+NOT on metric quality/correlation.
+
+Freeze K before any discovery scientific result is read.
+
+Record:
+
+  PROPAGATION_MC_PROBE_COUNT = 8 or 4
+
+As a descriptive MC-stability diagnostic:
+
+if K=8, compute two fixed disjoint 4-probe estimates.
+
+Do NOT use split-half results to retune K.
+
+============================================================
+24. J_PROP
+============================================================
+
+For each layer/token:
+
+  prop_energy_t,l
+      =
+  mean_r ||z_t,l^(r)||_F^2
+  /
+  (||S_fp_t,l||_F^2 + eps)
+
+Define:
+
+  J_PROP(R,T)
+      =
+  mean over recurrent layers
+  and t ∈ [1024,T]
+  of prop_energy_t,l
+
+Interpretation:
+
+In expectation over the random signs, this estimates the sum of squared
+future-propagated injection contributions while removing cross-time
+cross terms.
+
+Do NOT claim:
+
+  J_PROP == J_ACC
+
+because J_ACC also contains cross-time alignment/cancellation terms.
+
+============================================================
+25. J_DECAY
+============================================================
+
+If J_DECAY_AVAILABLE = YES:
+
+run the SAME Rademacher construction, replacing:
+
+  propagate_zero_write
+
+with:
+
+  propagate_decay_only
+
+Define:
+
+  J_DECAY(R,T)
+
+using the same normalization, token windows, layers and probes.
+
+This creates a clean comparison:
+
+  J_INJ
+    = no propagation
+
+  J_DECAY
+    = lifetime/forgetting only
+
+  J_PROP
+    = full GDN propagation including delta-rule erase dynamics
+
+============================================================
+26. CROSS-TIME INTERACTION DIAGNOSTIC
+============================================================
+
+Compute only descriptively:
+
+  CROSS_TERM_RESIDUAL(R,T)
+      =
+  J_ACC(R,T) - J_PROP(R,T)
+
+Do not turn this residual into another candidate metric.
+
+Report its:
+
+  sign
+  magnitude
+  relative magnitude vs J_ACC
+
+Purpose:
+
+determine whether cross-time constructive/destructive interference is
+large enough that propagated-energy-only objectives may still be
+incomplete.
+
+============================================================
+27. V1 DOES NOT INCLUDE READOUT / LOGITS
+============================================================
+
+Do NOT add:
+
+  query-weighted propagation
+  readout-aware Gramian
+  logits
+  KL
+  margin
+  Final Hidden
+  raw M5
+
+as candidate-selection metrics.
+
+Why:
+
+V1 answers one narrow question:
+
+  Is state propagation itself more informative than instantaneous
+  injection?
+
+If V1 fails, readout-aware propagation can become a SEPARATE V2
+hypothesis.
+
+No post-hoc metric fishing.
+
+============================================================
+28. STORAGE / STREAMING
+============================================================
+
+Do NOT save full recurrent state tensors for every token.
+
+Use a streaming measurement design.
+
+For each document × rotation save:
+
+1. immutable metadata;
+2. per-horizon summaries;
+3. compressed token-level scalar diagnostics sufficient to recompute:
+     J_ACC
+     J_INJ
+     J_DECAY if available
+     J_PROP
+4. per-layer horizon summaries;
+5. selected fixed audit slices only.
+
+Suggested token-level schema:
+
+  token
+  horizon_membership
+  acc_energy_layer_mean
+  inj_energy_layer_mean
+  decay_energy_layer_mean
+  prop_energy_layer_mean
+
+Per-layer summaries should preserve enough information to diagnose a
+gross bug, but layer-level candidate discovery is NOT part of this
+experiment.
+
+All scientific raw outputs are immutable once written.
+
+============================================================
+29. DISCOVERY EXECUTION
+============================================================
+
+Discovery units:
+
+  4 fresh docs
+  × 12 frozen rotations
+  =
+  48 units
+
+Per document:
+
+  fixed GPU
+  fixed transition trace
+  fixed rotation order
+  fixed probe signs
+
+Recommended rotation execution order:
+
+  exact manifest order R00...R11
+
+Do not reorder based on intermediate performance.
+
+Required closure:
+
+  DISCOVERY_COMPLETE = 48/48
+
+Then:
+
+  freeze raw
+  compute SHA256 manifest
+  only then aggregate
+
+============================================================
+30. PANEL DEFINITION
+============================================================
+
+Discovery produces:
+
+  4 documents
+  × 3 horizons
+  =
+  12 independent descriptive ranking panels
+
+Each panel contains:
+
+  12 rotations
+
+For each candidate surrogate S:
+
+compute across the 12 rotations:
+
+  Spearman rho(S, J_ACC)
+
+and:
+
+  pairwise order concordance(S, J_ACC)
+
+Lower score = better for all metrics, therefore positive rho is desired.
+
+Pairwise concordance:
+
+For each unordered rotation pair (i,j):
+
+compare:
+
+  sign(S_i - S_j)
+
+with:
+
+  sign(J_ACC_i - J_ACC_j)
+
+Handle exact numerical ties explicitly.
+Do not silently break ties.
+
+============================================================
+31. PRIMARY BASELINE COMPARISON
+============================================================
+
+For every panel record:
+
+  rho_INJ
+  rho_DECAY if available
+  rho_PROP
+
+and:
+
+  concordance_INJ
+  concordance_DECAY if available
+  concordance_PROP
+
+The primary scientific question is not:
+
+  "Is rho_PROP positive?"
+
+It is:
+
+  "Does propagation-aware ranking consistently improve over J_INJ?"
+
+============================================================
+32. DISCOVERY ADVANCEMENT RULE
+============================================================
+
+Candidates:
+
+  J_PROP
+
+plus:
+
+  J_DECAY if available
+
+A candidate advances only if ALL hold:
+
+A.
+Across the 12 discovery doc×horizon panels:
+
+  rho(candidate, J_ACC)
+    >
+  rho(J_INJ, J_ACC)
+
+in at least:
+
+  9/12 panels
+
+B.
+At T=32768:
+
+  rho(candidate, J_ACC) > 0
+
+in at least:
+
+  3/4 documents
+
+C.
+At T=32768:
+
+  median Spearman rho
+    >= 0.50
+
+D.
+At T=32768:
+
+  median pairwise concordance
+    >= 0.65
+
+These are prospective advancement gates,
+not hypothesis-test p-values.
+
+Do not modify them after results are visible.
+
+============================================================
+33. SELECT ONE SURROGATE FOR CONFIRMATION
+============================================================
+
+If no candidate passes:
+
+  DISCOVERY_SURROGATE_GATE = FAIL
+  SELECTED_SURROGATE = NONE
+  CONFIRMATION = NOT_RUN
+  FINAL_ACTION = STOP
+
+If exactly one passes:
+
+  select it.
+
+If both J_DECAY and J_PROP pass:
+
+predeclared ordering:
+
+1. higher median 32768 Spearman
+2. higher median all-panel Spearman
+3. higher median 32768 concordance
+4. exact tie → choose J_DECAY because it is simpler
+
+Freeze:
+
+  SELECTED_SURROGATE
+
+before any rotation-conditioned confirmation results are opened.
+
+============================================================
+34. INDEPENDENT CONFIRMATION
+============================================================
+
+Only if discovery passes.
+
+Confirmation:
+
+  4 pre-frozen fresh docs
+  × 12 rotations
+  =
+  48 units
+
+Everything must remain unchanged:
+
+  runtime
+  model
+  quantizer
+  transition definition
+  basis
+  rotation bank
+  K probes
+  sign generation rule
+  horizons
+  normalization
+  metric equations
+  thresholds
+
+Do not re-select the surrogate.
+
+Required closure:
+
+  CONFIRMATION_COMPLETE = 48/48
+
+Freeze raw before aggregation.
+
+============================================================
+35. CONFIRMATION GATE
+============================================================
+
+The selected surrogate is confirmed only if ALL hold:
+
+A.
+Across the 12 confirmation doc×horizon panels:
+
+  rho(selected, J_ACC)
+    >
+  rho(J_INJ, J_ACC)
+
+in at least:
+
+  9/12
+
+B.
+At 32768:
+
+  rho(selected, J_ACC) > 0
+
+in at least:
+
+  3/4 docs
+
+C.
+At 32768:
+
+  median Spearman
+    >= 0.50
+
+D.
+At 32768:
+
+  median pairwise concordance
+    >= 0.65
+
+If all PASS:
+
+  QWEN_GDN_PROPAGATION_SURROGATE_CONFIRMATION = SUPPORTED
+
+Else:
+
+  QWEN_GDN_PROPAGATION_SURROGATE_CONFIRMATION = NOT_SUPPORTED
+
+Do NOT pool discovery + confirmation to rescue a failed confirmation.
+
+============================================================
+36. HORIZON-SCALING QUESTION
+============================================================
+
+Regardless of final verdict, report prospectively:
+
+For each metric:
+
+  median rho at 2K
+  median rho at 8K
+  median rho at 32K
+
+Question:
+
+Does propagation-awareness become MORE useful as horizon increases?
+
+Report descriptively.
+
+Do NOT introduce a new gate based on this after seeing the result.
+
+============================================================
+37. NEAR-OPTIMAL REGIME ANALYSIS
+============================================================
+
+Because all 12 rotations lie around H/C5R/C6R/C7,
+report separately:
+
+  H-vs-C6R local ordering
+  H→C6R interpolation ordering
+
+At alpha:
+
+  0
+  0.2
+  0.4
+  0.6
+  0.8
+  1.0
+
+Ask:
+
+Does each surrogate produce a roughly order-consistent landscape with
+true J_ACC near the current strongest region?
+
+This is descriptive only.
+
+Do NOT fit a new curve/objective to these values.
+
+============================================================
+38. NO REASONING CLAIM
+============================================================
+
+Even if propagation surrogate is confirmed:
+
+Do NOT claim:
+
+  reasoning improved
+  AIME improved
+  C6R failure explained
+  H-vs-C6R endpoint discordance explained
+
+The only allowed primary conclusion is about:
+
+  long-horizon recurrent-state accumulated distortion ranking
+
+============================================================
+39. NO C8 TRAINING
+============================================================
+
+Even if:
+
+  QWEN_GDN_PROPAGATION_SURROGATE_CONFIRMATION = SUPPORTED
+
+this experiment still ends with:
+
+  NEW_C8_TRAINING_AUTHORIZED = NO
+
+Instead create ONLY:
+
+  proposals/QWEN_C8_PROPAGATION_MATCHED_TRAINING_V1.json
+
+Do not execute it.
+
+============================================================
+40. FUTURE C8 PROPOSAL IF SUPPORTED
+============================================================
+
+Proposal only.
+
+Scientific matched comparison should anchor to C6R.
+
+Control:
+
+  exact C6R training objective/configuration
+
+Treatment:
+
+  exact C6R
+  +
+  lambda × selected propagation-aware term
+
+Everything else matched:
+
+  training documents
+  validation documents
+  seed
+  optimizer
+  LR
+  clip
+  update count
+  horizon
+  recurrent writeback
+  quantizer
+  layer learnability
+  initialization
+  deterministic runtime
+
+Do NOT combine with:
+
+  C7 Final-Hidden objective
+  Qwen layer-aware fixing
+  head fixing
+  group fixing
+  changed horizon
+
+The future experiment must test ONE intervention:
+
+  adding propagation awareness to C6R.
+
+Do not choose lambda in this experiment.
+
+============================================================
+41. IF PROPAGATION FAILS
+============================================================
+
+If discovery or confirmation fails:
+
+  PRIMARY_NEXT_STEP_CATEGORY =
+  STOP_STATE_PROPAGATION_OBJECTIVE
+
+Do not train C8.
+
+Recommended future hypothesis MAY be recorded as:
+
+  READOUT_AWARE_PROPAGATION_V2
+
+because a long-lived state error may still be harmless if future queries
+do not read that direction.
+
+But do NOT implement V2 now.
+
+============================================================
+42. ENGINEERING RECOVERY ENVELOPE
+============================================================
+
+Before first scientific discovery measurement:
+
+allowed engineering fixes include:
+
+  paths
+  imports
+  metadata
+  serialization
+  report formatting
+  immutable trace caching
+  worker launch
+  logging
+  resume mechanics
+
+Every fix must be documented.
+
+After scientific discovery measurement begins:
+
+do NOT change:
+
+  document set
+  rotation bank
+  transition semantics
+  native-basis mapping
+  QDQ semantics
+  K probes
+  sign schedule
+  horizons
+  normalization
+  candidate metrics
+  advancement thresholds
+
+Scientific semantic failure after measurement starts:
+
+  STOP
+
+Do not silently retry with altered protocol.
+
+============================================================
+43. RESUME / CRASH POLICY
+============================================================
+
+Long replays may be expensive.
+
+Implement deterministic per-unit resume.
+
+A completed scientific unit:
+
+  document × rotation
+
+is immutable.
+
+Resume may restart only incomplete units.
+
+For every completed unit store:
+
+  input SHA
+  trace SHA
+  rotation SHA
+  runtime identity
+  GPU UUID
+  output SHA
+  completion marker
+
+Do not rerun completed units merely because another worker failed.
+
+============================================================
+44. PREMEASUREMENT FREEZE
+============================================================
+
+Before Discovery unit 1:
+
+freeze and commit:
+
+  source audit
+  exact recurrence definition
+  physical basis mapping
+  transition invariance verdict
+  zero-write operator
+  numerical parity threshold
+  quantizer identity
+  8 fresh docs
+  discovery/confirmation split
+  token IDs
+  12-condition rotation bank
+  K probes
+  sign schedule
+  horizons
+  normalization
+  J_ACC
+  J_INJ
+  J_DECAY availability/definition
+  J_PROP
+  ranking statistics
+  discovery gate
+  confirmation gate
+
+Require:
+
+  git diff --check = PASS
+  scientific worktree = CLEAN
+
+Record:
+
+  PREMEASUREMENT_COMMIT_SHA
+
+No scientific measurement before this freeze.
+
+============================================================
+45. REQUIRED ARTIFACTS
+============================================================
+
+At minimum:
+
+protocol/
+  preregistration.json
+  frozen_fresh_documents.json
+  frozen_rotation_bank.json
+  metric_definitions.json
+
+provenance/
+  runtime_identity.json
+  parent_artifact_identity.json
+  GDN_RECURRENCE_SOURCE_AUDIT.json
+  GDN_ZERO_WRITE_PARITY.json
+  GDN_ERROR_RECURRENCE_PARITY.json
+  native_basis_mapping.json
+  transition_rotation_invariance.json
+  quantizer_identity.json
+  hardware_identity.json
+  PREMEASUREMENT_SHA256SUMS
+
+traces/
+  immutable frozen teacher-forced trace manifests
+
+raw/
+  discovery/
+  confirmation/
+
+analysis/
+  discovery_panel_metrics.csv
+  discovery_rotation_scores.csv
+  discovery_summary.json
+
+  confirmation_panel_metrics.csv
+  confirmation_rotation_scores.csv
+  confirmation_summary.json
+
+  horizon_scaling.csv
+  local_H_C6R_landscape.csv
+  cross_term_residual.csv
+
+proposals/
+  QWEN_C8_PROPAGATION_MATCHED_TRAINING_V1.json
+    only if confirmation supported
+
+FINAL_REPORT.md
+FINAL_SHA256SUMS
+
+============================================================
+46. FINAL REPORT — REQUIRED VERDICT BLOCK
+============================================================
+
+FINAL_REPORT.md must begin with something equivalent to:
+
+EXPERIMENT =
+QWEN_GDN_PROPAGATION_SURROGATE_VALIDATION_V1
+
+EVIDENCE_TYPE =
+PROSPECTIVE_CROSS_ROTATION_LONG_HORIZON_MECHANISM_VALIDATION
+
+NEW_TRAINING =
+NO
+
+NEW_AIME_GENERATION =
+0
+
+NEW_FREE_GENERATION =
+0
+
+QWEN_RUNTIME_IDENTITY_GATE =
+PASS/FAIL
+
+GDN_RECURRENCE_SOURCE_IDENTITY_GATE =
+PASS/FAIL
+
+NATIVE_BASIS_MAPPING_GATE =
+PASS/FAIL
+
+PHYSICAL_TRANSITION_ROTATION_INVARIANCE =
+PASS/FAIL/NOT_EVALUATED
+
+GDN_ZERO_WRITE_TRANSITION_PARITY_GATE =
+PASS/FAIL
+
+GDN_DRIVEN_ERROR_RECURRENCE_GATE =
+PASS/FAIL
+
+C128_QDQ_IDENTITY_GATE =
+PASS/FAIL
+
+FRESH_DOCUMENT_SELECTION_GATE =
+PASS/FAIL
+
+DOCUMENT_OVERLAP_AUDIT_GATE =
+PASS/FAIL
+
+ROTATION_PARAMETERIZATION_IDENTITY_GATE =
+PASS/FAIL
+
+ROTATION_BANK_COUNT =
+12
+
+ROTATION_BANK_FREEZE_GATE =
+PASS/FAIL
+
+ROTATION_BANK_ORTHOGONALITY_GATE =
+PASS/FAIL
+
+PROPAGATION_MC_PROBE_COUNT =
+8/4
+
+J_DECAY_AVAILABLE =
+YES/NO
+
+DISCOVERY_COMPLETE =
+.../48
+
+DISCOVERY_JINJ_MEDIAN_RHO_2K =
+...
+
+DISCOVERY_JINJ_MEDIAN_RHO_8K =
+...
+
+DISCOVERY_JINJ_MEDIAN_RHO_32K =
+...
+
+DISCOVERY_JDECAY_MEDIAN_RHO_32K =
+.../NA
+
+DISCOVERY_JPROP_MEDIAN_RHO_32K =
+...
+
+DISCOVERY_SELECTED_BEATS_JINJ_COUNT =
+.../12
+
+SELECTED_SURROGATE =
+J_DECAY/J_PROP/NONE
+
+DISCOVERY_SURROGATE_GATE =
+PASS/FAIL
+
+CONFIRMATION_COMPLETE =
+.../48
+
+CONFIRMATION_SELECTED_BEATS_JINJ_COUNT =
+.../12
+
+CONFIRMATION_32K_POSITIVE_RHO =
+.../4
+
+CONFIRMATION_32K_MEDIAN_RHO =
+...
+
+CONFIRMATION_32K_MEDIAN_CONCORDANCE =
+...
+
+QWEN_GDN_PROPAGATION_SURROGATE_CONFIRMATION =
+SUPPORTED /
+NOT_SUPPORTED /
+NOT_EVALUATED
+
+CROSS_TERM_RESIDUAL =
+DESCRIPTIVE_ONLY
+
+REASONING_IMPROVEMENT =
+NOT_EVALUATED
+
+NEW_C8_TRAINING_AUTHORIZED =
+NO
+
+PRIMARY_NEXT_STEP_CATEGORY =
+PREREGISTER_C8_PROPAGATION_MATCHED_TRAINING /
+READOUT_AWARE_PROPAGATION_V2 /
+STOP
+
+FINAL_ACTION =
+STOP
+
+============================================================
+47. FINAL REPORT QUESTIONS
+============================================================
+
+Explicitly answer:
+
+Q1.
+Does raw instantaneous J_INJ reliably rank true long-horizon J_ACC
+across useful rotations?
+
+Q2.
+Does decay/lifetime information improve ranking over J_INJ?
+
+Q3.
+Does the full GDN transition improve ranking beyond decay-only?
+
+Q4.
+Does the benefit of propagation awareness increase from 2K → 8K → 32K?
+
+Q5.
+Does the discovery result independently reproduce on the four frozen
+confirmation docs?
+
+Q6.
+Is the H↔C6R near-optimal interpolation landscape better ordered by
+J_PROP/J_DECAY than by J_INJ?
+
+Q7.
+How large is the cross-time interaction residual?
+
+Does this suggest that:
+  propagated energy is enough,
+or:
+  cancellation/alignment remains a major missing factor?
+
+Q8.
+Is the physical GDN transition rotation-invariant after mapping back to
+the native basis?
+
+If not, explain exactly what part of the implementation makes it
+condition-dependent.
+
+Q9.
+Does this experiment justify C8 training?
+
+Allowed answer:
+
+  Only if the prospective confirmation gate is SUPPORTED,
+  and even then C8 is NOT automatically run in this task.
+
+Q10.
+Does this experiment establish reasoning improvement?
+
+Required answer:
+
+  NO.
+
+============================================================
+48. SCIENTIFIC WORDING
+============================================================
+
+If SUPPORTED, allowed conclusion:
+
+"Across a pre-frozen near-useful rotation bank and independent fresh
+long-text traces, the selected propagation-aware metric ranked
+long-horizon accumulated GDN recurrent-state distortion more reliably
+than instantaneous QDQ injection magnitude."
+
+If full J_PROP beats decay-only, may additionally say:
+
+"The directional delta-rule transition provides predictive information
+beyond forgetting/lifetime alone."
+
+Do NOT say:
+
+  "Propagation-aware rotation improves reasoning."
+
+Do NOT say:
+
+  "This explains the C6R vs Hadamard AIME gap."
+
+Those require later experiments.
+
+============================================================
+49. ABSOLUTE STOP RULES
+============================================================
+
+STOP immediately if any of the following occurs before scientific
+measurement:
+
+- exact GDN recurrence cannot be recovered;
+- native basis cannot be established;
+- zero-write parity fails;
+- driven-error recurrence parity fails;
+- C128 quantizer identity fails;
+- frozen C5R/C6R/C7 artifacts mismatch;
+- Cayley/interpolation parameterization cannot reproduce endpoints;
+- fresh document overlap cannot be ruled out.
+
+After scientific measurement begins:
+
+do not repair the scientific protocol.
+
+Preserve partial evidence and STOP.
+
+============================================================
+50. FINAL INTENT
+============================================================
+
+This experiment is NOT trying to prove a new model is better.
+
+It is trying to answer one prerequisite question:
+
+    "Before training another learned rotation,
+     do we have a validated signal that measures
+     the FUTURE harm of quantization noise rather than
+     only its CURRENT magnitude?"
+
+If the answer is NO:
+
+  do not train C8.
+
+If the answer is YES on independent confirmation:
+
+  prepare a separate prospective C8 matched-training protocol,
+  but do not execute it here.
+
+Proceed now.
+
+First execute:
+
+  PHASE A:
+  GDN recurrence/source/native-basis/zero-write parity closure
+
+Only after all premeasurement gates PASS and the protocol is committed
+may Discovery unit 1 begin.

@@ -1,0 +1,18 @@
+{
+  "backend": "nccl",
+  "world_size": 2,
+  "gpu_pair_preference": [0, 1],
+  "api": "torch.distributed._composable.fsdp.fully_shard",
+  "mesh": "1D CUDA DeviceMesh size 2",
+  "wrap_order": ["each of 32 model.layers decoder blocks bottom-up", "model.embed_tokens", "model.norm", "lm_head", "root model for remaining parameters"],
+  "reshard_after_forward": true,
+  "mixed_precision_policy": "default; model loaded BF16",
+  "activation_checkpointing": false,
+  "rotation_bank": "unsharded, per-rank replicated, trainable theta=0 Hadamard initialization",
+  "recurrent_states": "not parameters or buffers; never sharded or split",
+  "input_distribution": "same frozen non-AIME token IDs on both ranks for diagnostic parity",
+  "embedding_and_lm_head": "distinct storage in frozen Qwen checkpoint; shard independently",
+  "final_norm": "shard as a separate FSDP unit",
+  "no_device_map_dual": true,
+  "no_TP_or_PP": true
+}

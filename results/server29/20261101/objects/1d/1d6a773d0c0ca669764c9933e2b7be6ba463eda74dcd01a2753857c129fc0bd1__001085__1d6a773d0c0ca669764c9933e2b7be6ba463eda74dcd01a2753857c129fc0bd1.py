@@ -1,0 +1,1 @@
+lambda _cls, LU, pivots, info: _tuple_new(_cls, (LU, pivots, info))

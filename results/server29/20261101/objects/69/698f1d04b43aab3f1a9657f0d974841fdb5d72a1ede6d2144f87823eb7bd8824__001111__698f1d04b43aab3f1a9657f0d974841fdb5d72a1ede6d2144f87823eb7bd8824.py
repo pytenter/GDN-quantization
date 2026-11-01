@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self.num_warps,self.waves_per_eu,self.num_stages,self.num_ctas,self.num_buffers_warp_spec,self.num_consumer_groups,self.reg_dec_producer,self.reg_inc_consumer,self.extern_libs,self.cluster_dims,self.debug,self.sanitize_overflow,self.arch,self.supported_fp8_dtypes,self.deprecated_fp8_dtypes,self.default_dot_input_precision,self.allowed_dot_input_precisions,self.enable_fp_fusion,self.launch_cooperative_grid,self.matrix_instr_nonkdim,self.kpack,self.allow_flush_denorm,self.max_num_imprecise_acc_default,self.backend_name,self.instruction_sched_variant,)==(other.num_warps,other.waves_per_eu,other.num_stages,other.num_ctas,other.num_buffers_warp_spec,other.num_consumer_groups,other.reg_dec_producer,other.reg_inc_consumer,other.extern_libs,other.cluster_dims,other.debug,other.sanitize_overflow,other.arch,other.supported_fp8_dtypes,other.deprecated_fp8_dtypes,other.default_dot_input_precision,other.allowed_dot_input_precisions,other.enable_fp_fusion,other.launch_cooperative_grid,other.matrix_instr_nonkdim,other.kpack,other.allow_flush_denorm,other.max_num_imprecise_acc_default,other.backend_name,other.instruction_sched_variant,)
+  return NotImplemented
+ return __eq__

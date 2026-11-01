@@ -1,0 +1,1 @@
+lambda _cls, start, end, target, depth, lasti: _tuple_new(_cls, (start, end, target, depth, lasti))

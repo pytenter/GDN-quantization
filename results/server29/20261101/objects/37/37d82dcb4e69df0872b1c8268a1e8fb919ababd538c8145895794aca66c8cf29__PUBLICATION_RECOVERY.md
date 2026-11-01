@@ -1,0 +1,11 @@
+# 额外审核补充包的独立CPU发布恢复
+
+最终科学状态仍为 COMPLETE_NO_CLEAR_SPEEDUP。完整比较见 review/FINAL_COMPARISON.md。
+
+原独立额外审核的780项输入、18组测量、两fresh CUDA资格/真实退出、V1失败与复用、源/模型17/实际regularmaps等CPU审查均已PASS。其第一次发布在55旧glibc中找不到renameat2导出符号时失败，发生于已SHA/fsync的任务自有incoming暂存阶段；没有发布最终part，没有改源、主seal或任何实验，原claim/FIRST_FAILURE和incoming完整保留。
+
+本流程是另一个固定计划、唯一claim、独立sibling的CPU发布恢复。先实际执行x86_64 Linux renameat2 syscall316 NOREPLACE及重复目标EEXIST canary，确认原数据不覆盖；随后复制完全相同的审核报告/证据，连同该CPU失败、canary和恢复程序一并按每part最多22个payload+2个metadata、32MiB限制发布。没有重试旧claim或删除旧暂存，更没有GPU/benchmark/finisher/评分重跑。
+
+原额外审核本地预检曾误把case.length看成总长，已有LOCAL_REVIEW注明；根据原记录其为decode length加独立prompt，修正只发生在未claim的CPU reviewer。另一次工具字符串包装解析失败同样未执行任何工具/远程语句。所有科学工件保持原字节。量化门禁不放宽，未测occupancy/SMactive等仍未测，绝对降速根因仍UNRESOLVED。
+
+行号校正：原比较报告末尾scripts/throughput_dp32.py:115实际是prefill计时收束；长decode循环入口在:116，实际固定token forward和host计时在:118。解释和实测数据不变，原报告字节保留。

@@ -1,0 +1,521 @@
+bloop/types.py
+class Boolean(Type):
+    python_type = bool
+    backing_type = BOOLEAN
+
+    def dynamo_load(self, value, *, context, **kwargs):
+        if value is None:
+            return None
+        return bool(value)
+
+    def dynamo_dump(self, value, *, context, **kwargs):
+        if value is None:
+            return None
+        return bool(value)
+bloop/types.py
+class String(Type):
+    python_type = str
+    backing_type = STRING
+
+    def dynamo_load(self, value, *, context, **kwargs):
+        if not value:
+            return ""
+        return value
+
+    def dynamo_dump(self, value, *, context, **kwargs):
+        if not value:
+            return None
+        return value
+bloop/models.py
+class IMeta:
+class BaseModel:
+    class Meta(IMeta):
+class Index:
+class GlobalSecondaryIndex(Index):
+class LocalSecondaryIndex(Index):
+class Column(ComparisonMixin):
+    class UNBOUND:
+        class Meta(IMeta):
+    def __init__(self, **attrs):
+    def __init_subclass__(cls: type, **kwargs):
+    def __repr__(self):
+    def __init__(self, *, projection, hash_key=None, range_key=None, dynamo_name=None, **kwargs):
+    def __copy__(self):
+    def __set_name__(self, owner, name):
+    def __repr__(self):
+    def name(self):
+    def dynamo_name(self):
+    def hash_key(self):
+    def range_key(self):
+    def keys(self):
+    def __set__(self, obj, value):
+    def __get__(self, obj, type=None):
+    def __delete__(self, obj):
+    def __init__(
+            self, *, projection,
+            hash_key, range_key=None,
+            read_units=None, write_units=None,
+            dynamo_name=None, **kwargs):
+    def __init__(self, *, projection, range_key, dynamo_name=None, strict=True, **kwargs):
+    def hash_key(self):
+    def read_units(self):
+    def read_units(self, value):
+    def write_units(self):
+    def write_units(self, value):
+    def __init__(self, typedef, hash_key=False, range_key=False, dynamo_name=None, default=missing):
+    def __copy__(self):
+    def __set_name__(self, owner, name):
+    def __set__(self, obj, value):
+    def __get__(self, obj, type=None):
+    def __delete__(self, obj):
+    def __repr__(self):
+    def name(self):
+    def dynamo_name(self):
+def subclassof(obj, classinfo):
+def instanceof(obj, classinfo):
+def loaded_columns(obj: BaseModel):
+def unpack_from_dynamodb(*, attrs, expected, model=None, obj=None, engine=None, context=None, **kwargs):
+def validate_projection(projection):
+def validate_stream(meta):
+def validate_encryption(meta):
+def validate_backups(meta):
+def validate_billing(meta):
+def validate_ttl(meta):
+def unbound_repr(obj):
+def setdefault(obj, field, default):
+def ensure_hash(cls) -> None:
+def initialize_meta(cls: type):
+def bind_column(model, name, column, force=False, recursive=False, copy=False) -> Column:
+def bind_index(model, name, index, force=False, recursive=True, copy=False) -> Index:
+def refresh_index(meta, index) -> None:
+def unbind(meta, name=None, dynamo_name=None) -> None:
+bloop/types.py
+class Integer(Number):
+    """Truncates values when loading or dumping.
+
+    For example, ``3.14`` in DynamoDB is loaded as ``3``. If a value is ``7.5``
+    locally, it's stored in DynamoDB as ``7``.
+    """
+    python_type = int
+
+    def dynamo_load(self, value, *, context, **kwargs):
+        if value is None:
+            return None
+        number = super().dynamo_load(value, context=context, **kwargs)
+        return int(number)
+
+    def dynamo_dump(self, value, *, context, **kwargs):
+        if value is None:
+            return None
+        value = int(value)
+        return super().dynamo_dump(value, context=context, **kwargs)
+bloop/types.py
+class UUID(String):
+    python_type = uuid.UUID
+
+    def dynamo_load(self, value, *, context, **kwargs):
+        if value is None:
+            return None
+        return uuid.UUID(value)
+
+    def dynamo_dump(self, value, *, context, **kwargs):
+        if value is None:
+            return None
+        return str(value)
+bloop/exceptions.py
+class InvalidModel(BloopException, ValueError):
+    """This is not a valid Model."""
+tests/helpers/models.py
+class User(BaseModel):
+    id = Column(String, hash_key=True)
+    age = Column(Integer)
+    name = Column(String)
+    email = Column(String)
+    joined = Column(DateTime, dynamo_name="j")
+    by_email = GlobalSecondaryIndex(hash_key="email", projection="all")
+bloop/types.py
+class Type:
+    """Abstract base type."""
+
+    python_type = None
+    backing_type = None
+
+    def supports_operation(self, operation: str) -> bool:
+        """
+        Used to ensure a conditional operation is supported by this type.
+
+        By default, uses a hardcoded table of operations that maps to each backing DynamoDB type.
+
+        You can override this method to implement your own conditional operators, or to dynamically
+        adjust which operations your type supports.
+        """
+        return operation in OPERATION_SUPPORT_BY_TYPE[self.backing_type]
+
+    def __init__(self):
+        if not hasattr(self, "inner_typedef"):
+            self.inner_typedef = self
+        super().__init__()
+
+    def __getitem__(self, key):
+        raise RuntimeError(f"{self!r} does not support document paths")
+
+    def dynamo_dump(self, value, *, context, **kwargs):
+        """Converts a local value into a DynamoDB value.
+
+        For example, to store a string enum as an integer:
+
+        .. code-block:: python
+
+            def dynamo_dump(self, value, *, context, **kwargs):
+                colors = ["red", "blue", "green"]
+                return colors.index(value.lower())
+        """
+        raise NotImplementedError
+
+    def dynamo_load(self, value, *, context, **kwargs):
+        """Converts a DynamoDB value into a local value.
+
+        For example, to load a string enum from an integer:
+
+        .. code-block:: python
+
+            def dynamo_dump(self, value, *, context, **kwargs):
+                colors = ["red", "blue", "green"]
+                return colors[value]
+        """
+        raise NotImplementedError
+
+    def _dump(self, value, **kwargs):
+        """Entry point for serializing values.  Most custom types should use :func:`~bloop.types.Type.dynamo_dump`.
+
+        This wraps the return value of :func:`~bloop.types.Type.dynamo_dump` in DynamoDB's wire format.
+        For example, serializing a string enum to an int:
+
+        .. code-block:: python
+
+            value = "green"
+            # dynamo_dump("green") = 2
+            _dump(value) == {"N": 2}
+
+        If a complex type calls this function with ``None``, it will forward ``None`` to
+        :func:`~bloop.types.Type.dynamo_dump`.  This can happen when dumping eg. a sparse
+        :class:`~.bloop.types.Map`, or a missing (not set) value.
+        """
+        wrapped = actions.wrap(value)
+        value = self.dynamo_dump(wrapped.value, **kwargs)
+        if value is None:
+            return actions.wrap(None)
+        else:
+            value = {self.backing_type: value}
+            return wrapped.type.new_action(value)
+
+    def _load(self, value, **kwargs):
+        """Entry point for deserializing values.  Most custom types should use :func:`~bloop.types.Type.dynamo_load`.
+
+        This unpacks DynamoDB's wire format and calls :func:`~bloop.types.Type.dynamo_load` on the inner value.
+        For example, deserializing an int to a string enum:
+
+        .. code-block:: python
+
+            value = {"N": 2}
+            # dynamo_load(2) = "green"
+            _load(value) == "green"
+
+        If a complex type calls this function with ``None``, it will forward ``None`` to
+        :func:`~bloop.types.Type.dynamo_load`.  This can happen when loading eg. a sparse :class:`~bloop.types.Map`.
+        """
+        if value is not None:
+            value = next(iter(value.values()))
+        return self.dynamo_load(value, **kwargs)
+
+    def __repr__(self):
+        # Render class python types by name
+        python_type = self.python_type
+        if isinstance(python_type, type):
+            python_type = python_type.__name__
+
+        return "<{}[{}:{}]>".format(
+            self.__class__.__name__,
+            self.backing_type, python_type
+        )
+bloop/types.py
+class Timestamp(Integer):
+    """Stores the unix (epoch) time in seconds.  Milliseconds are truncated to 0 on load and save.
+
+    Naive datetimes (``tzinfo is None``) are not supported, and trying to use one will raise ``ValueError``.
+
+    .. code-block:: python
+
+        from datetime import datetime, timedelta, timezone
+
+        class Model(Base):
+            id = Column(Integer, hash_key=True)
+            date = Column(Timestamp)
+        engine.bind()
+
+        obj = Model(id=1, date=datetime.now(timezone.utc))
+        engine.save(obj)
+
+        one_day_ago = datetime.now(timezone.utc) - timedelta(days=1)
+
+        query = engine.query(
+            Model,
+            key=Model.id==1,
+            filter=Model.date >= one_day_ago)
+
+        query.first().date
+
+    .. note::
+
+        To use common datetime libraries such as `arrow`_, `delorean`_, or `pendulum`_,
+        see :ref:`DateTime and Timestamp Extensions <user-extensions-datetime>` in the user guide.  These
+        are drop-in replacements and support non-utc timezones:
+
+        .. code-block:: python
+
+            from bloop import Timestamp  # becomes:
+            from bloop.ext.pendulum import Timestamp
+
+    .. _arrow: http://crsmithdev.com/arrow
+    .. _delorean: https://delorean.readthedocs.io/en/latest/
+    .. _pendulum: https://pendulum.eustace.io
+    """
+    python_type = datetime.datetime
+
+    def dynamo_load(self, value, *, context, **kwargs):
+        if value is None:
+            return None
+        value = super().dynamo_load(value, context=context, **kwargs)
+        # we assume all stored values are utc, so we simply force timezone to utc
+        # without changing the day/time values
+        return datetime.datetime.fromtimestamp(value, tz=datetime.timezone.utc)
+
+    def dynamo_dump(self, value, *, context, **kwargs):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError(
+                "naive datetime instances are not supported.  You can set a timezone with either "
+                "your_dt.replace(tzinfo=) or your_dt.astimezone(tz=).  WARNING: calling astimezone on a naive "
+                "datetime will assume the naive datetime is in the system's timezone, even though "
+                "datetime.utcnow() creates a naive object!  You almost certainly don't want to do that."
+            )
+        value = value.timestamp()
+        return super().dynamo_dump(value, context=context, **kwargs)
+bloop/types.py
+class DateTime(String):
+    """Always stored in DynamoDB using the :data:`~bloop.types.FIXED_ISO8601_FORMAT` format.
+
+    Naive datetimes (``tzinfo is None``) are not supported, and trying to use one will raise ``ValueError``.
+
+    .. code-block:: python
+
+        from datetime import datetime, timedelta, timezone
+
+        class Model(Base):
+            id = Column(Integer, hash_key=True)
+            date = Column(DateTime)
+        engine.bind()
+
+        obj = Model(id=1, date=datetime.now(timezone.utc))
+        engine.save(obj)
+
+        one_day_ago = datetime.now(timezone.utc) - timedelta(days=1)
+
+        query = engine.query(
+            Model,
+            key=Model.id==1,
+            filter=Model.date >= one_day_ago)
+
+        query.first().date
+
+    .. note::
+
+        To use common datetime libraries such as `arrow`_, `delorean`_, or `pendulum`_,
+        see :ref:`DateTime and Timestamp Extensions <user-extensions-datetime>` in the user guide.  These
+        are drop-in replacements and support non-utc timezones:
+
+        .. code-block:: python
+
+            from bloop import DateTime  # becomes:
+            from bloop.ext.pendulum import DateTime
+
+    .. _arrow: http://crsmithdev.com/arrow
+    .. _delorean: https://delorean.readthedocs.io/en/latest/
+    .. _pendulum: https://pendulum.eustace.io
+    """
+    python_type = datetime.datetime
+
+    def dynamo_load(self, value, *, context, **kwargs):
+        if value is None:
+            return None
+        dt = datetime.datetime.strptime(value, FIXED_ISO8601_FORMAT)
+        # we assume all stored values are utc, so we simply force timezone to utc
+        # without changing the day/time values
+        return dt.replace(tzinfo=datetime.timezone.utc)
+
+    def dynamo_dump(self, value, *, context, **kwargs):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError(
+                "naive datetime instances are not supported.  You can set a timezone with either "
+                "your_dt.replace(tzinfo=) or your_dt.astimezone(tz=).  WARNING: calling astimezone on a naive "
+                "datetime will assume the naive datetime is in the system's timezone, even though "
+                "datetime.utcnow() creates a naive object!  You almost certainly don't want to do that."
+            )
+        dt = value.astimezone(tz=datetime.timezone.utc)
+        return dt.strftime(FIXED_ISO8601_FORMAT)
+tests/helpers/models.py
+class VectorModel(BaseModel):
+    name = Column(String, hash_key=True)
+    list_str = Column(List(String))
+    set_str = Column(Set(String))
+    map_nested = Column(Map(**{
+        "bytes": Binary,
+        "str": String,
+        "map": Map(**{
+            "int": Integer,
+            "str": String
+        })
+    }))
+    some_int = Column(Integer)
+    some_bytes = Column(Binary)
+bloop/conditions.py
+class ConditionRenderer:
+    # noinspection PyUnresolvedReferences
+    """Renders collections of :class:`~bloop.conditions.BaseCondition` into DynamoDB's wire format for expressions,
+    including:
+
+    * ``"ConditionExpression"`` -- used in conditional operations
+    * ``"FilterExpression"`` -- used in queries and scans to ignore results that don't match the filter
+    * ``"KeyConditionExpressions"`` -- used to describe a query's hash (and range) key(s)
+    * ``"ProjectionExpression"`` -- used to include a subset of possible columns in the results of a query or scan
+    * ``"UpdateExpression"`` -- used to save objects
+
+    Normally, you will only need to call :func:`~bloop.conditions.ConditionRenderer.render` to handle any combination
+    of conditions.  You can also call each individual ``render_*`` function to control how multiple conditions of
+    each type are applied.
+
+    You can collect the rendered condition at any time through :attr:`~bloop.conditions.ConditionRenderer.rendered`.
+
+    .. code-block:: python
+
+        >>> renderer.render(obj=user, atomic=True)
+        >>> renderer.output
+        {'ConditionExpression': '((#n0 = :v1) AND (attribute_not_exists(#n2)) AND (#n4 = :v5))',
+         'ExpressionAttributeNames': {'#n0': 'age', '#n2': 'email', '#n4': 'id'},
+         'ExpressionAttributeValues': {':v1': {'N': '3'}, ':v5': {'S': 'some-user-id'}}}
+
+
+    :param engine: Used to dump values in conditions into the appropriate wire format.
+    :type engine: :class:`~bloop.engine.Engine`
+    """
+    def __init__(self, engine):
+        self.refs = ReferenceTracker(engine)
+        self.engine = engine
+        self.expressions = {}
+
+    def render(self, obj=None, condition=None, update=False, filter=None, projection=None, key=None):
+        """Main entry point for rendering multiple expressions.  All parameters are optional, except obj when
+        atomic or update are True.
+
+        :param obj: *(Optional)* An object to render an atomic condition or update expression for.  Required if
+            update or atomic are true.  Default is False.
+        :param condition: *(Optional)* Rendered as a "ConditionExpression" for a conditional operation.
+            If atomic is True, the two are rendered in an AND condition.  Default is None.
+        :type condition: :class:`~bloop.conditions.BaseCondition`
+        :param bool update: *(Optional)*  True if an "UpdateExpression" should be rendered for ``obj``.
+            Default is False.
+        :param filter: *(Optional)* A filter condition for a query or scan, rendered as a "FilterExpression".
+            Default is None.
+        :type filter: :class:`~bloop.conditions.BaseCondition`
+        :param projection: *(Optional)* A set of Columns to include in a query or scan, rendered as a
+            "ProjectionExpression".  Default is None.
+        :type projection: set :class:`~bloop.models.Column`
+        :param key: *(Optional)* A key condition for queries, rendered as a "KeyConditionExpression".  Default is None.
+        :type key: :class:`~bloop.conditions.BaseCondition`
+        """
+        if update and not obj:
+            raise InvalidCondition("An object is required to render updates.")
+
+        if filter:
+            self.filter_expression(filter)
+
+        if projection:
+            self.projection_expression(projection)
+
+        if key:
+            self.key_expression(key)
+
+        # Condition requires a bit of work, because either one can be empty/false
+        if condition:
+            self.condition_expression(condition)
+
+        if update:
+            self.update_expression(obj)
+
+    def condition_expression(self, condition):
+        self.expressions["ConditionExpression"] = condition.render(self)
+
+    def filter_expression(self, condition):
+        self.expressions["FilterExpression"] = condition.render(self)
+
+    def key_expression(self, condition):
+        self.expressions["KeyConditionExpression"] = condition.render(self)
+
+    def projection_expression(self, columns):
+        included = set()
+        ref_names = []
+        for column in columns:
+            if column in included:
+                continue
+            included.add(column)
+            ref = self.refs.any_ref(column=column)
+            ref_names.append(ref.name)
+        self.expressions["ProjectionExpression"] = ", ".join(ref_names)
+
+    def update_expression(self, obj):
+        updates = {
+            ActionType.Add: [],
+            ActionType.Delete: [],
+            ActionType.Remove: [],
+            ActionType.Set: [],
+        }
+        for column in sorted(
+                # Don't include key columns in an UpdateExpression
+                filter(lambda c: c not in obj.Meta.keys, global_tracking[obj]),
+                key=lambda c: c.dynamo_name):
+            name_ref = self.refs.any_ref(column=column)
+            value_ref = self.refs.any_ref(column=column, value=getattr(obj, column.name, None))
+            update_type = value_ref.action.type
+            # Can't set to an empty value, force to a Remove
+            if is_empty(value_ref) or update_type is ActionType.Remove:
+                self.refs.pop_refs(value_ref)
+                update_type = ActionType.Remove
+                value_ref = None
+            updates[update_type].append((name_ref, value_ref))
+
+        expressions = []
+        for update_type, refs in updates.items():
+            if not refs:
+                continue
+            k = update_type.wire_key.upper()
+            r = update_type.render
+            expressions.append(f"{k} " + ", ".join(r(*ref) for ref in refs))
+        if expressions:
+            self.expressions["UpdateExpression"] = " ".join(e.strip() for e in expressions)
+
+    @property
+    def output(self):
+        """The wire format for all conditions that have been rendered.
+        A new :class:`~bloop.conditions.ConditionRenderer` should be used for each operation."""
+        expressions = {k: v for (k, v) in self.expressions.items() if v is not None}
+        if self.refs.attr_names:
+            expressions["ExpressionAttributeNames"] = self.refs.attr_names
+        if self.refs.attr_values:
+            expressions["ExpressionAttributeValues"] = self.refs.attr_values
+        return expressions
+bloop/exceptions.py
+class InvalidStream(BloopException, ValueError):
+    """This is not a valid stream definition."""

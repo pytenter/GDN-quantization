@@ -1,0 +1,174 @@
+{
+  "task": "QWEN_PERSISTENT_FUNCTIONAL_SURROGATE_V1",
+  "preregistered_at": "2026-09-24T00:00:00+08:00",
+  "status": "FROZEN_BEFORE_FORMAL_COMPARISON",
+  "scientific_question": "Can a coordinate-comparable persistent functional metric rank recurrent-state INT8 rotations in the same direction as held-out reasoning quality?",
+  "constraints": {
+    "new_free_generation": false,
+    "new_rotation_training": false,
+    "model_modification": false,
+    "quantizer_modification": false,
+    "recurrent_kernel_modification": false,
+    "scorer_modification": false,
+    "gold_conditioned_metric_selection": false
+  },
+  "candidate_conditions": [
+    "Identity_INT8_C128",
+    "Key_Hadamard_INT8_C128"
+  ],
+  "primary_aime_panel": {
+    "name": "clean59",
+    "rule": "Exclude the single paired trajectory with pre-existing non-finite audit findings from both rotations; exclusion is based only on numerical validity.",
+    "excluded_pair": {
+      "problem_id": "aime26_28",
+      "seed": 2
+    },
+    "pairing_key": [
+      "problem_id",
+      "seed"
+    ]
+  },
+  "metric_definitions": {
+    "raw_m0": "Existing canonical-basis recovered recurrent-state Frobenius error.",
+    "raw_m5": "Existing frozen linearized functional error ||W_O D_g D_w J_RMS(o) E^T q||_2 using canonical/recovered state error and FP operators.",
+    "decision": "Existing |delta logit on FP winner| / max(FP top1-top2 margin, 1e-6).",
+    "m0_relative": "M0 divided by the FP recurrent-state norm, using the existing capture definition.",
+    "m5_over_m0": "Per-token M5_global_l2 / (M0_global_l2 + 1e-12); diagnostic only.",
+    "teacher_forced_kl": "Exact full-vocabulary KL(FP || INT8) at the same teacher-forced history; unavailable unless full logits exist.",
+    "delta_nll": "-log p_INT8(reference next token) + log p_FP(reference next token); unavailable unless logits or log probabilities exist.",
+    "delta_margin": "FP-selected-token margin in FP minus the same token margin in INT8; unavailable unless logits exist.",
+    "persistent_metric": "Anchor-reset teacher-forced future KL/delta-NLL/delta-margin at H={1,4,8,16,32,64}; an AIME value requires a saved restartable FP cache/state or a newly specified replay protocol.",
+    "external_qwen_persistent_kl": "Existing exact full-vocabulary Future-KL on a fixed 64-document non-AIME held-out panel at H={1,4,8,16,32,64,128}; used only for cross-rotation direction and h=1 versus multi-horizon diagnostics."
+  },
+  "horizons": {
+    "primary": [
+      1,
+      4,
+      8,
+      16,
+      32,
+      64
+    ],
+    "secondary": [
+      128
+    ],
+    "auc_weights": "equal weight across H={1,4,8,16,32,64}; H=128 is excluded from the preregistered primary equal-weight AUC"
+  },
+  "trajectory_aggregation": {
+    "mean": "arithmetic mean over finite valid observations",
+    "p95": "linear 95th percentile over finite valid observations",
+    "cvar95": "mean of observations greater than or equal to the trajectory p95",
+    "nonfinite": "reported explicitly; the clean59 primary panel excludes the sole affected pair symmetrically"
+  },
+  "candidate_aggregation": {
+    "primary": "median across clean59 trajectory-level p95 values",
+    "secondary": "median across clean59 trajectory means and CVaR95 values; external 64-document persistent-KL uses the pre-existing mean per-document equal-horizon AUC",
+    "direction": "lower is better for all risk metrics"
+  },
+  "tail_localization": {
+    "primary_observation": "per-token m5_layer_p95 from the existing capture",
+    "fractions": [
+      0.05,
+      0.01,
+      0.001,
+      0.0001
+    ],
+    "status_rule": {
+      "EXTREME": "top 0.1% contributes at least 25% of total mass OR top 1% contributes at least 50%",
+      "MODERATE": "otherwise, top 1% contributes at least 20% OR top 5% contributes at least 50%",
+      "DIFFUSE": "otherwise"
+    }
+  },
+  "within_rotation_analysis": {
+    "outcome": "Frozen V4 incorrect (1) versus correct (0)",
+    "metrics": [
+      "raw_m0_p95",
+      "raw_m5_p95",
+      "decision_p95",
+      "m0_relative_p95",
+      "m5_over_m0_p95"
+    ],
+    "statistics": [
+      "AUROC",
+      "trajectory bootstrap 95% CI with 5000 resamples",
+      "Spearman",
+      "median correct",
+      "median incorrect",
+      "Cliffs delta"
+    ],
+    "bootstrap_seed": 20260924
+  },
+  "rescue_analysis": {
+    "groups": [
+      "stable_correct",
+      "hadamard_rescue",
+      "stable_failure",
+      "identity_only_correct_if_present"
+    ],
+    "delta": "Hadamard minus Identity; negative means improvement for lower-is-better metrics.",
+    "statistics": [
+      "P(delta<0) with Wilson 95% CI",
+      "exact two-sided sign test",
+      "rescue versus stable-failure permutation test on median delta with 10000 permutations",
+      "Cliffs delta"
+    ],
+    "permutation_seed": 20260924
+  },
+  "cross_rotation_rule": "PAIRWISE_DIRECTION_CHECK only: a lower-is-better candidate aggregate is CORRECT iff Hadamard < Identity while 41/59 > 18/59.",
+  "metric_selection_classes": [
+    "DIAGNOSTIC_ONLY",
+    "PROMISING_SURROGATE",
+    "FAILED_CROSS_ROTATION",
+    "INSUFFICIENT_EVIDENCE"
+  ],
+  "promising_surrogate_requirements": [
+    "no clear coordinate pathology",
+    "positive within-Identity failure information",
+    "positive within-Hadamard failure information",
+    "correct Identity-to-Hadamard pairwise direction",
+    "more favorable rescue association than stable-failure",
+    "no post-hoc layer, horizon, or threshold selection"
+  ],
+  "artifact_sufficiency_policy": {
+    "no_imputation": true,
+    "missing_stored_logits_or_restartable_states": "RECONSTRUCT_BY_ALLOWED_DETERMINISTIC_TEACHER_FORCED_REPLAY_AFTER_PARITY_GATE",
+    "replay_failure_after_exhausting_semantics_preserving_reconstruction": "INSUFFICIENT_ARTIFACT",
+    "forbidden_substitution": "Do not relabel local M5, shifted token metrics, approximate KL, or the non-AIME panel as AIME anchor-reset persistent metrics."
+  },
+  "deterministic_replay": {
+    "required_before_formal_analysis": true,
+    "teacher_tokens": "exact existing FP_STATE generated_token_ids",
+    "batch_rows": [
+      "FP unquantized reference",
+      "Identity INT8-C128",
+      "Key-Hadamard INT8-C128"
+    ],
+    "local_replay": "Replay every trajectory once from the original prompt; prefill is unquantized, then recurrent-state C128 QDQ is applied after every teacher-forced generated token exactly as in the prior mechanism capture. Compute full-vocabulary KL, delta-NLL, and FP-token margin degradation online without saving logits.",
+    "persistent_anchor_rule": {
+      "fractions": [
+        0.2,
+        0.4,
+        0.6,
+        0.8
+      ],
+      "formula": "For N generated tokens and maximum horizon 64, anchor=floor(f*(N-65)) for each frozen fraction f; deduplicate anchors while preserving order.",
+      "label_independent": true,
+      "prefix": "Rebuild the exact FP-equivalent batch cache from prompt plus generated_token_ids[:anchor] with quantization disabled.",
+      "intervention": "At the anchor, quantize only recurrent states for Identity and Hadamard rows in their native/rotated coordinates, then apply the same QDQ after every future teacher-forced token.",
+      "horizon_observation": "After processing the token at anchor+h-1, compare logits predicting generated_token_ids[anchor+h]."
+    },
+    "full_vocabulary_kl": true,
+    "no_logits_serialized": true,
+    "parity_gates": {
+      "token_provenance": "exact token IDs and ordering",
+      "prior_replay_fp_margin_max_abs_tolerance": 1e-5,
+      "prior_replay_delta_z_max_abs_tolerance": 1e-4,
+      "top1_changed": "exact",
+      "repeat_determinism_max_abs_tolerance": 1e-7
+    },
+    "shards": 4,
+    "resume_unit": "trajectory",
+    "labels_not_loaded_by_replay_workers": true
+  },
+  "tail_and_metric_values_are_joined_to_labels_only_after_aggregation": true
+}

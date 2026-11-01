@@ -1,0 +1,1861 @@
+# QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1
+
+## 0. Mission
+
+We now have access to a new server with:
+
+1 x NVIDIA A800 80GB PCIe
+
+logged in as root.
+
+
+The previous 48GB vGPU environment is NOT trusted for new formal training because silent checkpoint→GPU corruption was demonstrated.
+
+Do NOT continue debugging that old vGPU.
+
+The purpose of this experiment is to establish a clean, trusted A800 training environment and then perform a paper-grade matched comparison between:
+
+C5R:
+clean-room reproduction of recurrent State training
+
+C6R:
+clean-room reproduction of recurrent Functional training
+
+C7:
+persistent Final-Hidden training
+
+
+The PRIMARY scientific comparison is:
+
+C7 vs C6R
+
+
+because C6R and C7 must differ only in the training objective.
+
+
+C5R is included to re-establish the complete learned-rotation lineage under the trusted environment.
+
+
+No AIME tuning is allowed.
+
+No Full60.
+
+No distributed training.
+
+---
+
+# 1. Scientific questions
+
+The experiment must answer:
+
+Q1.
+Can the historical C5/C6 training behavior be reproduced in a trusted clean-room environment?
+
+Q2.
+Under the SAME trusted runtime and matched C6 protocol, does changing the objective from local Functional fidelity to full-model Final-Hidden fidelity improve the learned rotation?
+
+Q3.
+Does any improvement survive canonical AIME26 free-generation evaluation?
+
+Q4.
+If clean-room C6R differs materially from historical C6, is the historical training environment itself a meaningful confound?
+
+Do not assume answers in advance.
+
+---
+
+# 2. Existing historical endpoint
+
+Archived Canonical60:
+
+FP:
+52/60
+
+Native INT8-C128:
+18/60
+
+Hadamard:
+41/60
+
+historical C5:
+33/60
+
+historical C6:
+36/60
+
+
+Paired historical:
+
+C5 vs H:
+rescue 5
+regression 13
+
+C6 vs H:
+rescue 4
+regression 9
+
+
+Historical C5/C6 remain valid as archived deployed artifacts and observed endpoints.
+
+Do NOT relabel them invalid.
+
+However their training host is no longer considered trusted enough for the new matched scientific comparison.
+
+Therefore clean-room reproductions will be called:
+
+C5R
+C6R
+
+not replacements for historical C5/C6.
+
+
+---
+
+# 3. Phase A — A800 host qualification
+
+Do NOT start model training immediately.
+
+
+First record:
+
+GPU model
+
+VRAM
+
+PCIe/SXM identity
+
+GPU UUID
+
+MIG mode
+
+virtualization mode if exposed
+
+driver
+
+CUDA driver/runtime
+
+OS
+
+kernel
+
+Python
+
+
+Determine whether the GPU is:
+
+physical full-device
+MIG
+vGPU/virtualized
+
+
+Do not assume from product name alone.
+
+
+If the system exposes a full 80GB device and no evidence of slicing is present, record that.
+
+Do not alter GPU virtualization configuration.
+
+Output:
+
+provenance/a800_host.json
+
+
+---
+
+# 4. Reconstruct one frozen clean-room software environment
+
+Locate source-of-truth environment information from:
+
+formal C5/C6 configs
+
+runtime snapshots
+
+requirements/lockfiles
+
+experiment reports
+
+repository commits
+
+
+Do NOT blindly copy the broken old vGPU environment.
+
+Do NOT opportunistically upgrade to newest packages.
+
+
+Choose one coherent environment that:
+
+- supports the canonical Qwen implementation;
+- supports formal C128 recurrence;
+- supports existing C5/C6 training code;
+- supports the C7 final-hidden objective implementation.
+
+
+Record exactly:
+
+Torch
+
+CUDA runtime
+
+Transformers
+
+Triton
+
+FLA if used
+
+safetensors
+
+numpy
+
+Python
+
+repository HEAD
+
+
+Freeze them before training.
+
+
+If a package difference from historical C6 is unavoidable:
+
+record it explicitly.
+
+The PRIMARY C6R-vs-C7 comparison remains valid because both use the SAME new environment.
+
+
+---
+
+# 5. Model checkpoint identity
+
+Use the exact pinned:
+
+Qwen3.5-9B checkpoint/revision
+
+already used by the project.
+
+
+Verify model files against known manifests/hashes where available.
+
+
+The known lm_head reference from previous diagnosis is:
+
+key:
+lm_head.weight
+
+shape:
+[248320, 4096]
+
+dtype:
+BF16
+
+checkpoint absmax:
+0.35546875
+
+raw SHA256:
+6d6ff4dbf261f833246d32e7c6088f87f4ab40ddb58516d90c931aa6ae61d5e7
+
+
+Do not rely only on this tensor.
+
+It is only the first canary.
+
+
+---
+
+# 6. Fast A800 transfer canary
+
+Before loading the full model:
+
+directly read the exact checkpoint lm_head.weight from safetensors.
+
+
+Run in THREE fresh processes:
+
+CPU checkpoint tensor
+→ A800 GPU
+→ synchronize
+→ chunked exact raw equality check
+
+
+Require:
+
+CANARY_RUN_1 = PASS
+
+CANARY_RUN_2 = PASS
+
+CANARY_RUN_3 = PASS
+
+
+Also record:
+
+finite
+
+NaN/Inf count
+
+absmax
+
+raw equality
+
+
+If ANY canary fails:
+
+STOP.
+
+Set:
+
+A800_HOST_QUALIFICATION = FAIL
+
+
+Do not start scientific setup.
+
+
+---
+
+# 7. Full-model parameter integrity
+
+After canary passes:
+
+load the complete canonical Qwen model.
+
+
+Use the intended clean-room loading path.
+
+Do NOT introduce a special repair after a mismatch.
+
+
+After model is fully resident on GPU:
+
+verify EVERY checkpoint-backed parameter against the expected checkpoint tensor.
+
+
+For unchanged dtype:
+
+require exact equality.
+
+
+If an intentional dtype conversion occurs:
+
+construct the expected converted tensor and compare exactly to that.
+
+
+Use chunked comparison to avoid duplicate full GPU copies.
+
+
+For every parameter record:
+
+name
+
+shape
+
+dtype
+
+numel
+
+finite
+
+NaN count
+
+Inf count
+
+absmax
+
+exact_equal
+
+
+Include:
+
+lm_head
+
+embeddings
+
+norms
+
+all attention weights
+
+all MLP weights
+
+all GDN-related frozen weights
+
+
+No silent exemption.
+
+
+Output:
+
+qualification/full_model_integrity.csv
+
+
+Required:
+
+FULL_MODEL_GPU_PARAMETER_INTEGRITY = PASS
+
+
+---
+
+# 8. Fresh-process qualification
+
+Repeat full model load + full-model integrity verification in:
+
+at least TWO additional completely fresh processes.
+
+
+Together with the first full load:
+
+3 clean full-model instances must PASS.
+
+
+Required:
+
+FULL_MODEL_FRESH_PROCESS_REPEATABILITY = PASS
+
+
+If one fails:
+
+reject the A800 environment for formal training.
+
+Do not retry repeatedly until a PASS is obtained.
+
+
+---
+
+# 9. FP runtime qualification
+
+On the trusted full model run fixed short canonical FP sequences.
+
+
+Check:
+
+final hidden finite
+
+lm_head weight finite
+
+logits finite
+
+reasonable logit magnitude
+
+
+Compare:
+
+model lm_head(final_hidden)
+
+vs
+
+explicit F.linear(final_hidden, verified_lm_head.weight)
+
+
+Required:
+
+LM_HEAD_FORWARD_REFERENCE_PARITY = PASS
+
+
+Repeat the same input twice in the same process.
+
+Require deterministic behavior under the project's established deterministic contract.
+
+
+Required:
+
+FP_RUNTIME_STABILITY = PASS
+
+
+---
+
+# 10. Freeze the trusted environment
+
+Once all qualification gates PASS:
+
+freeze:
+
+environment
+
+model hashes
+
+code commit
+
+configuration
+
+GPU identity
+
+
+Do not change package versions after this point.
+
+
+Status:
+
+A800_TRAINING_ENVIRONMENT_TRUSTED = YES
+
+
+Only now begin scientific preparation.
+
+
+---
+
+# 11. Training/validation data provenance
+
+Use the exact existing formal training assets:
+
+CALIBRATION_RAW_TEXTS.jsonl
+
+same 64 training documents
+
+same 16 frozen validation documents
+
+same document order
+
+same tokenizer
+
+same capture positions
+
+
+Verify file hashes against historical artifacts.
+
+
+No AIME overlap.
+
+Do not replace missing records with new data.
+
+If source identity cannot be verified:
+
+STOP.
+
+
+---
+
+# 12. Regenerate clean FP teacher targets
+
+Do not formally reuse teacher caches generated on the old untrusted vGPU.
+
+
+On A800 using the trusted FP model regenerate the necessary teacher targets.
+
+
+For every training/validation capture save the minimum necessary targets.
+
+
+For C5R:
+
+FP recurrent State target.
+
+
+For C6R:
+
+FP State target
+
+and
+
+FP local Functional / linear_attn.out_proj target
+
+according to the exact historical C6 implementation.
+
+
+For C7:
+
+FP Final-Hidden target.
+
+
+Prefer one unified teacher pass when technically exact and memory/storage efficient.
+
+
+Expected:
+
+80 documents
+
+8 captures/document
+
+640 capture positions
+
+
+Record:
+
+document ID
+
+capture index
+
+tensor type
+
+shape
+
+dtype
+
+hash
+
+finite status
+
+
+Output:
+
+teacher/teacher_target_manifest.csv
+
+
+Run online-vs-cache parity on at least 24 fixed captures per required target family.
+
+
+Required:
+
+CLEAN_TEACHER_TARGET_PARITY = PASS
+
+
+---
+
+# 13. One unified trainer
+
+Use one common recurrent training engine for C5R, C6R and C7.
+
+
+The trainer should expose only an objective switch.
+
+
+Do not maintain three independently drifting training implementations.
+
+
+Shared pipeline:
+
+token input
+→ student persistent recurrent state
+→ canonical C128 QDQ
+→ FP32 dequantized writeback
+→ subsequent model computation
+→ capture target
+→ selected objective
+→ H64 backward
+→ rotation update
+
+
+All non-objective code should be common whenever possible.
+
+
+---
+
+# 14. Shared recurrent semantics
+
+For all arms:
+
+student state is persistent.
+
+Every recurrent update performs canonical:
+
+GDN update
+→ C128 QDQ
+→ FP32 dequantization
+→ recurrent cache writeback
+
+
+No FP reset between captures.
+
+
+H64 means:
+
+autograd history truncation every 64 recurrent steps.
+
+
+H64 does NOT reset numerical state.
+
+
+Numerical recurrent state remains continuous across the complete training document.
+
+
+---
+
+# 15. C5R configuration
+
+C5R must reproduce formal C5.
+
+
+Use exact historical frozen configuration.
+
+
+Expected, to verify:
+
+seed = 0
+
+sequence_length_max = 1024
+
+captures/document = 8
+
+updates = 125
+
+target exposures = 1000
+
+H64
+
+Adam
+
+learning rate = 0.003
+
+weight decay = 0
+
+global grad clip = 1
+
+
+Objective:
+
+historical recurrent State relative-MSE
+
+with exact original:
+
+normalization
+
+epsilon
+
+capture weighting
+
+
+Do not reinterpret from prose if code/config is available.
+
+
+Initialization:
+
+Hadamard / theta=0
+
+same formal parameterization.
+
+
+---
+
+# 16. C6R configuration
+
+C6R must reproduce formal C6.
+
+
+Use exact historical frozen configuration.
+
+
+Expected:
+
+seed = 0
+
+sequence_length_max = 1024
+
+captures/document = 8
+
+updates = 125
+
+target exposures = 1000
+
+H64
+
+Adam
+
+learning rate = 0.001
+
+weight decay = 0
+
+global grad clip = 1
+
+
+Objective:
+
+exact historical:
+
+Functional relative-MSE
++
+0.1 × State objective
+
+
+Functional means the actual full historical `linear_attn.out_proj` target path.
+
+Do not substitute another intermediate representation.
+
+
+Initialization:
+
+Hadamard / theta=0.
+
+
+---
+
+# 17. C7 configuration
+
+C7 must match C6R in every intended training hyperparameter.
+
+
+Use:
+
+same seed
+
+same train order
+
+same data
+
+same LR = 0.001
+
+same optimizer
+
+same H64
+
+same updates
+
+same exposures
+
+same initialization
+
+same rotation parameterization
+
+
+Only primary intended difference:
+
+OBJECTIVE.
+
+
+C7 objective:
+
+persistent full-model Final-Hidden relative-MSE ONLY.
+
+
+No:
+
+State auxiliary
+
+Functional auxiliary
+
+KL
+
+NLL
+
+margin
+
+Hadamard anchor
+
+
+---
+
+# 18. Define Final Hidden exactly
+
+Trace the actual model forward.
+
+
+Define FINAL_HIDDEN as:
+
+the final normalized hidden representation immediately consumed by lm_head.
+
+
+Record:
+
+module path
+
+tensor shape
+
+dtype
+
+position semantics
+
+
+Do not assume based only on variable names.
+
+
+Perform autoregressive indexing audit:
+
+hidden position
+
+logit position
+
+next-token target position
+
+
+Required:
+
+FINAL_HIDDEN_INDEXING_AUDIT = PASS
+
+
+---
+
+# 19. Update-0 common forward parity
+
+Before any optimizer update:
+
+C5R
+
+C6R
+
+C7
+
+
+all have theta=0 / exact Hadamard initialization.
+
+
+Therefore their model forward state must be identical.
+
+
+On a fixed panel compare:
+
+recurrent states
+
+QDQ inputs
+
+qcodes
+
+writeback
+
+local out_proj
+
+Final Hidden
+
+logits
+
+
+Required:
+
+C5R_C6R_C7_UPDATE0_FORWARD_PARITY = PASS
+
+
+Loss values may differ.
+
+Forward behavior may not.
+
+
+Save update-0 validation for all three prospectively.
+
+
+---
+
+# 20. Gradient smoke for all arms
+
+Run:
+
+C5R gradient smoke
+
+C6R gradient smoke
+
+C7 gradient smoke
+
+
+For each require:
+
+finite loss
+
+finite gradients
+
+nonzero rotation gradients
+
+multiple GDN layers receive gradient
+
+model weights remain frozen
+
+only allowed rotation parameters update
+
+orthogonality remains valid
+
+
+Record per-layer gradient norms.
+
+
+Required:
+
+C5R_GRADIENT_SMOKE = PASS
+
+C6R_GRADIENT_SMOKE = PASS
+
+C7_GRADIENT_SMOKE = PASS
+
+
+---
+
+# 21. H64 memory readiness
+
+Run exact formal H64 readiness for each arm.
+
+
+C5R/C6R should provide reference behavior.
+
+For C7 measure:
+
+peak allocated
+
+peak reserved
+
+runtime
+
+memory after backward
+
+memory after optimizer step
+
+memory creep
+
+
+Do NOT reduce:
+
+H64
+
+sequence length
+
+capture count
+
+
+because the A800 has 80GB and should first be tested with the exact scientific protocol.
+
+
+Required:
+
+C5R_H64_READY = PASS
+
+C6R_H64_READY = PASS
+
+C7_H64_DIRECT_READY = PASS/FAIL
+
+
+If C7 fits directly:
+
+use direct training.
+
+
+If C7 OOMs even on 80GB:
+
+do not silently change protocol.
+
+Then stop and report before designing recomputation/distributed alternatives.
+
+
+---
+
+# 22. Training order
+
+To minimize environmental differences:
+
+train sequentially on the SAME A800.
+
+
+Recommended order:
+
+C5R
+
+then C6R
+
+then C7
+
+
+Before each arm:
+
+fresh model process
+
+full frozen-parameter integrity spot check
+
+same trusted environment
+
+
+Do not change packages between arms.
+
+
+Training order itself is fixed before outcomes are known.
+
+
+---
+
+# 23. Immutable model integrity guards
+
+Because silent corruption was observed on the previous host,
+periodically re-check frozen model weights.
+
+
+At minimum:
+
+before update 1
+
+after update 1
+
+mid-training
+
+after final update
+
+
+All frozen model parameters must still match their trusted initialized values.
+
+
+Exclude only legitimate trainable rotation parameters.
+
+
+Required:
+
+FROZEN_MODEL_INTEGRITY = PASS
+
+
+Any unexpected mutation:
+
+STOP that arm.
+
+Do not repair and continue.
+
+
+---
+
+# 24. Formal training
+
+Run exactly:
+
+C5R:
+125 updates / 1000 exposures
+
+C6R:
+125 updates / 1000 exposures
+
+C7:
+125 updates / 1000 exposures
+
+
+No:
+
+early stopping
+
+AIME monitoring
+
+LR sweep
+
+seed sweep
+
+adaptive extension
+
+
+Save training logs:
+
+update
+
+exposure
+
+training primary loss
+
+gradient norm
+
+memory
+
+orthogonality
+
+
+At every historical validation cadence compute ALL THREE common diagnostics:
+
+State MSE
+
+Functional MSE
+
+Final-Hidden MSE
+
+
+This allows direct cross-objective analysis.
+
+
+---
+
+# 25. Save every scheduled candidate robustly
+
+For every scheduled checkpoint and every arm save:
+
+theta
+
+training-host materialized frozen deployment rotation
+
+update
+
+exposure
+
+primary validation metric
+
+State MSE
+
+Functional MSE
+
+Final-Hidden MSE
+
+SHA256 manifest
+
+
+Do not repeat the historical C5/C6 candidate provenance gap.
+
+
+Never depend on later theta rematerialization as the only way to recover a historical candidate.
+
+
+---
+
+# 26. Checkpoint selection
+
+C5R:
+
+use exact historical C5 selection rule.
+
+
+Expected:
+
+minimum frozen State validation metric.
+
+
+C6R:
+
+use exact historical C6 selection rule.
+
+Do not infer if frozen config says otherwise.
+
+
+C7:
+
+minimum frozen Final-Hidden validation MSE.
+
+
+Tie-break:
+
+earlier update.
+
+
+No checkpoint is selected using:
+
+AIME
+
+historical rescue/regression examples
+
+downstream test behavior
+
+
+Freeze selected R artifacts before endpoint evaluation.
+
+
+---
+
+# 27. Clean-room training reproduction analysis
+
+Before AIME compare:
+
+historical C5 vs C5R
+
+historical C6 vs C6R
+
+
+Compare:
+
+selected update
+
+learning curves
+
+State validation
+
+Functional validation
+
+Final-Hidden validation if available
+
+rotation distance as descriptive only
+
+
+Do NOT require exact same theta.
+
+GPU/runtime numerical differences can produce different optimization trajectories.
+
+
+Classify reproduction qualitatively:
+
+CLOSE_REPRODUCTION
+
+MATERIAL_SHIFT
+
+or
+
+INCONCLUSIVE
+
+
+Do not use arbitrary post-hoc thresholds.
+
+Base interpretation on predefined validation metrics and trajectory behavior.
+
+
+---
+
+# 28. Shared16 common comparison
+
+Compare:
+
+Hadamard
+
+historical C5 u63
+
+historical C5 u113
+
+historical C6 u125
+
+C5R selected
+
+C6R selected
+
+C7 selected
+
+
+Metrics:
+
+State MSE
+
+Functional MSE
+
+Final-Hidden MSE
+
+
+No weighted score.
+
+
+Primary questions:
+
+Does C5R reproduce the State-training tradeoff?
+
+Does C6R reproduce Functional-training behavior?
+
+Does C7 improve Final-Hidden beyond both C6R and Hadamard?
+
+Does moving supervision downstream sacrifice earlier metrics?
+
+
+---
+
+# 29. Deployment to canonical inference host
+
+Do not perform final endpoint on A800 if historical baselines were produced on the canonical 3090 inference runtime.
+
+
+Copy selected frozen rotations:
+
+C5R
+
+C6R
+
+C7
+
+
+byte-for-byte to the canonical Qwen 4×RTX3090 evaluation host.
+
+
+Do NOT rematerialize from theta.
+
+
+Verify:
+
+SHA256
+
+24/24 layer matrices
+
+dtype
+
+shape
+
+orthogonality
+
+loader identity
+
+
+Run the canonical deployment smoke.
+
+
+Required:
+
+C5R_DEPLOYMENT = PASS
+
+C6R_DEPLOYMENT = PASS
+
+C7_DEPLOYMENT = PASS
+
+
+---
+
+# 30. Canonical AIME26 evaluation
+
+Use the exact existing Canonical60 manifest.
+
+Do not guess sample IDs/seeds from memory.
+
+Read the frozen canonical manifest.
+
+
+Use:
+
+same runtime
+
+same deterministic settings
+
+same max_new_tokens
+
+same Frozen V4 scorer
+
+same sample definitions
+
+
+Run:
+
+C5R
+
+C6R
+
+C7
+
+
+Do NOT regenerate:
+
+FP
+
+Native
+
+Hadamard
+
+historical C5
+
+historical C6
+
+
+Reuse frozen archived results.
+
+
+AIME26 is a research endpoint,
+not an untouched benchmark.
+
+
+No tuning after generation begins.
+
+
+---
+
+# 31. Primary statistical comparisons
+
+Primary scientific comparison:
+
+C7 vs C6R
+
+
+Because this is the cleanest matched-objective comparison.
+
+
+Also report:
+
+C7 vs Hadamard
+
+C6R vs Hadamard
+
+C5R vs Hadamard
+
+C6R vs historical C6
+
+C5R vs historical C5
+
+C7 vs historical C6
+
+C7 vs FP
+
+
+For every paired comparison report:
+
+both correct
+
+reference only
+
+candidate only
+
+both wrong
+
+rescue
+
+regression
+
+net
+
+accuracy difference
+
+exact paired p
+
+question-cluster uncertainty consistent with prior project practice
+
+
+Do not change comparison families after seeing results.
+
+
+---
+
+# 32. Behavioral diagnostics
+
+Reuse existing frozen definitions only.
+
+Report:
+
+generated length
+
+length-limit
+
+abstain/no-final-claim
+
+EOS
+
+repetition proxy
+
+oscillation proxy
+
+post-commit fraction/retraction
+
+
+These are diagnostics.
+
+Do not redefine correctness.
+
+
+---
+
+# 33. Decision tree
+
+Assign one primary verdict.
+
+
+## C7_OBJECTIVE_SUPPORTED
+
+Use if:
+
+C7 shows a meaningful positive paired improvement over matched C6R
+
+and its observed endpoint direction is at least competitive with Hadamard.
+
+
+If C7 also exceeds Hadamard:
+highlight this separately.
+
+
+## C7_BEATS_C6R_BUT_NOT_HADAMARD
+
+Use if:
+
+C7 > C6R
+
+but remains below Hadamard.
+
+
+Interpretation:
+
+moving supervision downstream helps,
+but final-hidden fidelity alone does not close the full gap.
+
+
+Possible NEXT hypothesis:
+
+Hadamard-relative regression control
+
+or
+
+decision/logit objective.
+
+
+Do not execute automatically.
+
+
+## C7_NOT_BETTER_THAN_C6R
+
+Use if:
+
+C7 does not improve over matched C6R.
+
+
+Interpretation:
+
+Final-Hidden representation fidelity is not supported as a superior objective under this protocol.
+
+
+Future direction:
+
+decision/logit/task-token objective
+or reconsider data/optimization.
+
+
+## CLEANROOM_C6_MATERIAL_SHIFT
+
+Use if:
+
+C6R differs materially from historical C6.
+
+
+This means the historical-vs-cleanroom training environment/path matters.
+
+Do NOT automatically attribute the shift to the previous silent corruption.
+
+
+C6R vs C7 remains the clean causal comparison.
+
+
+## CLEANROOM_C5_C6_STABLE
+
+Use as a secondary status if clean-room C5R/C6R broadly reproduce historical training behavior.
+
+
+## A800_ENVIRONMENT_REJECTED
+
+Use only if qualification/integrity fails before scientific training.
+
+
+## TRAINING_BLOCKED
+
+Use if trusted A800 passes integrity but exact H64 scientific training cannot be completed.
+
+
+---
+
+# 34. No new external benchmark in this experiment
+
+Do NOT introduce:
+
+GSM8K
+
+MATH-500
+
+or another benchmark
+
+into this task.
+
+
+The current question is the matched objective comparison under the existing project endpoint.
+
+
+If C7 is promising:
+
+external reasoning generalization becomes the NEXT experiment.
+
+
+Existing archived GSM8K split can remain untouched.
+
+It is not part of this experiment.
+
+
+---
+
+# 35. Compute policy
+
+Do NOT artificially minimize compute at the expense of evidence quality.
+
+
+The A800 may be used for the full required clean-room training.
+
+
+The 3090 machines may be used in parallel for endpoint generation after deployment.
+
+
+However:
+
+do not perform unnecessary repeated experiments.
+
+
+One trusted C5R
+
+one trusted C6R
+
+one trusted C7
+
+seed0 first.
+
+
+Additional training seeds are a later confirmatory experiment if the signal warrants them.
+
+
+---
+
+# 36. Artifacts
+
+Create:
+
+experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/
+
+
+provenance/
+  a800_host.json
+  environment.json
+  source_manifest.json
+
+qualification/
+  lm_head_canary.json
+  full_model_integrity_run1.csv
+  full_model_integrity_run2.csv
+  full_model_integrity_run3.csv
+  fp_runtime_stability.json
+
+teacher/
+  teacher_target_manifest.csv
+  teacher_cache_parity.json
+
+protocol/
+  c5r_config.json
+  c6r_config.json
+  c7_config.json
+
+readiness/
+  update0_forward_parity.json
+  c5r_gradient_smoke.json
+  c6r_gradient_smoke.json
+  c7_gradient_smoke.json
+  c5r_h64_readiness.json
+  c6r_h64_readiness.json
+  c7_h64_readiness.json
+
+training/
+  C5R/
+  C6R/
+  C7/
+
+analysis/
+  cross_objective_learning_curves.csv
+  shared16_comparison.csv
+  historical_reproduction_analysis.md
+
+deployment/
+  c5r_manifest.json
+  c6r_manifest.json
+  c7_manifest.json
+  canonical_3090_smoke.json
+
+aime26/
+  c5r/
+  c6r/
+  c7/
+  scores.csv
+  paired_comparisons.csv
+  behavior_summary.csv
+
+FINAL_REPORT.md
+
+NEXT_EXPERIMENT_DECISION.md
+
+SHA256SUMS
+
+
+---
+
+# 37. Required final status fields
+
+A800_HOST_QUALIFICATION =
+PASS/FAIL
+
+LM_HEAD_CANARY_3X =
+PASS/FAIL
+
+FULL_MODEL_GPU_PARAMETER_INTEGRITY =
+PASS/FAIL
+
+FULL_MODEL_FRESH_PROCESS_REPEATABILITY =
+PASS/FAIL
+
+FP_RUNTIME_STABILITY =
+PASS/FAIL
+
+A800_TRAINING_ENVIRONMENT_TRUSTED =
+YES/NO
+
+CLEAN_TEACHER_TARGET_PARITY =
+PASS/FAIL/NOT_RUN
+
+C5R_C6R_C7_UPDATE0_FORWARD_PARITY =
+PASS/FAIL/NOT_RUN
+
+C5R_GRADIENT_SMOKE =
+PASS/FAIL/NOT_RUN
+
+C6R_GRADIENT_SMOKE =
+PASS/FAIL/NOT_RUN
+
+C7_GRADIENT_SMOKE =
+PASS/FAIL/NOT_RUN
+
+C5R_H64_READY =
+PASS/FAIL/NOT_RUN
+
+C6R_H64_READY =
+PASS/FAIL/NOT_RUN
+
+C7_H64_DIRECT_READY =
+PASS/FAIL/NOT_RUN
+
+C5R_FORMAL_TRAINING =
+COMPLETE/PARTIAL/NOT_STARTED
+
+C6R_FORMAL_TRAINING =
+COMPLETE/PARTIAL/NOT_STARTED
+
+C7_FORMAL_TRAINING =
+COMPLETE/PARTIAL/NOT_STARTED
+
+C5R_SELECTED_UPDATE =
+value/NA
+
+C6R_SELECTED_UPDATE =
+value/NA
+
+C7_SELECTED_UPDATE =
+value/NA
+
+C5R_DEPLOYMENT =
+PASS/FAIL/NOT_RUN
+
+C6R_DEPLOYMENT =
+PASS/FAIL/NOT_RUN
+
+C7_DEPLOYMENT =
+PASS/FAIL/NOT_RUN
+
+C5R_AIME26 =
+value/60 or NA
+
+C6R_AIME26 =
+value/60 or NA
+
+C7_AIME26 =
+value/60 or NA
+
+C7_VS_C6R_NET =
+value/NA
+
+C7_VS_HADAMARD_NET =
+value/NA
+
+C6R_VS_HISTORICAL_C6 =
+value/NA
+
+PRIMARY_VERDICT =
+C7_OBJECTIVE_SUPPORTED /
+C7_BEATS_C6R_BUT_NOT_HADAMARD /
+C7_NOT_BETTER_THAN_C6R /
+CLEANROOM_C6_MATERIAL_SHIFT /
+A800_ENVIRONMENT_REJECTED /
+TRAINING_BLOCKED /
+INCONCLUSIVE
+
+FULL_DENSITY_FULL60 =
+CANCELLED_BY_USER
+
+
+---
+
+# 38. Stop rules
+
+If A800 qualification fails:
+
+STOP.
+
+Do not repair individual tensors.
+
+
+If teacher parity fails:
+
+STOP.
+
+
+If update0 forward parity fails:
+
+STOP.
+
+
+If C5R/C6R/C7 gradients are invalid:
+
+STOP the affected scientific path.
+
+
+If C7 direct H64 OOMs on A800 80GB:
+
+record exact evidence and STOP before changing protocol.
+
+Do not silently introduce activation checkpointing inside this experiment.
+
+
+If all gates pass:
+
+continue automatically through:
+
+training
+→ checkpoint freeze
+→ 3090 deployment
+→ Canonical60 endpoint
+→ final report
+
+
+Do not ask for intermediate confirmation unless a protocol change becomes necessary.
+
+
+The purpose of the complete experiment is:
+
+> establish a trusted clean-room baseline and determine whether persistent Final-Hidden supervision is genuinely better than the matched local Functional objective for learned recurrent-state INT8 rotation.

@@ -1,0 +1,1 @@
+lambda _cls, sign, digits, exponent: _tuple_new(_cls, (sign, digits, exponent))

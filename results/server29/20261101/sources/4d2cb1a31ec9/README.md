@@ -1,0 +1,12 @@
+# LING_KDA_P1_L7_PHASEB_STOP_FORENSIC_AUDIT_V1
+
+原始相对目录：`experiment_runs/LING_KDA_P1_L7_PHASEB_STOP_FORENSIC_AUDIT_V1`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`FINAL_READONLY_AUDIT_REPORT.md`](../../objects/fe/feee142ed56abff94abb87e235c00cad33e3a3cb201db5086a265cb4291c6d41__FINAL_READONLY_AUDIT_REPORT.md)
+- [`REPAIR_FEASIBILITY_ASSESSMENT.md`](../../objects/7f/7f8c56cb3b828f956e851ed30e5e2ff4c47117ddaf948116680511211bb2d190__REPAIR_FEASIBILITY_ASSESSMENT.md)

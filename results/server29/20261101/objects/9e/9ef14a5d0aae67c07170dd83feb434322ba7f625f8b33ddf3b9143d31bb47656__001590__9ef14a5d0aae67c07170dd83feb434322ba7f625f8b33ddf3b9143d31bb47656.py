@@ -1,0 +1,1 @@
+lambda _cls, graph_module, guards: _tuple_new(_cls, (graph_module, guards))

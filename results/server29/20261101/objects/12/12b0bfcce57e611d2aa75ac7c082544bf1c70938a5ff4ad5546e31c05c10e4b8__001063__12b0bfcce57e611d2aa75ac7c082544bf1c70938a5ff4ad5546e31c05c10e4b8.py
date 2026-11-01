@@ -1,0 +1,1 @@
+lambda _cls, output, total_weight: _tuple_new(_cls, (output, total_weight))

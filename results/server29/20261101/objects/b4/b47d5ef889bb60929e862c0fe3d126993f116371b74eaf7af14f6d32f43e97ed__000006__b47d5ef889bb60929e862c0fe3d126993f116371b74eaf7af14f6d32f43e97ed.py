@@ -1,0 +1,1 @@
+lambda _cls, name, kind, defining_class, object: _tuple_new(_cls, (name, kind, defining_class, object))

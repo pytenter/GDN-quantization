@@ -1,0 +1,11 @@
+# HMMT26 CPU评分验证
+
+CODE_VERIFIED：受约束提取、精确符号比较及失败计错规则见 SCORER_PROTOCOL.md。
+
+RUNTIME_VERIFIED：14组合成案例及EOS/length/thinking边界通过；33条官方gold均可解析、无自由符号并精确自等。真实退出0，无模型或GPU调用。
+
+初次CPU检查发现角度符号后缀与花括号幂语法未处理，已在正式生成前作通用语法修正并补测试；未读取任何模型答案。不能把gold自等测试视为所有未来表达式均可解析的保证。
+
+评分源码SHA256：fba2d8226e1c922b42e9b232da3ca850ff5c0b981ad756032e8d50e2e67df482
+
+验证工件：validation/SCORER_CPU_VALIDATION.json

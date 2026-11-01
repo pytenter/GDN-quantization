@@ -1,0 +1,857 @@
+# Codex：Qwen/GDN OSCAR C1/S3 一体化数值资格重构与AIME26正式恢复
+
+## 0. 任务定义
+
+新任务名称：
+
+`QWEN_GDN_OSCAR_SYM32_C1_S3_CANONICAL_RECOVERY_AIME26_V3`
+
+模型：Qwen3.5-9B / GDN。
+
+授权算力：Qwen服务器上原先授权的3张RTX3090 24GB。
+
+### 任务目标
+
+一次性解决OSCAR-style协方差旋转在真实9B模型中的FP数值等价性问题，并在数学及工程资格通过后，完成C1/S3的AIME26正式实验。
+
+当前已经运行的P1正式实验必须完全独立、保持不变。
+
+本任务只新增C1、S3两组的工程恢复及正式生成，不重新运行P1或历史P0。
+
+### 核心要求
+
+**不要继续采用Patch-and-Retry式工程恢复。**
+
+请先恢复全部已知失败证据，系统分析数值误差来源，制定并冻结一套新的完整资格合同，然后集中实现、验证和执行。
+
+不能针对某个失败Token、某个Head或者某一个浮点舍入边界单独打补丁。
+
+不能为了让旧测试通过而直接放宽原门限。
+
+不能用新的资格结果覆盖历史STOP。
+
+如果新合同无法从数学及数值计算原理上建立，明确一次性fail-closed，提交完整证据，而不是连续生成Recovery04、Recovery05等任务。
+
+---
+
+# 一、必须首先保护正在运行的P1
+
+截至用户最近提供的状态：
+
+- P1已在3张RTX3090上进行AIME26正式生成。
+- 最早三条轨迹均已达到约6600–6800 tokens。
+- 当时尚无完整生成样本。
+- C1/S3仍处于技术STOP。
+- 旧GPU0任务未受到本研究影响。
+
+以上只是最近一次报告，必须重新读取真实任务状态，不得假设现在已经完成。
+
+### 严格保护要求
+
+1. 禁止停止、重启或者修改P1 Worker。
+2. 禁止更改P1当前使用的源码、依赖、权重、Sampler和Codec文件。
+3. 禁止触碰P1的append-only进度、运行中日志和raw生成目录。
+4. 禁止清理P1缓存或误杀相关CUDA进程。
+5. 不得占用P1尚未释放的GPU。
+6. 不因为C1/S3研发而影响P1已冻结的GPU题目分配。
+7. 不重新执行P1的已经派发样本。
+8. 不在P1运行中替换共享Python模块或动态库。
+
+新任务使用独立工作树、独立输出目录、独立Source Manifest及冻结执行入口。
+
+### 并行原则
+
+在P1占用全部三张3090期间：
+
+- 允许CPU-only数值研究。
+- 允许只读审计已有raw文件。
+- 允许建立新的C1/S3源码与CPU测试。
+- 禁止新增GPU任务。
+
+只有某张授权3090已由P1真实释放、UUID与owner-PID核验通过后，才允许在其上运行C1/S3 GPU工作。
+
+不允许抢占、不允许自动迁移到未经授权的GPU。
+
+若CPU工作已经完成但GPU仍被占用，应交付完整GPU待执行manifest并标记资源等待，不得声称GPU资格已经通过。
+
+---
+
+# 二、冻结科学配置
+
+设：
+
+- \(H\)：现有合格Key-side H128。
+- \(U\)：从非AIME真实GDN Query二阶矩构造的正交特征基。
+- \(P\)：128维Bit-Reversal排列。
+- \(Q_{32}\)：原有Symmetric INT8 Group32 QDQ。
+
+实验定义：
+
+| ID | Rotation | Quantization | 状态 |
+|---|---|---|---|
+| P0 | H | Sym INT8 G32 | 历史基线 |
+| P1 | HP | Sym INT8 G32 | 正在独立运行 |
+| C1 | UH | Sym INT8 G32 | 本任务恢复 |
+| S3 | UHP | Sym INT8 G32 | 本任务恢复 |
+
+特别强调：
+
+`C1 = U @ H`
+
+不是单独使用U。
+
+S3和C1必须共享同一个U以及相同的GDN FP计算路径。
+
+P仅用于Codec内部改变Group32归属。
+
+本次不改动：
+
+- Sym INT8。
+- Key Group32。
+- FP32 scale。
+- H128。
+- PBR定义。
+- GDN Update。
+- GDN Readout。
+- 每token QDQ/writeback。
+- 模型权重。
+- AIME输入。
+- Sampler。
+- Frozen V4。
+
+禁止增加Asym、INT4、Dual-M、Learned Rotation、混合位宽或Future-KL研究。
+
+---
+
+# 三、历史失败必须分别保留
+
+## 3.1 第一轮：Query Eigenbasis数值检查
+
+旧任务：
+
+`QWEN_GDN_OSCAR_SYM32_P1_C1_S3_AIME26_SEED1_V1`
+
+正式终态：
+
+`QUERY_EIGENBASIS_QUALIFICATION_FAIL_CLOSED_STOP`
+
+首次失败：
+
+- Layer=13。
+- Recurrent Head=24。
+- FP32 A对角均匀误差：2.0291937860262014e-6。
+- 原上限：2e-6。
+- FP32 A正交误差：1.4558495209371358e-7。
+- FP64 eig残差：1.7060933776589776e-15。
+- FP64 U正交误差：1.9984014443252818e-15。
+- FP64理论均匀性误差：7.885222288257288e-15。
+
+原V1不修改、不重新判PASS。
+
+## 3.2 第二轮：真实9B FP等价性
+
+在后续恢复中，C1/S3的真实FP等价性检查在第22个token触发停止。
+
+已有结果：
+
+| 指标 | 实测 | 原工程阈值 |
+|---|---:|---:|
+| Relative L2 | 1.373% | 3.780% |
+| Max Absolute | 0.02343752451 | 0.02343747386 |
+
+最大绝对误差超过原门限约：
+
+`5.07e-8`
+
+原先使用的“4倍Hadamard误差”规则不是严格推导出的FP32前向误差上界。
+
+它可能对边界舍入过度敏感，但不能因此直接认定UH正确。
+
+注意：
+
+- 实际最大误差约0.0234375，而不是5e-8。
+- 5e-8只是超出门限的部分。
+- 128-token完整测试尚未完成。
+- 1.373%的Relative L2必须保留并解释。
+- 不能因为阈值只差一个极小量就将原失败改成PASS。
+
+本任务必须恢复第22个token的实际比较对象、层/Head、Tensor dtype、误差定义、首次出现位置及中间状态。
+
+如果原始数据没有保存到足以支持某项判断，则明确记录证据缺口。
+
+---
+
+# 四、阶段A：一次性建立完整的数值数学模型
+
+这是本轮最重要的工作。
+
+## 4.1 精确旋转等价性
+
+GDN State形状为：
+
+\[
+S\in\mathbb R^{128\times128}
+\]
+
+原递归：
+
+\[
+S_t=\alpha_t(I-\beta_tk_tk_t^\top)S_{t-1}
++\beta_tk_tv_t^\top
+\]
+
+读取：
+
+\[
+o_t=S_t^\top q_t
+\]
+
+定义：
+
+\[
+A=UH,\quad A^\top A=I
+\]
+
+旋转：
+
+\[
+\widetilde S=A^\top S
+\]
+
+\[
+\widetilde k=A^\top k
+\]
+
+\[
+\widetilde q=A^\top q
+\]
+
+精确数学中：
+
+\[
+\widetilde S_t
+=
+\alpha_t(I-\beta_t\widetilde k_t\widetilde k_t^\top)
+\widetilde S_{t-1}
++
+\beta_t\widetilde k_tv_t^\top
+\]
+
+以及：
+
+\[
+\widetilde S_t^\top\widetilde q_t=S_t^\top q_t
+\]
+
+必须在真实Qwen源码中验证以上数学合同的全部假设成立。
+
+尤其审计：
+
+- Q/K归一化位置。
+- Causal Conv位置。
+- Beta。
+- Head级Gate。
+- 真实Delta Rule实现。
+- Key/Query Head共享。
+- State布局。
+- Readout。
+- 原H128的注入位置。
+- FP32/BF16转换位置。
+- Prefill/Decode差异。
+
+不能把A变换错误地放在不满足旋转交换关系的非线性模块之前。
+
+## 4.2 正确处理16→32 Head共享
+
+已知模型实际有：
+
+- 16个Key/Query Head。
+- 32个Recurrent/Value Head。
+- Query在进入递归前经repeat_interleave(2)。
+
+必须恢复代码并验证具体映射，而不是硬编码未核验的Head假设。
+
+同一组共享Query的两个Recurrent Head应使用数学一致的U。
+
+原4096个Query样本不因为复制给两个Head就变成8192个独立样本。
+
+同一真实Query对应的U、A应有一致的字节身份。
+
+---
+
+# 五、阶段B：一次性CPU-only精度归因
+
+不重新采集Query。
+
+优先使用已有冻结的：
+
+- 四篇RepoBench数据身份。
+- 原Cq。
+- 原U。
+- 原A。
+- 首次失败Tensor。
+- 原FP64 eigensolver。
+- 原FP32资格检查。
+- 原第22个token真实FP差异证据。
+
+不要根据新结果重新选择校准语料。
+
+## 5.1 Matrix数值误差
+
+对全部已保存的合法Cq，统一计算四种路径：
+
+**M0：FP64理论参考**
+
+`A64 = U64 @ H64`
+
+使用FP64 C计算：
+
+- Eigendecomposition residual。
+- Orthogonality residual。
+- Query对角均匀性。
+
+**M1：FP64构造，单次转换FP32**
+
+`A32 = cast_fp32(U64 @ H64)`
+
+再转FP64评价最终部署矩阵的表示误差。
+
+**M2：FP32构造**
+
+`A32_alt = U32 @ H32`
+
+转FP64后用同一C64评价，与M1区分FP32矩阵构造误差。
+
+**M3：FP32检查路径**
+
+对同一个已冻结A32：
+
+- CPU FP64计算目标值。
+- 原FP32检查器计算目标值。
+
+比较检查器算术与矩阵表示的贡献。
+
+这些是数值归因，不是通过M0–M3中挑选结果最有利的一条来取得PASS。
+
+本轮采用原则上减少不必要舍入的部署方式：
+
+`A32 = cast_fp32(U64 @ H64)`
+
+选择依据是独立FP64参考和单次部署转换的计算结构，而不是它是否恰好低于旧2e-6。
+
+若已有当前U不完整，先从保存的相同Cq确定性重建，不创建新的Query校准集。
+
+## 5.2 误差传播分析
+
+对冻结的GDN输入，令：
+
+\[
+M_t=\alpha_t(I-\beta_tk_tk_t^\top)
+\]
+
+若旋转计算存在FP32局部残差：
+
+\[
+\eta_t
+\]
+
+则状态误差满足近似传播关系：
+
+\[
+E_t=M_tE_{t-1}+\eta_t
+\]
+
+这里必须区分：
+
+- 固定相同Q/K/Gate输入时的数值误差传播。
+- 完整9B前向中Q/K/Gate也发生变化后的功能误差传播。
+
+前者可以通过独立递归参考审计。
+
+后者需要完整模型的teacher-forced FP比较，不能直接视为同一线性系统。
+
+### 对局部残差的要求
+
+以独立FP64算术参考评估：
+
+- FP32矩阵乘法。
+- BF16↔FP32转换。
+- Key/Query旋转。
+- State更新。
+- Readout。
+- Fused Kernel与显式参考的差别。
+
+使用长度128内积对应的浮点舍入模型作为误差分析依据，例如：
+
+\[
+\gamma_n=\frac{nu}{1-nu}
+\]
+
+其中FP32单位舍入误差：
+
+\[
+u=2^{-24}
+\]
+
+但不能未经分析就把通用最坏情况上界当作实际精度保证。
+
+应结合真实运算数量、舍入模式、矩阵范数、数据类型和CUDA执行路径，说明实际误差是否具有可信的数值来源。
+
+## 5.3 第22个token专项归因
+
+在已有保存的首次失败处，统一回答：
+
+1. 哪个Tensor首先出现差异？
+2. 差异来自矩阵部署、Q/K旋转还是State递归？
+3. 0.0234375的量级是否对应某个数据类型转换或算术阶段？
+4. Relative L2和最大绝对误差为何表现不同？
+5. 是否存在头映射、矩阵方向或State坐标错误？
+6. 是否只是单一极值元素，还是存在系统性误差扩散？
+7. 使用独立FP64逐步参考能否解释误差来源？
+
+不允许只写“比门限多5e-8，所以是舍入”。
+
+如果无法识别唯一原因，应如实标记UNRESOLVED，不能编造已经找到了根因。
+
+---
+
+# 六、阶段C：重新定义唯一V3数值资格
+
+本次只建立一套V3合同，先冻结，再执行完整GPU资格。
+
+### 不允许再使用的规则
+
+不得继续将：
+
+`MaxAbs(UH) <= 4 × MaxAbs(H)`
+
+当作具有严格数学依据的FP32误差上界。
+
+同样不得仅因当前观测max_abs为0.02343752451，就把新上限随意设为0.024、0.025或其他刚好可以通过的数字。
+
+### 新合同分三层
+
+## C1. FP64结构正确性
+
+必须满足：
+
+- U及A有限。
+- U正交。
+- A正交。
+- 二阶矩特征分解正确。
+- 旋转后GDN公式正确。
+- Query/Key/State Head映射正确。
+- CPU独立FP64递归参考一致。
+
+这一层以FP64解析性质、独立实现及由数值运算推导的容差为依据。
+
+不接受明显结构错误。
+
+## C2. FP32部署正确性
+
+必须确认：
+
+- A32来自已冻结FP64 A的受控转换。
+- 没有错误的重复Hadamard。
+- 没有错误的矩阵乘法方向。
+- 没有偷偷修改Q/K/Gate。
+- 没有跨Head错误共享U。
+- FP32局部残差符合独立算术参考及可信误差预算。
+- 对角均匀性偏差可以与矩阵转换及计算路径区分并解释。
+
+旧2e-6结果继续作为历史诊断。
+
+V3新的部署资格不以旧孤立指标作为唯一条件。
+
+但不能因为部署误差有限就自动认为完整9B数学等价。
+
+## C3. 真实9B FP功能等价
+
+这是最终必要门禁。
+
+使用非AIME冻结输入，在关闭QDQ情况下，对比：
+
+- Native FP。
+- 原H坐标FP。
+- 新UH坐标FP。
+
+采用相同teacher-forced token输入，避免自由采样分叉污染数值比较。
+
+检查：
+
+- Layer GDN State。
+- Q/K旋转。
+- Gate/Beta。
+- Readout。
+- Layer输出。
+- 9B完整模型logits。
+- 时间方向的误差增长。
+- 非有限值。
+- 模型计算图身份。
+
+新的接受规则必须提前冻结，至少包含：
+
+1. 结构不变量及Head映射严格通过。
+2. 固定输入的独立FP64递归参考通过。
+3. FP32局部误差不超过其可解释的预登记误差预算。
+4. 完整128-token各层及logits误差满足预登记的数值正确性要求。
+5. 不存在无法解释的持续放大、异常跃迁或明显模型语义改变。
+
+实际阈值需要由独立算术参考、数据规模及控制实验确定，并保存推导；不允许依据即将测试的128-token结果反向选阈值。
+
+不允许只依赖一个Relative L2指标，也不允许只依赖一个最大绝对误差指标。
+
+**如果没有充分的数学依据建立接受范围，不能仅因为想推进AIME就宣布合格。**
+
+---
+
+# 七、阶段D：完整128-token真实FP等价
+
+旧任务只执行到第22个token。
+
+V3必须完整运行128-token，不提前因为旧4倍H边界规则而停止。
+
+但结构性错误、nonfinite及真正安全错误仍须立即停止。
+
+执行时保存：
+
+- 每个Token的数值误差。
+- 全部GDN层关键误差摘要。
+- 最早出现差异的阶段。
+- 最大误差及其位置。
+- Relative L2。
+- FP64参考偏差。
+- Readout差异。
+- Full-vocab logits误差。
+- 是否随Token持续增长。
+
+建议在同一固定输入下同时进行：
+
+- 原H坐标FP控制。
+- UH坐标FP。
+- UH坐标且关闭PBR/QDQ的S3控制。
+
+理论上，C1与S3关闭QDQ后应使用同一UH数学路径。
+
+不需要将不同FP32计算图强行要求逐字节相同，但必须满足已冻结的结构及数值正确性要求。
+
+如果128-token全模型FP等价通过，再考虑必要的512-token长程工程Canary。
+
+如果未通过，停止C1/S3，不生成正式AIME结果。
+
+---
+
+# 八、阶段E：C1/S3的真实INT8 GPU资格
+
+只有FP等价通过后才能开始。
+
+量化器完全复用原Symmetric INT8 Group32。
+
+## 8.1 C1
+
+\[
+A=UH
+\]
+
+让State常驻A坐标：
+
+\[
+S_A=A^\top S
+\]
+
+执行：
+
+\[
+\widehat S_A=Q_{32}(S_A)
+\]
+
+立即写回。
+
+## 8.2 S3
+
+与C1共享完全相同的A坐标：
+
+\[
+\widehat S_A=P Q_{32}(P^\top S_A)
+\]
+
+Permutation只存在于Codec内。
+
+这样C1和S3的FP计算路径完全相同，差别只来自Group32成员归属。
+
+### 必须通过的工程资格
+
+- INT8 signed codes。
+- Key Group32。
+- FP32 scale。
+- 原负零flags。
+- 原round/clip/scale floor。
+- token0起真实QDQ。
+- 全GDN层覆盖。
+- 下一kernel真实消费QDQ State。
+- 32/128-token Canary。
+- 必要512-token fresh-process核验。
+- Prefill/Decode QDQ语义。
+- EOS/length。
+- RNG与Sampler。
+- 非AIME长Context资源检查。
+
+已有P0/P1和原Sym32数学资格尽量复用，禁止重新开发量化器。
+
+如果INT8导致大量State误差，但Codec、QDQ和数值计算合法，不应将科学精度差自动当作工程失败。
+
+---
+
+# 九、正式GPU调度：P1不动，C1/S3恢复后再运行
+
+三张3090必须先真实释放。
+
+不允许同时与P1争抢资源。
+
+优先读取并只读引用P1冻结的30题→GPU UUID映射。
+
+如果设备再次可用，尽量让C1/S3使用与P1同题相同的GPU UUID，以保持配对比较。
+
+每张GPU执行10个题目Bundle：
+
+- C1。
+- S3。
+
+每个Bundle中的两个配置独立生成。
+
+如果原P1的固定GPU设备未释放，就不允许悄悄换到其他GPU并声称严格同GPU配对。
+
+若合法资源不可用，应保存待执行manifest并停止GPU派发；不得影响P1。
+
+### AIME协议
+
+- Qwen3.5-9B。
+- AIME2026完整30题。
+- Seed1。
+- max_new_tokens=81920。
+- 原Thinking模式。
+- 原Prompt/Chat Template。
+- 原Tokenizer。
+- 原Sampler。
+- 原Frozen V4。
+
+核验已有Qwen采样参数：
+
+- temperature=1.0。
+- top_p=0.95。
+- top_k=20。
+- min_p=0。
+- presence_penalty=1.5。
+- repetition_penalty=1.0。
+
+以真实历史Runner的最终生效值为准。
+
+正式新增：
+
+`C1 30条 + S3 30条 = 60条`
+
+P1已经在独立任务执行，不属于这60条。
+
+不要因为工程恢复成功而重新运行P1。
+
+### 正式纪律
+
+- 不修改已冻结的U。
+- 不修改PBR。
+- 不修改量化器。
+- 不修改采样器。
+- 不修改Prompt。
+- 不通过AIME选择旋转矩阵。
+- 不因为某方法前几题答错而停止。
+- 不因为运行较慢而缩短81920长度。
+- 不自动重试寻找正确答案。
+
+---
+
+# 十、结果分析
+
+最终汇总：
+
+| 配置 | AIME Seed1 |
+|---|---|
+| P0：H | 历史结果 |
+| P1：HP | 读取正在运行任务的合法最终结果 |
+| C1：UH | 本次实测 |
+| S3：UHP | 本次实测 |
+
+核心比较：
+
+### 协方差特征基效应
+
+`C1 - P0`
+
+### H坐标下PBR效应
+
+`P1 - P0`
+
+### UH坐标下PBR效应
+
+`S3 - C1`
+
+### 有PBR条件下U效应
+
+`S3 - P1`
+
+### 两因素交互
+
+\[
+I=(Acc_{S3}-Acc_{C1})-(Acc_{P1}-Acc_{P0})
+\]
+
+必须检查P0/P1与C1/S3之间的输入、GPU、Sampler、Runtime和QDQ身份。
+
+如果P0仍只有统一29题成绩，而其他配置完成30题：
+
+- 单独报告各配置实际30题结果。
+- 对四配置只在共同合法题目集合上分析交互。
+- 不把21/29写成21/30。
+- 不自动重跑P0。
+
+如果执行协议不匹配，不能将历史P0当作严格匹配的2×2因果对照。
+
+### 额外机制指标
+
+在非AIME校准或验证数据上，报告：
+
+- Uq协方差谱。
+- FP32部署残差。
+- FP等价轨迹。
+- Group32 scale分布。
+- State量化误差。
+- Readout Error。
+- PBR分组变化。
+- 实际QDQ count。
+- 生成长度。
+- EOS/length。
+- GPU吞吐和显存。
+
+这些是辅助机制证据，不能直接替代AIME准确率。
+
+---
+
+# 十一、交付与封存
+
+独立新root：
+
+`QWEN_GDN_OSCAR_SYM32_C1_S3_CANONICAL_RECOVERY_AIME26_V3`
+
+必须优先交付：
+
+1. `V3_UNIFIED_EXECUTION_PLAN.md`
+2. `P1_RUNNING_TASK_IMMUTABILITY_AUDIT.json`
+3. `V1_V2_FAILURE_IDENTITY_AND_REUSE.json`
+4. `QUERY_CQ_ASSET_COMPLETENESS.json`
+5. `HEAD_MAPPING_AND_U_SHARING.json`
+6. `M0_M3_FP32_NUMERICAL_ATTRIBUTION.json`
+7. `TOKEN22_FIRST_DIFFERENCE_ANALYSIS.json`
+8. `FP32_ROUNDING_AND_RECURRENCE_ERROR_BUDGET.md`
+9. `V3_NUMERICAL_QUALIFICATION_CONTRACT.json`
+10. `V3_CANONICAL_UH_MATRICES_SHA.json`
+11. `FP64_GDN_MATH_REFERENCE.json`
+12. `FULL_128_TOKEN_FP_EQUIVALENCE.json`
+13. `FULL_MODEL_LOGITS_NUMERICAL_REPORT.json`
+14. `C1_S3_PERSISTENT_QDQ_GPU_QUALIFICATION.json`
+15. `AIME26_C1_S3_PROTOCOL_FREEZE.json`
+16. `AIME26_C1_S3_GPU_ASSIGNMENT.json`
+17. `FORMAL_PROGRESS.json`
+18. `FORMAL_GENERATIONS_60.jsonl`
+19. `FROZEN_V4_SCORES.json`
+20. `PER_PROBLEM_ROTATION_ABLATION.csv`
+21. `GPU_RESOURCE_LEDGER.jsonl`
+22. `FINAL_SCIENTIFIC_REPORT.md`
+23. `SHA256_MANIFEST.json`
+24. `FINAL_SEAL_RECEIPT.json`
+
+只生成已经具有实际合法数据的文件。
+
+未执行阶段使用NOT_RUN记录状态，不制造虚假的数据文件。
+
+所有原始V1、V2失败资产和P1正在运行的科学资产保持只读、不变。
+
+---
+
+# 十二、执行顺序与停止规则
+
+这是一个统一任务，不要拆分为多个自动Recovery项目。
+
+## Phase A：CPU全面归因
+
+完成旧失败资产恢复、Cq/U/A身份核验、全部M0–M3计算、FP32误差模型与第22个token首差异分析。
+
+冻结唯一V3部署与数值正确性合同。
+
+## Phase B：完整数学及FP资格
+
+恢复实际9B的UH旋转实现。
+
+通过独立FP64语义参考、Head共享映射及真实128-token全模型FP等价性。
+
+不再用旧4×H的孤立最大值门禁替代完整资格。
+
+## Phase C：真实GPU资格
+
+只有授权GPU释放后，执行C1/S3的真实QDQ、next-consumption、fresh-process、Sampler及长Context资源资格。
+
+P1不受影响。
+
+## Phase D：正式AIME26
+
+资格通过后，在合法三GPU上运行C1/S3各30题，总计60条。
+
+不重新跑P1。
+
+## Phase E：科学分析与封存
+
+汇总P0/P1/C1/S3实际数据，执行Frozen V4、逐题配对、交互分析及资源封存。
+
+### 允许终态
+
+**全部完成：**
+
+`C1_S3_FORMAL_COMPLETE_60_60_AND_STOP`
+
+**FP数学或128-token真实等价未通过：**
+
+`UH_FP_FUNCTIONAL_QUALIFICATION_FAIL_CLOSED_STOP`
+
+**FP32数值误差仍无法建立可信模型：**
+
+`V3_NUMERICAL_CONTRACT_UNRESOLVED_AND_STOP`
+
+**GPU被P1占用：**
+
+`CPU_COMPLETE_GPU_DISPATCH_BLOCKED_BY_P1`
+
+**GPU资格失败：**
+
+`C1_S3_GPU_QUALIFICATION_FAIL_CLOSED_STOP`
+
+**部分合法生成：**
+
+`PARTIAL_RESULTS_PRESERVED_AND_STOP`
+
+不允许在条件失败时绕过门禁直接跑AIME。
+
+也不允许用小幅增加阈值、修改测试器或换数据取得假PASS。
+
+## 最终成功标准
+
+本任务成功的标准不是让第22个token原有失败消失。
+
+而是：
+
+1. 有清楚的数学与数值误差解释。
+2. UH在真实GDN模型上保持原有数学结构。
+3. FP32部署实现通过新的独立、预冻结资格。
+4. 完整128-token FP等价通过。
+5. C1/S3在真实INT8持续QDQ下正确运行。
+6. 不干扰原P1三GPU正式生成。
+7. C1/S3各30道AIME26合法完成。
+8. Frozen V4及逐题消融通过核验。
+
+**请以一次系统性工程恢复完成全部工作，不再进行逐Head、逐Token、逐阈值的补丁式修复。**

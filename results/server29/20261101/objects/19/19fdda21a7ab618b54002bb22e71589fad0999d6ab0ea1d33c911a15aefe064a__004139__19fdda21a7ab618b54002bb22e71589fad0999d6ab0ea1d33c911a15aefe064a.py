@@ -1,0 +1,13 @@
+def __create_fn__(_type_loss, _type_logits, _type_past_key_values, _type_decoder_hidden_states, _type_decoder_attentions, _type_cross_attentions, _type_encoder_last_hidden_state, _type_encoder_hidden_states, _type_encoder_attentions, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_loss, _dflt_logits, _dflt_past_key_values, _dflt_decoder_hidden_states, _dflt_decoder_attentions, _dflt_cross_attentions, _dflt_encoder_last_hidden_state, _dflt_encoder_hidden_states, _dflt_encoder_attentions, _return_type):
+ def __init__(self,loss:_type_loss=_dflt_loss,logits:_type_logits=_dflt_logits,past_key_values:_type_past_key_values=_dflt_past_key_values,decoder_hidden_states:_type_decoder_hidden_states=_dflt_decoder_hidden_states,decoder_attentions:_type_decoder_attentions=_dflt_decoder_attentions,cross_attentions:_type_cross_attentions=_dflt_cross_attentions,encoder_last_hidden_state:_type_encoder_last_hidden_state=_dflt_encoder_last_hidden_state,encoder_hidden_states:_type_encoder_hidden_states=_dflt_encoder_hidden_states,encoder_attentions:_type_encoder_attentions=_dflt_encoder_attentions)->_return_type:
+  self.loss=loss
+  self.logits=logits
+  self.past_key_values=past_key_values
+  self.decoder_hidden_states=decoder_hidden_states
+  self.decoder_attentions=decoder_attentions
+  self.cross_attentions=cross_attentions
+  self.encoder_last_hidden_state=encoder_last_hidden_state
+  self.encoder_hidden_states=encoder_hidden_states
+  self.encoder_attentions=encoder_attentions
+  self.__post_init__()
+ return __init__

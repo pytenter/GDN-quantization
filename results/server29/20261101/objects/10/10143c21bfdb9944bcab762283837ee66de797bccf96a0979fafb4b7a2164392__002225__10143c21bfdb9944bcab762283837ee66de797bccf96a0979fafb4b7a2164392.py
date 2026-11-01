@@ -1,0 +1,1 @@
+lambda _cls, ctype, name, shape, stride, offset, alias_of: _tuple_new(_cls, (ctype, name, shape, stride, offset, alias_of))

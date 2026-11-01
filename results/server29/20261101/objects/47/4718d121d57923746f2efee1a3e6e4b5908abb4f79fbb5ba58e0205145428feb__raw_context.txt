@@ -1,0 +1,1481 @@
+src/org/matheusdev/ror/FollowingCamera.java
+public class FollowingCamera {
+
+	private final OrthographicCamera cam;
+	private final float pixPerMeter;
+
+	public Entity following;
+
+	public FollowingCamera(float pixPerMeter) {
+		float screenw = Gdx.graphics.getWidth();
+		float screenh = Gdx.graphics.getHeight();
+		this.cam = new OrthographicCamera(screenw / pixPerMeter, screenh / pixPerMeter);
+		this.pixPerMeter = pixPerMeter;
+	}
+
+	public void update() {
+		if (following != null) {
+			Vector2 pos = following.getPos();
+			cam.position.set(pos.x, pos.y, 0);
+		}
+		cam.update();
+	}
+
+	public void resize(float width, float height) {
+		cam.viewportWidth = width / pixPerMeter;
+		cam.viewportHeight = height / pixPerMeter;
+	}
+
+	public void loadToBatch(SpriteBatch batch) {
+		batch.setProjectionMatrix(cam.projection);
+		batch.setTransformMatrix(cam.view);
+	}
+
+	public OrthographicCamera getCam() {
+		return cam;
+	}
+
+}
+src/org/matheusdev/ror/ResourceLoader.java
+public class ResourceLoader implements Disposable {
+
+	private boolean disposed;
+
+	private final ObjectMap<String, TextureRegion> regions;
+	private final ObjectMap<String, SpriteAnimation> anims;
+	private final ObjectMap<String, Skin> skins;
+	private final FileLocation fileLocation;
+
+	public ResourceLoader(FileLocation fileLocation, FileHandle resourceXml) throws IOException {
+		this.fileLocation = fileLocation;
+		regions = new ObjectMap<>();
+		anims = new ObjectMap<>();
+		skins = new ObjectMap<>();
+
+		Element resources = new XmlReader().parse(resourceXml);
+		readResourcesTag(resources);
+	}
+
+	/// RUNTIME API:
+	/// ===========
+
+	public TextureRegion getRegion(String name) {
+		return regions.get(name);
+	}
+
+	public SpriteAnimation getAnimation(String name) {
+		// SpriteAnimation has a state. It !has! to be copied first:
+		return new SpriteAnimation(anims.get(name));
+	}
+
+	public Skin getSkin(String name) {
+		return skins.get(name);
+	}
+
+	public FileLocation getFileLocation() {
+		return fileLocation;
+	}
+
+	/// RESOURCE LOADING:
+	/// ================
+
+	private void readResourcesTag(Element resources) throws RuntimeException {
+		for (int i = 0; i < resources.getChildCount(); i++) {
+			Element child = resources.getChild(i);
+
+			switch (child.getName()) {
+			case "images":
+				readImagesTag(child);
+				break;
+			case "skins":
+				readSkinsTag(child);
+				break;
+			default:
+				throw new RuntimeException("Expected <images> or <skins> tag");
+			}
+		}
+	}
+
+	private void readImagesTag(Element images) throws RuntimeException {
+		for (int i = 0; i < images.getChildCount(); i++) {
+			Element child = images.getChild(i);
+
+			switch (child.getName()) {
+			case "image":
+				readImageTag(child);
+				break;
+			default:
+				throw new RuntimeException("Expected <image> tag");
+			}
+		}
+	}
+
+	private void readImageTag(Element image) throws RuntimeException {
+		if (!image.getAttributes().containsKey("file"))
+			throw new RuntimeException("need file=\"...\" attribute");
+
+		Texture tex = new Texture(fileLocation.getFile(image.get("file")));
+
+		for (int i = 0; i < image.getChildCount(); i++) {
+			Element child = image.getChild(i);
+
+			switch (child.getName()) {
+			case "region":
+				readRegionTag(tex, child);
+				break;
+			case "animation":
+				readAnimationTag(tex, child);
+				break;
+			default:
+				throw new RuntimeException("Expected <region> or <animation> tag");
+			}
+		}
+	}
+
+	private void readRegionTag(Texture tex, Element region) throws RuntimeException {
+		if (!region.getAttributes().containsKey("name")
+				|| !region.getAttributes().containsKey("bounds"))
+			throw new RuntimeException("need name=\"...\" and bounds=\"...\" properties");
+		regions.put(region.get("name"), XmlUtils.getTexReg(tex, region.get("bounds")));
+	}
+
+	private void readAnimationTag(Texture tex, Element anim) throws RuntimeException {
+		if (!anim.getAttributes().containsKey("name"))
+			throw new RuntimeException("need name=\"...\" property");
+		anims.put(anim.get("name"), new SpriteAnimation(tex, anim));
+	}
+
+	private void readSkinsTag(Element resources) {
+		for (int i = 0; i < resources.getChildCount(); i++) {
+			Element child = resources.getChild(i);
+
+			switch (child.getName()) {
+			case "skin":
+				readSkinTag(child);
+				break;
+			default:
+				throw new RuntimeException("Expected <skin /> tag");
+			}
+		}
+	}
+
+	private void readSkinTag(Element skin) {
+		if (!skin.getAttributes().containsKey("name")
+				|| !skin.getAttributes().containsKey("file"))
+			throw new RuntimeException("need name=\"...\" and file=\"...\" properties");
+		skins.put(skin.get("name"), new Skin(fileLocation.getFile(skin.get("file"))));
+	}
+
+	@Override
+	public void dispose() {
+		if (!disposed) {
+			disposed = true;
+			for (Entry<String, TextureRegion> entry : regions.entries()) {
+				entry.value.getTexture().dispose();
+			}
+			for (Entry<String, SpriteAnimation> entry : anims.entries()) {
+				entry.value.dispose();
+			}
+			for (Entry<String, Skin> skin : skins.entries()) {
+				skin.value.dispose();
+			}
+		}
+	}
+
+}
+src/org/matheusdev/ror/client/ClientMaster.java
+public class ClientMaster extends Master {
+
+	private boolean disposed;
+
+	private final EntityControllers controllers = new EntityControllers();
+	private final EntityViews views = new EntityViews();
+	private final List<ClientEntity> entities = new ArrayList<>();
+	private final ObjectMap<Integer, ClientEntity> entitiesById = new ObjectMap<>();
+
+	private final ResourceLoader res;
+	private final Physics physics;
+	private final ClientConnector connection;
+	private final PingPongEq<Input> inputs;
+	private final ArrayList<String> chat;
+	private Controller gamepad;
+
+	private long time;
+	private boolean chatChanged;
+	private ClientEntity player;
+	private ControllerPlayer playerContr;
+
+	public ClientMaster(ResourceLoader res, String basePath, String ip) throws IOException {
+		super(basePath);
+		this.chat = new ArrayList<>();
+		this.res = res;
+		this.physics = new Physics(new Vector2(0, 0), true);
+		this.connection = createConnection(ip);
+		this.inputs = new PingPongEq<>(new Input(), new Input());
+		this.gamepad = getController(Config.get().gamepad);
+	}
+
+	public boolean chatChanged() {
+		boolean changed = chatChanged;
+		if (changed) chatChanged = false;
+		return changed;
+	}
+
+	public void writeChat(String string) {
+		chat.add(string);
+		chatChanged = true;
+		if (chat.size() > 1000) {
+			// Remove 100 elements (chat lines):
+			for (int i = 0; i < 100; i++) {
+				chat.remove(0);
+			}
+		}
+	}
+
+	public void inputChat(String string) {
+		connection.sendTCP(new ChatMessage(string));
+	}
+
+	public ArrayList<String> getChat() {
+		return chat;
+	}
+
+	public void initializeEntities(Vector2 spawn) {
+		connection.sendTCP(new FetchEntities());
+		EntityState state = new EntityState();
+		state.posX = spawn.x;
+		state.posY = spawn.y;
+		state.belongsTo = connection.getClient().getID();
+		createEntity("player", state);
+	}
+
+	public boolean hasInitialized() {
+		return player != null;
+	}
+
+	public void updateEntity(EntityState state) {
+		entitiesById.get(state.id).getController().setEntityState(state);
+	}
+
+	private Controller getController(String name) {
+		for (Controller cont : Controllers.getControllers()) {
+			if (cont.getName().equals(name)) {
+				return cont;
+			}
+		}
+		System.err.println("Couldn't find controller for name \"" + name + "\"");
+		return null;
+	}
+
+	public ClientConnector createConnection(String host) throws IOException {
+		return new ClientConnector(this, host);
+	}
+
+	public Physics getPhysics() {
+		return physics;
+	}
+
+	public void tick(boolean updateInput, float delta) {
+		long msDelta = (long)(delta * 1000f);
+		time += msDelta;
+		if (updateInput) {
+			inputs.get().set(time, gamepad);
+			if (inputs.needUpdate()) {
+				connection.sendUDP(inputs.get());
+				inputs.swap();
+			}
+		} else {
+			inputs.get().reset();
+			if (inputs.needUpdate()) {
+				connection.sendUDP(inputs.get());
+				inputs.swap();
+			}
+		}
+		if (playerContr != null)
+			playerContr.setInput(connection.getNewestInput());
+
+		Collections.sort(entities);
+		controllers.tick(msDelta);
+		connection.tick(msDelta);
+		physics.step(delta);
+	}
+
+	public void draw(SpriteBatch batch, FringeLayer layer, float delta) {
+		layer.begin();
+		for (ClientEntity e : entities) {
+			layer.renderTill(batch, e.getEntity().getY());
+			e.getView().draw(batch, e.getEntity(), delta);
+		}
+		layer.end(batch);
+	}
+
+	public void dispose() {
+		if (!disposed) {
+			disposed = true;
+			physics.dispose();
+			connection.dispose();
+		}
+	}
+
+	public ClientEntity setPlayer(ClientEntity e) {
+		if (!(e.getController() instanceof ControllerPlayer)) {
+			throw new IllegalArgumentException("Player entity needs to be under control by the " + ControllerPlayer.Factory.get().getName());
+		}
+		playerContr = (ControllerPlayer) e.getController();
+		return player = e;
+	}
+
+	public ClientEntity getPlayer() {
+		return player;
+	}
+
+	public void createEntity(String type, EntityState e) {
+		connection.sendTCP(new CreateEntity(time, type, e));
+	}
+
+	public ClientEntity addEntity(String type, EntityState state) {
+		JsonObject json = getEntityJson(type);
+		Entity e = EntityParser.createEntity(physics, type, json, state.id, connection.getClient().getID());
+		EntityController contr = EntityParser.createController(controllers, e, json);
+		EntityView view = EntityParser.createView(views, res, json);
+
+		ClientEntity entity = new ClientEntity(e, contr, view);
+		state.setFromState(entity.getEntity());
+		entities.add(entity);
+		entitiesById.put(state.id, entity);
+		return entity;
+	}
+
+	public ClientEntity addEntity(CreateEntity create) {
+		ClientEntity e = addEntity(create.type, create.state);
+		if (create.state.belongsTo == connection.getClient().getID()) {
+			setPlayer(e);
+		}
+		return e;
+	}
+
+	public void removeEntity(ClientEntity e) {
+		entities.remove(e);
+		entitiesById.remove(entitiesById.findKey(e, true));
+		controllers.removeFrom(e.getEntity());
+		physics.getWorld().destroyBody(e.getEntity().getBody());
+	}
+
+	public void removeEntity(int entityID) {
+		ClientEntity e = entitiesById.get(entityID);
+		removeEntity(e);
+	}
+
+}
+src/com/bitfire/postprocessing/effects/Bloom.java
+public final class Bloom extends PostProcessorEffect {
+	public static class Settings {
+		public final String name;
+
+		public final BlurType blurType;
+		public final int blurPasses; // simple blur
+		public final float blurAmount; // normal blur (1 pass)
+		public final float bloomThreshold;
+
+		public final float bloomIntensity;
+		public final float bloomSaturation;
+		public final float baseIntensity;
+		public final float baseSaturation;
+
+		public Settings( String name, BlurType blurType, int blurPasses, float blurAmount, float bloomThreshold,
+				float baseIntensity, float baseSaturation, float bloomIntensity, float bloomSaturation ) {
+			this.name = name;
+			this.blurType = blurType;
+			this.blurPasses = blurPasses;
+			this.blurAmount = blurAmount;
+
+			this.bloomThreshold = bloomThreshold;
+			this.baseIntensity = baseIntensity;
+			this.baseSaturation = baseSaturation;
+			this.bloomIntensity = bloomIntensity;
+			this.bloomSaturation = bloomSaturation;
+		}
+
+		// simple blur
+		public Settings( String name, int blurPasses, float bloomThreshold, float baseIntensity, float baseSaturation,
+				float bloomIntensity, float bloomSaturation ) {
+			this( name, BlurType.Gaussian5x5b, blurPasses, 0, bloomThreshold, baseIntensity, baseSaturation, bloomIntensity,
+					bloomSaturation );
+		}
+
+		public Settings( Settings other ) {
+			this.name = other.name;
+			this.blurType = other.blurType;
+			this.blurPasses = other.blurPasses;
+			this.blurAmount = other.blurAmount;
+
+			this.bloomThreshold = other.bloomThreshold;
+			this.baseIntensity = other.baseIntensity;
+			this.baseSaturation = other.baseSaturation;
+			this.bloomIntensity = other.bloomIntensity;
+			this.bloomSaturation = other.bloomSaturation;
+		}
+	}
+
+	private PingPongBuffer pingPongBuffer;
+
+	private Blur blur;
+	private Threshold threshold;
+	private Combine combine;
+
+	private Settings settings;
+
+	private boolean blending = false;
+	private int sfactor, dfactor;
+
+	public Bloom( int fboWidth, int fboHeight ) {
+		pingPongBuffer = PostProcessor.newPingPongBuffer( fboWidth, fboHeight, PostProcessor.getFramebufferFormat(), false );
+
+		blur = new Blur( fboWidth, fboHeight );
+		threshold = new Threshold();
+		combine = new Combine();
+
+		setSettings( new Settings( "default", 2, 0.277f, 1f, .85f, 1.1f, .85f ) );
+	}
+
+	@Override
+	public void dispose() {
+		combine.dispose();
+		threshold.dispose();
+		blur.dispose();
+		pingPongBuffer.dispose();
+	}
+
+	public void setBaseIntesity( float intensity ) {
+		combine.setSource1Intensity( intensity );
+	}
+
+	public void setBaseSaturation( float saturation ) {
+		combine.setSource1Saturation( saturation );
+	}
+
+	public void setBloomIntesity( float intensity ) {
+		combine.setSource2Intensity( intensity );
+	}
+
+	public void setBloomSaturation( float saturation ) {
+		combine.setSource2Saturation( saturation );
+	}
+
+	public void setThreshold( float gamma ) {
+		threshold.setTreshold( gamma );
+	}
+
+	public void enableBlending( int sfactor, int dfactor ) {
+		this.blending = true;
+		this.sfactor = sfactor;
+		this.dfactor = dfactor;
+	}
+
+	public void disableBlending() {
+		this.blending = false;
+	}
+
+	public void setBlurType( BlurType type ) {
+		blur.setType( type );
+	}
+
+	public void setSettings( Settings settings ) {
+		this.settings = settings;
+
+		// setup threshold filter
+		setThreshold( settings.bloomThreshold );
+
+		// setup combine filter
+		setBaseIntesity( settings.baseIntensity );
+		setBaseSaturation( settings.baseSaturation );
+		setBloomIntesity( settings.bloomIntensity );
+		setBloomSaturation( settings.bloomSaturation );
+
+		// setup blur filter
+		setBlurPasses( settings.blurPasses );
+		setBlurAmount( settings.blurAmount );
+		setBlurType( settings.blurType );
+	}
+
+	public void setBlurPasses( int passes ) {
+		blur.setPasses( passes );
+	}
+
+	public void setBlurAmount( float amount ) {
+		blur.setAmount( amount );
+	}
+
+	public float getThreshold() {
+		return threshold.getThreshold();
+	}
+
+	public float getBaseIntensity() {
+		return combine.getSource1Intensity();
+	}
+
+	public float getBaseSaturation() {
+		return combine.getSource1Saturation();
+	}
+
+	public float getBloomIntensity() {
+		return combine.getSource2Intensity();
+	}
+
+	public float getBloomSaturation() {
+		return combine.getSource2Saturation();
+	}
+
+	public boolean isBlendingEnabled() {
+		return blending;
+	}
+
+	public int getBlendingSourceFactor() {
+		return sfactor;
+	}
+
+	public int getBlendingDestFactor() {
+		return dfactor;
+	}
+
+	public BlurType getBlurType() {
+		return blur.getType();
+	}
+
+	public Settings getSettings() {
+		return settings;
+	}
+
+	public int getBlurPasses() {
+		return blur.getPasses();
+	}
+
+	public float getBlurAmount() {
+		return blur.getAmount();
+	}
+
+	@Override
+	public void render( final FrameBuffer src, final FrameBuffer dest ) {
+		Texture texsrc = src.getColorBufferTexture();
+
+		boolean blendingWasEnabled = PostProcessor.isStateEnabled( GL20.GL_BLEND );
+		Gdx.gl.glDisable( GL20.GL_BLEND );
+
+		pingPongBuffer.begin();
+		{
+			// threshold / high-pass filter
+			// only areas with pixels >= threshold are blit to smaller fbo
+			threshold.setInput( texsrc ).setOutput( pingPongBuffer.getSourceBuffer() ).render();
+
+			// blur pass
+			blur.render( pingPongBuffer );
+		}
+		pingPongBuffer.end();
+
+		if( blending || blendingWasEnabled ) {
+			Gdx.gl.glEnable( GL20.GL_BLEND );
+		}
+
+		if( blending ) {
+			Gdx.gl.glBlendFunc( sfactor, dfactor );
+		}
+
+		// mix original scene and blurred threshold, modulate via
+		// set(Base|Bloom)(Saturation|Intensity)
+		combine.setOutput( dest ).setInput( texsrc, pingPongBuffer.getResultTexture() ).render();
+	}
+
+	@Override
+	public void rebind() {
+		blur.rebind();
+		threshold.rebind();
+		combine.rebind();
+		pingPongBuffer.rebind();
+	}
+}
+src/org/matheusdev/util/KeysUtil.java
+public final class KeysUtil {
+
+	private static final ObjectMap<String, Integer> keysVal = new ObjectMap<>();
+	private static final ObjectMap<Integer, String> keysName = new ObjectMap<>();
+
+	static {
+		Field[] fields = Keys.class.getFields();
+		for (Field field : fields) {
+			String name = field.getName();
+			if (!name.startsWith("META")) {
+				try {
+					int value = field.getInt(null);
+					keysVal.put(name, value);
+					keysName.put(value, name);
+				} catch (Exception e) {
+					System.err.println("Exception when loading Keys: " + e);
+				}
+			}
+		}
+	}
+
+	public static void touch() {}
+
+	public static final int forName(String name) {
+		return keysVal.get(name);
+	}
+
+	public static final String forVal(int val) {
+		return keysName.get(val);
+	}
+
+	/**
+	 * Don't call the constructor! DONT'!
+	 */
+	private KeysUtil() {
+		System.err.println("What did I tell you in the Javadoc?");
+		new KeysUtil();
+	}
+
+}
+src/org/matheusdev/util/Config.java
+public class Config {
+
+	public static final String configfile = "keyconfig.json";
+
+	public static Config instance;
+
+	public static Config get() {
+		if (instance == null) {
+			try {
+				instance = read();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		return instance;
+	}
+
+	public OrderedMap<String, Integer> keys = new OrderedMap<>();
+	{
+		keys.put("up", Input.Keys.W);
+		keys.put("down", Input.Keys.S);
+		keys.put("left", Input.Keys.A);
+		keys.put("right", Input.Keys.D);
+		keys.put("debugDraw", Input.Keys.F8);
+		keys.put("escape", Input.Keys.ESCAPE);
+		keys.put("chat", Input.Keys.ENTER);
+	}
+	public int resolutionX = 800;
+	public int resolutionY = 600;
+	public boolean enableGamepad = true;
+	public String gamepad = "...";
+	public int gamepadX = 99;
+	public int gamepadY = 100;
+	public boolean bloom = true;
+	public float baseintensity = 1f;
+	public float basesaturation = .85f;
+	public float bloomtreshold = 0.6f;//0.577f;
+	public float bloomintensity = 2.0f;
+	public float bloomsaturation = .85f;
+	public float blurammount = 2f;
+
+	private Config() {
+		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+			@Override
+			public void run() {
+				get().write();
+				System.out.println("Config written.");
+			}
+		}));
+	}
+
+	public Config setRes(int resX, int resY) {
+		resolutionX = resX;
+		resolutionY = resY;
+		return this;
+	}
+
+	public int key(String name) {
+		Integer key = keys.get(name);
+		if (key != null) return key;
+		throw new InvalidConfigException("Missing key in configuration File (keyconfig.json): " + name);
+	}
+
+	public void key(String name, int value) {
+		System.out.println("Putting key " + name + " = " + KeysUtil.forVal(value));
+		keys.put(name, value);
+	}
+
+	public static Config read() throws IOException {
+		System.out.println("Reading config.");
+		File config = new File(configfile);
+
+		if (config.exists()) {
+			JsonDOM dom = new Json().fromJson(JsonDOM.class, new FileReader(config));
+
+			if (dom != null) return new Config().fromJsonDOM(dom);
+		}
+		return new Config();
+	}
+
+	public void write() {
+		FileWriter writer = null;
+		try {
+			Json json = new Json();
+			json.setIgnoreUnknownFields(false);
+			json.setUsePrototypes(false);
+			json.setOutputType(OutputType.javascript);
+			writer = new FileWriter(new File(configfile));
+			writer.write(json.prettyPrint(toJsonDOM(), 100));
+		} catch (IOException e) {
+			e.printStackTrace();
+		} finally {
+			try {
+				if (writer != null) writer.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+	public Config fromJsonDOM(JsonDOM dom) {
+		JsonDOM.JsonObject root = dom.getRoot();
+		gamepad = root.getValue("gamepad", "...");
+
+		gamepadX = root.getIntValue("gamepadX", 0);
+		gamepadY = root.getIntValue("gamepadY", 1);
+
+		enableGamepad = root.getBoolValue("enableGamepad", false);
+
+		baseintensity = root.getFloatValue("baseintensity", 1f);
+		basesaturation = root.getFloatValue("basesaturation", 0.85f);
+		bloomintensity = root.getFloatValue("bloomintensity", 2f);
+		bloomsaturation = root.getFloatValue("bloomsaturation", 0.85f);
+		bloomtreshold = root.getFloatValue("bloomtreshold", 0.6f);
+		blurammount = root.getFloatValue("blurammount", 2f);
+
+		resolutionX = root.getIntValue("resolutionX", 800);
+		resolutionY = root.getIntValue("resolutionY", 600);
+
+		bloom = root.getBoolValue("bloom", true);
+
+		if (root.elements.containsKey("keys")) {
+			JsonDOM.JsonElement keysElem = root.elements.get("keys");
+
+			if (keysElem != null && keysElem instanceof JsonDOM.JsonArray) {
+				JsonDOM.JsonArray keyArray = (JsonDOM.JsonArray) keysElem;
+
+				for (JsonDOM.JsonObject obj : keyArray.elements) {
+					for (Entry<String, String> key : obj.values.entries()) {
+						keys.put(key.key, KeysUtil.forName(key.value));
+					}
+				}
+			}
+		}
+		return this;
+	}
+
+	public JsonDOM toJsonDOM() {
+		JsonDOM dom = new JsonDOM();
+		JsonDOM.JsonObject root = dom.getRoot();
+		root.values.put("gamepad", gamepad);
+		root.values.put("gamepadX", "" + gamepadX);
+		root.values.put("gamepadY", "" + gamepadY);
+		root.values.put("enableGamepad", "" + enableGamepad);
+		root.values.put("baseintensity", "" + baseintensity);
+		root.values.put("basesaturation", "" + basesaturation);
+		root.values.put("bloomintensity", "" + bloomintensity);
+		root.values.put("bloomsaturation", "" + bloomsaturation);
+		root.values.put("bloomtreshold", "" + bloomtreshold);
+		root.values.put("blurammount", "" + blurammount);
+		root.values.put("resolutionX", "" + resolutionX);
+		root.values.put("resolutionY", "" + resolutionY);
+		root.values.put("bloom", "" + bloom);
+
+		JsonDOM.JsonArray keyArray = new JsonDOM.JsonArray();
+		for (Entry<String, Integer> entry : keys.entries()) {
+			JsonDOM.JsonObject obj = new JsonDOM.JsonObject();
+			obj.values.put(entry.key, KeysUtil.forVal(entry.value));
+			System.out.println("Saving " + entry.key + " = " + KeysUtil.forVal(entry.value));
+			keyArray.elements.add(obj);
+		}
+		root.elements.put("keys", keyArray);
+
+		return dom;
+	}
+
+}
+src/org/matheusdev/ror/RuinsOfRevenge.java
+public class RuinsOfRevenge extends Game implements InputProcessor {
+
+	public static final FileLocation fileLocation = FileLocation.CLASSPATH;
+
+	public static void main(String[] args) {
+		new LwjglApplication(
+				new RuinsOfRevenge(),
+				"matheusdev: Ruins Of Revenge",
+				Config.get().resolutionX,
+				Config.get().resolutionY,
+				true);
+	}
+
+	private ResourceLoader res;
+	private Stack<AbstractScreen> screens;
+	private Stack<AbstractScreen> drawStack;
+
+	private final Color darkenColor = new Color(0.1f, 0.1f, 0.1f, 0.8f);
+
+	@Override
+	public void create() {
+		ShaderLoader.BasePath = "data/shaders/";
+//		ShaderLoader.fileLocation = fileLocation;
+		screens = new Stack<>();
+		drawStack = new Stack<>();
+		try {
+			res = new ResourceLoader(fileLocation, fileLocation.getFile("data/sprites/resources.xml"));
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		pushScreen(new ScreenMenu(res, this));
+		Gdx.graphics.setVSync(true);
+		Gdx.input.setInputProcessor(this);
+	}
+
+	@Override
+	public void render() {
+		Gdx.gl.glClearColor(0.5f, 0.5f, 0.5f, 0f);
+		Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
+
+		prepareDrawStack();
+		updateDrawStack(Gdx.graphics.getDeltaTime());
+	}
+
+	private void prepareDrawStack() {
+		for (int i = screens.size()-1; i >= 0; i--) {
+			AbstractScreen screen = screens.get(i);
+			drawStack.push(screen);
+
+			if (!screen.isParentVisible()) {
+				break;
+			}
+		}
+	}
+
+	private void updateDrawStack(float delta) {
+		while (drawStack.size() > 1) {
+			AbstractScreen screen = drawStack.pop();
+			Stage stage = screen.getStage();
+			// if it's the last element (topmost screen)
+			stage.getSpriteBatch().setColor(Color.WHITE);
+			screen.update(delta);
+		}
+		AbstractScreen topScreen = drawStack.pop();
+		Stage stage = topScreen.getStage();
+		stage.getSpriteBatch().enableBlending();
+		stage.getSpriteBatch().setColor(darkenColor);
+		stage.getSpriteBatch().begin();
+		stage.getSpriteBatch().draw(res.getRegion("white"), 0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+		stage.getSpriteBatch().end();
+		stage.getSpriteBatch().setColor(Color.WHITE);
+		topScreen.update(delta);
+	}
+
+	@Override
+	public void resize(int width, int height) {
+		Gdx.gl.glViewport(0, 0, width, height);
+		for (AbstractScreen screen : screens) {
+			screen.resize(width, height);
+		}
+		Config.get().setRes(width, height);
+	}
+
+	public boolean shouldHaveInputFocus(AbstractScreen screen) {
+		return screens.peek() == screen;
+	}
+
+	@Override
+	public void dispose() {
+		res.dispose();
+	}
+
+	public AbstractScreen popScreen() {
+		AbstractScreen popped = screens.pop();
+		popped.dispose();
+		return popped;
+	}
+
+	public void pushScreen(AbstractScreen screen) {
+		screens.add(screen);
+	}
+
+	@Override
+	public boolean keyDown(int keycode) {
+		return screens.peek().keyDown(keycode);
+	}
+
+	@Override
+	public boolean keyUp(int keycode) {
+		return screens.peek().keyUp(keycode);
+	}
+
+	@Override
+	public boolean keyTyped(char character) {
+		return screens.peek().keyTyped(character);
+	}
+
+	@Override
+	public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+		return screens.peek().touchDown(screenX, screenY, pointer, button);
+	}
+
+	@Override
+	public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+		return screens.peek().touchUp(screenX, screenY, pointer, button);
+	}
+
+	@Override
+	public boolean touchDragged(int screenX, int screenY, int pointer) {
+		return screens.peek().touchDragged(screenX, screenY, pointer);
+	}
+
+	@Override
+	public boolean mouseMoved(int screenX, int screenY) {
+		return screens.peek().mouseMoved(screenX, screenY);
+	}
+
+	@Override
+	public boolean scrolled(int amount) {
+		return screens.peek().scrolled(amount);
+	}
+
+}
+src/org/matheusdev/ror/map/Map.java
+public class Map implements Disposable {
+
+	// Disposable
+	private boolean disposed = false;
+
+	private final TiledMap map;
+	private final OrthogonalTiledMapRenderer renderer;
+	private final Vector2 spawnpoint = new Vector2(2, 2);
+	private final int fringeLayerIndex;
+	private final int[] belowEntities;
+	private final int[] aboveEntities;
+	private final FringeLayer fringeLayer;
+
+	public Map(FileLocation loc, String mapfile) {
+		this(loc, mapfile, null);
+	}
+
+	public Map(FileLocation loc, String mapfile, Physics physics) {
+		TmxObjectsLoader objs = null;
+		try {
+			objs = new TmxObjectsLoader(new XmlReader().parse(loc.getFile(mapfile)));
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		this.map = new TmxMapLoader(loc.getResolver()).load(mapfile);
+		this.renderer = new OrthogonalTiledMapRenderer(map, 1f / objs.getTileWidth());
+
+		fringeLayerIndex = computeEntityLayer();
+		if (fringeLayerIndex == 999) {
+			belowEntities = new int[map.getLayers().getCount()];
+			aboveEntities = new int[0];
+			fillCounting(0, belowEntities);
+			fringeLayer = null;
+		} else {
+			belowEntities = new int[fringeLayerIndex];
+			aboveEntities = new int[map.getLayers().getCount()-fringeLayerIndex-1];
+			fillCounting(0, belowEntities);
+			fillCounting(fringeLayerIndex+1, aboveEntities);
+			MapLayer mapLayer = map.getLayers().get(fringeLayerIndex);
+			if (mapLayer instanceof TiledMapTileLayer) {
+				fringeLayer = new FringeLayer(map, (TiledMapTileLayer) mapLayer);
+			} else {
+				fringeLayer = null;
+			}
+		}
+
+		if (physics != null) {
+			for (TmxObjectsLoader.TmxObjectGroup group : objs.getObjectGroups()) {
+				for (TmxObjectsLoader.TmxObject obj : group.objects) {
+					if (!obj.name.equalsIgnoreCase("spawnpoint")) {
+						objs.loadToPhysics(obj, physics);
+					} else {
+						spawnpoint.set(obj.x / objs.getTileWidth(), obj.y / objs.getTileHeight());
+					}
+				}
+			}
+		}
+	}
+
+	private void fillCounting(int start, int[] array) {
+		for (int i = 0, val = start; i < array.length; i++, val++) {
+			array[i] = val;
+		}
+	}
+
+	private int computeEntityLayer() {
+		for (int i = 0; i < map.getLayers().getCount(); i++) {
+			if (map.getLayers().get(i).getName().equalsIgnoreCase("fringe")) {
+				return i;
+			}
+		}
+		return 999;
+	}
+
+	public FringeLayer getFringeLayer() {
+		return fringeLayer;
+	}
+
+	public void renderBelowEntities(OrthographicCamera cam) {
+		renderer.setView(cam);
+		renderer.render(belowEntities);
+	}
+
+	public void renderAboveEntities(OrthographicCamera cam) {
+		renderer.setView(cam);
+		renderer.render(aboveEntities);
+	}
+
+	/* (non-Javadoc)
+	 * @see com.badlogic.gdx.utils.Disposable#dispose()
+	 */
+	@Override
+	public void dispose() {
+		if (!disposed) {
+			renderer.dispose();
+			disposed = true;
+		}
+	}
+
+	/**
+	 * Returns the Spawnpoint in World space: Meters
+	 */
+	public Vector2 getSpawnpoint() {
+		return spawnpoint;
+	}
+
+}
+src/com/bitfire/postprocessing/PostProcessor.java
+public final class PostProcessor implements Disposable {
+	/** Enable pipeline state queries: beware the pipeline can stall! */
+	public static boolean EnableQueryStates = false;
+
+	private static PipelineState pipelineState = null;
+	private static Format fbFormat;
+	private final PingPongBuffer composite;
+	private TextureWrap compositeWrapU;
+	private TextureWrap compositeWrapV;
+	private final ItemsManager<PostProcessorEffect> effectsManager = new ItemsManager<PostProcessorEffect>();
+	private static final Array<PingPongBuffer> buffers = new Array<PingPongBuffer>( 5 );
+	private final Color clearColor = Color.CLEAR;
+	private int clearBits = GL10.GL_COLOR_BUFFER_BIT;
+	private float clearDepth = 1f;
+
+	private boolean enabled = true;
+	private boolean capturing = false;
+	private boolean hasCaptured = false;
+	private boolean useDepth = false;
+
+	private PostProcessorListener listener = null;
+
+	// maintains a per-frame updated list of enabled effects
+	private Array<PostProcessorEffect> enabledEffects = new Array<PostProcessorEffect>( 5 );
+
+	/**
+	 * Construct a new PostProcessor with FBO dimensions set to the size of the
+	 * screen
+	 */
+	public PostProcessor( boolean useDepth, boolean useAlphaChannel, boolean use32Bits ) {
+		this( Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), useDepth, useAlphaChannel, use32Bits );
+	}
+
+	/** Construct a new PostProcessor with the given parameters. */
+	public PostProcessor( int fboWidth, int fboHeight, boolean useDepth, boolean useAlphaChannel, boolean use32Bits ) {
+		this( fboWidth, fboHeight, useDepth, useAlphaChannel, use32Bits, TextureWrap.ClampToEdge, TextureWrap.ClampToEdge );
+	}
+
+	public PostProcessor( int fboWidth, int fboHeight, boolean useDepth, boolean useAlphaChannel, boolean use32Bits,
+			TextureWrap u, TextureWrap v ) {
+		if( use32Bits ) {
+			if( useAlphaChannel ) {
+				fbFormat = Format.RGBA8888;
+			} else {
+				fbFormat = Format.RGB888;
+			}
+		} else {
+			if( useAlphaChannel ) {
+				fbFormat = Format.RGBA4444;
+			} else {
+				fbFormat = Format.RGB565;
+			}
+		}
+
+		composite = newPingPongBuffer( fboWidth, fboHeight, fbFormat, useDepth );
+		setBufferTextureWrap( u, v );
+
+		pipelineState = new PipelineState();
+
+		capturing = false;
+		hasCaptured = false;
+		enabled = true;
+		this.useDepth = useDepth;
+	}
+
+	/**
+	 * Creates and returns a managed PingPongBuffer buffer, just create and
+	 * forget. If rebind() is called on context loss, managed PingPongBuffers
+	 * will be rebound for you.
+	 *
+	 * This is a drop-in replacement for the same-signature PingPongBuffer's
+	 * constructor.
+	 */
+	public static PingPongBuffer newPingPongBuffer( int width, int height, Format frameBufferFormat, boolean hasDepth ) {
+		PingPongBuffer buffer = new PingPongBuffer( width, height, frameBufferFormat, hasDepth );
+		buffers.add( buffer );
+		return buffer;
+	}
+
+	/**
+	 * Provides a way to query the pipeline for the most used states
+	 */
+	public static boolean isStateEnabled( int pname ) {
+		if( EnableQueryStates ) {
+			// Gdx.app.log( "PipelineState", "Querying blending" );
+			return pipelineState.isEnabled( pname );
+		}
+
+		// Gdx.app.log( "PipelineState", "(not querying)" );
+		return false;
+	}
+
+	/** Frees owned resources. */
+	@Override
+	public void dispose() {
+		effectsManager.dispose();
+
+		// cleanup managed buffers, if any
+		for( int i = 0; i < buffers.size; i++ ) {
+			buffers.get( i ).dispose();
+		}
+
+		buffers.clear();
+
+		if( enabledEffects != null ) {
+			enabledEffects.clear();
+		}
+
+		pipelineState.dispose();
+	}
+
+	/** Whether or not the post-processor is enabled */
+	public boolean isEnabled() {
+		return enabled;
+	}
+
+	/**
+	 * If called before capturing it will indicate if the next capture call will
+	 * succeeds or not.
+	 */
+	public boolean isReady() {
+		boolean hasEffects = false;
+
+		Array<PostProcessorEffect> items = effectsManager.items;
+		for( int i = 0; i < items.size; i++ ) {
+			PostProcessorEffect effect = items.get( i );
+			if( effect.isEnabled() ) {
+				hasEffects = true;
+				break;
+			}
+		}
+
+		return (enabled && !capturing && hasEffects);
+	}
+
+	/** Sets whether or not the post-processor should be enabled */
+	public void setEnabled( boolean enabled ) {
+		this.enabled = enabled;
+	}
+
+	/** Returns the number of the currently enabled effects */
+	public int getEnabledEffectsCount() {
+		return enabledEffects.size;
+	}
+
+	/**
+	 * Sets the listener that will receive events triggered by the PostProcessor
+	 * rendering pipeline.
+	 */
+	public void setListener( PostProcessorListener listener ) {
+		this.listener = listener;
+	}
+
+	/**
+	 * Adds the specified effect to the effect chain and transfer ownership
+	 * to the PostProcessor, it will manage cleaning it up for you.
+	 * The order of the inserted effects IS important, since effects will be
+	 * applied in a FIFO fashion, the first added
+	 * is the first being applied.
+	 */
+	public void addEffect( PostProcessorEffect effect ) {
+		effectsManager.add( effect );
+	}
+
+	/** Removes the specified effect from the effect chain. */
+	public void removeEffect( PostProcessorEffect effect ) {
+		effectsManager.remove( effect );
+	}
+
+	/**
+	 * Returns the internal framebuffer format, computed from the
+	 * parameters specified during construction.
+	 * NOTE: the returned Format will be valid after construction and NOT early!
+	 */
+	public static Format getFramebufferFormat() {
+		return fbFormat;
+	}
+
+	/** Sets the color that will be used to clear the buffer. */
+	public void setClearColor( Color color ) {
+		clearColor.set( color );
+	}
+
+	/** Sets the color that will be used to clear the buffer. */
+	public void setClearColor( float r, float g, float b, float a ) {
+		clearColor.set( r, g, b, a );
+	}
+
+	/** Sets the clear bit for when glClear is invoked. */
+	public void setClearBits( int bits ) {
+		clearBits = bits;
+	}
+
+	/** Sets the depth value with which to clear the depth buffer when needed. */
+	public void setClearDepth( float depth ) {
+		clearDepth = depth;
+	}
+
+	public void setBufferTextureWrap( TextureWrap u, TextureWrap v ) {
+		compositeWrapU = u;
+		compositeWrapV = v;
+
+		composite.texture1.setWrap( compositeWrapU, compositeWrapV );
+		composite.texture2.setWrap( compositeWrapU, compositeWrapV );
+	}
+
+	/**
+	 * Starts capturing the scene, clears the buffer with the clear
+	 * color specified by {@link #setClearColor(Color)} or {@link #setClearColor(float r, float g, float b, float a)}.
+	 *
+	 * @return true or false, whether or not capturing has been initiated.
+	 *         Capturing will fail in case there are no enabled effects in the
+	 *         chain or
+	 *         this instance is not enabled or capturing is already started.
+	 */
+	public boolean capture() {
+		hasCaptured = false;
+
+		if( enabled && !capturing ) {
+			if( buildEnabledEffectsList() == 0 ) {
+				// no enabled effects
+				// Gdx.app.log( "PostProcessor::capture()",
+				// "No post-processor effects enabled" );
+				return false;
+			}
+
+			capturing = true;
+			composite.begin();
+			composite.capture();
+
+			if( useDepth ) {
+				Gdx.gl.glClearDepthf( clearDepth );
+			}
+
+			Gdx.gl.glClearColor( clearColor.r, clearColor.g, clearColor.b, clearColor.a );
+			Gdx.gl.glClear( clearBits );
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Starts capturing the scene as {@link #capture()}, but
+	 * <strong>without</strong> clearing the screen.
+	 *
+	 * @return true or false, whether or not capturing has been initiated.
+	 */
+	public boolean captureNoClear() {
+		hasCaptured = false;
+
+		if( enabled && !capturing ) {
+			if( buildEnabledEffectsList() == 0 ) {
+				// no enabled effects
+				// Gdx.app.log( "PostProcessor::captureNoClear",
+				// "No post-processor effects enabled" );
+				return false;
+			}
+
+			capturing = true;
+			composite.begin();
+			composite.capture();
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Stops capturing the scene and returns the result, or null if nothing was
+	 * captured.
+	 */
+	public FrameBuffer captureEnd() {
+		if( enabled && capturing ) {
+			capturing = false;
+			hasCaptured = true;
+			composite.end();
+			return composite.getResultBuffer();
+		}
+
+		return null;
+	}
+
+	/** After a capture/captureEnd action, returns the just captured buffer */
+	public FrameBuffer captured() {
+		if( enabled && hasCaptured ) {
+			return composite.getResultBuffer();
+		}
+
+		return null;
+	}
+
+	/**
+	 * Regenerates and/or rebinds owned resources when needed, eg. when
+	 * the OpenGL context is lost.
+	 */
+	public void rebind() {
+		composite.texture1.setWrap( compositeWrapU, compositeWrapV );
+		composite.texture2.setWrap( compositeWrapU, compositeWrapV );
+
+		for( int i = 0; i < buffers.size; i++ ) {
+			buffers.get( i ).rebind();
+		}
+
+		Array<PostProcessorEffect> items = effectsManager.items;
+		for( int i = 0; i < items.size; i++ ) {
+			items.get( i ).rebind();
+		}
+	}
+
+	/**
+	 * Stops capturing the scene and apply the effect chain, if there is one.
+	 * If the specified output framebuffer is NULL, then the rendering will be
+	 * performed to screen.
+	 */
+	public void render( FrameBuffer dest ) {
+		captureEnd();
+
+		if( !hasCaptured ) {
+			return;
+		}
+
+		// Array<PostProcessorEffect> items = manager.items;
+		Array<PostProcessorEffect> items = enabledEffects;
+
+		int count = items.size;
+		if( count > 0 ) {
+
+			Gdx.gl.glDisable( GL20.GL_CULL_FACE );
+
+			// render effects chain, [0,n-1]
+			if( count > 1 ) {
+				for( int i = 0; i < count - 1; i++ ) {
+					PostProcessorEffect e = items.get( i );
+
+					composite.capture();
+					{
+						e.render( composite.getSourceBuffer(), composite.getResultBuffer() );
+					}
+				}
+
+				// complete
+				composite.end();
+			}
+
+			if( listener != null ) {
+				listener.beforeRenderToScreen();
+			}
+
+			// render with null dest (to screen)
+			items.get( count - 1 ).render( composite.getResultBuffer(), dest );
+
+			// ensure default texture unit #0 is active
+			Gdx.gl.glActiveTexture( GL20.GL_TEXTURE0 );
+		} else {
+			Gdx.app.log( "PostProcessor", "No post-processor effects enabled, aborting render" );
+		}
+	}
+
+	/** Convenience method to render to screen. */
+	public void render() {
+		render( null );
+	}
+
+	private int buildEnabledEffectsList() {
+		enabledEffects.clear();
+
+		Array<PostProcessorEffect> items = effectsManager.items;
+		for( int i = 0; i < items.size; i++ ) {
+			PostProcessorEffect effect = items.get( i );
+			if( effect.isEnabled() ) {
+				enabledEffects.add( effect );
+			}
+		}
+
+		return enabledEffects.size;
+	}
+
+	public boolean isCapturing() {
+		return capturing;
+	}
+}
+src/com/bitfire/utils/ShaderLoader.java
+public final class ShaderLoader {
+	public static String BasePath = "";
+	public static boolean Pedantic = true;
+    public static FileLocation fileLocation = FileLocation.INTERNAL;
+
+	public static ShaderProgram fromFile( String vertexFileName, String fragmentFileName ) {
+		return ShaderLoader.fromFile( vertexFileName, fragmentFileName, "" );
+	}
+
+	public static ShaderProgram fromFile( String vertexFileName, String fragmentFileName, String defines ) {
+		Gdx.app.log( "ShaderLoader", "Compiling " + vertexFileName + " | " + fragmentFileName + "..." );
+		String vertexShaderSrc = fileLocation.getFile(BasePath + vertexFileName + ".vertex").readString();
+		String fragmentShaderSrc = fileLocation.getFile(BasePath + fragmentFileName + ".fragment" ).readString();
+		return ShaderLoader.fromString( vertexShaderSrc, fragmentShaderSrc, vertexFileName, fragmentFileName, defines );
+	}
+
+	public static ShaderProgram fromString( String vertex, String fragment, String vertexName, String fragmentName ) {
+		return ShaderLoader.fromString( vertex, fragment, vertexName, fragmentName, "" );
+	}
+
+	public static ShaderProgram fromString( String vertex, String fragment, String vertexName, String fragmentName, String defines ) {
+		ShaderProgram.pedantic = ShaderLoader.Pedantic;
+		ShaderProgram shader = new ShaderProgram( defines + "\n" + vertex, defines + "\n" + fragment );
+		if( !shader.isCompiled() ) {
+			Gdx.app.error( "ShaderLoader", shader.getLog() );
+			Gdx.app.exit();
+		} else {
+			if( defines != null && defines.length() > 0 ) {
+				Gdx.app.log( "ShaderLoader", vertexName + "/" + fragmentName + " compiled w/ (" + defines.replace( "\n", ", " )
+						+ ")" );
+			} else {
+				Gdx.app.log( "ShaderLoader", vertexName + "/" + fragmentName + " compiled!" );
+			}
+		}
+
+		return shader;
+	}
+
+	private ShaderLoader() {
+	}
+}

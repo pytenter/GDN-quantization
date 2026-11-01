@@ -1,0 +1,1 @@
+lambda _cls, op, target: _tuple_new(_cls, (op, target))

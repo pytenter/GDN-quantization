@@ -1,0 +1,9 @@
+def __create_fn__(_type_dynamic_sizes, _type_dynamic_strides, _type_constraint_sizes, _type_constraint_strides, _type_view_base_context, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_dynamic_strides, _dflt_constraint_sizes, _dflt_constraint_strides, _dflt_view_base_context, _return_type):
+ def __init__(self,dynamic_sizes:_type_dynamic_sizes,dynamic_strides:_type_dynamic_strides=_dflt_dynamic_strides,constraint_sizes:_type_constraint_sizes=_dflt_constraint_sizes,constraint_strides:_type_constraint_strides=_dflt_constraint_strides,view_base_context:_type_view_base_context=_dflt_view_base_context)->_return_type:
+  __dataclass_builtins_object__.__setattr__(self,'dynamic_sizes',dynamic_sizes)
+  __dataclass_builtins_object__.__setattr__(self,'dynamic_strides',dynamic_strides)
+  __dataclass_builtins_object__.__setattr__(self,'constraint_sizes',constraint_sizes)
+  __dataclass_builtins_object__.__setattr__(self,'constraint_strides',constraint_strides)
+  __dataclass_builtins_object__.__setattr__(self,'view_base_context',view_base_context)
+  self.__post_init__()
+ return __init__

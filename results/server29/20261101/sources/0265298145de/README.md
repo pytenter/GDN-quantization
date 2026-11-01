@@ -1,0 +1,50 @@
+# hadamard-init-dense-oracle-v1-ling-3090-v2
+
+原始相对目录：`worktrees/hadamard-init-dense-oracle-v1-ling-3090-v2`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`results/aime26/81920/ling_kda/frozen_v4_per_sample.csv`](../../../../aime26/81920/ling_kda/frozen_v4_per_sample.csv)
+- [`results/aime26/81920/qwen_gdn/frozen_v4_per_sample.csv`](../../../../aime26/81920/qwen_gdn/frozen_v4_per_sample.csv)
+- [`experiments/LING_DETERMINISTIC_16DOC_REPLICATION_V2/final_report.md`](../../../../../experiments/ling_kda/runtime/LING_DETERMINISTIC_16DOC_REPLICATION_V2/final_report.md)
+- [`README.md`](../../objects/d2/d2298740842ddf11e956300abf1136229d4de842cd9e38d90015bc380cbb18aa__README.md)
+- [`docs/PROTOCOL.md`](../../objects/33/33c46cd7dc8084cc7268b9f915e96d2e29ead4ea2e8c25feffb8a22cc32f055f__PROTOCOL.md)
+- [`docs/EVIDENCE_MAP.md`](../../../../../docs/EVIDENCE_MAP.md)
+- [`docs/RESULT_SUMMARY.md`](../../objects/5b/5b8a670f5c7c8ea0eec3dc39c1374206ffbd56b0c37f54bb452c6d3d775e84cd__RESULT_SUMMARY.md)
+- [`docs/REPRODUCIBILITY.md`](../../../../../docs/REPRODUCIBILITY.md)
+- [`docs/RESEARCH_STATUS.md`](../../objects/af/afbd06abbc3c1af2f2c579a6faafb53305699631465af45fafa9a35407696bb5__RESEARCH_STATUS.md)
+- [`docs/SCORER_PROTOCOL.md`](../../objects/23/238b7ee361609762b3a50a00b79643a854e33b30c6fe8faf0468958dd75e57e1__SCORER_PROTOCOL.md)
+- [`docs/EXPERIMENT_INDEX.md`](../../objects/e6/e6bbb3d5fb403a9e2fd976c40f28754db3f65fb6ab8dc8a8f58a023a53da10e8__EXPERIMENT_INDEX.md)
+- [`docs/MODEL_PROVENANCE.md`](../../../../../docs/MODEL_PROVENANCE.md)
+- [`docs/server_inventory/new4090.md`](../../../../../docs/server_inventory/new4090.md)
+- [`docs/CANONICAL_PROMPT_MANIFEST.md`](../../../../../docs/CANONICAL_PROMPT_MANIFEST.md)
+- [`docs/server_inventory/ling4090.md`](../../objects/41/41db578cb337f59b17b8dc358fd6289068141bfee4a0e0bd0db144615237a408__ling4090.md)
+- [`docs/server_inventory/qwen3090.md`](../../../../../docs/server_inventory/qwen3090.md)
+- [`docs/server_inventory/SERVER_MAP.md`](../../objects/bd/bdc899f25f3177644477019786f0bdcd88f69b9a869f8986e893600f1fa7eb0d__SERVER_MAP.md)
+- [`tests/shared/test_aime26_scorer_v4.py`](../../../../../tests/shared/test_aime26_scorer_v4.py)
+- [`results/aime26/81920/ling_kda/README.md`](../../../../aime26/81920/ling_kda/README.md)
+- [`docs/server_inventory/new4090_environment.md`](../../../../../docs/server_inventory/new4090_environment.md)
+- [`experiments/shared/scoring/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`reports/audits/new4090_consolidation_report.md`](../../../../../reports/audits/new4090_consolidation_report.md)
+- [`results/aime26/256k/ling_kda/fp_state/STATUS.md`](../../../../aime26/256k/ling_kda/fp_state/STATUS.md)
+- [`results/aime26/256k/ling_kda/int8_r128/STATUS.md`](../../../../aime26/256k/ling_kda/int8_r128/STATUS.md)
+- [`reports/audits/FINAL_THREE_SERVER_CONSOLIDATION.md`](../../../../../reports/audits/FINAL_THREE_SERVER_CONSOLIDATION.md)
+- [`experiments/qwen_gdn/rotation/key_hadamard/README.md`](../../../../../experiments/qwen_gdn/rotation/key_hadamard/README.md)
+- [`results/aime26/81920/ling_kda/frozen_v4_summary.json`](../../../../aime26/81920/ling_kda/frozen_v4_summary.json)
+- [`results/aime26/81920/qwen_gdn/frozen_v4_summary.json`](../../../../aime26/81920/qwen_gdn/frozen_v4_summary.json)
+- [`reports/orientation/gdn_int8_row_e2e_completion_v1.md`](../../../../../reports/orientation/gdn_int8_row_e2e_completion_v1.md)
+- [`experiments/ling_kda/rotation/value_hadamard/README.md`](../../../../../experiments/ling_kda/rotation/value_hadamard/README.md)
+- [`experiments/ling_kda/aime26/81920/test_aime26_scorer.py`](../../../../../experiments/ling_kda/aime26/81920/test_aime26_scorer.py)
+- [`experiments/qwen_gdn/aime26/81920/test_aime26_scorer.py`](../../../../../experiments/ling_kda/aime26/81920/test_aime26_scorer.py)
+- [`reports/orientation/gdn_int8_axis_geometry_rescue_v1.md`](../../../../../reports/orientation/gdn_int8_axis_geometry_rescue_v1.md)
+- [`reports/rotation/ORTHOGONAL_ROTATION_INTERFACE_AUDIT.md`](../../../../../reports/rotation/ORTHOGONAL_ROTATION_INTERFACE_AUDIT.md)
+- [`reports/rotation/LING_ORTHOGONAL_NUMERICAL_CLOSURE_V1.md`](../../../../../reports/rotation/LING_ORTHOGONAL_NUMERICAL_CLOSURE_V1.md)
+- [`reports/rotation/gdn_rotation_headroom_v1_formal_report.md`](../../../../../reports/propagation/gdn_rotation_headroom_v1_formal_report.md)
+- [`reports/rotation/ling_value_hadamard_postfix_rebaseline_v1.md`](../../../../../reports/rotation/ling_value_hadamard_postfix_rebaseline_v1.md)
+- [`experiments/LING_DETERMINISTIC_16DOC_REPLICATION_V2/results.csv`](../../objects/8e/8e626f92262da794ac748ccdfca8362293d41a24050a8ed1de83806a14e20373__results.csv)
+- [`results/aime26/256k/ling_kda/int8_r128_value_hadamard/STATUS.md`](../../../../aime26/256k/ling_kda/int8_r128_value_hadamard/STATUS.md)
+- [`results/rotation/ling_arbitrary_orthogonal_gate_v1/summary.json`](../../../../rotation/ling_arbitrary_orthogonal_gate_v1/summary.json)

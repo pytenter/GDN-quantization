@@ -1,0 +1,19 @@
+本任务GPU已获明确授权：四卡可用，无GPU时间限制；仅本任务资源覆盖，数学、安全与有限名单不变。
+
+先读ROOT.json、HUMAN_GPU_AUTHORIZATION.json、analysis/GPU_EXECUTION_AMENDMENT.json、staging/payload_v1/SOURCE_FREEZE.json、qualification/AMENDED_SOURCE_CPU_TESTS.json、analysis/ARCHIVE_IO_CPU_TEST_RESULTS.json、analysis/FINAL_INDEPENDENT_SOURCE_REVIEW.json和最新monitoring/SNAPSHOT_*.json。
+
+当前离线tmux与四个协调器已启动一次。不得重启或重复任何阶段、单位、STARTED/SESSION marker。物理PID仅历史线索，使用read_live_snapshot.py只读查当前cmdline/starttick、NVML、日志、FIRST_FAILURE、各卡RESOURCE_LEDGER。所有实际source/manifest冻结，禁止热修；任何真实失败STOP保留、只读交付，不擅自patch-and-retry。
+
+每卡原16有限单位：四个FP全256输入数值fresh组，随后六个128warmup+128测量无Profiler FP组；仅严格数值与原5%+不重叠收益门槛PASS时运行两短栈Profile及四个H_C128全256数值组。四卡数值并行；全四卡PASS后各卡六测速窗口在共享锁中串行，归约也持锁；全部测速结束后才条件性后续，不跨卡合并TPS/字节参考。
+
+无累计GPUh或单单位时间上限；1800秒仅无真实进度watchdog，120秒仅cleanup释放观察；账本记录dispatch/首次exit/释放观测上下界，不能伪造精确GPUh或将未知当0。真实执行为固定输入科研资格，不跑AIME/32K/训练/新方法/新seed，不关闭deterministic fill。
+
+55/data约24GiB，所有完整参考与首差异raw从首token直接流到29原子no-clobber封存，远端独立SHA/bytes后发布；55/Mac只元数据和源码，不下载模型/大tensor。LIVE_ARCHIVE_TRANSPORT_CPU探针4MiB已运行一次PASS；不要重复探针。同名写拒绝为CPU预期负例，不是GPU失败。保留analysis/CPU_PRELAUNCH_HISTORY.jsonl中的一次命令模板编译错误（发生于任何tmux/GPU派发之前），实际会话只启动了一次。
+
+原CPU151文件封存不动，原科学任务根、旧ledger/seal都不动。已复核237外部依赖，实际worker仍每次fresh再核验。当前4卡新数值结论/性能尚未完成；不要复述旧NOT_AUTHORIZED状态作为现在状态，不用中途token/hash推断科学方向。
+
+离线run_four_card_session.py会等待四卡协调器退出、写SESSION_RESULT；它尚未自动生成最终中文科学报告/最终seal。后续监测需继续完成真实结果归约、独立资源释放核验、每卡archive_io.final_verify_archive(只在最终时publish一次)及当前raw SHA/bytes目录核验；首差异/未完成要真实报告，不创建假科学CSV。归档工程probe和失败*.tmp单独清点，ASSET_CATALOG仅已发布科学raw范围。仅下载小文件到本目录delivery并逐个SHA验证。
+
+若有真实FP收益并数值PASS：原用户StageD3仍在授权范围内，但必须当前所有worker退出/NVML释放后，另建独立新Dual-M资格root/source/prereg冻结，采用同卡B0两fresh+B1两fresh共四条256输入数值组；不能热改当前16单位worker，也不能将FP/H吞吐或资格继承给Dual-M。若FP失败或无收益则跳过。参考analysis/GPU_EXECUTION_AMENDMENT.json的D3细节。
+
+最终按原USER_REQUEST生成12项交付及第十四节7种决策状态中的真实适用状态，FP/H/Dual-M范围清楚，短程不当作32K/81K证明。候选无收益/失败不生成Fast可执行启动器。完成或真实STOP合法交付后停用跟进，不归档聊天、不新研究。

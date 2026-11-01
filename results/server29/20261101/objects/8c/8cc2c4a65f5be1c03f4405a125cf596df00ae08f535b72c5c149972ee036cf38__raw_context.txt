@@ -1,0 +1,2110 @@
+shared/src/main/java/org/ulyssis/ipp/control/commands/AddTagCommand.java
+@JsonTypeName("AddTag")
+public final class AddTagCommand extends TagCommand {
+
+    /**
+     * Create an AddTagCommand for the given tag and team number.
+     *
+     * The time is set to be the current time.
+     *
+     * @param tag
+     *        The tag to add.
+     * @param teamNb
+     *        The team number to add the tag for.
+     */
+    public AddTagCommand(TagId tag, int teamNb) {
+        super(tag, teamNb);
+    }
+
+    /**
+     * Create an AddTagCommand for the given tag and team number at the given time.
+     *
+     * @param time
+     *        The time when to add the tag, this can be in the future for
+     *        an anticipated adding of a tag, or in the past, to add a tag
+     *        afterwards (e.g. as a correction)
+     * @param tag
+     *        The tag to add.
+     * @param teamNb
+     *        The team number to add the tag for.
+     */
+    public AddTagCommand(Instant time, TagId tag, int teamNb) {
+        super(time, tag, teamNb);
+    }
+
+    /*
+     * Only for deserialization.
+     */
+    @JsonCreator
+    private AddTagCommand(@JsonProperty("commandId") String commandId,
+                          @JsonProperty("time") Instant time,
+                          @JsonProperty("tag") TagId tag,
+                          @JsonProperty("teamNb") int teamNb) {
+        super(commandId, time, tag, teamNb);
+    }
+}
+Processor/src/main/java/org/ulyssis/ipp/processor/ProcessorOptions.java
+public final class ProcessorOptions extends Options {
+    @Option(name="--redis", usage="The URI of the redis instance for this processor, defaults to redis://127.0.0.1",
+            metaVar="<uri>", required=false)
+    private URI redisUri = URI.create("redis://127.0.0.1");
+
+    // TODO: Make it possible to pass in password covertly?
+    @Option(name="--database", usage="The URI of the (PostgreSQL) database to use, in JDBC format",
+            metaVar="<uri>", required=true)
+    private URI databaseUri = null;
+
+    @Option(name="--cleardb", usage="Clear the database", required=false)
+    private boolean clearDb = false;
+
+    private ProcessorOptions() {
+    }
+
+    @Override
+    protected String getExecName() {
+        return "Processor";
+    }
+
+    public static Optional<ProcessorOptions> processorOptionsFromArgs(String[] args) {
+        Optional<Options> options = (new ProcessorOptions().doFromArgs(args));
+        if (options.isPresent()) {
+            return Optional.of((ProcessorOptions) options.get());
+        } else {
+            return Optional.empty();
+        }
+    }
+
+    public boolean shouldClearDb() {
+        return clearDb;
+    }
+
+    public URI getRedisUri() {
+        return redisUri;
+    }
+
+    public URI getDatabaseUri() {
+        return databaseUri;
+    }
+}
+shared/src/main/java/org/ulyssis/ipp/control/CommandDispatcher.java
+public final class CommandDispatcher implements Runnable {
+    private static final Logger LOG = LogManager.getLogger(CommandDispatcher.class);
+
+    /**
+     * = The result of running a command
+     */
+    public enum Result {
+        /**
+         * The command was successfully executed
+         */
+        SUCCESS,
+        /**
+         * The command is unsupported by the target
+         */
+        UNSUPPORTED,
+        /**
+         * The command failed for some reason
+         */
+        ERROR,
+        /**
+         * The command execution timed out.
+         * <p>
+         * Note that at any time, a timeout may still be followed by a success result,
+         * if it was received correctly.
+         */
+        TIMEOUT
+    }
+
+    private static class ProcessingCommand {
+        Command command;
+        BiConsumer<Command, Result> callback;
+        TimerTask timerTask;
+
+        ProcessingCommand(Command command, BiConsumer<Command, Result> callback, TimerTask timerTask) {
+            this.command = command;
+            this.callback = callback;
+            this.timerTask = timerTask;
+        }
+    }
+
+    private final LinkedBlockingQueue<Command> commandsToSend = new LinkedBlockingQueue<>();
+    private final ConcurrentHashMap<String, ProcessingCommand> processingCommands = new ConcurrentHashMap<>();
+    private final Timer timeoutTimer = new Timer();
+
+    private final URI redisUri;
+    private final Jedis jedis;
+    private final byte[] controlChannel;
+    private final byte[] statusChannel;
+
+    public CommandDispatcher(URI redisUri, String controlChannel, String statusChannel) {
+        this.redisUri = redisUri;
+        this.jedis = JedisHelper.get(redisUri);
+        this.controlChannel = JedisHelper.dbLocalChannel(controlChannel, redisUri).getBytes();
+        this.statusChannel = JedisHelper.dbLocalChannel(statusChannel, redisUri).getBytes();
+    }
+
+    public void run() {
+        Thread statusThread =
+                new Thread(() -> {
+                    try {
+                        while (!Thread.currentThread().isInterrupted()) {
+                            try {
+                                JedisHelper.get(redisUri).subscribe(createResultListener(), statusChannel);
+                            } catch (JedisConnectionException e) {
+                                // TODO: After a while, deregister the processor?
+                                LOG.error("Connection with Redis was broken! Trying again in 0.5s.", e);
+                                Thread.sleep(500L);
+                            }
+                        }
+                    } catch (InterruptedException ignored) {
+                    }
+                });
+        statusThread.start();
+        while (!Thread.interrupted()) {
+            try {
+                Command command = commandsToSend.take();
+                LOG.debug("Sending command {}", command.getCommandId());
+                jedis.publish(controlChannel, Serialization.getJsonMapper().writeValueAsBytes(command));
+            } catch (InterruptedException ignored) {
+            } catch (JsonProcessingException e) {
+                LOG.error("Error writing command as JSON object", e);
+            }
+        }
+        statusThread.interrupt();
+        try {
+            statusThread.join();
+        } catch (InterruptedException ignored) {
+        }
+    }
+
+    private BinaryJedisPubSub createResultListener() {
+        JedisHelper.BinaryCallBackPubSub pubSub = new JedisHelper.BinaryCallBackPubSub();
+        pubSub.addOnMessageListener(this::onMessage);
+        return pubSub;
+    }
+
+    private void onMessage(byte[] channel, byte[] message) {
+        assert(Arrays.equals(channel, statusChannel));
+        try {
+            StatusMessage statusMessage = Serialization.getJsonMapper().readValue(message, StatusMessage.class);
+            StatusMessage.MessageType type = statusMessage.getType();
+            String commandId = statusMessage.getDetails();
+            switch (type) {
+                case COMMAND_COMPLETE:
+                    handleResult(commandId, Result.SUCCESS);
+                    break;
+                case COMMAND_FAILED:
+                    handleResult(commandId, Result.ERROR);
+                    break;
+                case COMMAND_UNSUPPORTED:
+                    handleResult(commandId, Result.UNSUPPORTED);
+                    break;
+                default:
+                    // LOG.debug("Command dispatcher got unsupported message type: {}", type.toString());
+            }
+        } catch (IOException e) {
+            LOG.error("Couldn't read status message: {}", new String(message), e);
+        }
+    }
+
+    public Result send(Command command) {
+        final CompletableFuture<Result> future = new CompletableFuture<>();
+        sendAsync(command, (c, r) -> {
+            assert (c == command);
+            future.complete(r);
+        });
+        try {
+            return future.get();
+        } catch (InterruptedException e) {
+            return Result.TIMEOUT;
+        } catch (ExecutionException e) {
+            LOG.error("We got an ExecutionException. This should not happen.", e.getCause());
+            return Result.ERROR;
+        }
+    }
+    
+    public void sendAsync(Command command) {
+    	sendAsync(command, (c,r) -> {});
+    }
+
+    public void sendAsync(Command command, BiConsumer<Command, Result> callback) {
+        TimerTask timerTask = new TimerTask() {
+            public void run() {
+                handleResult(command.getCommandId(), Result.TIMEOUT);
+            }
+        };
+        processingCommands.put(command.getCommandId(), new ProcessingCommand(command, callback, timerTask));
+        timeoutTimer.schedule(timerTask, 10000L);
+        commandsToSend.add(command);
+    }
+
+    private synchronized void handleResult(String commandId, Result result) {
+    	LOG.debug("Handled command {}", commandId);
+    	if (commandId == null) {
+    		return;
+    	}
+        ProcessingCommand processingCommand = processingCommands.get(commandId);
+        if (processingCommand == null) {
+            return;
+        }
+        processingCommands.remove(commandId);
+        processingCommand.timerTask.cancel();
+        processingCommand.callback.accept(processingCommand.command, result);
+    }
+}
+Processor/src/main/java/org/ulyssis/ipp/snapshot/Event.java
+@JsonTypeInfo(use=JsonTypeInfo.Id.NAME, include=JsonTypeInfo.As.PROPERTY, property="type")
+@JsonSubTypes({ @JsonSubTypes.Type(value=StartEvent.class),
+                @JsonSubTypes.Type(value=EndEvent.class),
+                @JsonSubTypes.Type(value=AddTagEvent.class),
+                @JsonSubTypes.Type(value=RemoveTagEvent.class),
+                @JsonSubTypes.Type(value=CorrectionEvent.class),
+                @JsonSubTypes.Type(value=TagSeenEvent.class),
+                @JsonSubTypes.Type(value=IdentityEvent.class),
+                @JsonSubTypes.Type(value=MessageEvent.class),
+                @JsonSubTypes.Type(value=StatusChangeEvent.class)})
+public abstract class Event {
+    private static final Logger LOG = LogManager.getLogger(Event.class);
+
+    @JsonIgnore
+    private long id = -1;
+    @JsonIgnore
+    private boolean removed = false;
+
+    private Instant time;
+
+    protected Event(Instant time) {
+        this.time = time;
+    }
+
+    @JsonIgnore
+    public final Optional<Long> getId() {
+        if (id != -1) return Optional.of(id);
+        else return Optional.empty();
+    }
+
+    @JsonIgnore
+    public final boolean isRemoved() {
+        if (id == -1) throw new IllegalStateException("Trying to request removed state of event not in db");
+        return removed;
+    }
+
+    public final Instant getTime() {
+        return time;
+    }
+
+    /**
+     * Determines whether this event should be isUnique, defaults to false
+     *
+     * @return whether this event should be isUnique (default implementation = false)
+     */
+    @JsonIgnore
+    public boolean isUnique() {
+        return false;
+    }
+
+    /**
+     * Determines whether this event can be removed or undone.
+     *
+     * @return whether this event can be removed or undone (default implementation = isUnique())
+     */
+    @JsonIgnore
+    public boolean isRemovable() {
+        return isUnique();
+    }
+
+    /**
+     * Apply this event to a snapshot, yielding the new snapshot
+     */
+    protected abstract Snapshot doApply(Snapshot before);
+
+    public final Snapshot apply(Snapshot before) {
+        assert !removed;
+        Snapshot result = doApply(before);
+        if (result == before && before.getEventId().isPresent()) {
+            // We need to copy it anyway
+            result = Snapshot.builder(getTime(), before).build();
+        }
+        result.eventId = this.id;
+        return result;
+    }
+
+    // TODO: How to deal with deserialization problem?
+    public static List<Event> loadAll(Connection connection) throws SQLException, IOException {
+        String statement = "SELECT \"id\", \"data\", \"removed\" FROM \"events\" ORDER BY \"time\" ASC, \"id\" ASC";
+        List<Event> events = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet result = stmt.executeQuery(statement)) {
+            while (result.next()) {
+                String evString = result.getString("data");
+                Event event = Serialization.getJsonMapper().readValue(evString, Event.class);
+                event.id = result.getLong("id");
+                event.removed = result.getBoolean("removed");
+                events.add(event);
+            }
+        }
+        return events;
+    }
+
+    public static Optional<Event> loadUnique(Connection connection, Class<? extends Event> eventType) throws SQLException, IOException {
+        String statement = "SELECT \"id\", \"data\" FROM \"events\" WHERE \"type\" = ? AND \"removed\" = false";
+        try (PreparedStatement stmt = connection.prepareStatement(statement)) {
+            stmt.setString(1, eventType.getSimpleName());
+            ResultSet result = stmt.executeQuery();
+            if (result.next()) {
+                String evString = result.getString("data");
+                Event event = Serialization.getJsonMapper().readValue(evString, Event.class);
+                event.id = result.getLong("id");
+                event.removed = false;
+                return Optional.of(event);
+            } else {
+                return Optional.empty();
+            }
+        }
+    }
+
+    public static Optional<Event> load(Connection connection, long id) throws SQLException, IOException {
+        try (PreparedStatement statement =
+                connection.prepareStatement(
+                        "SELECT \"data\",\"removed\" FROM \"events\" WHERE \"id\"=?")) {
+            statement.setLong(1, id);
+            ResultSet result = statement.executeQuery();
+            if (result.next()) {
+                String evString = result.getString("data");
+                Event event = Serialization.getJsonMapper().readValue(evString, Event.class);
+                event.id = id;
+                event.removed = result.getBoolean("removed");
+                return Optional.of(event);
+            } else {
+                return Optional.empty();
+            }
+        }
+    }
+
+    public static List<Event> loadFrom(Connection connection, Instant time) throws SQLException, IOException {
+        String statement = "SELECT \"id\",\"data\",\"removed\" FROM \"events\" " +
+                "WHERE \"time\" >= ? ORDER BY \"time\" ASC, \"id\" ASC";
+        List<Event> events = new ArrayList<>();
+        try (PreparedStatement stmt = connection.prepareStatement(statement)) {
+            stmt.setTimestamp(1, Timestamp.from(time));
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                String evString = rs.getString("data");
+                Event event = Serialization.getJsonMapper().readValue(evString, Event.class);
+                event.id = rs.getLong("id");
+                event.removed = rs.getBoolean("removed");
+                events.add(event);
+            }
+        }
+        return events;
+    }
+
+    public static List<Event> loadAfter(Connection connection, Instant time, long id) throws SQLException, IOException {
+        String statement = "SELECT \"id\",\"data\",\"removed\" FROM \"events\" " +
+                "WHERE \"time\" > ? OR (\"time\" = ? AND \"id\" > ?) ORDER BY \"time\" ASC, \"id\" ASC";
+        List<Event> events = new ArrayList<>();
+        try (PreparedStatement stmt = connection.prepareStatement(statement)) {
+            stmt.setTimestamp(1, Timestamp.from(time));
+            stmt.setTimestamp(2, Timestamp.from(time));
+            stmt.setLong(3, id);
+            LOG.debug("Executing query: {}", stmt);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                String evString = rs.getString("data");
+                Event event = Serialization.getJsonMapper().readValue(evString, Event.class);
+                event.id = rs.getLong("id");
+                event.removed = rs.getBoolean("removed");
+                events.add(event);
+            }
+        }
+        LOG.debug("Loaded {} events", events.size());
+        return events;
+    }
+
+    public void save(Connection connection) throws SQLException {
+        if (id != -1) return;
+        try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO \"events\" (\"time\",\"type\",\"data\",\"removed\") " +
+                            "VALUES (?,?,?,?)", Statement.RETURN_GENERATED_KEYS)) {
+            statement.setTimestamp(1, Timestamp.from(time));
+            String serialized;
+            try {
+                serialized = Serialization.getJsonMapper().writeValueAsString(this);
+            } catch (JsonProcessingException e) {
+                assert false;
+                throw new IllegalStateException(e); // TODO(Roel): is this appropriate?
+            }
+            statement.setString(2, this.getClass().getSimpleName());
+            statement.setString(3, serialized);
+            statement.setBoolean(4, removed);
+            statement.executeUpdate();
+            ResultSet keys = statement.getGeneratedKeys();
+            keys.next();
+            this.id = keys.getLong(1);
+        }
+    }
+
+    public void setRemoved(Connection connection, boolean removed) throws SQLException {
+        if (!isRemovable()) {
+            assert false; // This is a programming error
+            return;
+        }
+        PreparedStatement statement =
+                connection.prepareStatement(
+                        "UPDATE \"events\" SET \"removed\"=? WHERE \"id\"=?");
+        statement.setBoolean(1, removed);
+        statement.setLong(2, id);
+        boolean result = statement.execute();
+        assert(!result);
+        this.removed = true;
+    }
+}
+Processor/src/main/java/org/ulyssis/ipp/processor/Processor.java
+public final class Processor implements Runnable {
+    private static final Logger LOG = LogManager.getLogger(Processor.class);
+
+    private final BlockingQueue<Event> eventQueue;
+    private final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+
+    private final ConcurrentMap<Event, Consumer<Boolean> > eventCallbacks;
+
+    private final StatusReporter statusReporter;
+    private final CommandProcessor commandProcessor;
+    private final List<Consumer<Processor>> onStartedCallbacks;
+
+    /**
+     * The listeners responsible for fetching results from all registered readers
+     */
+    private final List<ReaderListener> readerListeners;
+
+    private final List<Thread> threads;
+
+    private Snapshot snapshot;
+
+    public Processor(final ProcessorOptions options) {
+        Database.setDatabaseURI(options.getDatabaseUri());
+        try (Connection connection = Database.createConnection(EnumSet.of(READ_WRITE))) {
+            if (options.shouldClearDb()) {
+                Database.clearDb(connection);
+            }
+            Database.initDb(connection);
+            connection.commit();
+        } catch (SQLException e) {
+            LOG.fatal("Error initializing database!", e);
+        }
+        URI uri = options.getRedisUri();
+        this.eventQueue = new LinkedBlockingQueue<>();
+        this.eventCallbacks  = new ConcurrentHashMap<>();
+        this.onStartedCallbacks = new CopyOnWriteArrayList<>();
+        this.readerListeners = new ArrayList<>();
+        this.threads = new ArrayList<>();
+        // TODO: Move status reporting and processing of commands to ZeroMQ?
+        // Also: post some stuff to a log in the db?
+        this.statusReporter = new StatusReporter(uri, Config.getCurrentConfig().getStatusChannel());
+        this.commandProcessor = new CommandProcessor(uri, Config.getCurrentConfig().getControlChannel(), statusReporter);
+        initCommandProcessor();
+        snapshot = new Snapshot(Instant.EPOCH);
+        if (!restoreFromDb()) {
+            registerInitialTags();
+        }
+    }
+
+    /**
+     * Restore the state from the database
+     *
+     * @return Whether we could restore from db, if false, we're starting from a clean slate
+     */
+    private boolean restoreFromDb() {
+        Connection connection = null;
+        Snapshot oldSnapshot = this.snapshot;
+        try {
+            connection = Database.createConnection(EnumSet.of(READ_WRITE));
+            Optional<Snapshot> snapshot = Snapshot.loadLatest(connection);
+            if (snapshot.isPresent()) {
+                this.snapshot = snapshot.get();
+                connection.commit();
+                return true;
+            } else {
+                List<Event> events = Event.loadAll(connection);
+                Snapshot snapshotBefore = this.snapshot;
+                // Instant now = Instant.now(); // TODO: Handle future events later!
+                for (Event event : events) {
+                    if (!event.isRemoved()/* && event.getTime().isBefore(now)*/) { // TODO: Future events later!
+                        this.snapshot = event.apply(this.snapshot);
+                        this.snapshot.save(connection);
+                    }
+                }
+                connection.commit();
+                return !Objects.equals(this.snapshot, snapshotBefore);
+            }
+        } catch (SQLException | IOException e) {
+            LOG.error("An error occurred when restoring from database!", e);
+            this.snapshot = oldSnapshot;
+            try {
+                if (connection != null) {
+                    connection.rollback();
+                }
+            } catch (SQLException e2) {
+                LOG.error("Error in rollback after previous error", e2);
+            }
+            return false;
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    LOG.error("Error while closing connection", e);
+                }
+            }
+        }
+    }
+
+    private void registerInitialTags() {
+        Snapshot oldSnapshot = this.snapshot;
+        Connection connection = null;
+        try {
+            connection = Database.createConnection(EnumSet.of(READ_WRITE));
+            for (Team team : Config.getCurrentConfig().getTeams()) {
+                for (TagId tag : team.getTags()) {
+                    AddTagEvent e = new AddTagEvent(Instant.EPOCH, tag, team.getTeamNb());
+                    e.save(connection);
+                    this.snapshot = e.apply(this.snapshot);
+                    this.snapshot.save(connection);
+                }
+            }
+            connection.commit();
+        } catch (SQLException e) {
+            LOG.error("An error occurred when registering initial tags!", e);
+            this.snapshot = oldSnapshot;
+            try {
+                if (connection != null) {
+                    connection.rollback();
+                }
+            } catch (SQLException e2) {
+                LOG.error("Error in rollback after previous error", e2);
+            }
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    LOG.error("Error while closing connection", e);
+                }
+            }
+        }
+    }
+
+    private void initCommandProcessor() {
+        commandProcessor.addHandler(new PingHandler());
+        commandProcessor.addHandler(
+                new EventCommandHandler<>(AddTagCommand.class, AddTagEvent::fromCommand, this::queueEvent));
+        commandProcessor.addHandler(
+                new EventCommandHandler<>(RemoveTagCommand.class, RemoveTagEvent::fromCommand, this::queueEvent));
+        commandProcessor.addHandler(
+                new EventCommandHandler<>(CorrectionCommand.class, CorrectionEvent::fromCommand, this::queueEvent));
+        commandProcessor.addHandler(
+                new EventCommandHandler<>(SetStartTimeCommand.class, StartEvent::fromCommand, this::queueEvent));
+        commandProcessor.addHandler(
+                new EventCommandHandler<>(SetEndTimeCommand.class, EndEvent::fromCommand, this::queueEvent));
+        commandProcessor.addHandler(
+                new EventCommandHandler<>(SetStatusCommand.class, StatusChangeEvent::fromCommand, this::queueEvent));
+        commandProcessor.addHandler(
+                new EventCommandHandler<>(SetStatusMessageCommand.class, MessageEvent::fromCommand, this::queueEvent));
+        commandProcessor.addHandler(
+                new EventCommandHandler<>(SetUpdateFrequencyCommand.class, UpdateFrequencyChangeEvent::fromCommand, this::queueEvent));
+    }
+
+    public void addOnStartedCallback(Consumer<Processor> onStarted) {
+        onStartedCallbacks.add(onStarted);
+    }
+
+    private void notifyStarted() {
+        onStartedCallbacks.parallelStream().forEach(f -> f.accept(this));
+    }
+
+    /**
+     * Run the processor. We implement Runnable so that it can
+     * be started in a separate thread.
+     */
+    @Override
+    public void run() {
+        LOG.info("Spinning up processor!");
+        List<ReaderConfig> readers = Config.getCurrentConfig().getReaders();
+        for (int i = 0; i < readers.size(); i++) {
+            spawnReaderListener(i);
+        }
+        Thread commandThread = new Thread(commandProcessor);
+        threads.add(commandThread);
+        commandThread.start();
+        notifyStarted();
+        try {
+            while (!Thread.currentThread().isInterrupted()) {
+                Event event = eventQueue.take();
+                processEvent(event);
+                // TODO(Roel): Do deferred event processing later!
+            }
+        } catch (InterruptedException ignored) {
+        }
+        LOG.info("Stopping processor!");
+        executorService.shutdownNow();
+        commandProcessor.stop();
+        readerListeners.stream().forEach(listener -> {
+            try {
+                listener.unsubscribe();
+            } catch (JedisConnectionException ignored) {
+            }
+        });
+        threads.stream().forEach(thread -> {
+            thread.interrupt();
+            try {
+                thread.join();
+            } catch (InterruptedException ignored) {
+            }
+        });
+        LOG.info("Bye bye!");
+    }
+
+    private Optional<Long> getLastUpdateForReader(Connection connection, int readerId) throws SQLException {
+        String statement = "SELECT \"updateCount\" FROM \"tagSeenEvents\" WHERE \"readerId\" = ? " +
+                "ORDER BY \"updateCount\" DESC FETCH FIRST ROW ONLY";
+        try (PreparedStatement stmt = connection.prepareStatement(statement)) {
+            stmt.setInt(1, readerId);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return Optional.of(rs.getLong("updateCount"));
+            } else {
+                return Optional.empty();
+            }
+        }
+    }
+
+    private void trySpawnReaderListener(int readerId) {
+        URI uri = Config.getCurrentConfig().getReader(readerId).getURI();
+        String updateChannel = JedisHelper.dbLocalChannel(Config.getCurrentConfig().getUpdateChannel(), uri);
+        try {
+            Optional<Long> lastUpdate;
+            {
+                Connection connection = null;
+                try {
+                    connection = Database.createConnection(EnumSet.of(READ_ONLY));
+                    lastUpdate = getLastUpdateForReader(connection, readerId);
+                    connection.commit();
+                } catch (SQLException e) {
+                    if (connection != null) connection.rollback();
+                    throw e;
+                } finally {
+                    if (connection != null) {
+                        connection.close();
+                    }
+                }
+            }
+            Jedis subJedis = JedisHelper.get(uri);
+            ReaderListener listener = new ReaderListener(readerId, this::queueEvent, lastUpdate);
+            readerListeners.add(listener);
+            Thread thread = new Thread(() -> {
+                try {
+                    LOG.info("Reader listener {} subscribing to channel {} on uri {}", readerId, updateChannel, uri);
+                    subJedis.subscribe(listener, updateChannel);
+                } catch (JedisConnectionException e) {
+                    LOG.error("Reader listener {} stopped (uri: {}) because of a connection failure, scheduling reconnect",
+                            readerId, uri, e);
+                    executorService.schedule(() -> trySpawnReaderListener(readerId), 5L, TimeUnit.SECONDS);
+                }
+            });
+            threads.add(thread);
+            thread.start();
+        } catch (SQLException e) {
+            LOG.error("Error fetching last update for reader {} from database, scheduling retry", readerId, e);
+            executorService.schedule(() -> trySpawnReaderListener(readerId), 5L, TimeUnit.SECONDS);
+        } catch (JedisConnectionException e) {
+            LOG.error("Couldn't connect to reader {}, uri {}, scheduling reconnect", readerId, uri, e);
+            executorService.schedule(() -> trySpawnReaderListener(readerId), 5L, TimeUnit.SECONDS);
+        }
+    }
+
+    private void spawnReaderListener(int readerId) {
+        executorService.submit(() -> trySpawnReaderListener(readerId));
+    }
+
+    private void processEvent(Event event) {
+        logProcessEvent(event);
+        Connection connection = null;
+        Snapshot oldSnapshot = this.snapshot;
+        try {
+            connection = Database.createConnection(EnumSet.of(READ_WRITE));
+            Event firstEvent = event;
+            if (event.isUnique()) {
+                Optional<Event> other = Event.loadUnique(connection, event.getClass());
+                if (other.isPresent()) {
+                    other.get().setRemoved(connection, true);
+                    if (!other.get().getTime().isAfter(event.getTime())) {
+                        firstEvent = other.get();
+                    }
+                }
+            }
+            event.save(connection);
+            Snapshot snapshotToUpdateFrom = this.snapshot;
+            if (!firstEvent.getTime().isAfter(this.snapshot.getSnapshotTime())) {
+                LOG.debug("Event before current snapshot, loading snapshot before");
+                Optional<Snapshot> s = Snapshot.loadBefore(connection, firstEvent.getTime());
+                if (s.isPresent()) snapshotToUpdateFrom = s.get();
+                else snapshotToUpdateFrom = new Snapshot(Instant.EPOCH);
+            }
+            List<Event> events;
+            Snapshot.deleteAfter(connection, snapshotToUpdateFrom);
+            LOG.debug("Updating from snapshot: {}", snapshotToUpdateFrom.getId());
+            if (snapshotToUpdateFrom.getId().isPresent()) {
+                assert snapshotToUpdateFrom.getEventId().isPresent();
+                events = Event.loadAfter(connection, snapshotToUpdateFrom.getSnapshotTime(), snapshotToUpdateFrom.getEventId().get());
+            } else {
+                events = Event.loadAll(connection);
+            }
+            for (Event e : events) {
+                if (!e.isRemoved()) {
+                    snapshotToUpdateFrom = e.apply(snapshotToUpdateFrom);
+                    snapshotToUpdateFrom.save(connection);
+                }
+            }
+            LOG.debug("Updated up to snapshot: {}", snapshotToUpdateFrom.getId().get());
+            this.snapshot = snapshotToUpdateFrom;
+            connection.commit();
+            // TODO: Provide a sensible message for NEW_SNAPSHOT?
+            statusReporter.broadcast(new StatusMessage(StatusMessage.MessageType.NEW_SNAPSHOT, "New snapshot!"));
+            if (eventCallbacks.containsKey(event)) {
+                eventCallbacks.get(event).accept(true);
+                eventCallbacks.remove(event);
+            }
+        } catch (SQLException | IOException e) {
+            LOG.error("Error when handling event!", e);
+            this.snapshot = oldSnapshot;
+            try {
+                if (connection != null) connection.rollback();
+            } catch (SQLException e2) {
+                LOG.error("Error in rollback after previous error!", e2);
+            }
+            // TODO(Roel): Reschedule event!
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    LOG.error("Error while closing connection", e);
+                }
+            }
+        }
+    }
+
+    private void logProcessEvent(Event event) {
+        if (LOG.isDebugEnabled()) {
+            try {
+                String eventStr = Serialization.getJsonMapper().writeValueAsString(event);
+                LOG.debug("Processing event: {}", eventStr);
+            } catch (JsonProcessingException ignored) {
+            }
+        }
+    }
+
+    /**
+     * Queue a tag update for processing.
+     */
+    private void queueEvent(Event event) {
+        try {
+            eventQueue.put(event);
+        } catch (InterruptedException ignored) {
+        }
+    }
+
+    private void queueEvent(Event event, Consumer<Boolean> callback) {
+        try {
+            eventCallbacks.put(event, callback);
+            eventQueue.put(event);
+        } catch (InterruptedException ignored) {
+        }
+    }
+}
+shared/src/main/java/org/ulyssis/ipp/control/commands/PingCommand.java
+@JsonTypeName("Ping")
+public final class PingCommand extends Command {
+    public PingCommand() {
+        super();
+    }
+
+    @JsonCreator
+    private PingCommand(@JsonProperty("commandId") String commandId,
+                        @JsonProperty("time") Instant time) {
+        super(commandId, time);
+    }
+}
+shared/src/main/java/org/ulyssis/ipp/TagId.java
+@JsonSerialize(using=TagId.Serializer.class)
+@JsonDeserialize(using=TagId.Deserializer.class)
+public final class TagId {
+    private final String id;
+    private final String lowerCaseId;
+    private final int hashCode;
+
+    static class Serializer extends JsonSerializer<TagId> {
+        @Override
+        public void serialize(TagId value, JsonGenerator jgen, SerializerProvider provider) throws IOException {
+            jgen.writeString(value.toString());
+        }
+    }
+
+    static class Deserializer extends JsonDeserializer<TagId> {
+        @Override
+        public TagId deserialize(JsonParser jp, DeserializationContext ctxt) throws IOException {
+            return new TagId(jp.getValueAsString());
+        }
+    }
+
+    /**
+     * = Create a new TagId from the given byte array.
+     *
+     * @param id
+     *        The tag id in byte array form. It will be
+     *        converted to a lowercase hex form.
+     */
+    public TagId(byte[] id) {
+        this(BaseEncoding.base16().lowerCase().encode(id));
+    }
+
+    /**
+     * = Create a new TagId from the given byte list.
+     *
+     * @param id
+     *        The tag id in byte list form. It will be
+     *        converted to a lowercase hex form.
+     */
+    public TagId(List<Byte> id) {
+        this(BaseEncoding.base16().lowerCase().encode(Bytes.toArray(id)));
+    }
+
+    /**
+     * = Create a new TagId
+     *
+     * @param id
+     *        A string that uniquely identifies the tag
+     * @throws java.lang.NullPointerException
+     *         A NullPointerException will be thrown if the given id is null.
+     */
+    public TagId(String id) throws NullPointerException {
+        if (id == null) throw new NullPointerException("The tag id is not allowed to be null!");
+        this.id = id;
+        this.lowerCaseId = id.toLowerCase();
+        this.hashCode = this.lowerCaseId.hashCode();
+    }
+
+    /**
+     * = Get the tag id as a string
+     *
+     * @return This tag id as a string
+     */
+    @Override
+    public String toString() {
+        return id;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) return true;
+        if (other == null) return false;
+        if (!(other instanceof TagId)) return false;
+        return this.lowerCaseId.equals(((TagId) other).lowerCaseId);
+    }
+
+    @Override
+    public int hashCode() {
+        return this.hashCode;
+    }
+}
+Processor/src/main/java/org/ulyssis/ipp/processor/Database.java
+public final class Database {
+    private static final Logger LOG = LogManager.getLogger(Database.class);
+
+    @SuppressWarnings("unused")
+    private Database() {}
+
+    public enum ConnectionFlags {
+        READ_WRITE,
+        READ_ONLY
+    }
+
+    private static URI databaseURI = null;
+
+    public static void setDatabaseURI(URI uri) {
+        databaseURI = uri;
+    }
+
+    public static Connection createConnection(EnumSet<ConnectionFlags> flags) throws SQLException {
+        assert flags.contains(ConnectionFlags.READ_ONLY) != /* XOR */ flags.contains(ConnectionFlags.READ_WRITE);
+        assert databaseURI != null;
+        boolean readOnly = flags.contains(ConnectionFlags.READ_ONLY);
+        Properties props = new Properties();
+        props.setProperty("readOnly", readOnly ? "true" : "false");
+        Connection connection = null;
+        try {
+            if (databaseURI.toString().startsWith("jdbc:h2")) {
+                Class.forName("org.h2.Driver");
+                connection = DriverManager.getConnection(databaseURI.toString());
+            } else {
+                Class.forName("org.postgresql.Driver");
+                connection = DriverManager.getConnection(databaseURI.toString(), props);
+            }
+            connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+            connection.setAutoCommit(false);
+            return connection;
+        } catch (ClassNotFoundException e) {
+            LOG.fatal("Couldn't load driver!", e);
+            throw new IllegalStateException(e);
+        } catch (SQLException e) {
+            if (connection != null) connection.rollback();
+            throw e;
+        }
+    }
+
+    public static void clearDb(Connection connection) throws SQLException {
+        List<String> statements = Arrays.asList(
+                "DROP TABLE IF EXISTS \"events\" CASCADE",
+                "DROP TABLE IF EXISTS \"tagSeenEvents\" CASCADE",
+                "DROP TABLE IF EXISTS \"snapshots\" CASCADE"
+        );
+        for (String statement : statements) {
+            try (Statement stmt = connection.createStatement()) {
+                LOG.debug("Executing statement: {}", statement);
+                stmt.execute(statement);
+            }
+        }
+    }
+
+    private static class TableDescription {
+        String tableName;
+        List<String> createStrings;
+
+        TableDescription(String tableName, List<String> createStrings) {
+            this.tableName = tableName;
+            this.createStrings = createStrings;
+        }
+    }
+
+    public static void initDb(Connection connection) throws SQLException {
+        List<TableDescription> descriptions = Arrays.asList(
+                new TableDescription(
+                        "events",
+                        Arrays.asList(
+                            "CREATE TABLE \"events\" (" +
+                                "\"id\" bigserial PRIMARY KEY NOT NULL," +
+                                "\"type\" VARCHAR(255) NOT NULL," +
+                                "\"time\" timestamp NOT NULL," +
+                                "\"data\" text NOT NULL," +
+                                "\"removed\" boolean NOT NULL" +
+                            ")",
+                            "CREATE UNIQUE INDEX ON \"events\" (\"time\" DESC, \"id\" DESC)",
+                            "CREATE INDEX ON \"events\" (\"type\", \"removed\")"
+                        )
+                ),
+                new TableDescription(
+                        "tagSeenEvents",
+                        Arrays.asList(
+                            "CREATE TABLE \"tagSeenEvents\" (" +
+                                "\"id\" bigint PRIMARY KEY NOT NULL," +
+                                "\"readerId\" integer NOT NULL," +
+                                "\"updateCount\" bigint NOT NULL," +
+                                "FOREIGN KEY (\"id\") REFERENCES \"events\" (\"id\")" +
+                            ")",
+                            "CREATE UNIQUE INDEX ON \"tagSeenEvents\" (\"readerId\", \"updateCount\" DESC)"
+                        )
+                ),
+                new TableDescription(
+                        "snapshots",
+                        Arrays.asList(
+                            "CREATE TABLE \"snapshots\" (" +
+                                "\"id\" bigserial PRIMARY KEY NOT NULL," +
+                                "\"time\" timestamp NOT NULL," +
+                                "\"data\" text NOT NULL," +
+                                "\"event\" bigint NOT NULL," +
+                                "FOREIGN KEY (\"event\") REFERENCES \"events\" (\"id\")" +
+                            ")",
+                            "CREATE INDEX ON \"snapshots\" (\"time\" DESC)"
+                        )
+                )
+        );
+        for (TableDescription desc : descriptions) {
+            String existsCheck = "SELECT 1 FROM information_schema.tables WHERE table_name = ?";
+            try (PreparedStatement stmt = connection.prepareStatement(existsCheck)) {
+                stmt.setString(1, desc.tableName);
+                ResultSet rs = stmt.executeQuery();
+                if (!rs.next()) {
+                    // Exists check failed
+                    for (String createString : desc.createStrings) {
+                        try (Statement createStmt = connection.createStatement()) {
+                            LOG.debug("Executing statement: {}", createString);
+                            createStmt.execute(createString);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+shared/src/main/java/org/ulyssis/ipp/control/commands/SetStartTimeCommand.java
+@JsonTypeName("SetStartTime")
+public final class SetStartTimeCommand extends Command {
+    public SetStartTimeCommand() {
+        super();
+    }
+
+    public SetStartTimeCommand(Instant startTime) {
+        super(startTime);
+    }
+
+    @JsonCreator
+    private SetStartTimeCommand(@JsonProperty("commandId") String commandId,
+                                @JsonProperty("time") Instant time) {
+        super(commandId, time);
+    }
+}
+shared/src/main/java/org/ulyssis/ipp/utils/Serialization.java
+public final class Serialization {
+    private static final ObjectMapper jsonMapper;
+
+    static {
+        jsonMapper = new ObjectMapper();
+        jsonMapper.findAndRegisterModules();
+    }
+
+    // Static methods only! No instances!
+    private Serialization() {
+    }
+
+    /**
+     * Get a JSON mapper, with all modules registered.
+     *
+     * This is equivalent to:
+     *
+     * [source,java]
+     * --
+     * jsonMapper = new ObjectMapper();
+     * jsonMapper.findAndRegisterModules();
+     * --
+     *
+     * @return A JSON ObjectMapper
+     */
+    public static ObjectMapper getJsonMapper() {
+        return jsonMapper;
+    }
+}
+shared/src/main/java/org/ulyssis/ipp/status/StatusMessage.java
+public final class StatusMessage {
+    private MessageType type;
+    private String details;
+
+    public enum MessageType {
+        /**
+         * The reader sends this message when no updates have been received for a while
+         */
+        NO_UPDATES,
+        /**
+         * Notifies that the system has started up
+         */
+        STARTED_UP,
+        /**
+         * Notifies that the startup has failed
+         */
+        STARTUP_FAILURE,
+        /**
+         * Notifies that the system is being shut down
+         */
+        SHUTDOWN,
+        /**
+         * Signals that the command given executed successfully.
+         *
+         * The details field will contain the command id.
+         *
+         * @see org.ulyssis.ipp.control
+         */
+        COMMAND_COMPLETE,
+        /**
+         * Signals that no command handler is installed for the given command
+         *
+         * The details field will contain the command id.
+         *
+         * @see org.ulyssis.ipp.control
+         */
+        COMMAND_UNSUPPORTED,
+        /**
+         * Signals that the command failed to execute
+         *
+         * The details field will contain the command id.
+         *
+         * @see org.ulyssis.ipp.control
+         */
+        COMMAND_FAILED,
+        /**
+         * Signals that the processor's snapshot has been updated
+         */
+        NEW_SNAPSHOT,
+        /**
+         * Signals a miscellaneous error. The details field will contain more information
+         * about the error.
+         */
+        MISC_ERROR
+    }
+
+    /**
+     * Create a new status message with the given type and details.
+     *
+     * This message is to be broadcast by a StatusReporter to the
+     * status channel.
+     *
+     * @param type
+     *        The type of the status
+     * @param details
+     *        The details. The form of this field depends
+     *        on the type of message.
+     * @see org.ulyssis.ipp.status.StatusReporter
+     */
+    @JsonCreator
+    public StatusMessage(@JsonProperty("type") MessageType type,
+                         @JsonProperty("details") String details) {
+        this.type = type;
+        this.details = details;
+    }
+
+    public MessageType getType() {
+        return type;
+    }
+
+    public String getDetails() {
+        return details;
+    }
+}
+Processor/src/main/java/org/ulyssis/ipp/snapshot/Snapshot.java
+public final class Snapshot {
+    private static final Logger LOG = LogManager.getLogger(Snapshot.class);
+
+    public static class Builder {
+        private Snapshot snapshot;
+
+        private Builder(Instant time, Snapshot other) {
+            snapshot = new Snapshot(time);
+            if (other != null) {
+                snapshot.teamTagMap = other.teamTagMap;
+                snapshot.startTime = other.startTime;
+                snapshot.endTime = other.endTime;
+                snapshot.teamStates = other.teamStates;
+                snapshot.publicTeamStates = other.publicTeamStates;
+                snapshot.statusMessage = other.statusMessage;
+                snapshot.status = other.status;
+                snapshot.updateFrequency = other.updateFrequency;
+            }
+        }
+
+        public Builder withTeamTagMap(TeamTagMap teamTagMap) {
+            this.snapshot.teamTagMap = teamTagMap;
+            return this;
+        }
+
+        public Builder withStartTime(Instant time) {
+            this.snapshot.startTime = time;
+            return this;
+        }
+
+        public Builder withEndTime(Instant time) {
+            this.snapshot.endTime = time;
+            return this;
+        }
+
+        public Builder withTeamStates(TeamStates teamStates) {
+            this.snapshot.teamStates = teamStates;
+            return this;
+        }
+
+        public Builder withPublicTeamStates(TeamStates teamStates) {
+            this.snapshot.publicTeamStates = teamStates;
+            return this;
+        }
+
+        public Builder withStatusMessage(String message) {
+            this.snapshot.statusMessage = message;
+            return this;
+        }
+
+        public Builder withStatus(Status status) {
+            this.snapshot.status = status;
+            return this;
+        }
+
+        public Builder withUpdateFrequency(int updateFrequency) {
+            this.snapshot.updateFrequency = updateFrequency;
+            return this;
+        }
+
+        public Snapshot build() {
+            return snapshot;
+        }
+    }
+
+    @JsonIgnore
+    private long id = -1;
+
+    @JsonIgnore
+    long eventId = -1;
+
+    public Optional<Long> getId() {
+        if (id != -1) return Optional.of(id);
+        else return Optional.empty();
+    }
+
+    public Optional<Long> getEventId() {
+        if (eventId != -1) return Optional.of(eventId);
+        else return Optional.empty();
+    }
+
+    /**
+     * Default constructor for Jackson
+     */
+    @SuppressWarnings("unused")
+    private Snapshot() {
+    }
+
+    public Snapshot(Instant time) {
+        snapshotTime = time;
+    }
+
+    public Instant getSnapshotTime() {
+        return snapshotTime;
+    }
+
+    public TeamTagMap getTeamTagMap() {
+        return teamTagMap;
+    }
+
+    public Instant getStartTime() {
+        return startTime;
+    }
+
+    public Instant getEndTime() {
+        return endTime;
+    }
+
+    public TeamStates getTeamStates() {
+        return teamStates;
+    }
+
+    public TeamStates getPublicTeamStates() {
+        return publicTeamStates;
+    }
+
+    public String getStatusMessage() {
+        return statusMessage;
+    }
+
+    public Status getStatus() {
+        return status;
+    }
+
+    public int getUpdateFrequency() {
+        return updateFrequency;
+    }
+
+    private Instant snapshotTime = Instant.MIN;
+    private Instant startTime = Instant.MAX;
+    private Instant endTime = Instant.MAX;
+    private TeamTagMap teamTagMap = new TeamTagMap();
+    private TeamStates teamStates;
+    private TeamStates publicTeamStates;
+    {
+        teamStates = new TeamStates();
+        publicTeamStates = teamStates;
+    }
+    private String statusMessage = "";
+    private Status status = Status.NoResults;
+    private int updateFrequency = 3;
+
+    public static Builder builder(Instant time, Snapshot other) {
+        return new Builder(time, other);
+    }
+
+    public static Optional<Snapshot> loadForEvent(Connection connection, Event event) throws SQLException, IOException {
+        String statement = "SELECT \"id\", \"data\" FROM \"snapshots\" WHERE \"event\" = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(statement)) {
+            stmt.setLong(1, event.getId().get());
+            LOG.debug("executing query: {}", stmt);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                String data = rs.getString("data");
+                Snapshot result = Serialization.getJsonMapper().readValue(data, Snapshot.class);
+                result.id = rs.getLong("id");
+                result.eventId = event.getId().get();
+                return Optional.of(result);
+            } else {
+                return Optional.empty();
+            }
+        }
+    }
+
+    public static Optional<Snapshot> loadLatest(Connection connection) throws SQLException, IOException {
+        String statement = "SELECT \"id\", \"data\", \"event\" FROM \"snapshots\" ORDER BY \"time\" DESC FETCH FIRST ROW ONLY";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(statement)) {
+            if (rs.next()) {
+                String data = rs.getString("data");
+                Snapshot result = Serialization.getJsonMapper().readValue(data, Snapshot.class);
+                result.id = rs.getLong("id");
+                result.eventId = rs.getLong("event");
+                return Optional.of(result);
+            } else {
+                return Optional.empty();
+            }
+        }
+    }
+
+    public static Optional<Snapshot> loadBefore(Connection connection, Instant time) throws SQLException, IOException {
+        String statement = "SELECT \"id\", \"data\", \"event\" FROM \"snapshots\" " +
+                "WHERE \"time\" < ? ORDER BY \"time\" DESC, \"event\" DESC FETCH FIRST ROW ONLY";
+        try (PreparedStatement stmt = connection.prepareStatement(statement)) {
+            stmt.setTimestamp(1, Timestamp.from(time));
+            LOG.debug("Executing query: {}", stmt);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                String data = rs.getString("data");
+                Snapshot result = Serialization.getJsonMapper().readValue(data, Snapshot.class);
+                result.id = rs.getLong("id");
+                result.eventId = rs.getLong("event");
+                return Optional.of(result);
+            } else {
+                return Optional.empty();
+            }
+        }
+    }
+
+    public void save(Connection connection) throws SQLException {
+        if (id != -1) return;
+        try (PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO \"snapshots\" (\"time\",\"data\",\"event\") VALUES (?,?,?)", Statement.RETURN_GENERATED_KEYS)) {
+            statement.setTimestamp(1, Timestamp.from(snapshotTime));
+            String serialized;
+            try {
+                serialized = Serialization.getJsonMapper().writeValueAsString(this);
+            } catch (JsonProcessingException e) {
+                assert false; // TODO(Roel): Programming error
+                return;
+            }
+            statement.setString(2, serialized);
+            statement.setLong(3, eventId);
+            statement.executeUpdate();
+            ResultSet keys = statement.getGeneratedKeys();
+            keys.next();
+            this.id = keys.getLong(1);
+        }
+    }
+
+    public static void deleteAfter(Connection connection, Snapshot snapshot) throws SQLException {
+        String statement =
+                "DELETE FROM \"snapshots\" WHERE \"time\" > ? OR (\"time\" = ? AND \"event\" > ?)";
+        try (PreparedStatement stmt = connection.prepareStatement(statement)) {
+            Timestamp timestamp = Timestamp.from(snapshot.getSnapshotTime());
+            stmt.setTimestamp(1, timestamp);
+            stmt.setTimestamp(2, timestamp);
+            stmt.setLong(3, snapshot.getEventId().orElse(-1L));
+            LOG.debug("Executing query: {}", stmt);
+            int affectedRows = stmt.executeUpdate();
+            LOG.debug("deleteAfter affected {} rows", affectedRows);
+        }
+    }
+}
+shared/src/main/java/org/ulyssis/ipp/utils/JedisHelper.java
+public final class JedisHelper {
+
+    // Static methods only! No instances!
+    private JedisHelper() {
+    }
+
+    /**
+     * Get a new Jedis instance from the given URI
+     *
+     * The URI is formed as such:
+     * `new URI("redis://:password@host:port/database")`
+     * for example:
+     * `new URI("redis://:hunter2@10.0.0.1:6379/0")}`.
+     * The port, password and path can be omitted. If no path is
+     * supplied, database +0+ is selected. If no user
+     * info is supplied, then no authorization is performed.
+     * If no port is supplied, the default port +6379+
+     * is used.
+     *
+     * Use this instead of `new Jedis(uri)`, because
+     * that method does not allow to omit anything.
+     *
+     * @param uri
+     *        The URI for the Jedis instance.
+     * @return A new Jedis instance.
+     */
+    // TODO: Exceptions for wrong password, failing to parse database,...
+    public static Jedis get(URI uri) throws IllegalArgumentException {
+        int port = uri.getPort() != -1 ? uri.getPort() : 6379;
+        String host = uri.getHost();
+        Jedis result = new Jedis(host, port);
+        if (uri.getUserInfo() != null) {
+            String password = uri.getUserInfo().split(":")[1];
+            result.auth(password);
+        }
+        result.select(getDb(uri));
+        return result;
+    }
+
+    /**
+     * Extract the database number from the given Redis URI
+     *
+     * If the URI has the path +/N+, then +N+
+     * is returned. If the path is empty, +0+ is returned.
+     *
+     * @param uri
+     *        The URI
+     * @throws java.lang.IllegalArgumentException
+     *         The supplied path could not be parsed as an int
+     * @return The database number (+0+ for no path, +N+
+     *         if the path is +/N+)
+     */
+    public static int getDb(URI uri) throws IllegalArgumentException {
+        if (!Objects.equals(uri.getPath(), "")) {
+            try {
+                return Integer.parseInt(uri.getPath().split("/", 2)[1]);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("The supplied path could not be parsed as an int", e);
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Generates a channel name that is local to a database.
+     *
+     * Redis channels are not tied to a single database, but are
+     * global to the instance of Redis. We, however, want to tie
+     * these to a certain database, so we have to add some information
+     * that does that. For this reason, if the channel name is
+     * +channel+, the database number +N+ is added to it
+     * to form +channel:N+. The database number is extracted
+     * using `getDb(uri)`.
+     *
+     * @param channel
+     *        The base channel name
+     * @param uri
+     *        The URI containing the database info
+     * @return +channel:N+, where +N+ is the database number
+     * @see org.ulyssis.ipp.utils.JedisHelper#getDb(java.net.URI)
+     */
+    public static String dbLocalChannel(String channel, URI uri) {
+        return channel + ":" + getDb(uri);
+    }
+
+    /**
+     * A helper class that implements +BinaryJedisPubSub+ using callbacks
+     * that can be registered.
+     *
+     * Instead of having to implement six methods where you probably
+     * only need one, you only need to supply callbacks for the ones you're
+     * interested in. This becomes extra useful when using Java 8, because
+     * function references or lambda functions can be used.
+     *
+     * Adding a callback is thread safe. +CopyOnWriteArrayList+ is used,
+     * because this class is optimized for frequent calling of callbacks,
+     * not for registering callback functions.
+     *
+     * All callbacks are called from the thread currently blocking on
+     * a +subscribe()+ (or similar) call.
+     *
+     * Currently, callbacks can only be added, not removed.
+     */
+    public static class BinaryCallBackPubSub extends BinaryJedisPubSub {
+        /**
+         * This is necessary, because there is no triconsumer.
+         */
+        @FunctionalInterface
+        public interface OnPMessageCallback {
+            public void accept(byte[] pattern, byte[] channel, byte[] message);
+        }
+
+        private final List<BiConsumer<byte[],byte[]>> onMessageCallbacks
+                = new CopyOnWriteArrayList<>();
+        private final List<OnPMessageCallback> onPMessageCallbacks
+                = new CopyOnWriteArrayList<>();
+        private final List<BiConsumer<byte[],Integer>> onSubscribeCallbacks
+                = new CopyOnWriteArrayList<>();
+        private final List<BiConsumer<byte[],Integer>> onUnsubscribeCallbacks
+                = new CopyOnWriteArrayList<>();
+        private final List<BiConsumer<byte[],Integer>> onPSubscribeCallbacks
+                = new CopyOnWriteArrayList<>();
+        private final List<BiConsumer<byte[],Integer>> onPUnsubscribeCallbacks
+                = new CopyOnWriteArrayList<>();
+
+        /**
+         * Implementation of +onMessage+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#addOnMessageListener(java.util.function.BiConsumer)
+         */
+        @Override
+        public void onMessage(byte[] channel, byte[] message) {
+            onMessageCallbacks.stream().forEach(callback -> callback.accept(channel, message));
+        }
+
+        /**
+         * Add a callback for +onMessage+.
+         *
+         * @param callback
+         *        The callback to add. The first argument is the
+         *        channel, the second is the message.
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#onMessage(byte[], byte[])
+         */
+        public void addOnMessageListener(BiConsumer<byte[],byte[]> callback) {
+            onMessageCallbacks.add(callback);
+        }
+
+        /**
+         * Implementation of +onPMessage+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#addOnPMessageListener(org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub.OnPMessageCallback)
+         */
+        @Override
+        public void onPMessage(byte[] pattern, byte[] channel, byte[] message) {
+            onPMessageCallbacks.stream().forEach(callback -> callback.accept(pattern, channel, message));
+        }
+
+        /**
+         * Add a callback for +onPMessage+.
+         *
+         * @param callback
+         *        The callback to add. The first argument is the
+         *        pattern is the channel, the second is the channel,
+         *        and the third is the message.
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#onPMessage(byte[], byte[], byte[])
+         */
+        public void addOnPMessageListener(OnPMessageCallback callback) {
+            onPMessageCallbacks.add(callback);
+        }
+
+        /**
+         * Implementation of +onSubscribe+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#addOnSubscribeListener(java.util.function.BiConsumer)
+         */
+        @Override
+        public void onSubscribe(byte[] channel, int subscribedChannels) {
+            onSubscribeCallbacks.stream().forEach(callback -> callback.accept(channel, subscribedChannels));
+        }
+
+        /**
+         * Add a callback for +onSubscribe+
+         *
+         * @param callback
+         *        The callback to add. The first argument is the channel,
+         *        the second is the number of subscribed channels.
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#onSubscribe(byte[], int)
+         */
+        public void addOnSubscribeListener(BiConsumer<byte[], Integer> callback) {
+            onSubscribeCallbacks.add(callback);
+        }
+
+        /**
+         * Implementation of +onUnsubscribe+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#addOnUnsubscribeListener(java.util.function.BiConsumer)
+         */
+        @Override
+        public void onUnsubscribe(byte[] channel, int subscribedChannels) {
+            onUnsubscribeCallbacks.stream().forEach(callback -> callback.accept(channel, subscribedChannels));
+        }
+
+        /**
+         * Add a callback for +onUnsubscribe+
+         *
+         * @param callback
+         *        The callback to add. The first argument is the channel,
+         *        the second is the number of subscribed channels.
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#onUnsubscribe(byte[], int)
+         */
+        public void addOnUnsubscribeListener(BiConsumer<byte[], Integer> callback) {
+            onUnsubscribeCallbacks.add(callback);
+        }
+
+        /**
+         * Implementation of +onPSubscribe+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#addOnPSubscribeListener(java.util.function.BiConsumer)
+         */
+        @Override
+        public void onPSubscribe(byte[] pattern, int subscribedChannels) {
+            onPSubscribeCallbacks.stream().forEach(callback -> callback.accept(pattern, subscribedChannels));
+        }
+
+        /**
+         * Add a callback for +onPSubscribe+
+         *
+         * @param callback
+         *        The callback to add. The first argument is the pattern,
+         *        the second is the number of subscribed channels.
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#onPSubscribe(byte[], int)
+         */
+        public void addOnPSubscribeListener(BiConsumer<byte[], Integer> callback) {
+            onPSubscribeCallbacks.add(callback);
+        }
+
+        /**
+         * Implementation of +onPUnsubscribe+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#addOnPUnsubscribeListener(java.util.function.BiConsumer)
+         */
+        @Override
+        public void onPUnsubscribe(byte[] pattern, int subscribedChannels) {
+            onPUnsubscribeCallbacks.stream().forEach(callback -> callback.accept(pattern, subscribedChannels));
+        }
+
+        /**
+         * Add a callback for +onPUnsubscribe+
+         *
+         * @param callback
+         *        The callback to add. The first argument is the pattern,
+         *        the second is the number of subscribed channels.
+         * @see org.ulyssis.ipp.utils.JedisHelper.BinaryCallBackPubSub#onPUnsubscribe(byte[], int)
+         */
+        public void addOnPUnsubscribeListener(BiConsumer<byte[], Integer> callback) {
+            onPUnsubscribeCallbacks.add(callback);
+        }
+    }
+
+    /**
+     * A helper class that implements +JedisPubSub+ using callbacks
+     * that can be registered.
+     *
+     * Instead of having to implement six methods where you probably
+     * only need one, you only need to supply callbacks for the ones you're
+     * interested in. This becomes extra useful when using Java 8, because
+     * function references or lambda functions can be used.
+     *
+     * Adding a callback is thread safe. +CopyOnWriteArrayList+ is used,
+     * because this class is optimized for frequent calling of callbacks,
+     * not for registering callback functions.
+     *
+     * All callbacks are called from the thread currently blocking on
+     * a +subscribe()+ (or similar) call.
+     *
+     * Currently, callbacks can only be added, not removed.
+     */
+    public static class CallBackPubSub extends JedisPubSub {
+        /**
+         * This is necessary, because there is no triconsumer.
+         */
+        @FunctionalInterface
+        public interface OnPMessageCallback {
+            public void accept(String pattern, String channel, String message);
+        }
+
+        private final List<BiConsumer<String,String>> onMessageCallbacks
+                = new CopyOnWriteArrayList<>();
+        private final List<OnPMessageCallback> onPMessageCallbacks
+                = new CopyOnWriteArrayList<>();
+        private final List<BiConsumer<String,Integer>> onSubscribeCallbacks
+                = new CopyOnWriteArrayList<>();
+        private final List<BiConsumer<String,Integer>> onUnsubscribeCallbacks
+                = new CopyOnWriteArrayList<>();
+        private final List<BiConsumer<String,Integer>> onPSubscribeCallbacks
+                = new CopyOnWriteArrayList<>();
+        private final List<BiConsumer<String,Integer>> onPUnsubscribeCallbacks
+                = new CopyOnWriteArrayList<>();
+
+        /**
+         * Implementation of +onMessage+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#addOnMessageListener(java.util.function.BiConsumer)
+         */
+        @Override
+        public void onMessage(String channel, String message) {
+            onMessageCallbacks.stream().forEach(callback -> callback.accept(channel, message));
+        }
+
+        /**
+         * Add a callback for +onMessage+.
+         *
+         * @param callback
+         *        The callback to add. The first argument is the
+         *        channel, the second is the message.
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#onMessage(String, String)
+         */
+        public void addOnMessageListener(BiConsumer<String, String> callback) {
+            onMessageCallbacks.add(callback);
+        }
+
+        /**
+         * Implementation of +onPMessage+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#addOnPMessageListener(org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub.OnPMessageCallback)
+         */
+        @Override
+        public void onPMessage(String pattern, String channel, String message) {
+            onPMessageCallbacks.stream().forEach(callback -> callback.accept(pattern, channel, message));
+        }
+
+        /**
+         * Add a callback for +onPMessage+.
+         *
+         * @param callback
+         *        The callback to add. The first argument is the
+         *        pattern is the channel, the second is the channel,
+         *        and the third is the message.
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#onPMessage(String, String, String)
+         */
+        public void addOnPMessageListener(OnPMessageCallback callback) {
+            onPMessageCallbacks.add(callback);
+        }
+
+        /**
+         * Implementation of +onSubscribe+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#addOnSubscribeListener(java.util.function.BiConsumer)
+         */
+        @Override
+        public void onSubscribe(String channel, int subscribedChannels) {
+            onSubscribeCallbacks.stream().forEach(callback -> callback.accept(channel, subscribedChannels));
+        }
+
+        /**
+         * Add a callback for +onSubscribe+
+         *
+         * @param callback
+         *        The callback to add. The first argument is the channel,
+         *        the second is the number of subscribed channels.
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#onSubscribe(String, int)
+         */
+        public void addOnSubscribeListener(BiConsumer<String, Integer> callback) {
+            onSubscribeCallbacks.add(callback);
+        }
+
+        /**
+         * Implementation of +onUnsubscribe+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#addOnUnsubscribeListener(java.util.function.BiConsumer)
+         */
+        @Override
+        public void onUnsubscribe(String channel, int subscribedChannels) {
+            onUnsubscribeCallbacks.stream().forEach(callback -> callback.accept(channel, subscribedChannels));
+        }
+
+        /**
+         * Add a callback for +onUnsubscribe+
+         *
+         * @param callback
+         *        The callback to add. The first argument is the channel,
+         *        the second is the number of subscribed channels.
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#onUnsubscribe(String, int)
+         */
+        public void addOnUnsubscribeListener(BiConsumer<String, Integer> callback) {
+            onUnsubscribeCallbacks.add(callback);
+        }
+
+        /**
+         * Implementation of +onPSubscribe+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#addOnPSubscribeListener(java.util.function.BiConsumer)
+         */
+        @Override
+        public void onPSubscribe(String pattern, int subscribedChannels) {
+            onPSubscribeCallbacks.stream().forEach(callback -> callback.accept(pattern, subscribedChannels));
+        }
+
+        /**
+         * Add a callback for +onPSubscribe+
+         *
+         * @param callback
+         *        The callback to add. The first argument is the pattern,
+         *        the second is the number of subscribed channels.
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#onPSubscribe(String, int)
+         */
+        public void addOnPSubscribeListener(BiConsumer<String, Integer> callback) {
+            onPSubscribeCallbacks.add(callback);
+        }
+
+        /**
+         * Implementation of +onPUnsubscribe+. Forwards the call to the registered callbacks.
+         *
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#addOnPUnsubscribeListener(java.util.function.BiConsumer)
+         */
+        @Override
+        public void onPUnsubscribe(String pattern, int subscribedChannels) {
+            onPUnsubscribeCallbacks.stream().forEach(callback -> callback.accept(pattern, subscribedChannels));
+        }
+
+        /**
+         * Add a callback for +onPUnsubscribe+
+         *
+         * @param callback
+         *        The callback to add. The first argument is the pattern,
+         *        the second is the number of subscribed channels.
+         * @see org.ulyssis.ipp.utils.JedisHelper.CallBackPubSub#onPUnsubscribe(String, int)
+         */
+        public void addOnPUnsubscribeListener(BiConsumer<String, Integer> callback) {
+            onPUnsubscribeCallbacks.add(callback);
+        }
+    }
+}
+shared/src/main/java/org/ulyssis/ipp/config/Config.java
+public class Config {
+    private static final Logger LOG = LogManager.getLogger(Config.class);
+
+    private double trackLength;
+    private ImmutableList<ReaderConfig> readers = ImmutableList.of();
+    private ImmutableList<URI> speedwayURIs = ImmutableList.of();
+    private ImmutableList<Team> teams = ImmutableList.of();
+    private long retryInterval = 5000L;
+    private long minUpdateInterval = 5000L;
+    private long maxUpdateInterval = 30000L;
+    private String statusChannel = "status";
+    private String updateChannel = "update";
+    private String updatesList = "updates";
+    private String updatesSet = "updates";
+    private String controlChannel = "control";
+
+    /**
+     * Private constructor used by Jackson
+     */
+    private Config() {
+    }
+    
+    /**
+     * Create a configuration from the given configuration file.
+     * 
+     * Expects the configuration file to be UTF-8 formatted.
+     */
+    public static Optional<Config> fromConfigurationFile(Path configFile) {
+        try {
+            byte[] config = Files.readAllBytes(configFile);
+            Charset charset = Charset.forName("utf-8");
+            String configString = charset.decode(ByteBuffer.wrap(config)).toString();
+            return fromConfigurationString(configString);
+        } catch (IOException e) {
+            LOG.error("Error reading configuration file: {}", configFile, e);
+            return Optional.empty();
+        }
+    }
+    
+    /**
+     * Create a configuration from the given JSON configuration string.
+     */
+    public static Optional<Config> fromConfigurationString(String configuration) {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.findAndRegisterModules();
+        try {
+            Config result = mapper.readValue(configuration, Config.class);
+            return Optional.of(result);
+        } catch (IOException e) {
+            LOG.error("Error reading configuration", e);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Get the track length in meters.
+     */
+    public double getTrackLength() {
+        return trackLength;
+    }
+
+    public ImmutableList<ReaderConfig> getReaders() {
+        return readers;
+    }
+    public ReaderConfig getReader(int readerId) {
+        return this.readers.get(readerId);
+    }
+    public int getNbReaders() {
+        return readers.size();
+    }
+
+    public ImmutableList<URI> getSpeedwayURIs() {
+        return speedwayURIs;
+    }
+    /**
+     * Get the URI of the Impinj Speedway corresponding
+     * to the reader with the given id. This id ranges from 0 to
+     * getSpeedwayURIs.size() - 1
+     */
+    public URI getSpeedwayURI(int readerId) {
+        return speedwayURIs.get(readerId);
+    }
+    public int getNbSpeedways() {
+        return speedwayURIs.size();
+    }
+
+    /**
+     * The retry interval for connections in ms.
+     */
+    public long getRetryInterval() {
+        return retryInterval;
+    }
+    
+    /**
+     * The minimum amount of time in ms between two updates, any
+     * update within this amount of time is ignored.
+     */
+    public long getMinUpdateInterval() {
+        return minUpdateInterval;
+    }
+    
+    /**
+     * The maximum time in ms to wait for an update before issuing a warning.
+     */
+    public long getMaxUpdateInterval() {
+        return maxUpdateInterval;
+    }
+    
+    /**
+     * Gets the Redis channel name on which status updates are posted.
+     *
+     * Defaults to "status".
+     *
+     * Generally, the db id will be added to the prefix, because
+     * pubsub channels are not database-specific in Redis.
+     */
+    public String getStatusChannel() {
+        return statusChannel;
+    }
+    
+    /**
+     * The prefix of the channel where the reader announces new updates.
+     *
+     * This prefix defaults to "update". Generally, the db id will be added
+     * to the prefix, because if multiple readers would use the same Redis
+     * instance (e.g. for testing purposes), these would collide, because
+     * pubsub channels are not database-specific.
+     */
+    public String getUpdateChannel() {
+        return updateChannel;
+    }
+
+    /**
+     * The prefix of the channel where an entity in the system receives control messages.
+     *
+     * This defaults to "control". Generally, the db id will be added to this prefix,
+     * because pubsub channels are not database-specific in Redis.
+     */
+    public String getControlChannel() {
+        return controlChannel;
+    }
+
+    /**
+     * The name of the list where readers push their updates on.
+     *
+     * Defaults to "updates".
+     */
+    public String getUpdatesList() {
+        return updatesList;
+    }
+
+    /**
+     * The name of the set in which updates are stored in the processor.
+     */
+    public String getUpdatesSet() {
+        return updatesSet;
+    }
+
+    /**
+     * The teams, with team number and name.
+     */
+    public ImmutableList<Team> getTeams() {
+        return teams;
+    }
+
+    // TODO: Maybe find some other solution?
+    private static Config currentConfig;
+
+    public static void setCurrentConfig(Config config) {
+        currentConfig = config;
+    }
+
+    public static Config getCurrentConfig() {
+        return currentConfig;
+    }
+}
+shared/src/main/java/org/ulyssis/ipp/control/commands/SetEndTimeCommand.java
+@JsonTypeName("SetEndTime")
+public final class SetEndTimeCommand extends Command {
+    public SetEndTimeCommand() {
+        super();
+    }
+
+    public SetEndTimeCommand(Instant endTime) {
+        super(endTime);
+    }
+
+    @JsonCreator
+    private SetEndTimeCommand(@JsonProperty("commandId") String commandId,
+                              @JsonProperty("time") Instant time) {
+        super(commandId, time);
+    }
+}
+shared/src/main/java/org/ulyssis/ipp/updates/TagUpdate.java
+public final class TagUpdate {
+    private Instant updateTime;
+    private TagId tag;
+    private int readerId;
+    private long updateCount;
+
+    /**
+     * Constructor
+     *
+     * @param readerId
+     *        The id of the reader
+     * @param updateCount
+     *        The count for this update, per reader, to be incremented on every update
+     * @param updateTime
+     *        The time for this update
+     * @param tag
+     *        The tag id
+     */
+    @JsonCreator
+    public TagUpdate(
+            @JsonProperty("readerId") int readerId,
+            @JsonProperty("updateCount") long updateCount,
+            @JsonProperty("updateTime") Instant updateTime,
+            @JsonProperty("tag") TagId tag) {
+        this.updateTime = updateTime;
+        this.tag = tag;
+        this.readerId = readerId;
+        this.updateCount = updateCount;
+    }
+
+    /**
+     * Get the time for this update
+     *
+     * @return The time for this update
+     */
+    public Instant getUpdateTime() {
+        return updateTime;
+    }
+
+    /**
+     * Get the tag id for this update
+     *
+     * @return The tag id for this update
+     */
+    public TagId getTag() {
+        return tag;
+    }
+
+    /**
+     * Get the reader id for this update
+     *
+     * @return The reader id for this update
+     */
+    public int getReaderId() {
+        return readerId;
+    }
+
+    /**
+     * Get the update count for this update
+     *
+     * @return The update count for this update
+     */
+    public long getUpdateCount() {
+        return updateCount;
+    }
+}

@@ -1,0 +1,449 @@
+src/nami/beitrag/db/BeitragMitglied.java
+@Data
+@NoArgsConstructor
+public class BeitragMitglied {
+    private int mitgliedId;
+    private int mitgliedsnummer;
+    private String nachname;
+    private String vorname;
+    private MitgliedStatus status;
+    private Mitgliedstyp mitgliedstyp;
+    private Beitragsart beitragsart;
+    private Date eintrittsdatum;
+    private String strasse;
+    private String plz;
+    private String ort;
+    private String email;
+    private String emailVertretungsber;
+    private int version;
+    private Integer aktivesMandat;
+    private boolean deleted;
+
+    /**
+     * Aktualisiert die Felder mit einem übergebenen Mitglieds-Datensatz aus
+     * NaMi. Die Mitglieds-ID wird dabei nicht aktualisiert.
+     * 
+     * @param namiMgl
+     *            der Mitglieds-Datensatz aus NaMi.
+     */
+    public void updateFromNami(NamiMitglied namiMgl) {
+        if (mitgliedId != namiMgl.getId()) {
+            throw new IllegalArgumentException("MitgliedIds are not equal");
+        }
+        mitgliedsnummer = namiMgl.getMitgliedsnummer();
+        nachname = namiMgl.getNachname();
+        vorname = namiMgl.getVorname();
+        status = namiMgl.getStatus();
+        mitgliedstyp = namiMgl.getMitgliedstyp();
+        beitragsart = namiMgl.getBeitragsart();
+        eintrittsdatum = namiMgl.getEintrittsdatum();
+        strasse = namiMgl.getStrasse();
+        plz = namiMgl.getPlz();
+        ort = namiMgl.getOrt();
+        email = namiMgl.getEmail();
+        emailVertretungsber = Objects.requireNonNullElse(namiMgl.getEmailVertretungsberechtigter(), "");
+        version = namiMgl.getVersion();
+    }
+
+    /**
+     * Erzeugt ein neues Mitglied aus einem übergebenen Mitglieds-Datensatz aus
+     * NaMi. Die Felder, die in NaMi nicht vorhanden sind, werden mit ihren
+     * Standardwerten initialisiert.
+     * 
+     * @param namiMgl
+     *            der Mitglieds-Datensatz aus NaMi
+     */
+    public BeitragMitglied(NamiMitglied namiMgl) {
+        mitgliedId = namiMgl.getId();
+        updateFromNami(namiMgl);
+        deleted = false;
+    }
+}
+src/nami/beitrag/gui/utils/Colors.java
+public final class Colors {
+
+    // Farben für die Hervorhebung von Zeilen in einer TreeTable
+    private static final UIDefaults UIDEFAULTS = javax.swing.UIManager
+            .getDefaults();
+    /**
+     * Farbe, die für den Hintergrund der Kindeinträge in einer TreeTable der
+     * Tiefe 2 verwendet wird.
+     */
+    public static final Color TT_CHILD_BG = UIDEFAULTS
+            .getColor("Label.background");
+
+    /**
+     * Farbe die zum Kennzeichnen von selektierten Einträgen in einer Tabelle
+     * verwendet wird.
+     */
+    public static final Color TT_SEL_BG = UIDEFAULTS
+            .getColor("List.selectionBackground");
+
+    /**
+     * Schriftfarbe zum Kennzeichnen von deaktivierten Einträgen in Tabellen.
+     */
+    public static final Color TT_DEACTIV_FG = UIDEFAULTS
+            .getColor("Label.disabledForeground");
+
+    private Colors() {
+    }
+}
+src/nami/beitrag/db/BeitragSepaMandat.java
+@Data
+public class BeitragSepaMandat {
+    private int mandatId;
+    private String iban;
+    private String bic;
+    private Date datum;
+    private String kontoinhaber;
+    private String strasse;
+    private String plz;
+    private String ort;
+    private String email;
+    private boolean gueltig;
+}
+src/nami/beitrag/gui/utils/MyStringUtils.java
+public final class MyStringUtils {
+
+    private static final String[] REPLACE_UML_FROM = { "ä", "ö", "ü", "Ä", "Ö",
+            "Ü", "ß", "ë" };
+    private static final String[] REPLACE_UML_TO = { "ae", "oe", "ue", "Ae",
+            "Oe", "Ue", "ss", "e" };
+
+    private MyStringUtils() {
+    }
+
+    /**
+     * Ersetzt alle Umlaute im übergebenen String durch ihre Umschreibung.
+     * 
+     * @param text
+     *            der zu bearbeitende String
+     * @return String mit ersetzen Umlauten
+     */
+    public static String replaceUmlauts(String text) {
+        return StringUtils.replaceEach(text, REPLACE_UML_FROM, REPLACE_UML_TO);
+    }
+
+    public static int parseIntDefaultMinusOne(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+}
+src/nami/beitrag/db/BeitragRechnung.java
+@Data
+public class BeitragRechnung {
+    private int rechnungId;
+    private int mitgliedId;
+    private int rechnungsNummer;
+    private Date datum;
+    private Date frist;
+    private Rechnungsstatus status;
+
+    /**
+     * Rechnungsbetrag (d. h. Summe der enthaltenen Posten).
+     * 
+     * Dieses Feld steht nicht in der Datenbank, sondern wird in der SQL-Abfrage
+     * aus den verknüpften Posten berechnet.
+     */
+    @Setter(AccessLevel.NONE)
+    private BigDecimal betrag;
+
+    /**
+     * Liefert die vollständige Rechnungsnummer.
+     * 
+     * @return Rechnungsnummer inklusive Jahreszahl
+     */
+    public String getCompleteRechnungsNummer() {
+        String jahreszahl = new SimpleDateFormat("y").format(datum);
+        return jahreszahl + "/" + rechnungsNummer;
+    }
+}
+src/nami/beitrag/gui/utils/DisabledCellRenderer.java
+public class DisabledCellRenderer extends DefaultTableCellRenderer {
+    private static final long serialVersionUID = -4317607684491411756L;
+
+    @Override
+    public Component getTableCellRendererComponent(JTable table,
+            Object value, boolean isSelected, boolean hasFocus, int row,
+            int column) {
+
+        TableCellRenderer renderer = table.getDefaultRenderer(table
+                .getColumnClass(column));
+        Component c = renderer.getTableCellRendererComponent(table, value,
+                isSelected, hasFocus, row, column);
+
+        // Deaktiviert die Komponente, falls das Feld nicht bearbeitbar ist
+        if (!table.isCellEditable(row, column)) {
+            c.setEnabled(false);
+        }
+
+        return c;
+    }
+}
+src/nami/beitrag/db/BeitragSammelLastschrift.java
+@Data
+public class BeitragSammelLastschrift {
+    private int sammelLastschriftId;
+    private Date faelligkeit;
+    private boolean ausgefuehrt;
+    private String bezeichnung;
+
+    // Die folgenden Felder sind nicht direkt in der Datenbank gespeichert
+    @Setter(AccessLevel.NONE)
+    private int anzahlLastschriften;
+    @Setter(AccessLevel.NONE)
+    private BigDecimal betrag;
+    @Setter(AccessLevel.NONE)
+    private boolean alleGueltig;
+}
+src/nami/beitrag/db/BeitragLastschrift.java
+@Data
+public class BeitragLastschrift {
+    private int lastschriftId;
+    private int sammelLastschriftId;
+    private int mandatId;
+    private String verwendungszweck;
+
+    // Die folgenden Felder sind nicht direkt in der Datenbank gespeichert,
+    // sondern werden bei der Abfrage berechnet.
+    @Setter(AccessLevel.NONE)
+    private BigDecimal betrag;
+}
+src/nami/beitrag/db/LastschriftenMapper.java
+@Data
+public static class FilterSettings {
+    /**
+     * Dieser Parameter filtert die Rechnungen nach dem Erstellungsdatum.
+     * Wenn dieser Parameter <tt>null</tt> ist, wird nicht nach dem
+     * Rechnungsdatum gefiltert.
+     */
+    private Date rechnungsdatum = null;
+
+    /**
+     * Gibt an, ob auch Rechnungen selektiert werden, für die bereits eine
+     * Lastschrift erstellt wurde.
+     */
+    private boolean bereitsErstellt;
+}
+src/nami/beitrag/db/LastschriftenMapper.java
+@Getter
+public static class DataMandateRechnungen {
+    private BeitragSepaMandat mandat;
+    private List<DataRechnungMitglied> rechnungen;
+}
+src/nami/beitrag/db/LastschriftenMapper.java
+public interface LastschriftenMapper {
+
+    /**
+     * Beschreibt Filterkriterien für die Suche nach Mandaten und Buchungen.
+     */
+    @Data
+    public static class FilterSettings {
+        /**
+         * Dieser Parameter filtert die Rechnungen nach dem Erstellungsdatum.
+         * Wenn dieser Parameter <tt>null</tt> ist, wird nicht nach dem
+         * Rechnungsdatum gefiltert.
+         */
+        private Date rechnungsdatum = null;
+
+        /**
+         * Gibt an, ob auch Rechnungen selektiert werden, für die bereits eine
+         * Lastschrift erstellt wurde.
+         */
+        private boolean bereitsErstellt;
+    }
+
+    /**
+     * Ergebnis-Datentyp bei der Suche nach Mandaten und Rechnungen, die vom
+     * jeweiligen Mandat eingezogen werden können.
+     */
+    @Getter
+    public static class DataMandateRechnungen {
+        private BeitragSepaMandat mandat;
+        private List<DataRechnungMitglied> rechnungen;
+    }
+
+    /**
+     * Fasst ein Mitglied und eine Rechnung zusammen.
+     */
+    @Getter
+    public static class DataRechnungMitglied {
+        private BeitragMitglied mitglied;
+        private BeitragRechnung rechnung;
+    }
+
+    /**
+     * Liefert alle offenen Rechnungen und die zugehörigen aktiven, gültigen
+     * Mandate, die die übergebenen Filterkriterien erfüllen.
+     * 
+     * @param filterSettings
+     *            Kriterien nach denen gefiltert wird
+     * @return Mandate und jeweils offene Rechnungen
+     */
+    Collection<DataMandateRechnungen> mandateOffeneRechnungen(
+            @Param("filterSettings") FilterSettings filterSettings);
+
+    /**
+     * Fügt eine Lastschrift in die Datenbank ein. Die <tt>lastschriftId</tt>
+     * der neu eingefügten Lastschrift ist anschließend im Objekt gespeichert,
+     * das als Parameter übergeben wurde.
+     * 
+     * @param lastschrift
+     *            Daten der einzufügenden Lastschrift
+     */
+    void insertLastschrift(BeitragLastschrift lastschrift);
+
+    /**
+     * Löscht eine Lastschrift aus der Datenbank. Die enthaltenen Rechnungen
+     * sollten vorher schon gelöscht worden seien (siehe
+     * {@link #deleteAllRechnungenFromLastschrift(int)}).
+     * 
+     * @param lastschriftId
+     *            ID der Lastschrift, die gelöscht werden soll
+     */
+    void deleteLastschrift(int lastschriftId);
+
+    /**
+     * Fügt eine Rechnung zu einer Lastschrift hinzu, d. h. diese Rechnung wird
+     * mit der jeweiligen Lastschrift eingezogen.
+     * 
+     * @param lastschriftId
+     *            ID der Lastschrift
+     * @param rechnungId
+     *            ID der Rechnung
+     */
+    void addRechnungToLastschrift(@Param("lastschriftId") int lastschriftId,
+            @Param("rechnungId") int rechnungId);
+
+    /**
+     * Löscht alle Rechnungen aus einer Lastschrift. Die Rechnungen werden dabei
+     * in der Datenbank belassen, nur ihre Verbindungen zur Lastschrift werden
+     * entfernt.
+     * 
+     * @param lastschriftId
+     *            ID der Lastschrift
+     */
+    void deleteAllRechnungenFromLastschrift(int lastschriftId);
+
+    /**
+     * Fügt eine Sammellastschrift in die Datenbank ein. Die
+     * <tt>sammelLastschriftId</tt> der neu eingefügten Lastschrift ist
+     * anschließend im Objekt gespeichert, das als Parameter übergeben wurde.
+     * 
+     * @param sammelLastschrift
+     *            Daten der einzufügenden Sammellastschrift
+     */
+    void insertSammelLastschrift(BeitragSammelLastschrift sammelLastschrift);
+
+    /**
+     * Aktualisiert den Datensatz einer Sammellastschrift.
+     * 
+     * @param sammelLastschrift
+     *            Objekt, dessen geänderte Felder in die Datenbank gespeichert
+     *            werden sollen
+     */
+    void updateSammelLastschrift(BeitragSammelLastschrift sammelLastschrift);
+
+    /**
+     * Löscht eine Sammellastschrift aus der Datenbank. Die enthaltenen
+     * Lastschriften sollten vorher schon gelöscht worden seien.
+     * 
+     * @param sammelLastschriftId
+     *            ID der Sammellastschrift
+     */
+    void deleteSammelLastschrift(int sammelLastschriftId);
+
+    /**
+     * Fragt alle Sammellastschriften (inkl. der Anzahl der enthaltenen
+     * Einzellastschriften und des Gesamtbetrages) aus der Datenbank ab, die dem
+     * übergebenen Filterkriterium entsprechen.
+     * 
+     * @param ausgefuehrt
+     *            Gibt an, ob ausgeführte Sammellastschriften angezeigt werden
+     *            sollen.
+     *            <ul>
+     *            <li><tt>True</tt>: nur ausgeführte werden angezeigt</li>
+     *            <li><tt>False</tt>: nur <em>nicht</em> ausgeführte werden
+     *            angezeigt</li>
+     *            <li><tt>null</tt>: Filterkriterium wird ignoriert</li>
+     *            </ul>
+     * @return Sammellastschriften, die dem angegebenen Filterkriterium
+     *         entsprechen
+     */
+    ArrayList<BeitragSammelLastschrift> findSammelLastschriften(
+            @Param("ausgefuehrt") Boolean ausgefuehrt);
+
+    /**
+     * Liefert alle Lastschriften (inkl. der zugehörigen Mandate), die in einer
+     * Sammellastschrift enthalten sind.
+     * 
+     * @param sammelLastschriftId
+     *            ID der Sammellastschrift
+     * @return enthaltenen (Einzel-)Lastschriften
+     */
+    ArrayList<DataLastschriftMandat> getLastschriften(int sammelLastschriftId);
+
+    /**
+     * Liefert alle Rechnungen, die in einer Sammellastschrift enthalten sind.
+     * Das heißt es werden die zugeordneten Rechnungen aller enthaltenen
+     * Einzellastschriften vereinigt.
+     * 
+     * @param sammelLastschriftId
+     *            ID der Sammellastschrift
+     * @return zugeordnete Rechnungen
+     */
+    List<BeitragRechnung> getRechnungenInSammelLastschrift(
+            int sammelLastschriftId);
+
+    /**
+     * Fügt eine Prenotification in die Datenbank ein. Die
+     * <tt>prenotificationId</tt> der neu eingefügten Prenotification ist
+     * anschließend im Objekt gespeichert, das als Parameter übergeben wurde.
+     * 
+     * @param pre
+     *            Daten der einzufügenden Prenotification
+     */
+    void insertPrenotification(BeitragPrenotification pre);
+
+    /**
+     * Überprüft, ob die aktuellste (nach Ausstellungsdatum), als regelmäßig
+     * gekennzeichnete Prenotification im Betrag mit den Parametern
+     * übereinstimmt. In diesem Fall muss also keine neue erstellt werden.
+     * 
+     * @param mandatId
+     *            ID des Mandats
+     * @param betrag
+     *            benötigter Lastschriftbetrag
+     * @return <tt>true</tt>, falls die aktuellste Prenotification den passenden
+     *         Betrag enthält
+     */
+    boolean existsValidPrenotification(@Param("mandatId") int mandatId,
+            @Param("betrag") BigDecimal betrag);
+
+    /**
+     * Fasst eine Prenotification und das dazugehörige Mandat zusammen.
+     */
+    @Getter
+    public class DataPrenotificationMandat {
+        private BeitragPrenotification prenotification;
+        private BeitragSepaMandat mandat;
+    }
+
+    /**
+     * Liefert eine Prenotification und das dazugehörige Mandat.
+     * 
+     * @param prenotificationId
+     *            ID der Prenotification
+     * @return Prenotification mit Mandat
+     */
+    DataPrenotificationMandat getPrenotificationMitMandat(int prenotificationId);
+}
+src/nami/beitrag/db/LastschriftenMapper.java
+@Getter
+public static class DataRechnungMitglied {
+    private BeitragMitglied mitglied;
+    private BeitragRechnung rechnung;
+}

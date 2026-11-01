@@ -1,0 +1,561 @@
+
+你现在接手 Qwen3.5-9B / GDN recurrent-state INT8
+learnable orthogonal rotation 研究。
+
+任务名称：
+
+QWEN_GDN_SHORT_HORIZON_SCALE_INFLATION_SURROGATE_VALIDATION_V1
+
+请先完整阅读现有代码、历史实验 manifest、
+所有正式回报和已有资格门禁。
+
+本轮目标不是训练新的旋转矩阵，而是严格验证：
+H32/H64 下的 signed scale-inflation surrogate，
+是否包含对长期 persistent-QDQ 损伤有价值的
+早期预测信息，并相对于已有 C5/C6 目标提供增量。
+
+必须先规划，再进行只读审计，再按门禁执行。
+禁止跳过审计直接启动大规模 GPU 测量。
+
+==================================================
+一、已知科研基线
+==================================================
+
+研究主线：
+
+Persistent recurrent-state INT8 quantization
++ learnable orthogonal rotation。
+
+冻结 AIME26 Canonical60：
+
+FP       52/60
+Hadamard 41/60
+C6R      40/60
+C7       33/60
+Native   18/60
+
+C5/C5R：
+State relative-MSE。
+
+C6/C6R：
+Local out_proj Functional relative-MSE
++ 0.1 * State relative-MSE。
+
+C7：
+Final-Hidden relative-MSE。
+
+C5R/C6R/C7 使用真实 recurrent QDQ/writeback，
+H64 truncated BPTT、1024-token documents、
+8 captures/document、125 updates/1000 exposures。
+
+不能将它们描述成无 recurrent feedback 的训练。
+
+注意：
+C6R 是一个已训练的 rotation checkpoint；
+C6_TOTAL 是评价旋转的目标函数。
+二者不能混为一谈。
+
+本轮不训练新的 rotation。
+
+==================================================
+二、最新已完成的机制证据
+==================================================
+
+QWEN_GDN_FD_SCALE_FEEDBACK_DIRECTION_V1：
+
+COMPLETE = 32/32
+COUNTERFACTUAL_VALIDITY_GATE = PASS
+PRIMARY_LABEL = SCALE_INFLATION_FEEDBACK_SUPPORTED
+
+已有因果结果：
+
+Parent H/C6R/C7：12/12 explosive
+Clean-scale：0/12 explosive
+NO_SCALE_INFLATION：0/12 explosive
+NO_SCALE_DEFLATION：12/12 explosive
+
+只有 frozen-drive 机制的因果结论已经得到支持。
+
+不能宣称：
+
+- Scale inflation 已解释 AIME
+- Scale inflation 已解释 free generation
+- S1/S2 已有预测能力
+- S1/S2 已有训练梯度资格
+- C8 已经启动
+
+本轮必须保持旧实验 COMPLETE/PASS 的身份不变。
+
+==================================================
+三、正式 Quantizer Identity
+==================================================
+
+使用仓库真实 formal quantizer，不得重新发明。
+
+已知定义：
+
+zero_point = 0
+qrange = [-127,127]
+rounding = torch.round
+scale = amax(dim=-2,keepdim=True).clamp_min(1e-12)/127
+scale_shape = [1,32,1,128]
+
+正式 quantizer SHA256：
+
+77b1e1f6dad8a0dd53a27cf5a47c02be86c26d2cf30732604ba6d3747e178f69
+
+旧 premeasurement commit：
+
+9e302aa46cbbc0f621eb792c1af5429abb6acb27
+
+旧 postfinal SHA256SUMS hash：
+
+c7e1b74de7dc11099b198c5d7ae52767857dc3f20fcd1d4f7a23b6b0542d6856
+
+这些是历史身份线索。
+实际执行前必须重新验证。
+
+保留：
+
+- every-token INT8 QDQ
+- persistent recurrent-state writeback
+- same-coordinate FP reference
+- deterministic=True
+- TF32 OFF
+- CUBLAS_WORKSPACE_CONFIG=:4096:8
+- 已冻结的 numerical parity / tolerance 标准
+
+不允许 delayed requantization、
+FP persistent-state buffer、
+clean state reset、SGLang 或训练新 rotation。
+
+注意历史 3090 torch.cumsum 确定性风险；
+不得擅自替换已验证的 deterministic closure。
+
+==================================================
+四、P0：CPU-ONLY 资产与可行性审计
+==================================================
+
+先定位：
+
+QWEN_GDN_FD_SCALE_FEEDBACK_DIRECTION_V1
+QWEN_GDN_FD_CLEAN_QPARAM_CAUSAL_INTERVENTION_V1
+QWEN_GDN_FROZEN_DRIVE_ANCHOR_MECHANISM_V1
+
+以及相关 C5R/C6R/C7 matched training assets。
+
+从 manifest / run records 自动发现真实目录，
+不要猜测最终产物路径。
+
+审计：
+
+1. 正式 Parent 轨迹是否可复用？
+2. 是否保留 time-resolved scale？
+3. 是否保留 paired clean-FP scale？
+4. 是否保留原始连续 G，而非仅 explosion flag？
+5. G 的确切定义、量纲和端点是什么？
+6. 是否保留 first-explosion / divergence 时间信息？
+7. 是否可以恢复各旋转相同时间的 pre-QDQ state？
+8. 是否有计算 C5/C6 objective 的正式 helper？
+9. 是否已有安全的 streaming reducer？
+10. 历史数据和 SHA 是否 byte-identical？
+
+特别注意：
+
+32/32 是正式 counterfactual scientific units，
+不是 32 篇独立文档。
+
+现有独立 RepoBench-P 文档数为 4。
+
+NO_SCALE_INFLATION / NO_SCALE_DEFLATION
+是因果对照，不得替代未干预 Parent G，
+也不得把干预后的轨迹当成自然 rotation 标签。
+
+先审计当前 GPU、CUDA、Torch、driver、磁盘。
+历史 /data 可用约 47 GiB，只是旧回报，
+不能假设当前仍然如此。
+
+若缺少关键标签或其身份无法确认，
+输出 AUDIT_BLOCKED，不得编造数据。
+
+P0 不允许 GPU science run。
+
+==================================================
+五、预先冻结 surrogate 的定义
+==================================================
+
+PRIMARY：
+
+S1 = mean(relu(log(s_student/s_clean))^2)
+
+其中 s_student 是真实 persistent-QDQ 学生状态
+产生的 adaptive scale。
+
+s_clean 是同 rotation、同 token、同 layer/group、
+同驱动下配对 clean-FP state 的 formal scale。
+
+必须按实际量化器的 clamp_min 规则处理正数 scale。
+
+禁止混用不同旋转的 clean scale。
+禁止用不同模型运行条件的旧 FP scale 代替。
+
+SECONDARY：
+
+s_cap = min(s_student,s_clean)
+
+S2 = mean(
+  ||QDQ(u;s_student)-QDQ(u;s_cap)||^2
+  / (||u||^2 + epsilon)
+)
+
+u 为同一份 student pre-QDQ state。
+
+S2 只测一步局部 counterfactual grid distortion。
+不可让 capped 分支写回 parent recurrent state。
+不得把 S2 称为完整长程因果收益。
+
+epsilon / aggregation / group weighting
+必须在测量前冻结并记录。
+
+NEGATIVE / SPECIFICITY CONTROLS：
+
+D1 = mean(relu(-r)^2)
+D2 = mean(r^2)
+r = log(s_student/s_clean)
+
+BASELINES：
+
+B0 = original C5 State relative-MSE
+B1 = original C6 Functional relative-MSE
+B2 = original C6 Functional + 0.1 State
+
+基线必须使用仓库原数学定义和统计归约方式。
+不可用近似实现替代 original loss。
+
+全部 short metrics 在相同 documents、
+capture positions、rotations、FP pairing、
+quantizer 和 token windows 下测量。
+
+不得根据测量结果临时选择 aggregation。
+
+==================================================
+六、分离两个实验 Track
+==================================================
+
+TRACK A：
+HISTORY_CONDITIONED_MECHANISM
+
+使用历史正式 frozen-drive Parent states，
+固定 token8192 anchor。
+
+分别测量：
+
+[8192,8224)
+[8192,8256)
+
+对应 H32、H64。
+
+比较短程 S1/S2 与原始 Parent long-horizon G。
+
+若实验旧协议存在不同实际 token 定义，
+必须核验后在 premeasurement spec 冻结。
+
+同时检查：
+
+- 在测量开始前是否已达到爆炸状态
+- measurement 是否发生在 onset 之前
+- G 是否发生 overflow / saturation
+- 长期 target 是否与短程 observation 重叠
+
+预警分析优先使用不重叠的未来时间段。
+只有 post-onset 数据时，只能称 diagnostic，
+不能宣称 early prediction。
+
+TRACK B：
+TRAINING_ACCESSIBLE_H64
+
+使用与 C5R/C6R 配套的真实 1024-token
+short-document recurrent semantics。
+
+H32/H64，依赖短程历史，不做8192-token warmup。
+
+必须使用真实每-token INT8 writeback，
+保持原有 capture / detach 规则。
+
+Track B 是 short-horizon data-accessibility test，
+不是已经完成 backward/gradient qualification。
+
+Track A 和 Track B 单独分析、单独下 verdict。
+禁止合并两种 Track 得到一个总 Spearman。
+
+==================================================
+七、候选 Rotation Roster
+==================================================
+
+优先：
+
+Native
+Hadamard
+C6R
+C7
+
+如果 C5R 或其他已冻结历史 rotation 的身份、
+权重与运行条件都通过资格门禁，
+可以在 premeasurement 之前登记进入 roster。
+
+禁止：
+
+- 为提高相关性临时加 rotation
+- 创建新的旋转扰动或插值矩阵
+- 从旧 vGPU 资产中无资格地混入 checkpoint
+- 训练 C8
+- 根据 G 的排名删掉表现不好的 candidate
+
+Native 只能作为 negative control。
+
+主要 discrimination 必须单独报告
+Hadamard / C6R / C7 子集。
+
+如果该子集无法产生有信息量的排序，
+报告 INSUFFICIENT_ROTATION_DISCRIMINATION。
+
+不能只用 explosion yes/no：
+这些 rotation 在旧 Parent 中都是 explosive。
+
+==================================================
+八、科学问题与分析预注册
+==================================================
+
+先记录正式 discovery analysis protocol。
+
+问题 Q1：
+
+短程 S1 是否与长期 Parent G 存在
+逐文档、逐 rotation 的方向一致性？
+
+问题 Q2：
+
+是否在剔除 Native 后依然能够区分 H/C6R/C7？
+
+问题 Q3：
+
+S1 是否优于原始 C5 State / C6_TOTAL 的排序？
+
+问题 Q4：
+
+S1 是否包含 C6_TOTAL 之外的额外预测信息？
+
+问题 Q5：
+
+S2 是否相对于 S1 提供增量信息？
+
+问题 Q6：
+
+Track A 支持的关系能否迁移到 Track B？
+
+主要分析：
+
+- document-level Spearman
+- within-document pairwise concordance
+- H/C6R/C7-only analysis
+- per-document signed ranking disagreements
+- signal-before-onset diagnostic
+- finite/saturation checks
+- leave-one-document-out descriptive sensitivity
+
+如需要 log(G) 变换，只能对已核验的、
+定义允许的非负连续 G 使用预冻结单调变换，
+并明确原量纲与变换后量纲。
+
+如果长期 G 已饱和、溢出或不具备合法连续排名，
+不得进行虚假的 Spearman 比较。
+
+控制 C6 后的 residual-rank 结果只能作为探索性，
+样本过小或排序离散时必须报告不可估计。
+
+不能把层数、group 数、token 数、
+干预单元或 rotation-pair 数
+当成独立文档数量来报告统计显著性。
+
+P0/P1 主要是 discovery，不得报告 confirmatory proof。
+
+==================================================
+九、P1 最小 GPU 执行门禁
+==================================================
+
+在 CPU-only 审计成功后：
+
+1. 建立新的隔离 worktree/experiment directory
+2. 写出 frozen premeasurement spec
+3. 实现 S1/S2 无副作用观测 hook
+4. 实现单测、量化器一致性测试和 replay parity
+5. 验证 FP reference pairing
+6. 验证完全相同 pre-QDQ u 的 S2 比较
+7. 检查 numerical determinism
+8. 做小规模 dry-run/microbenchmark
+9. 预测 GPUh、显存峰值、磁盘峰值
+
+本轮建议新 GPU 开销保守上限 4 GPUh，
+这是本次初筛的规划上限，不代表旧实验授权。
+
+必须把 qualification/microbenchmark
+也纳入 GPU 成本账本。
+
+如果现有资源无法在上限内完成有效初筛：
+BUDGET_STOP，不可私自增大预算。
+
+禁止为了过预算而改变 H64 定义、
+采样身份、QDQ semantics 或数学目标。
+
+优先复用可信的旧时间资产，
+但只有身份通过才允许复用。
+
+不得重复全部32K counterfactual intervention，
+除非已有资产无法支持最小必要 replay，
+且该 replay 另获批准。
+
+以先一篇文档、最小 matched rotation panel
+进行 instrumentation/parity qualification。
+
+正式扩展前必须冻结完整 roster、
+document list 和时间窗口。
+
+如果首次试运行产生的结果需要调整方案，
+保留失败历史并另建新版本；
+不得悄悄修改预注册协议。
+
+==================================================
+十、停止和决策规则
+==================================================
+
+全部科学条件 PASS 且具备有效趋势时：
+
+SHORT_SCALE_SURROGATE_DISCOVERY_SUPPORTED
+
+如果只有 Track A 有信号而 Track B 没有：
+
+HISTORY_CONDITIONED_ONLY_NOT_TRAIN_READY
+
+如果 Track A/B 都无法区分主要 rotation：
+
+NO_STABLE_ROTATION_DISCRIMINATION
+
+如果 S1 与 C6 完全同序或缺乏合格冲突：
+
+NO_ELIGIBLE_INCREMENTAL_DISCORDANCE
+
+如果只有 Native 驱动相关性：
+
+NATIVE_CONTRAST_ONLY
+
+如果资源或数值资格失败：
+
+ENGINEERING_OR_BUDGET_STOP
+
+如果已有 Parent G 不允许排名分析：
+
+LONG_HORIZON_LABEL_INVALID_FOR_RANKING
+
+这些是不同层次的结论，不能互相替代。
+
+特别说明：
+
+即使 discovery 支持 S1，
+也不代表 P3 的 full-model KL 已经支持。
+
+禁止以相关性支持为理由直接训练 C8。
+
+==================================================
+十一、实验产物
+==================================================
+
+写入独立的新实验目录。
+
+输出：
+
+ASSET_AND_PROVENANCE_AUDIT.json
+FROZEN_PREMEASUREMENT_SPEC.json
+QUANTIZER_PARITY_GATE.json
+DETERMINISM_GATE.json
+FP_PAIRING_GATE.json
+RESOURCE_AND_DISK_BUDGET.json
+GPU_COST_LEDGER.json
+
+如已正式执行科学初筛，再输出：
+
+SHORT_SCALE_SURROGATE_SCORES.csv
+TRACK_A_HISTORY_CONDITIONED.csv
+TRACK_B_TRAIN_ACCESSIBLE.csv
+ROTATION_RANKING_COMPARISON.csv
+C5_C6_INCREMENTAL_ANALYSIS.csv
+EARLY_WARNING_ONSET_AUDIT.json
+DISCOVERY_VERDICT.json
+
+以及：
+
+FINAL_SCIENTIFIC_REPORT.md
+SHA256SUMS.txt
+
+所有产物绑定：
+
+- model identity
+- rotation SHA
+- dataset/document identity
+- run/config/code identity
+- formal quantizer identity
+- GPU UUID / runtime identity
+- premeasurement commit
+- actual start/end and GPUh
+- PASS/FAIL/STOP gates
+
+未执行的 CSV 不得用空壳伪装完成。
+在 manifest 中标记 NOT_PRODUCED_UNEXECUTED。
+
+==================================================
+十二、授权边界与最终交付
+==================================================
+
+本次授权范围仅为：
+
+P0 CPU-only audit
+P1 small-budget short-horizon discovery
+
+禁止自动启动：
+
+- independent full-model 2K/8K KL
+- new 32K full-model generation
+- S1/S2 gradient optimization
+- C8 training
+- AIME26 evaluation
+- free generation
+- changes to existing production quantizer
+
+如果发现 S1 相对于 C6 有潜在增量，
+只输出下一阶段独立 prospective full-model
+实验设计，包括：
+
+- 新独立文档选择规则
+- outcome-blind eligible rotation pair 规则
+- 真实 FP pairing
+- primary KL metric
+- 显存/磁盘预测
+- 保守 GPUh 预算
+- preregistered stopping rules
+
+但不要执行这一阶段。
+
+最终请用中文汇报：
+
+1. P0 审计结果
+2. 历史资产是否可复用
+3. 实际执行了多少正式科学单元
+4. S1/S2 H32/H64 的测量结果
+5. Track A 与 Track B 分别得到什么结论
+6. H/C6R/C7 的排序是否真的可区分
+7. 与 C5/C6 的比较是否成立
+8. 是否出现预测分歧
+9. GPU 实际成本与余量
+10. 是否值得独立启动 full-model KL pilot
+
+保留所有失败和 STOP。
+不得把提示词或实验计划当作已完成结果。

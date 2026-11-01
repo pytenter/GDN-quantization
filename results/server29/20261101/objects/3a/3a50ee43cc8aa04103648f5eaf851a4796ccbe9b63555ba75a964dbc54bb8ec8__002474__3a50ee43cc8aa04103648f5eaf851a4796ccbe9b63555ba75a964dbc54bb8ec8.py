@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(fw_compiler={self.fw_compiler!r}, bw_compiler={self.bw_compiler!r}, partition_fn={self.partition_fn!r}, decompositions={self.decompositions!r}, num_params_buffers={self.num_params_buffers!r}, aot_id={self.aot_id!r}, keep_inference_input_mutations={self.keep_inference_input_mutations!r}, is_export={self.is_export!r}, no_tangents={self.no_tangents!r}, dynamic_shapes={self.dynamic_shapes!r}, aot_autograd_arg_pos_to_source={self.aot_autograd_arg_pos_to_source!r}, static_input_indices={self.static_input_indices!r}, inference_compiler={self.inference_compiler!r}, enable_log={self.enable_log!r}, pre_dispatch={self.pre_dispatch!r}, cache_info={self.cache_info!r})"
+ return __repr__

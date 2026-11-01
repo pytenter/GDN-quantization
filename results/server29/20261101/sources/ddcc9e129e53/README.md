@@ -1,0 +1,50 @@
+# hadamard-init-dense-oracle-v1-qwen
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/worktrees/hadamard-init-dense-oracle-v1-qwen`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`results/aime26/81920/ling_kda/frozen_v4_per_sample.csv`](../../../../aime26/81920/ling_kda/frozen_v4_per_sample.csv)
+- [`results/aime26/81920/qwen_gdn/frozen_v4_per_sample.csv`](../../../../aime26/81920/qwen_gdn/frozen_v4_per_sample.csv)
+- [`experiments/QWEN_ROTATION_METRIC_BENCHMARK_V1/final_report.md`](../../objects/72/7204ca12017f5ff341fc84cf898c7161de028c97b462883b805e8da7ec6ab0b9__final_report.md)
+- [`experiments/QWEN_ROTATION_AWARE_M5_VALIDATION_V1/final_report.md`](../../../../../experiments/qwen_gdn/metrics/QWEN_ROTATION_AWARE_M5_VALIDATION_V1/final_report.md)
+- [`experiments/QWEN_AIME26_LAST20_SEED1_DENSE_E2E_V1/final_report.md`](../../../../../experiments/qwen_gdn/dense/QWEN_AIME26_LAST20_SEED1_DENSE_E2E_V1/final_report.md)
+- [`experiments/QWEN_ROTATION_SURROGATE_VALIDATION_V1/final_report.md`](../../../../../experiments/qwen_gdn/metrics/QWEN_ROTATION_SURROGATE_VALIDATION_V1/final_report.md)
+- [`experiments/QWEN_PERSISTENT_FUNCTIONAL_SURROGATE_V1/final_report.md`](../../objects/45/45572ad30274b32b0ab5311fb3b4dbf663a780b3c197b01fb94a0ac3ad61431f__final_report.md)
+- [`experiments/QWEN_HADAMARD_TRAJECTORY_STABILITY_ANALYSIS_V1/final_report.md`](../../objects/19/19417f9e257b9a0bb66c2b0e64134d991585fc1c6743cd1bbf7595b53589021c__final_report.md)
+- [`experiments/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/final_report.md`](../../../../../experiments/qwen_gdn/replay/QWEN_TEACHER_FORCED_REPLAY_MECHANISM_CAPTURE_V1/final_report.md)
+- [`experiments/qwen_gdn/QWEN_C5_C6_AIME26_CANONICAL60_V1/reports/FINAL_REPORT.md`](../../objects/42/4248f69c3c60867581b69b2793311c39c58ba70927078b8a009c363e97c966fd__FINAL_REPORT.md)
+- [`experiments/qwen_gdn/QWEN_C5_C6_DEPLOYMENT_CLOSURE_V1/reports/FINAL_REPORT.md`](../../objects/a4/a450ff851af492374e07af24c47a3d71a63a40982d0493b45bd14aa174c20b8d__FINAL_REPORT.md)
+- [`experiments/QWEN_C5_RECURRENT_MEMORY_LIFETIME_AUDIT_V1/reports/final_report.md`](../../../../../experiments/qwen_gdn/runtime/QWEN_C5_RECURRENT_MEMORY_LIFETIME_AUDIT_V1/reports/final_report.md)
+- [`experiments/QWEN_HADAMARD_FUNCTIONAL_ERROR_GEOMETRY_ANALYSIS_V1/final_report.md`](../../objects/01/016a18de1035597286037d4d4370bf95d821967be72c5ac26a8aacec6d0660ff__final_report.md)
+- [`experiments/QWEN_AIME26_LAST20_SEED1_DENSE_E2E_V1/analysis/per_sample_scores.csv`](../../objects/04/0444179b9dcd045cbb0782e2f8e218483b760ac512794468ba3bd007267e7319__per_sample_scores.csv)
+- [`experiments/QWEN_HADAMARD_ERROR_INJECTION_FUNCTIONAL_ANALYSIS_V1/final_report.md`](../../objects/8c/8cd35df7ed1ed116f4706122dacebf73b93ee5f850fe4a41a7ea1127e1abbe16__final_report.md)
+- [`experiments/qwen_gdn/QWEN_C5_C6_DEPLOYMENT_CLOSURE_V1/reports/FINAL_REPORT_V2.md`](../../objects/7f/7fc644eea482b638258f54d9837d7f27e6a20c2bd7ba5cae8cd54024b11ef9f3__FINAL_REPORT_V2.md)
+- [`experiments/QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2/reports/final_report.md`](../../../../../experiments/qwen_gdn/recurrent_training/QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2/reports/final_report.md)
+- [`experiments/QWEN_C5_RECURRENT_MEMORY_LIFETIME_AUDIT_V1/reports/final_report_initial.md`](../../../../../experiments/qwen_gdn/runtime/QWEN_C5_RECURRENT_MEMORY_LIFETIME_AUDIT_V1/reports/final_report_initial.md)
+- [`experiments/QWEN_DENSE_TRAINING_CHECKPOINT_PROVENANCE_AUDIT_V1/reports/final_report.md`](../../../../../experiments/qwen_gdn/dense/QWEN_DENSE_TRAINING_CHECKPOINT_PROVENANCE_AUDIT_V1/reports/final_report.md)
+- [`experiments/QWEN_DATA_STORAGE_SAFE_RECLAMATION_V1/analysis/endpoint_probe_rsync_files.txt`](../../objects/01/0106aa0bf43ec56ac824940b070fa74e50c48063fb987cdf0b10500787e29e76__endpoint_probe_rsync_files.txt)
+- [`experiments/QWEN_DATA_STORAGE_SAFE_RECLAMATION_V1/hashes/endpoint_probe_source_sha256.txt`](../../objects/c7/c7d363dfc8b33c78560348305df4943154340b7dae46c4d5c7b82d6971c98a13__endpoint_probe_source_sha256.txt)
+- [`experiments/QWEN_DATA_STORAGE_SAFE_RECLAMATION_V1/analysis/endpoint_probes_source_removal.json`](../../objects/0d/0d879de22b0471262c3baf392b3752ecfd5ce7a27df853a3076820e12fe17ebe__endpoint_probes_source_removal.json)
+- [`experiments/qwen_gdn/QWEN_4X3090_PRE_AIME_STORAGE_AND_RUNTIME_AUDIT_V1/reports/FINAL_REPORT.md`](../../objects/75/75ba07c974930c8150af8c9ef01e12b22f4008cecaa0374cc81f78179efb9f06__FINAL_REPORT.md)
+- [`experiments/QWEN_DATA_STORAGE_SAFE_RECLAMATION_V1/analysis/endpoint_probe_source_inventory.json`](../../objects/b9/b9e3bf7501de6b2cfca0c197f59f98c8a1ce6c32c200e4d3f577be261f625886__endpoint_probe_source_inventory.json)
+- [`experiments/QWEN_DATA_STORAGE_SAFE_RECLAMATION_V1/analysis/endpoint_probes_archive_verification.json`](../../objects/d4/d49189244aa74dfbabf71a4d8d753c092ba0e29decb41a5a96126cd71b5ea65f__endpoint_probes_archive_verification.json)
+- [`experiments/QWEN_C5_RECURRENT_MEMORY_LIFETIME_AUDIT_V1/analysis/corrected_probe/reports/final_report.md`](../../../../../experiments/qwen_gdn/runtime/QWEN_C5_RECURRENT_MEMORY_LIFETIME_AUDIT_V1/analysis/corrected_probe/reports/final_report.md)
+- [`experiments/QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2/backward_repeatability_closure/reports/final_report.md`](../../../../../experiments/qwen_gdn/recurrent_training/QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2/backward_repeatability_closure/reports/final_report.md)
+- [`experiments/QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2/backward_repeatability_closure/trajectory_equivalence/run_endpoint_probes.sh`](../../../../../experiments/qwen_gdn/recurrent_training/QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2/backward_repeatability_closure/trajectory_equivalence/run_endpoint_probes.sh)
+- [`experiments/QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2/backward_repeatability_closure/trajectory_equivalence/reports/final_report.md`](../../objects/6d/6d63919bf90059f20a69fc2f55d48d595daa5c19cc4fd4a455eb38d21bd5cada__final_report.md)
+- [`experiments/QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2/backward_repeatability_closure/trajectory_equivalence/trajectory_endpoint_probe.py`](../../../../../experiments/qwen_gdn/recurrent_training/QWEN_RECURRENT_DENSE_C5_C6_DUAL_GPU_HORIZON_V2/backward_repeatability_closure/trajectory_equivalence/trajectory_endpoint_probe.py)
+- [`README.md`](../../objects/d2/d2298740842ddf11e956300abf1136229d4de842cd9e38d90015bc380cbb18aa__README.md)
+- [`docs/PROTOCOL.md`](../../objects/33/33c46cd7dc8084cc7268b9f915e96d2e29ead4ea2e8c25feffb8a22cc32f055f__PROTOCOL.md)
+- [`docs/EVIDENCE_MAP.md`](../../../../../docs/EVIDENCE_MAP.md)
+- [`docs/RESULT_SUMMARY.md`](../../objects/5b/5b8a670f5c7c8ea0eec3dc39c1374206ffbd56b0c37f54bb452c6d3d775e84cd__RESULT_SUMMARY.md)
+- [`docs/REPRODUCIBILITY.md`](../../../../../docs/REPRODUCIBILITY.md)
+- [`docs/RESEARCH_STATUS.md`](../../objects/af/afbd06abbc3c1af2f2c579a6faafb53305699631465af45fafa9a35407696bb5__RESEARCH_STATUS.md)
+- [`docs/SCORER_PROTOCOL.md`](../../objects/23/238b7ee361609762b3a50a00b79643a854e33b30c6fe8faf0468958dd75e57e1__SCORER_PROTOCOL.md)
+- [`docs/EXPERIMENT_INDEX.md`](../../objects/e6/e6bbb3d5fb403a9e2fd976c40f28754db3f65fb6ab8dc8a8f58a023a53da10e8__EXPERIMENT_INDEX.md)
+- [`docs/MODEL_PROVENANCE.md`](../../../../../docs/MODEL_PROVENANCE.md)
+- [`docs/server_inventory/new4090.md`](../../../../../docs/server_inventory/new4090.md)

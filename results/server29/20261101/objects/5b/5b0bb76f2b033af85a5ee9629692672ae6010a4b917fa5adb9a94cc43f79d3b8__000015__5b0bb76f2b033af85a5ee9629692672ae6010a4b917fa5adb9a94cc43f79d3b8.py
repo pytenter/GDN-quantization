@@ -1,0 +1,1 @@
+lambda _cls, eigenvalues, eigenvectors: _tuple_new(_cls, (eigenvalues, eigenvectors))

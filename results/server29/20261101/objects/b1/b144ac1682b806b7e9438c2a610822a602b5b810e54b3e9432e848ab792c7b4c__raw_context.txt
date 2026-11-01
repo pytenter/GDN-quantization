@@ -1,0 +1,404 @@
+tfce_mediation/pyfunc.py
+def convert_fs(fs_surface):
+	v, f = nib.freesurfer.read_geometry(fs_surface)
+	return v, f
+tfce_mediation/pyfunc.py
+def save_stl(v,f, outname):
+	if not outname.endswith('stl'):
+		outname += '.stl'
+	outname=check_outname(outname)
+	v = np.array(v, dtype=np.float32, order = "C")
+	f = np.array(f, dtype=np.int32, order = "C")
+	tris = v[f]
+	n = np.cross( tris[::,1 ] - tris[::,0]  , tris[::,2 ] - tris[::,0] )
+	n = normalize_v3(n)
+	with open(outname, "a") as o:
+		o.write("solid surface\n")
+		for i in range(tris.shape[0]):
+			o.write("facet normal %1.6f %1.6f %1.6f\n"% (n[i,0],n[i,0],n[i,0]))
+			o.write("outer loop\n")
+			o.write("vertex %1.6f %1.6f %1.6f\n" % (tris[i,0,0],tris[i,0,1],tris[i,0,2]))
+			o.write("vertex %1.6f %1.6f %1.6f\n" % (tris[i,1,0],tris[i,1,1],tris[i,1,2]))
+			o.write("vertex %1.6f %1.6f %1.6f\n" % (tris[i,2,0],tris[i,2,1],tris[i,2,2]))
+			o.write("endloop\n")
+			o.write("endfacet\n")
+		o.write("endfacet\n")
+		o.close()
+tfce_mediation/pyfunc.py
+def convert_bluetolightblue(threshold, img_data, baseColour=[227,218,201], save_colorbar = True):
+	color_array = np.zeros((img_data.shape[0],3))
+	color_cutoffs = np.linspace(threshold[0],threshold[1],256)
+	colored_img_data = np.zeros_like(img_data)
+	cV=0
+	for k in img_data:
+		colored_img_data[cV] = np.searchsorted(color_cutoffs, k, side="left")
+		cV+=1
+	color_array[:,1]=np.copy(colored_img_data)
+	color_array[:,2]=255
+	color_array[img_data<threshold[0]] = baseColour
+	color_array[img_data>threshold[1]] = [0,255,255]
+
+	cmap_name = 'blue_lightblue'
+	cmap_array = np.array(( np.zeros(256), np.linspace(0,255,256), (np.ones(256)*255))).T
+	blb_cmap = colors.ListedColormap(cmap_array/255)
+	if save_colorbar:
+		write_colorbar(threshold, blb_cmap, cmap_name, 'png')
+		plt.clf()
+	return color_array
+tfce_mediation/pyfunc.py
+def convert_mni_object(obj_file):
+	# adapted from Jon Pipitone's script https://gist.github.com/pipitone/8687804
+	obj = open(obj_file)
+	_, _, _, _, _, _, numpoints = obj.readline().strip().split()
+	numpoints = int(numpoints)
+	vertices=[]
+	normals=[]
+	triangles=[]
+
+	for i in range(numpoints):
+		x, y, z = list(map(float,obj.readline().strip().split())) 
+		vertices.append((x, y, z))
+	assert obj.readline().strip() == ""
+	# numpoints normals as (x,y,z)
+	for i in range(numpoints):
+		normals.append(tuple(map(float,obj.readline().strip().split())))
+
+	assert obj.readline().strip() == ""
+	nt=int(obj.readline().strip().split()[0]) # number of triangles
+	_, _, _, _, _ = obj.readline().strip().split()
+	assert obj.readline().strip() == ""
+	# rest of the file is a list of numbers
+	points = list(map(int, "".join(obj.readlines()).strip().split()))
+	points = points[nt:]	# ignore these.. (whatever they are)
+	for i in range(nt): 
+		triangles.append((points.pop(0), points.pop(0), points.pop(0)))
+	return np.array(vertices), np.array(triangles)
+tfce_mediation/pyfunc.py
+def convert_fsannot(annot_name):
+	labels, ctab, names  = nib.freesurfer.read_annot(annot_name)
+	labels[labels==-1] = 0 # why is this necessary?????
+	color_array = ctab[labels]
+	color_array = color_array[:,:3]
+	write_annot_legend(ctab, names, annot_name)
+	return color_array
+tfce_mediation/pyfunc.py
+def convert_gifti(gifti_surface):
+	img = nib.load(gifti_surface)
+	v, f = img.darrays[0].data, img.darrays[1].data
+	return v, f
+tfce_mediation/pyfunc.py
+def convert_redtoyellow(threshold,img_data, baseColour=[227,218,201], save_colorbar = True):
+	color_array = np.zeros((img_data.shape[0],3))
+	color_cutoffs = np.linspace(threshold[0],threshold[1],256)
+	colored_img_data = np.zeros_like(img_data)
+	cV=0
+	for k in img_data:
+		colored_img_data[cV] = np.searchsorted(color_cutoffs, k, side="left")
+		cV+=1
+	color_array[:,0]=255
+	color_array[:,1]=np.copy(colored_img_data)
+	color_array[img_data<threshold[0]] = baseColour
+	color_array[img_data>threshold[1]] = [255,255,0]
+
+	cmap_name = 'red_yellow'
+	cmap_array = np.array(( (np.ones(256)*255), np.linspace(0,255,256), np.zeros(256))).T
+	rl_cmap = colors.ListedColormap(cmap_array/255)
+	if save_colorbar:
+		write_colorbar(threshold, rl_cmap, cmap_name, 'png')
+		plt.clf()
+	return color_array
+tfce_mediation/pyfunc.py
+def convert_mpl_colormaps(threshold,img_data, cmapName, baseColour=[227,218,201], save_colorbar = True):
+	cmapFunc = plt.get_cmap(str(cmapName))
+	color_array = np.zeros((img_data.shape[0],3))
+	color_cutoffs = np.linspace(threshold[0],threshold[1],256)
+	cV=0
+	for k in img_data:
+		temp_ = np.array(cmapFunc(np.searchsorted(color_cutoffs, k, side="left")))*255
+		color_array[cV,:] = ((np.around(temp_[0]), np.around(temp_[1]), np.around(temp_[2])))
+		cV+=1
+	color_array[img_data<threshold[0]] = baseColour
+	temp_ = np.array(cmapFunc(np.searchsorted(color_cutoffs, color_cutoffs[255], side="left")))*255 # safer
+	color_array[img_data>=threshold[1]] = ((int(temp_[0]), int(temp_[1]), int(temp_[2])))
+	if save_colorbar:
+		write_colorbar(threshold, cmapFunc, cmapName, 'png')
+		plt.clf()
+	return color_array
+tfce_mediation/pyfunc.py
+def save_waveform(v,f, outname):
+	if not outname.endswith('obj'):
+		outname += '.obj'
+	outname=check_outname(outname)
+	with open(outname, "a") as o:
+		for i in range(len(v)):
+			o.write("v %1.6f %1.6f %1.6f\n" % (v[i,0],v[i,1], v[i,2]) )
+		for j in range(len(f)):
+			o.write("f %d %d %d\n" % (f[j,0],f[j,1], f[j,2]) )
+		o.close()
+tfce_mediation/pyfunc.py
+def convert_fslabel(name_fslabel):
+	obj = open(name_fslabel)
+	reader = obj.readline().strip().split()
+	reader = np.array(obj.readline().strip().split())
+	if reader.ndim == 1:
+		num_vertex = reader[0].astype(np.int)
+	else:
+		print('Error reading header')
+	v_id = np.zeros((num_vertex)).astype(np.int)
+	v_ras = np.zeros((num_vertex,3)).astype(np.float)
+	v_value = np.zeros((num_vertex)).astype(np.float)
+	for i in range(num_vertex):
+		reader = obj.readline().strip().split()
+		v_id[i] = np.array(reader[0]).astype(np.int)
+		v_ras[i] = np.array(reader[1:4]).astype(np.float)
+		v_value[i] = np.array(reader[4]).astype(np.float)
+	return (v_id, v_ras, v_value)
+tfce_mediation/pyfunc.py
+def save_ply(v, f, outname, color_array=None, output_binary=True):
+	# check file extension
+	if not outname.endswith('ply'):
+		if output_binary:
+			outname += '.ply'
+		else:
+			outname += '.ascii.ply'
+	outname=check_outname(outname)
+
+	# write header 
+	header = ("ply\n")
+	if output_binary:
+		header += ("format binary_%s_endian 1.0\n" % (sys.byteorder))
+		if sys.byteorder == 'little':
+			output_fmt = '<'
+		else:
+			output_fmt = '>'
+	else:
+		header += ("format ascii 1.0\n")
+	header += ("comment made with TFCE_mediation\n")
+	header += ("element vertex %d\n" % len(v))
+	header += ("property float x\n")
+	header += ("property float y\n")
+	header += ("property float z\n")
+	if color_array is not None:
+		header += ("property uchar red\n")
+		header += ("property uchar green\n")
+		header += ("property uchar blue\n")
+	header += ("element face %d\n" % len(f))
+	header += ("property list uchar int vertex_index\n")
+	header += ("end_header\n")
+
+	# write to file
+	with open(outname, "a") as o:
+		o.write(header)
+		for i in range(len(v)):
+			if output_binary:
+				if color_array is not None:
+					o.write(
+						struct.pack(output_fmt + 'fffBBB', v[i, 0], v[i, 1], v[i, 2], color_array[i, 0], color_array[i, 1], color_array[i, 2]))
+				else:
+					o.write(struct.pack(output_fmt + 'fff', v[i, 0], v[i, 1], v[i, 2]))
+			else:
+				if color_array is not None:
+					o.write("%1.6f %1.6f %1.6f %d %d %d\n" % (v[i, 0], v[i, 1], v[i, 2], color_array[i, 0], color_array[i, 1], color_array[i, 2]))
+				else:
+					o.write("%1.6f %1.6f %1.6f\n" % (v[i, 0], v[i, 1], v[i, 2]))
+		for j in range(len(f)):
+			if output_binary:
+				o.write(struct.pack('<Biii', 3, f[j, 0], f[j, 1], f[j, 2]))
+			else:
+				o.write("3 %d %d %d\n" % (f[j, 0], f[j, 1], f[j, 2]))
+tfce_mediation/pyfunc.py
+def convert_ply(name_ply):
+	element = []
+	size = []
+	vertex_info = []
+	vertex_dtype = []
+	face_dtype = []
+	face_info = []
+	vertex_property = 0
+	face_property = 0
+	ply_ascii = False
+
+	obj = open(name_ply)
+	reader = obj.readline().strip().split()
+	firstword = reader[0]
+
+	# READ HEADER
+	while firstword != 'end_header':
+		reader = obj.readline().strip().split()
+		firstword = reader[0]
+		if firstword == 'format':
+			ply_format = reader[1]
+			if ply_format == 'binary_little_endian':
+				ply_format = '<'
+			elif ply_format == 'binary_big_endian':
+				ply_format = '>'
+			else:
+				ply_ascii = True
+		if firstword == 'element':
+			element.append((reader[1]))
+			size.append((reader[2]))
+			if reader[1] == 'vertex':
+				vertex_property = 1
+			else:
+				vertex_property = 0
+			if reader[1] == 'face':
+				face_property = 1
+			else:
+				face_property = 0
+		if reader[0] == 'property':
+			if vertex_property == 1:
+				vertex_dtype.append((reader[1]))
+				vertex_info.append((reader[2]))
+			elif face_property == 1:
+				face_dtype.append((reader[2]))
+				face_dtype.append((reader[3]))
+				face_info.append((reader[4]))
+			else:
+				print("Unknown property")
+
+	# READ ELEMENTS
+	for e in range(len(element)):
+		# VERTEX DATA
+		if element[e] == 'vertex':
+			v = np.zeros((int(size[e]), 3), dtype=np.float32)
+			c = np.zeros((int(size[e]), 3), dtype=np.uint8)
+			if ply_ascii:
+				for i in range(int(size[e])):
+					reader = obj.readline().strip().split()
+					v[i, 0] = np.array(reader[0]).astype(np.float)
+					v[i, 1] = np.array(reader[1]).astype(np.float)
+					v[i, 2] = np.array(reader[2]).astype(np.float)
+					if len(vertex_info) == 6:
+						c[i, 0] = np.array(reader[3]).astype(np.uint8)
+						c[i, 1] = np.array(reader[4]).astype(np.uint8)
+						c[i, 2] = np.array(reader[5]).astype(np.uint8)
+			else:
+				struct_fmt = ply_format
+				for i in range(len(vertex_dtype)):
+					if vertex_dtype[i] == 'float':
+						struct_fmt += 'f'
+					if vertex_dtype[i] == 'uchar':
+						struct_fmt += 'B'
+					if vertex_dtype[i] == 'int':
+						struct_fmt += 'i'
+				struct_len = struct.calcsize(struct_fmt)
+				struct_unpack = struct.Struct(struct_fmt).unpack_from
+				vcounter = 0
+				while vcounter != int(size[e]):
+					if len(vertex_dtype) > 3:
+						s = struct_unpack(obj.read(struct_len))
+						v[vcounter] = s[:3]
+						c[vcounter] = s[3:]
+						vcounter += 1
+					else:
+						s = struct_unpack(obj.read(struct_len))
+						v[vcounter] = s[:3]
+						vcounter += 1
+		# FACE DATA
+		if element[e] == 'face':
+			if ply_ascii:
+				reader = obj.readline().strip().split()
+				numf = int(reader[0])
+				f = np.zeros((int(size[e]), numf), dtype=np.int32)
+				f[0] = reader[1:]
+				fcounter = 1
+				while fcounter != int(size[e]):
+					reader = obj.readline().strip().split()
+					f[fcounter] = reader[1:]
+					fcounter += 1
+			else:
+				if face_dtype[0] == 'uchar':
+					fcounter = 0
+					while fcounter != int(size[e]):
+						struct_unpack = struct.Struct(ply_format + 'B').unpack_from
+						numf = struct_unpack(obj.read(1))[0]
+						# creates empty face array if it doesn't exists
+						try:
+							f
+						except NameError:
+							f = np.zeros((int(size[e]), numf), dtype=np.int32)
+						struct_fmt = ply_format
+						for i in range(int(numf)):
+							struct_fmt += 'i'
+						struct_len = struct.calcsize(struct_fmt)
+						struct_unpack = struct.Struct(struct_fmt).unpack_from
+						s = struct_unpack(obj.read(struct_len))
+						f[fcounter] = s
+						fcounter += 1
+	return (v, f, c)
+tfce_mediation/pyfunc.py
+def save_fs(v,f, outname):
+	if not outname.endswith('srf'):
+		outname += '.srf'
+	outname=check_outname(outname)
+	nib.freesurfer.io.write_geometry(outname, v, f)
+tfce_mediation/pyfunc.py
+def convert_voxel(img_data, affine = None, threshold = None, data_mask = None, absthreshold = None):
+	"""
+	Converts a voxel image to a surface including outputs voxel values to paint vertex surface.
+	
+	Parameters
+	----------
+	img_data : array
+		image array
+	affine : array
+		 affine [4x4] to convert vertices values to native space (Default = None)
+	data_mask : array
+		use a mask to create a surface backbone (Default = None)
+	threshold : float
+		threshold for output of voxels (Default = None)
+	absthreshold : float
+		threshold for output of abs(voxels) (Default = None)
+		
+	Returns
+	-------
+		v : array
+			vertices
+		f : array
+			faces
+		values : array
+			scalar values
+	
+	"""
+	try:
+		from skimage import measure
+	except:
+		print("Error skimage is required")
+		quit()
+
+	if threshold is not None:
+		print("Zeroing data less than threshold = %1.2f" % threshold)
+		img_data[img_data<threshold] = 0
+	if absthreshold is not None:
+		print("Zeroing absolute values less than threshold = %1.2f" % absthreshold)
+		img_data[np.abs(img_data)<absthreshold] = 0
+	if data_mask is not None:
+		print("Including mask")
+		data_mask *= .1
+		data_mask[img_data!=0] = img_data[img_data!=0]
+		del img_data
+		img_data = np.copy(data_mask)
+	try:
+		v, f, _, values = measure.marching_cubes_lewiner(img_data)
+		if affine is not None:
+			print("Applying affine transformation")
+			v = nib.affines.apply_affine(affine,v)
+	except:
+		print("No voxels above threshold")
+		v = f = values = []
+	return v, f, values
+tfce_mediation/tm_io.py
+def savemgh_v2(image_array, index, imagename, affine=None):
+	if not imagename.endswith('mgh'):
+		imagename += '.mgh'
+	outdata = image_array.astype(np.float32, order = "C")
+	if image_array.ndim == 1:
+		imgout = np.zeros((index.shape[0],index.shape[1],index.shape[2]))
+		imgout[index]=outdata
+	elif image_array.shape[1] > 1:
+		imgout = np.zeros((index.shape[0],index.shape[1],index.shape[2],image_array.shape[1]))
+		imgout[index]=outdata
+	else:
+		imgout = np.zeros((index.shape[0],index.shape[1],index.shape[2]))
+		imgout[index]=outdata[:,0]
+	nib.save(nib.freesurfer.mghformat.MGHImage(imgout.astype(np.float32, order = "C"),affine=affine),imagename)

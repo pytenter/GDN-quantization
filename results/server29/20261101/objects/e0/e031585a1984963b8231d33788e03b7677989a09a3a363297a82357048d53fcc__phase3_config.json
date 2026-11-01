@@ -1,0 +1,69 @@
+{
+  "aime_used_for_selection": false,
+  "capture_convention": "after h consumed tokens: input index h-1, target index h",
+  "conditions": [
+    "FP",
+    "H",
+    "L6",
+    "L7"
+  ],
+  "experiment": "LING_L6_L7_OBJECTIVE_HORIZON_DIAGNOSIS_V1",
+  "fp_repeat_hash_gate": "exact state/local/final-hidden/logit hashes at every capture",
+  "fp_repeated_for_streaming_reference": true,
+  "full_logits_storage": "NONE; one FP/condition token pair transient, then discarded",
+  "horizons": [
+    128,
+    512,
+    2048,
+    8192,
+    32768
+  ],
+  "input_root": "/data01/user2/diagnostic_inputs/ling_phase3_pg19_test_20261002",
+  "max_memory_gib": 20,
+  "model_path": "/data01/user2/models/Ling-3.0-tiny",
+  "new_aime_generation": 0,
+  "new_training_started": false,
+  "persistent_pair_execution": [
+    "FP/H",
+    "FP/L6",
+    "FP/L7"
+  ],
+  "phase": "LONG_HORIZON_PERSISTENT_VS_RESET512",
+  "phase2_commit": "ec4cae00a92d7780bcad1c987611fb443d48ea05",
+  "preparation_script_sha256": "65e825907bfa40f9c8912cba8415f1e607594cfdc4b18f87f5e2728bae643e5d",
+  "primary_downstream": [
+    "final_hidden_relative_mse",
+    "full_vocabulary_kl_fp_to_condition"
+  ],
+  "primary_surrogate": {
+    "L6": "state_relative_mse",
+    "L7": "local_functional_relative_mse"
+  },
+  "primary_window": "last64_mean; input indices [h-64,h)",
+  "prohibited": [
+    "training",
+    "backward",
+    "optimizer.step",
+    "AIME generation",
+    "checkpoint search",
+    "push"
+  ],
+  "python_executable": "/data01/user2/.conda/envs/ling-sglang-aime26/bin/python",
+  "quantizer": "REUSE_PHASE2.qdq_cache_UNCHANGED",
+  "reset_horizons": [
+    512,
+    2048,
+    8192,
+    32768
+  ],
+  "reset_initialization": "clone ALL cache tensors/metadata; rotate only KDA keys once, QDQ/writeback before suffix; leave conv/attention cache unchanged",
+  "reset_student_tokens": 512,
+  "runtime": "REUSE_PHASE2_UNCHANGED",
+  "secondary": [
+    "final_hidden_cosine_error",
+    "target_token_delta_nll",
+    "fp_reference_logit_margin_degradation",
+    "top1_agreement"
+  ],
+  "teacher_forced": true
+}

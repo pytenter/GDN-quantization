@@ -1,0 +1,17 @@
+--- /data/zypan/worktrees/qwen-gdn-frozen-drive-anchor-mechanism-v1/experiments/QWEN_GDN_FROZEN_DRIVE_ANCHOR_MECHANISM_V1/amendments/STORAGE_ACCOUNTING_CORRECTION_V1/scripts/capture_extended_drive.py
++++ /data/zypan/worktrees/qwen-gdn-frozen-drive-anchor-mechanism-v1/experiments/QWEN_GDN_FROZEN_DRIVE_ANCHOR_MECHANISM_V1/amendments/CAPTURE_KEY_SHADOWING_BUGFIX_V1/scripts/capture_extended_drive.py
+@@ -74,10 +74,10 @@
+             assert kwargs.get('use_qk_l2norm_in_kernel') is True and kwargs.get('output_final_state') is True
+             assert kwargs.get('cu_seqlens') is None
+             record={k:t.detach().cpu().clone() for k,t in [('query',query),('key',key),('value',value),('g',kwargs['g']),('beta',kwargs['beta'])]}
+-            for key,t in record.items():
+-                assert str(t.dtype)==base['expected_dtype'][key]
+-                assert list(t.shape)==(base['required_qkv_shape'] if key in ['query','key','value'] else base['required_g_beta_shape'])
+-                assert bool(torch.isfinite(t).all());dtypes[key]=str(t.dtype)
++            for field_name,t in record.items():
++                assert str(t.dtype)==base['expected_dtype'][field_name]
++                assert list(t.shape)==(base['required_qkv_shape'] if field_name in ['query','key','value'] else base['required_g_beta_shape'])
++                assert bool(torch.isfinite(t).all());dtypes[field_name]=str(t.dtype)
+             result,state=function(query,key,value,**kwargs)
+             assert list(state.shape)==[1,32,128,128] and str(state.dtype)==base['expected_dtype']['state']
+             state_cpu=state.detach().cpu().clone();assert bool(torch.isfinite(state_cpu).all())

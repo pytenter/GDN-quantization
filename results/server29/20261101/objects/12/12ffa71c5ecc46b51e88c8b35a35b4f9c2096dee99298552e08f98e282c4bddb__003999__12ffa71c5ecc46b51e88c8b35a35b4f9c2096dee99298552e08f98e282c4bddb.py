@@ -1,0 +1,10 @@
+def __create_fn__(_type_project_dir, _type_logging_dir, _type_automatic_checkpoint_naming, _type_total_limit, _type_iteration, _type_save_on_each_node, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_project_dir, _dflt_logging_dir, _dflt_automatic_checkpoint_naming, _dflt_total_limit, _dflt_iteration, _dflt_save_on_each_node, _return_type):
+ def __init__(self,project_dir:_type_project_dir=_dflt_project_dir,logging_dir:_type_logging_dir=_dflt_logging_dir,automatic_checkpoint_naming:_type_automatic_checkpoint_naming=_dflt_automatic_checkpoint_naming,total_limit:_type_total_limit=_dflt_total_limit,iteration:_type_iteration=_dflt_iteration,save_on_each_node:_type_save_on_each_node=_dflt_save_on_each_node)->_return_type:
+  self.project_dir=project_dir
+  self.logging_dir=logging_dir
+  self.automatic_checkpoint_naming=automatic_checkpoint_naming
+  self.total_limit=total_limit
+  self.iteration=iteration
+  self.save_on_each_node=save_on_each_node
+  self.__post_init__()
+ return __init__

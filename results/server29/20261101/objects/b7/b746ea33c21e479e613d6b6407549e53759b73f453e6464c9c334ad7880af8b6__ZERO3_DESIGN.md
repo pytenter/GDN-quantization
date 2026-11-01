@@ -1,0 +1,5 @@
+# ZeRO-3 design and observed setup
+
+Pure two-rank ZeRO Stage 3, BF16, no CPU/NVMe offload, PP, TP or activation checkpointing. Frozen canonical Qwen3.5-9B weights were loaded through the Transformers `HfDeepSpeedConfig` ZeRO-3 integration. Frozen model has 8,953,803,264 logical parameters. The 195,072-parameter Cayley rotation bank was created under `deepspeed.zero.Init` because the ZeRO-3 Adam optimizer requires partition metadata. It remained separate from `engine.module`; the optimizer was constructed from rotation parameters only. This is permitted by the protocol but introduces untested external-parameter lifecycle risk.
+
+First load attempt failed before forward because the separately created bank lacked `partition_numel`; the exact error is preserved. The one setup correction moved bank creation into ZeRO initialization. Second load passed. H1 teacher forward subsequently failed and ended this route. No change was made to the frozen V1 model, QDQ, rotation formula, objective or source.

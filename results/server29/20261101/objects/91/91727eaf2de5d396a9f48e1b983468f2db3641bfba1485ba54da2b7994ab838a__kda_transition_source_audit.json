@@ -1,0 +1,96 @@
+{
+  "QDQ": "after actual FP32 fused final state, Value-axis amax/127 ties-even clip[-127,127], dequant immediate recurrent writeback; no FP reset",
+  "Value_rotation": "state_rotated=state_native@R; v_rotated=v_native@R then original v dtype; recover state_native=state_rotated@R.T",
+  "beta": "already processed beta; use_beta_sigmoid_in_kernel=False",
+  "full_transition": true,
+  "gate": "PASS",
+  "historical_SGLang_layout": "[V,K] with stored=R.T@native; transpose corresponds to current [K,V] native@R",
+  "key": "raw frozen key normalized in actual kernel: k/sqrt(sum(k^2)+1e-6)",
+  "layer_ids": [
+    0,
+    1,
+    2,
+    4,
+    5,
+    6,
+    8,
+    9,
+    10,
+    12,
+    13,
+    14,
+    16,
+    17,
+    18,
+    20,
+    21,
+    22
+  ],
+  "log_decay": "canonical final_log_decay; not raw g; exp(log_decay) on key axis",
+  "new_AIME_generation": 0,
+  "new_model_forward": false,
+  "rank1_erase_retained": true,
+  "recurrence": "D_t S + beta_t k_t (v_t - k_t^T D_t S)^T; M_t=(I-beta_t k_t k_t^T) D_t",
+  "smoke_trace": {
+    "bytes": 264876905,
+    "path": "/data01/user2/worktrees/ling-l6-l7-objective-horizon-diagnosis-v1/experiments/LING_L7R_L8_LAYER_AWARE_MATCHED_TRAINING_V3_CONTEMPORARY/inputs/traces/wikitext2raw-train-000.pt",
+    "sha256": "29aa96c6a9912cb03dae8935db7a5f9f2dcc6bf122b913a1b8f3e54efcd3e8cb"
+  },
+  "sources": [
+    {
+      "bytes": 6339,
+      "line_end": 74,
+      "line_start": 11,
+      "path": "/data01/user2/worktrees/ling-l6-l7-objective-horizon-diagnosis-v1/experiments/LING_L7R_L8_LAYER_AWARE_MATCHED_TRAINING_V2_CLEANROOM/runtime/env/lib/python3.11/site-packages/fla/ops/kda/naive.py",
+      "sha256": "60a32285d4b67068ff633b48bbe8ab31028066d24f00d27e12199a88fc73f016",
+      "source": "\ndef naive_recurrent_kda(\n    q: torch.Tensor,\n    k: torch.Tensor,\n    v: torch.Tensor,\n    g: torch.Tensor,\n    beta: torch.Tensor,\n    scale: float | None = None,\n    initial_state: torch.Tensor | None = None,\n    output_final_state: bool = False,\n):\n    r\"\"\"\n    Args:\n        q (torch.Tensor):\n            Queries of shape ``[B, T, H, K]``.\n        k (torch.Tensor):\n            Keys of shape ``[B, T, H, K]``.\n        v (torch.Tensor):\n            Values of shape ``[B, T, HV, V]``. ``HV`` must be divisible by ``H``.\n        g (torch.Tensor):\n            Per-dimension decay gates (log-space) of shape ``[B, T, HV, K]``.\n        beta (torch.Tensor):\n            Beta scalars of shape ``[B, T, HV]``.\n        scale (Optional[float]):\n            Scale factor. Defaults to ``1 / sqrt(K)``.\n        initial_state (Optional[torch.Tensor]):\n            Initial state of shape ``[B, HV, K, V]``.\n        output_final_state (bool):\n            Whether to return the final state.\n\n    Returns:\n        A tuple ``(o, S)`` where ``o`` has shape ``[B, T, HV, V]`` and\n        ``S`` has shape ``[B, HV, K, V]`` if ``output_final_state`` else ``None``.\n    \"\"\"\n    dtype = v.dtype\n    B, T, H, K, HV, V = *q.shape, v.shape[2], v.shape[-1]\n    G = HV // H\n    if scale is None:\n        scale = K ** -0.5\n\n    q, k, v, g, beta = map(lambda x: x.to(torch.float), [q, k, v, g, beta])\n    q = q.repeat_interleave(G, dim=2) * scale   # [B, T, HV, K]\n    k = k.repeat_interleave(G, dim=2)           # [B, T, HV, K]\n\n    S = k.new_zeros(B, HV, K, V).to(q)\n    if initial_state is not None:\n        S += initial_state\n    o = torch.zeros_like(v)\n    for i in range(0, T):\n        q_i, k_i, v_i, g_i, b_i = q[:, i], k[:, i], v[:, i], g[:, i], beta[:, i]\n        S = S * g_i[..., None].exp()\n        S = S + torch.einsum('b h k, b h v -> b h k v', b_i[..., None] * k_i, v_i - (k_i[..., None] * S).sum(-2))\n        o[:, i] = torch.einsum('b h k, b h k v -> b h v', q_i, S)\n    if not output_final_state:\n        S = None\n    return o.to(dtype), S\n\n\ndef naive_chunk_kda(\n    q: torch.Tensor,\n    k: torch.Tensor,\n    v: torch.Tensor,\n    g: torch.Tensor,\n    beta: torch.Tensor,"
+    },
+    {
+      "bytes": 17962,
+      "line_end": 202,
+      "line_start": 135,
+      "path": "/data01/user2/worktrees/ling-l6-l7-objective-horizon-diagnosis-v1/experiments/LING_L7R_L8_LAYER_AWARE_MATCHED_TRAINING_V2_CLEANROOM/runtime/env/lib/python3.11/site-packages/fla/ops/kda/fused_recurrent.py",
+      "sha256": "d2d44359655433bf80cd5068191359ae8be85952c01b47d76097d254cd3bf151",
+      "source": "                )\n                * stride_init_state_token\n            )\n            if STATE_V_FIRST:\n                p_h0 = p_h0 + i_hv * K * V + o_v[:, None] * K + o_k[None, :]\n            else:\n                p_h0 = p_h0 + i_hv * K * V + o_k[:, None] * V + o_v[None, :]\n        else:\n            if STATE_V_FIRST:\n                p_h0 = h0 + (i_n * HV + i_hv) * K * V + o_v[:, None] * K + o_k[None, :]\n            else:\n                p_h0 = h0 + (i_n * HV + i_hv) * K * V + o_k[:, None] * V + o_v[None, :]\n        b_h += tl.load(p_h0, mask=mask_h, other=0).to(tl.float32)\n\n    for i_t in tl.range(0, T, num_stages=num_stages):\n        b_q = tl.load(p_q, mask=mask_k, other=0, eviction_policy='evict_last').to(tl.float32)\n        b_k = tl.load(p_k, mask=mask_k, other=0, eviction_policy='evict_last').to(tl.float32)\n        b_v = tl.load(p_v, mask=mask_v, other=0, eviction_policy='evict_first').to(tl.float32)\n\n        if USE_QK_L2NORM_IN_KERNEL:\n            b_q = b_q / tl.sqrt(tl.sum(b_q * b_q) + 1e-6)\n            b_k = b_k / tl.sqrt(tl.sum(b_k * b_k) + 1e-6)\n        b_q = b_q * scale\n        b_g = tl.load(p_g, eviction_policy='evict_last').to(tl.float32)\n\n        if USE_GATE_IN_KERNEL:\n            b_A = tl.load(A_log + i_hv).to(tl.float32)\n\n            if HAS_DT_BIAS:\n                b_bias = tl.load(dt_bias + i_hv * K + o_k, mask=mask_k, other=0).to(tl.float32)\n                b_g = b_g + b_bias\n\n            if USE_LOWER_BOUND:\n                b_gk = lower_bound * tl.sigmoid(exp(b_A) * b_g)\n            else:\n                b_gk = -exp(b_A) * softplus(b_g)\n        else:\n            b_gk = b_g\n\n        if STATE_V_FIRST:\n            b_h *= exp(b_gk[None, :])\n        else:\n            b_h *= exp(b_gk[:, None])\n\n        if STATE_V_FIRST:\n            b_v -= tl.sum(b_h * b_k[None, :], 1)\n        else:\n            b_v -= tl.sum(b_h * b_k[:, None], 0)\n        if IS_BETA_HEADWISE:\n            b_beta = tl.load(p_beta, mask=mask_v, other=0, eviction_policy='evict_first').to(tl.float32)\n        else:\n            b_beta = tl.load(p_beta, eviction_policy='evict_last').to(tl.float32)\n        if APPLY_BETA_SIGMOID:\n            b_beta = tl.sigmoid(b_beta)\n            if ALLOW_NEG_EIGVAL:\n                b_beta = b_beta * 2\n        b_v *= b_beta\n        if STATE_V_FIRST:\n            b_h += b_v[:, None] * b_k[None, :]\n            b_o = tl.sum(b_h * b_q[None, :], 1)\n        else:\n            b_h += b_k[:, None] * b_v[None, :]\n            b_o = tl.sum(b_h * b_q[:, None], 0)\n        tl.store(p_o, b_o.to(p_o.dtype.element_ty), mask=mask_v, eviction_policy='evict_first')\n\n        if IS_CONTINUOUS_BATCHING:\n            if INPLACE_FINAL_STATE:\n                p_ht = ("
+    },
+    {
+      "bytes": 17962,
+      "line_end": 329,
+      "line_start": 245,
+      "path": "/data01/user2/worktrees/ling-l6-l7-objective-horizon-diagnosis-v1/experiments/LING_L7R_L8_LAYER_AWARE_MATCHED_TRAINING_V2_CLEANROOM/runtime/env/lib/python3.11/site-packages/fla/ops/kda/fused_recurrent.py",
+      "sha256": "d2d44359655433bf80cd5068191359ae8be85952c01b47d76097d254cd3bf151",
+      "source": "    inplace_final_state: bool = True,\n    state_v_first: bool = False,\n    cu_seqlens: torch.LongTensor | None = None,\n    ssm_state_indices: torch.Tensor | None = None,\n    num_accepted_tokens: torch.Tensor | None = None,\n    use_qk_l2norm_in_kernel: bool = False,\n    use_gate_in_kernel: bool = False,\n    use_beta_sigmoid_in_kernel: bool = False,\n    allow_neg_eigval: bool = False,\n    lower_bound: float | None = None,\n    out: torch.Tensor | None = None,\n    **kwargs,\n) -> tuple[torch.Tensor, torch.Tensor]:\n    if scale is None:\n        scale = k.shape[-1] ** -0.5\n\n    B, T, H, K, V = *k.shape, v.shape[-1]\n    HV = v.shape[2]\n    N = B if cu_seqlens is None else len(cu_seqlens) - 1\n    BK = triton.next_power_of_2(K)\n    BV = 32\n\n    if out is None:\n        out = torch.zeros_like(v)\n    else:\n        assert out.shape == v.shape\n    if inplace_final_state:\n        assert initial_state is not None\n        final_state = initial_state\n    elif output_final_state:\n        if state_v_first:\n            final_state = q.new_empty(N, HV, V, K, dtype=torch.float32)\n        else:\n            final_state = q.new_empty(N, HV, K, V, dtype=torch.float32)\n    else:\n        final_state = None\n\n    stride_init_state_token = initial_state.stride(0) if initial_state is not None else 1\n    stride_final_state_token = final_state.stride(0) if final_state is not None else 1\n\n    if ssm_state_indices is None:\n        stride_indices_seq, stride_indices_tok = 1, 1\n    elif ssm_state_indices.ndim == 1:\n        stride_indices_seq, stride_indices_tok = ssm_state_indices.stride(0), 1\n    else:\n        stride_indices_seq, stride_indices_tok = ssm_state_indices.stride()\n\n    grid = (triton.cdiv(V, BV) * N * HV, )\n    fused_recurrent_kda_fwd_kernel[grid](\n        q=q,\n        k=k,\n        v=v,\n        g=g,\n        beta=beta,\n        A_log=A_log,\n        dt_bias=dt_bias,\n        o=out,\n        h0=initial_state,\n        ht=final_state,\n        cu_seqlens=cu_seqlens,\n        ssm_state_indices=ssm_state_indices,\n        num_accepted_tokens=num_accepted_tokens,\n        lower_bound=lower_bound,\n        scale=scale,\n        N=N,\n        T=T,\n        H=H,\n        HV=HV,\n        K=K,\n        V=V,\n        BK=BK,\n        BV=BV,\n        stride_init_state_token=stride_init_state_token,\n        stride_final_state_token=stride_final_state_token,\n        stride_indices_seq=stride_indices_seq,\n        stride_indices_tok=stride_indices_tok,\n        IS_BETA_HEADWISE=beta.ndim == v.ndim,\n        USE_QK_L2NORM_IN_KERNEL=use_qk_l2norm_in_kernel,\n        INPLACE_FINAL_STATE=inplace_final_state,\n        USE_GATE_IN_KERNEL=use_gate_in_kernel,\n        APPLY_BETA_SIGMOID=use_beta_sigmoid_in_kernel,\n        ALLOW_NEG_EIGVAL=allow_neg_eigval,\n        STATE_V_FIRST=state_v_first,\n        num_warps=4,\n        num_stages=2,"
+    },
+    {
+      "bytes": 38892,
+      "line_end": 339,
+      "line_start": 253,
+      "path": "/data01/user2/worktrees/ling-l6-l7-objective-horizon-diagnosis-v1/experiments/LING_L7R_L8_LAYER_AWARE_MATCHED_TRAINING_V3_CONTEMPORARY/inputs/historical_trainer.py",
+      "sha256": "d1c433598875ea84c80c6f6d4fb5fe48088d5ca0bf44ccff9d950a77560fd9ae",
+      "source": "def exact_qdq(cayley, value: torch.Tensor, ste: bool):\n    boundary = value.to(torch.bfloat16).float()\n    return cayley.ling_r128_ste(boundary) if ste else cayley.ling_r128_qdq(boundary)\n\n\ndef fused(probe, record: dict, state: torch.Tensor, value: torch.Tensor, token: int):\n    return probe.orig_fused(\n        q=record[\"q\"][:, token : token + 1],\n        k=record[\"k\"][:, token : token + 1],\n        v=value,\n        g=record[\"log_decay\"][:, token : token + 1].float(),\n        beta=record[\"beta\"][:, token : token + 1].float(),\n        initial_state=state,\n        output_final_state=True,\n        use_qk_l2norm_in_kernel=True,\n        use_gate_in_kernel=False,\n    )\n\n\ndef local_output(model, layer: int, native_core: torch.Tensor, gate: torch.Tensor) -> torch.Tensor:\n    attention = model.model.layers[layer].attention\n    dtype = attention.o_proj.weight.dtype\n    norm = attention.o_norm(native_core.to(dtype), gate.to(device=native_core.device, dtype=dtype))\n    return attention.o_proj(norm.reshape(norm.shape[0], norm.shape[1], -1))\n\n\ndef relative_state_loss(student_native: torch.Tensor, teacher_native: torch.Tensor) -> torch.Tensor:\n    numerator = (student_native.float() - teacher_native.float()).square().sum(dim=(-2, -1))\n    denominator = teacher_native.float().square().sum(dim=(-2, -1)).clamp_min(EPS)\n    return (numerator / denominator).mean()\n\n\ndef relative_mse(value: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:\n    numerator = (value.float() - reference.float()).square().sum()\n    denominator = reference.float().square().sum().clamp_min(EPS)\n    return numerator / denominator\n\n\ndef init_states(trace: dict, records: dict[int, dict], rotations: dict[int, torch.Tensor], cayley, ste: bool):\n    teacher, student = {}, {}\n    for layer in trace[\"layers\"]:\n        teacher[layer] = records[layer][\"initial_teacher_state\"].float()\n        student[layer] = exact_qdq(cayley, teacher[layer].matmul(rotations[layer]), ste).dequant.to(torch.bfloat16).float()\n    return teacher, student\n\n\ndef rollout_chunk(\n    *,\n    model,\n    probe,\n    cayley,\n    bank,\n    h,\n    trace,\n    records,\n    teacher,\n    student,\n    start,\n    end,\n    objective,\n    grad,\n    provenance,\n):\n    layers = tuple(int(x) for x in trace[\"layers\"])\n    rotations = final_rotations(bank, h, layers)\n    state_total = torch.zeros((), device=h.device)\n    functional_total = torch.zeros((), device=h.device)\n    for token in range(start, end):\n        for layer in layers:\n            rec = records[layer]\n            r = rotations[layer]\n            teacher_prev = teacher[layer]\n            student_prev = student[layer]\n            teacher_out, teacher_next = fused(\n                probe, rec, teacher_prev, rec[\"v\"][:, token : token + 1], token\n            )\n            value_rot = rec[\"v\"][:, token : token + 1].float().matmul(r).to(torch.bfloat16)\n            student_out_rot, student_unquantized_next = fused(probe, rec, student_prev, value_rot, token)\n            quant = exact_qdq(cayley, student_unquantized_next, grad)\n            student_post = quant.dequant.to(torch.bfloat16).float()\n            student_native = student_post.matmul(r.transpose(0, 1))\n            state_total = state_total + relative_state_loss(student_native, teacher_next) / len(layers)\n            if objective == \"L7_RECURRENT_DENSE_FUNCTIONAL\":\n                mapped = student_out_rot.float().matmul(r.transpose(0, 1)).to(torch.bfloat16)\n                gate = rec[\"dynamic_gate\"][:, token : token + 1]\n                output = local_output(model, layer, mapped, gate)\n                target = rec[\"out_proj_output\"][:, token : token + 1]"
+    },
+    {
+      "bytes": 43515,
+      "line_end": 222,
+      "line_start": 174,
+      "path": "/data01/user2/worktrees/ling-l6-l7-objective-horizon-diagnosis-v1/experiments/LING_L6_L7_OBJECTIVE_HORIZON_DIAGNOSIS_V1/scripts/phase2_final_hidden_512_smoke.py",
+      "sha256": "74c1d06bb3eb27b1adb4e3ae566616d3f76b85388f643eba876d605e069375c4",
+      "source": "        if tuple(idx for idx, _ in modules) != LAYERS:\n            raise RuntimeError(f\"unexpected KDA layers: {[idx for idx, _ in modules]}\")\n        self.globals = type(modules[0][1]).forward.__globals__\n        self.orig_chunk = self.globals[\"chunk_kda\"]\n        self.orig_fused = self.globals[\"fused_recurrent_kda\"]\n        self.globals[\"chunk_kda\"] = self._wrap(self.orig_chunk)\n        self.globals[\"fused_recurrent_kda\"] = self._wrap(self.orig_fused)\n        return [idx for idx, _ in modules]\n\n    def _pre_hook(self, idx):\n        def hook(_module, _inputs):\n            self.current_layer = int(idx)\n        return hook\n\n    def begin(self, name: str, basis: str, rotations: dict[int, torch.Tensor] | None):\n        self.branch = name\n        self.plan = Plan(name, basis)\n        self.rotations = rotations or {}\n\n    def end(self):\n        self.branch = None\n        self.plan = None\n        self.current_layer = None\n        self.rotations = {}\n\n    def _wrap(self, fn):\n        def wrapped(**kwargs):\n            if self.plan is None:\n                return fn(**kwargs)\n            call = dict(kwargs)\n            call[\"g\"] = self.decay.final_log_decay(\n                call[\"g\"], call.get(\"A_log\"), call.get(\"dt_bias\"), call.get(\"lower_bound\"),\n                bool(call.get(\"use_gate_in_kernel\", False)),\n            ).float()\n            call[\"use_gate_in_kernel\"] = False\n            rotation = None\n            if self.plan.basis == \"rotated\":\n                rotation = self.rotations[int(self.current_layer)].to(call[\"v\"].device, torch.float32)\n                call[\"v\"] = call[\"v\"].float().matmul(rotation).to(call[\"v\"].dtype)\n            out, state = fn(**call)\n            if rotation is not None:\n                out = out.float().matmul(rotation.t()).to(out.dtype)\n            return out, state\n        return wrapped\n\n    def close(self):\n        for h in self.handles:\n            h.remove()\n        self.handles = []"
+    },
+    {
+      "bytes": 43515,
+      "line_end": 345,
+      "line_start": 320,
+      "path": "/data01/user2/worktrees/ling-l6-l7-objective-horizon-diagnosis-v1/experiments/LING_L6_L7_OBJECTIVE_HORIZON_DIAGNOSIS_V1/scripts/phase2_final_hidden_512_smoke.py",
+      "sha256": "74c1d06bb3eb27b1adb4e3ae566616d3f76b85388f643eba876d605e069375c4",
+      "source": "        scale = source.abs().amax(dim=-1, keepdim=True).clamp_min(EPS) / 127.0\n        codes = torch.round(source / scale).clamp(-127, 127)\n        dequant = codes * scale\n        if not bool(torch.isfinite(dequant).all().item()):\n            raise RuntimeError(f\"nonfinite QDQ layer {layer}\")\n        record = {\n            \"prequant_sha256\": tensor_sha256(source),\n            \"scale_sha256\": tensor_sha256(scale),\n            \"qcodes_sha256\": tensor_sha256(codes.to(torch.int8)),\n            \"postquant_sha256\": tensor_sha256(dequant),\n            \"state_shape\": list(source.shape),\n            \"state_dtype\": str(state.dtype),\n            \"qrange\": [int(codes.min().item()), int(codes.max().item())],\n        }\n        if capture_full:\n            record[\"prequant\"] = source.cpu().clone()\n            record[\"scale\"] = scale.cpu().clone()\n            record[\"qcodes\"] = codes.to(torch.int8).cpu().clone()\n            record[\"postquant\"] = dequant.cpu().clone()\n        audit[int(layer)] = record\n        with torch.inference_mode():\n            state.copy_(dequant.to(device=state.device, dtype=state.dtype))\n        post[int(layer)] = dequant.cpu().clone() if capture_full else None\n    return audit, post\n\n"
+    },
+    {
+      "bytes": 13904,
+      "path": "/data01/user2/worktrees/ling-l6-l7-objective-horizon-diagnosis-v1/experiments/LING_L7R_L8_LAYER_AWARE_MATCHED_TRAINING_V2_CLEANROOM/runtime/env/lib/python3.11/site-packages/fla/ops/kda/gate.py",
+      "sha256": "04fc6aa1857eb216ddecc354480285014c25dded74fa646491e9c17e7e11ef35"
+    }
+  ],
+  "state_layout": "[B,HV,K,V]; Ling observed B=1,H=HV=16,K=V=128",
+  "write": "beta k v^T after erase; zero-write sets v=0, not beta=0"
+}

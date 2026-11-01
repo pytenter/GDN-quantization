@@ -1,0 +1,7 @@
+def __create_fn__(_type_num_image_tokens, _type_num_video_tokens, _type_num_audio_tokens, _type_num_image_patches, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_num_image_tokens, _dflt_num_video_tokens, _dflt_num_audio_tokens, _dflt_num_image_patches, _return_type):
+ def __init__(self,num_image_tokens:_type_num_image_tokens=_dflt_num_image_tokens,num_video_tokens:_type_num_video_tokens=_dflt_num_video_tokens,num_audio_tokens:_type_num_audio_tokens=_dflt_num_audio_tokens,num_image_patches:_type_num_image_patches=_dflt_num_image_patches)->_return_type:
+  self.num_image_tokens=num_image_tokens
+  self.num_video_tokens=num_video_tokens
+  self.num_audio_tokens=num_audio_tokens
+  self.num_image_patches=num_image_patches
+ return __init__

@@ -1,0 +1,9 @@
+def __create_fn__(_type_quant_method, _type_quant_type, _type_modules_to_not_convert, _type_quant_type_kwargs, _type_include_input_output_embeddings, _type_untie_embedding_weights, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,quant_method:_type_quant_method,quant_type:_type_quant_type,modules_to_not_convert:_type_modules_to_not_convert,quant_type_kwargs:_type_quant_type_kwargs,include_input_output_embeddings:_type_include_input_output_embeddings,untie_embedding_weights:_type_untie_embedding_weights)->_return_type:
+  self.quant_method=quant_method
+  self.quant_type=quant_type
+  self.modules_to_not_convert=modules_to_not_convert
+  self.quant_type_kwargs=quant_type_kwargs
+  self.include_input_output_embeddings=include_input_output_embeddings
+  self.untie_embedding_weights=untie_embedding_weights
+ return __init__

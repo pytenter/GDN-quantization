@@ -1,0 +1,57 @@
+{
+  "task": "QWEN_HADAMARD_TRAJECTORY_STABILITY_ANALYSIS_V1",
+  "status": "FROZEN_BEFORE_FORMAL_STABILITY_COMPARISON",
+  "registered_at": "2026-09-24T22:52:00+08:00",
+  "scientific_question": "Does key-Hadamard improve the propagation stability of recurrent-state INT8 error despite worse instantaneous local/output error?",
+  "source_panel": "The 60 frozen AIME26 FP token trajectories used in QWEN_PERSISTENT_FUNCTIONAL_SURROGATE_V1; clean59 excludes only (aime26_28, seed 2) by the pre-existing symmetric numerical-validity rule.",
+  "conditions": ["FP", "Identity_INT8_C128", "Key_Hadamard_INT8_C128"],
+  "constraints": {
+    "free_generation": false,
+    "rotation_training": false,
+    "model_quantizer_kernel_scorer_modification": false,
+    "calibration_reselection": false,
+    "outcome_selected_positions_layers_thresholds": false,
+    "outlier_deletion": false
+  },
+  "observation": {
+    "tokens": "Frozen generated token IDs, positions t=0..N-2, teacher-forced three-row batch, chunk size 64; same prompt and source token hash as prior replay.",
+    "state": "At every one of 24 GDN layers and token t, after the recurrent update and C128 QDQ: ||S_INT8(t)-S_FP(t)||_F/(||S_FP(t)||_F+1e-12). Hadamard state is pulled back using the existing normalized symmetric H128 before subtraction.",
+    "readout": "At each GDN layer norm forward-pre-hook, inputs[0] is the actual per-token GDN recurrent readout, after the recurrent core but before RMSNorm, gate and out projection. Compare each INT8 row to FP in this unrotated value/output basis: ||r_INT8-r_FP||_2/(||r_FP||_2+1e-12). It is not the lag-one linearized M5 error.",
+    "logit": "At the output logits of the same teacher-forced forward pass, exact full-vocabulary KL(FP||INT8), FP and INT8 entropy, FP top1 agreement, and both FP and INT8 top1 margins. No logits are serialized.",
+    "denominator_audit": "Report counts with state/readout FP norm below 1e-8 and all nonfinite values; do not silently drop or winsorize. Existing clean59 exclusion remains symmetric."
+  },
+  "parity_gate": {
+    "source": "Reuse passed prior checkpoint and source provenance audits, and independently hash the quantizer source/function and runtime H128 matrix. Require exact frozen token hash/pairing.",
+    "new_hook": "For the first fixed source trajectory, compare 127 positions against old M5 state m0_relative and persistent replay exact KL/top1; repeat deterministic replay. Maximum absolute state and KL deviation <=1e-5, top1 exact, repeated readout and entropy deviation <=1e-5. Check unquantized FP/Hadamard readout equivalence on the same positions with p95 relative divergence <=0.03.",
+    "failure_rule": "If any parity check fails, stop before formal comparison and preserve the failure artifact."
+  },
+  "fixed_thresholds": {
+    "state_relative": 0.1,
+    "readout_relative": 0.1,
+    "logit_kl_nats": 0.1,
+    "margin_collapse": "INT8 margin on FP-selected top1 token <=0",
+    "top1_mismatch": "INT8 top1 token != FP top1 token",
+    "rationale": "10% relative distortion and 0.1 nat KL are round, outcome-independent engineering thresholds, not calibrated on rescue labels. Margin/top1 are parameter-free events."
+  },
+  "aggregation": {
+    "layer_to_token": "Primary state/readout trajectories use the median across all 24 fixed GDN layers; layer p95 and full per-layer rows are secondary. No layer selection.",
+    "onset": "First t whose metric exceeds its fixed threshold; if never crossed, right-censor at N-1. Report event rate and censored restricted onset, raw and normalized by N-1. For margin/top1 use first event analogously.",
+    "growth": "For positive continuous D at adjacent t, g_log(t)=log(D(t+1)+1e-6)-log(D(t)+1e-6). Primary growth is the mean of g_log in the final third of each trajectory (fractional t in [2/3,1)); also report median, p95, positive-tail p95 and first/middle thirds. The same indices are paired across rotations.",
+    "instantaneous": "Per-trajectory median, p95 and CVaR95 of D, with no outlier removal.",
+    "comparison": "Paired Hadamard minus Identity differences on clean59; lower D/growth and later onset are beneficial. Report medians, trajectory bootstrap 95% CI (5000 resamples, seed 20260924), paired sign proportion and two-sided sign p."
+  },
+  "rescue": {
+    "groups": "Rebuild stable_correct, hadamard_rescue, stable_failure from frozen real (problem_id, seed) outcome IDs; do not hard-code members or use labels during replay.",
+    "priority": "Hadamard-rescue readout onset and late readout log-growth, then state and logit tiers. Compare rescue improvement to stable-failure using one-sided 10000-permutation test, bootstrap CI and Cliff's delta; stable-correct is a control.",
+    "primary_direction": "Rescue has later readout onset (T_H-T_I>0) and lower late readout log-growth (G_H-G_I<0); improvement should be greater than in stable-failure."
+  },
+  "mechanism_classification": {
+    "SUPPORTED": "Both primary readout onset and late readout growth improve in rescue: each paired median has bootstrap CI excluding zero in beneficial direction, and each rescue-vs-stable-failure one-sided permutation p<0.05. State and logit results are reported even if discordant; strong opposite state evidence downgrades to PARTIAL.",
+    "PARTIAL": "At least one of the two primary readout tests meets both its paired-bootstrap and rescue-vs-failure conditions, but SUPPORTED is not met, or SUPPORTED readout conditions hold with strong opposite state evidence.",
+    "NOT_SUPPORTED": "All required observations are valid and neither primary readout test meets both conditions, or both primary readout directions are opposite.",
+    "INCONCLUSIVE": "Parity/provenance fails or required readout/onset/growth data cannot be reconstructed without changing semantics.",
+    "objective_hint": "TRAJECTORY_STABILITY_BASED only for SUPPORTED; otherwise NO_STABILITY_EVIDENCE_FOUND. No training follows automatically."
+  },
+  "secondary_generation": "Only inspect already-frozen AIME output fields for first divergence, repetition or oscillation if present; label supplementary and do not infer teacher-forced causation.",
+  "stop_after_report": true
+}

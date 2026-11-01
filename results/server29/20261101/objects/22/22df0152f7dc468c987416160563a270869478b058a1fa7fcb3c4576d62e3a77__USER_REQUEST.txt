@@ -1,0 +1,924 @@
+
+# QWEN_GDN_SCALE_FEEDBACK_FULLMODEL_FUNCTIONAL_CAUSAL_PILOT_V1
+
+你现在继续 Qwen3.5-9B / GDN 的科研工作。
+
+研究方向：
+Persistent recurrent-state INT8 quantization
++ learnable orthogonal rotation。
+
+本轮目标：
+
+验证之前已经发现的 Scale Inflation Feedback
+是否会在真实 full-model persistent INT8 推理中，
+对未来 full-vocabulary logits KL 产生因果影响。
+
+本次不是训练新旋转，也不是继续寻找相关性更高的
+S1/S2 surrogate。
+
+要求：
+
+1. 先规划，后执行。
+2. 优先复用已通过的数值与确定性闭环。
+3. 先完成最小工程资格，再执行正式科学测量。
+4. 避免重复8192-token warmup和FP forward。
+5. 不设置人为GPUh硬上限。
+6. 保留真实24GB GPU物理资源门禁。
+7. 工程资格PASS后自动继续正式pilot。
+8. 遇到实际数值或科学资格失败必须fail-closed。
+9. 所有历史STOP/PASS/FAIL保持不变。
+
+==================================================
+一、当前科研基线
+==================================================
+
+模型：
+Qwen3.5-9B / GDN
+
+量化：
+INT8-C128 recurrent-state quantization。
+
+旋转：
+C6R learned Key-side orthogonal rotation。
+
+已冻结AIME26：
+
+FP       52/60
+Hadamard 41/60
+C6R      40/60
+C7       33/60
+Native   18/60
+
+本次不运行AIME。
+
+历史实验：
+
+QWEN_GDN_FD_SCALE_FEEDBACK_DIRECTION_V1
+
+完成：
+32/32
+
+Parent H/C6R/C7：
+12/12 explosive
+
+NO_SCALE_INFLATION：
+0/12 explosive
+
+NO_SCALE_DEFLATION：
+12/12 explosive
+
+结论：
+SCALE_INFLATION_FEEDBACK_SUPPORTED
+
+这只是在frozen-drive continued-QDQ条件下，
+对状态误差放大机制的因果支持。
+
+不能直接当成full-model功能因果证据。
+
+最新：
+
+QWEN_GDN_DETERMINISTIC_RECOVERY_TO_SCALE_DISCOVERY_V3
+
+NUMERICAL_CLOSURE_STATUS=PASS
+OBSERVER_PARITY=PASS
+TRACK_A=COMPLETE
+TRACK_B=COMPLETE
+LONG_HORIZON=COMPLETE_MATCHED_NEW_PANEL
+
+历史bitwise parity FAIL_PRESERVED。
+
+V3已在四篇旧RepoBench文档完成：
+
+- 8192-anchor Track A
+- 训练可及H32/H64 Track B
+- 32K matched G
+- E_future recurrent-state damage
+
+简单均值S1/S2未显示稳定长期旋转排名预测。
+
+因此本次禁止根据旧四篇文档继续事后调参，
+也禁止直接将S1/S2作为C8 Loss。
+
+==================================================
+二、本次唯一主要科学假设
+==================================================
+
+研究问题：
+
+在完整full-model dynamics中，
+如果从相同的8192-token persistent INT8 state出发，
+持续阻止quantizer scale相对于clean-FP scale
+向上膨胀，是否会降低未来full-model logits KL？
+
+PRIMARY HYPOTHESIS：
+
+NO_SCALE_INFLATION相对原始Parent，
+降低后续full-vocabulary KL(FP||student)。
+
+方向性对照：
+
+NO_SCALE_DEFLATION。
+
+必须区分：
+
+1. State-space error amplification
+2. Full-model functional KL damage
+3. Short-horizon surrogate prediction
+4. Gradient trainability
+5. AIME reasoning accuracy
+
+本轮直接检验第2项中的
+Scale Intervention Total Causal Effect。
+
+不检验第3-5项。
+
+特别注意：
+
+NO_SCALE_INFLATION使用clean FP scale作为oracle。
+
+这是用于确定机制因果作用的诊断性干预，
+不是可以直接部署的量化方法。
+
+不能把它直接解释成某个可学习旋转Loss。
+
+==================================================
+三、正式实验条件
+==================================================
+
+主要rotation只使用：
+
+C6R
+
+保持完整rotation checkpoint和模型身份。
+
+每篇文档使用：
+
+A. CLEAN_FP_REFERENCE
+
+完整无recurrent-state量化的paired FP model，
+生成clean scale和评分位置的FP logits。
+
+B. PARENT
+
+原始persistent INT8-C128，
+每token使用当前student自适应scale。
+
+C. NO_SCALE_INFLATION
+
+每token使用：
+
+s_effective = min(s_student, s_clean)
+
+D. NO_SCALE_DEFLATION
+
+每token使用：
+
+s_effective = max(s_student, s_clean)
+
+其中：
+
+s_student来自当前真实student pre-QDQ state。
+
+s_clean来自相同C6R坐标、
+相同token和对应layer/group的
+clean FP pre-QDQ-equivalent state。
+
+必须从原Scale Direction正式实现
+追溯干预数学定义。
+
+不得自行创造另一个scale cap算法。
+
+正式quantizer保持：
+
+zero_point = 0
+qrange = [-127,127]
+rounding = torch.round
+scale = amax(...).clamp_min(1e-12)/127
+
+完整量化轴与shape以原代码为准。
+
+不能修改原INT8 codes、rounding、clipping、
+QDQ/writeback之外的任何量化语义。
+
+三个student条件全部保持：
+
+EVERY_TOKEN_QDQ = TRUE
+PERSISTENT_INT8_WRITEBACK = TRUE
+
+禁止：
+
+- 关闭后续QDQ
+- 单次pulse量化
+- FP clean-state reset
+- 延迟requantization
+- FP高精度persistent buffer
+- 修改rotation
+- 修改原模型权重
+- 修改teacher-forced tokens
+
+==================================================
+四、前瞻文档选择
+==================================================
+
+正式选择：
+
+2篇新的独立长文档。
+
+从与既有RepoBench-P面板兼容的数据池中，
+按事先冻结的确定性选择规则获取。
+
+要求：
+
+1. 没有进入旧四篇V3 Discovery文档。
+2. 没有被本研究其他相关长程outcome实验使用。
+3. 满足32768-token完整评价长度。
+4. 原始文本、dataset identity、tokenizer
+   和32769-token输入定义可冻结。
+5. 不根据G、KL、S1/S2或干预效果选择文档。
+6. 两篇文档尽可能独立，检查重复与内容重叠。
+7. 在任何正式长程outcome产生前冻结文档SHA。
+
+记录：
+
+document ID
+dataset revision或真实本地snapshot身份
+raw text SHA
+token SHA
+tokenizer SHA
+selection rule
+seed
+exclusion registry
+
+若无法找到两篇合格独立文档：
+
+DOCUMENT_ELIGIBILITY_STOP
+
+不得悄悄复用旧四篇并宣称独立验证。
+
+旧四篇仅可用于工程资格、数值calibration
+和调试，不计入新的正式pilot。
+
+==================================================
+五、复用V3数值闭环
+==================================================
+
+先定位真实V3实验目录和manifest。
+
+复用：
+
+- deterministic numerical closure
+- 已验证的fixed-order/compensated scan
+- full-model FP reference实现
+- matched clean/student pairing
+- quantizer identity
+- observer parity
+- full-model前向数值资格
+- fresh-process repeatability
+- 原32K streaming reducer实现
+
+不再重新发明cumsum。
+
+不得将历史native CUDA cumsum bitwise FAIL
+改写为PASS。
+
+同时要承认：
+
+V3已经验证的frozen-drive numerical closure，
+不能自动证明本次closed-loop full-model fork
+及新的FP-scale oracle数据流正确。
+
+只增加必要的增量资格检查。
+
+所有新数值结果必须使用
+同一已资格runtime和数值协议。
+
+严格：
+
+deterministic=True
+warn_only=False
+TF32=False
+符合冻结的CUBLAS配置
+无未授权kernel fallback
+
+Qwen不使用SGLang。
+
+==================================================
+六、8192-token共同历史与状态分叉
+==================================================
+
+本轮最关键的工程要求：
+
+三个student分支必须从完全相同的
+8192-token persistent INT8历史状态开始。
+
+每篇文档：
+
+1. 使用原始C6R persistent-QDQ路径，
+   从token0持续运行到已消费8192个token。
+
+2. 冻结完整student checkpoint。
+
+3. 从同一checkpoint恢复：
+
+   PARENT
+   NO_SCALE_INFLATION
+   NO_SCALE_DEFLATION
+
+4. 后续完整执行至32768 endpoint。
+
+Checkpoint必须包含所有继续推理必需的状态：
+
+- GDN recurrent state
+- MLA attention KV cache
+- convolution state
+- position/token index
+- quantizer相关identity
+- hybrid cache metadata
+- 必需的kernel/runtime恢复状态
+
+不得只复制GDN recurrent tensor，
+却遗漏MLA/conv缓存。
+
+Checkpoint里的QDQ后state可以由
+原实现所使用的FP32 tensor承载，
+但不得将clean FP state作为新的持久学生状态。
+
+必须验证：
+
+- snapshot identity
+- branch isolation
+- no shared mutable storage
+- exact restore
+- resumed Parent与uninterrupted Parent一致
+- fresh-process repeatability
+- 下一token真正消费恢复后的量化state
+
+分叉之后各branch可以自然产生不同hidden、
+q/k/v、gate、scale和未来cache。
+
+这是要测量的完整closed-loop总因果效应。
+
+不得把后续输入冻结成历史frozen-drive
+并冒充full-model实验。
+
+==================================================
+七、Clean FP Scale和Logits的数据流
+==================================================
+
+避免同一GPU上同时常驻FP与三个student模型。
+
+建议按文档、单GPU串行执行：
+
+第一步：
+生成完整paired FP teacher reference。
+
+第二步：
+生成8192 persistent student anchor。
+
+第三步：
+从同一anchor运行各学生分支。
+
+FP reference需要提供：
+
+A. 每个后续token、每个正式量化layer/group
+   对应的clean FP scale。
+
+B. 预冻结KL评分位置的full-vocabulary FP logits。
+
+Clean scale必须来自相同C6R量化坐标，
+不能直接把其他rotation的FP scale拿来比较。
+
+对于FP模型，scale hook只是观察，
+不能在FP recurrence中执行量化写回。
+
+若使用磁盘缓存clean scales：
+
+- 使用原始FP32数值或已验证的无损格式
+- 保存token/layer/group索引
+- chunk级atomic write与SHA
+- 不允许FP16压缩导致scale变化
+- 不允许错位或复用上一token的scale
+
+优先支持逐块streaming read。
+每次只将当前必要的clean scale送到GPU。
+
+不能让完整FP scale序列常驻GPU。
+
+如果clean scale缓存量较大，
+应先计算真实磁盘需求并检查空间。
+
+不允许为了省空间改变正式quantizer scale定义。
+
+FP logits仅需在正式评分位置缓存，
+可以使用CPU RAM或磁盘流式保存。
+
+不得保存全部32768步full-vocab GPU logits
+导致不必要的显存压力。
+
+==================================================
+八、正式Primary指标
+==================================================
+
+本轮Primary使用：
+
+FIXED_POSITION_FULL_VOCAB_FP32_FUTURE_KL
+
+完整persistent horizon：
+
+32768 tokens。
+
+Anchor：
+
+8192 tokens。
+
+正式评分位置：
+
+zero-based t = 8192 + 64*k
+
+其中：
+
+k = 0,...,383
+
+总计384个位置。
+
+范围：
+
+[8192,32768)
+
+这384个位置在正式测量前冻结。
+
+必须精确定义：
+
+logits位置
+已消费token位置
+next-token prediction位置
+FP/student对齐方式
+
+保证没有off-by-one。
+
+在每个评分位置，使用完整词表计算：
+
+KL_t =
+KL(
+  softmax(FP_logits_t)
+  ||
+  softmax(Student_logits_t)
+)
+
+使用FP32稳定的log_softmax/logsumexp。
+
+不得使用：
+
+- top-k KL
+- 截断词表
+- sampled vocabulary
+- NLL替代KL
+- hidden MSE替代KL
+
+即：
+
+采样的是时间位置，
+不是词表维度。
+
+Primary aggregation：
+
+K_condition =
+mean over 384 frozen positions KL_t
+
+并用稳定累积策略汇总，
+保留逐位置数值与完整reducer身份。
+
+对每篇document：
+
+DELTA_PRIMARY =
+K_PARENT - K_NO_SCALE_INFLATION
+
+DELTA_PRIMARY > 0：
+NO_SCALE_INFLATION降低了未来KL。
+
+DELTA_PRIMARY < 0：
+NO_SCALE_INFLATION使未来KL变大。
+
+数值不可分辨时：
+UNRESOLVED。
+
+Near-zero numerical resolution必须依据
+独立qualification/reducer数值误差，
+在读取正式outcome前冻结。
+
+不能根据实际DELTA事后选择阈值。
+
+==================================================
+九、Secondary指标
+==================================================
+
+预冻结Secondary：
+
+1. PARENT vs NO_SCALE_DEFLATION
+   的384位置Future-KL。
+
+2. 不同时间段的Future-KL：
+   [8192,16384)
+   [16384,24576)
+   [24576,32768)
+
+3. 每条件的Scale Inflation/Deflation
+   实际触发次数和幅度。
+
+4. Scale effective与student scale
+   的逐group偏移统计。
+
+5. Clipping/saturation rate。
+
+6. 状态相对误差或其他已验证的
+   streaming state-damage统计。
+
+7. 各时间段finite/NaN/Inf状态。
+
+8. 完整trajectory的进度、显存、
+   cache增长和数值稳定性。
+
+其中state-damage不能冒充Future-KL。
+
+如果NO_SCALE_INFLATION的干预几乎没有触发，
+必须报告INTERVENTION_WEAKLY_ACTIVATED。
+
+不能直接将KL无变化解释为反馈机制无效。
+
+如果cap导致大量clipping，
+必须报告这一潜在机制，不得忽略。
+
+==================================================
+十、Stage 0：最小工程与资源资格
+==================================================
+
+正式科学运行前只使用旧文档或专门工程样本。
+
+不要首先在prospective文档上调试。
+
+先完成：
+
+A. Full-model teacher-forced correctness
+
+B. Matched FP/student numerical qualification
+
+C. Clean scale坐标及索引资格
+
+D. Parent/NoInflation/NoDeflation
+   intervention semantic tests
+
+E. 8192 checkpoint/fork功能与短程resume parity
+
+F. Observer OFF/ON no-mutation parity
+
+G. Full-vocab sampled KL reference资格
+
+H. Streaming reducer correctness
+
+I. Fresh-process deterministic repeatability
+
+J. GPU VRAM、cache、storage与运行连续性
+
+如果某个工程资格需要在旧文档做
+2K/8K或8192+短续跑，
+只能作为engineering qualification，
+不能计入本次正式2-doc科学结果。
+
+尤其需要测试：
+
+未施加干预的Parent，从checkpoint恢复后，
+是否与相同模型连续执行的Parent满足原数值资格。
+
+若这个门禁失败，不能开始正式反事实实验。
+
+==================================================
+十一、24GB GPU资源策略
+==================================================
+
+历史Qwen服务器是4×RTX3090 24GB，
+启动前核验当前真实可用GPU和UUID。
+
+本次仅使用用户实际可访问的GPU资源，
+不假设有A800或其他大显存设备。
+
+原则：
+
+- 同文档FP与student使用同一已资格GPU/runtime
+- 每次只常驻必要的一个模型/branch
+- 不同时保留三份完整GPU cache
+- anchor可序列化到CPU/磁盘
+- clean scale按需流式读取
+- FP logits在CPU/磁盘保存
+- KL在线reduction
+- 不无必要复制完整模型权重
+
+如果存在两张以上已资格3090，
+允许不同文档在不同GPU并行，
+但同文档FP/student必须保持合法配对。
+
+不能仅为了并行引入跨GPU数值不一致。
+
+优先通过真实microbenchmark确定：
+
+- 8192前缀成本
+- 8192之后的cache增长
+- 预计32768完整显存
+- 每分支运行时间
+- FP scale缓存空间
+- FP logits缓存空间
+- 是否有持续memory creep
+
+不得直接将V3 frozen-drive显存估算
+当成本次closed-loop full-model容量证明。
+
+无固定4GPUh/16GPUh硬上限。
+
+无固定85%VRAM硬门槛。
+
+但真实OOM、物理容量不足、磁盘不足、
+无进展或确定性失败必须STOP。
+
+如果现有24GB方案无法完整运行：
+
+先报告最先失败的真实物理predicate、
+最大活跃显存及合理的最小资源修复。
+
+可分析是否存在不必要的临时tensor、
+结果缓存或分支同时常驻。
+
+不得为了过显存门禁修改科学horizon，
+也不能将8K工程结果冒充32K科学结果。
+
+如果需要新的多卡模型分层拓扑，
+必须另立新的device-map numerical qualification，
+不能无资格自动替换生产引擎。
+
+==================================================
+十二、正式运行前冻结
+==================================================
+
+在读取任何新正式long-horizon结果之前，
+冻结：
+
+- 2篇prospective document IDs
+- text/token SHA
+- C6R rotation SHA
+- model/quantizer SHA
+- numerical runtime contract
+- 8192 anchor定义
+- 全部branch和scale干预规则
+- primary384位置
+- full-vocab FP32 KL计算
+- secondary time windows
+- tie/numerical resolution
+- intervention validity checks
+- execution order
+- failure/retry policy
+- resource/device mapping
+- scientific unit schedule
+- 所有输出schema
+
+如果资格过程中必须修改数学协议，
+重新建立独立版本并重新冻结。
+
+不允许看过formal结果后更改Primary。
+
+==================================================
+十三、正式科学执行
+==================================================
+
+只有以下全部PASS才能自动继续：
+
+NUMERICAL_QUALIFICATION
+FP_REFERENCE_PAIRING
+INTERVENTION_VALIDITY
+CHECKPOINT_FORK_PARITY
+DETERMINISM
+MEMORY_AND_STORAGE_FEASIBILITY
+FROZEN_SCIENCE_SPEC
+
+正式文档数量：
+
+2。
+
+每篇：
+
+1条完整clean FP reference。
+
+1条8192-token persistent student warmup，
+构建一个共同anchor。
+
+从这个anchor分别继续：
+
+PARENT
+NO_SCALE_INFLATION
+NO_SCALE_DEFLATION
+
+到32768。
+
+合计：
+
+2个FP reference
+2个共同student warmup
+6个full-persistent student continuations
+
+不得将共同前缀重复计入为不同初始条件。
+
+每个branch都必须从相同anchor恢复，
+并持有独立的mutable cache。
+
+正式结果全部计算完成后，
+再执行科学方向判别。
+
+不得根据第一篇结果调整第二篇。
+
+==================================================
+十四、严格STOP规则
+==================================================
+
+以下必须STOP：
+
+- 数值闭环失效
+- FP/reference与student身份无法配对
+- clean scale坐标错误
+- 原quantizer语义被修改
+- checkpoint/fork parity失败
+- observer或scale缓存改变Parent轨迹
+- 未授权kernel或runtime变更
+- persistent INT8 writeback错误
+- full-vocab KL未能正确计算
+- confirmed OOM
+- cache增长无法容纳32768
+- 无法保留完整科学证据
+- prospective selection发生outcome leakage
+
+若发现简单工程配置或文件I/O问题，
+允许进行一次有明确证据的最小修复，
+并重新执行所有受影响资格。
+
+如果涉及数值算法或量化语义，
+不要在同一正式run中静默热修复。
+
+保留旧失败并建立新的独立run身份。
+
+不允许无限patch-and-retry。
+
+不得为了取得预期正结果而重选文档。
+
+==================================================
+十五、科学结论
+==================================================
+
+报告每篇：
+
+K_PARENT
+K_NO_SCALE_INFLATION
+K_NO_SCALE_DEFLATION
+
+Primary Delta：
+
+K_PARENT - K_NO_SCALE_INFLATION
+
+以及NoDeflation对照的对应差值。
+
+如果两篇均有可分辨的正Delta：
+
+FUNCTIONAL_EFFECT_DIRECTIONALLY_SUPPORTIVE_SMALL_PILOT
+
+如果两篇均有可分辨的负Delta：
+
+NO_INFLATION_INTERVENTION_WORSENED_KL_IN_PILOT
+
+如果一正一负：
+
+MIXED_FUNCTIONAL_EFFECT
+
+如果接近零或干预激活不足：
+
+UNRESOLVED_OR_WEAKLY_ACTIVATED
+
+如果未完成：
+
+INCOMPLETE_OR_ENGINEERING_STOP
+
+如果2/2为正，只能称方向性small pilot。
+
+不能宣称统计确认或普遍适用性。
+
+不能宣称：
+
+- C6R超过Hadamard
+- scale cap可以实际部署
+- 新的learnable rotation已经更好
+- S1/S2已被验证为可训练Loss
+- AIME或free-generation得到改善
+
+必须明确这次测量的是：
+
+Oracle Scale Intervention
+在完整persistent INT8 dynamics下
+对Future-KL的总效应。
+
+==================================================
+十六、交付
+==================================================
+
+建立独立新worktree和实验目录。
+
+建议任务名：
+
+QWEN_GDN_SCALE_FEEDBACK_FULLMODEL_FUNCTIONAL_CAUSAL_PILOT_V1
+
+工程产物：
+
+EXECUTION_PLAN.md
+SOURCE_AND_RUNTIME_IDENTITIES.json
+V3_NUMERICAL_CLOSURE_REUSE.json
+DOCUMENT_SELECTION_AND_EXCLUSIONS.json
+FROZEN_SCIENCE_SPEC.json
+FP_SCALE_COORDINATE_PARITY.json
+QUANTIZER_INTERVENTION_VALIDITY.json
+ANCHOR_CHECKPOINT_AND_FORK_PARITY.json
+FULLMODEL_NUMERICAL_QUALIFICATION.json
+KL_REDUCER_QUALIFICATION.json
+RESOURCE_AND_STORAGE_READINESS.json
+
+正式科学测量完成后：
+
+FP_REFERENCE_MANIFEST.json
+STUDENT_BRANCH_MANIFEST.json
+SAMPLED_FULLVOCAB_FUTURE_KL.csv
+SCALE_INTERVENTION_ACTIVATION.csv
+CLIPPING_AND_SATURATION.csv
+DOCUMENT_LEVEL_CAUSAL_EFFECT.csv
+SCIENTIFIC_VERDICT.json
+
+运行与封存：
+
+GPU_COST_LEDGER.json
+FIRST_FAILURE_GATE.json（若失败）
+FINAL_REPORT.md
+RESULT_AND_DELIVERY_HASHES.json
+SHA256SUMS.txt
+
+未执行的科学CSV不能创建空壳文件。
+
+所有正式产物绑定：
+
+document SHA
+model SHA
+C6R rotation SHA
+quantizer SHA
+code commit
+runtime identity
+GPU UUID
+FP reference identity
+anchor checkpoint identity
+intervention policy identity
+sampled position schedule
+complete/STOP receipt
+
+==================================================
+十七、最终中文报告
+==================================================
+
+最后必须回答：
+
+1. 是否成功复用V3数值闭环？
+2. 本次full-model closed-loop是否新获资格？
+3. clean FP scale是否严格配对？
+4. 三个student是否来自相同8192 anchor？
+5. Parent fork是否与连续Parent一致？
+6. Observer/Scale数据流是否改变主轨迹？
+7. 24GB GPU是否真正支持完整32768？
+8. 两篇正式新文档及其SHA是什么？
+9. NO_SCALE_INFLATION实际触发了多少次？
+10. Clipping是否明显变化？
+11. 每篇Parent Future-KL是多少？
+12. 每篇NoInflation Future-KL是多少？
+13. 每篇NoDeflation Future-KL是多少？
+14. 两篇Primary Delta分别是多少？
+15. 功能损伤是否获得方向性因果支持？
+16. 是否只有状态误差改善而功能KL不改善？
+17. 实际GPUh、显存和存储消耗是多少？
+18. 下一步是否值得研究时空敏感度Loss？
+
+最终输出：
+
+ENGINEERING_STATUS
+FULLMODEL_NUMERICAL_STATUS
+INTERVENTION_VALIDITY_STATUS
+PHYSICAL_RESOURCE_STATUS
+FORMAL_SCIENTIFIC_STATUS
+FUNCTIONAL_CAUSAL_VERDICT
+
+全部科学任务完成后停止。
+
+不得自动开展：
+
+- C8训练
+- 新rotation optimization
+- AIME26
+- free generation
+- S1/S2梯度训练
+- 新的surrogate大规模参数搜索

@@ -1,0 +1,1 @@
+lambda _cls, input_name, dim: _tuple_new(_cls, (input_name, dim))

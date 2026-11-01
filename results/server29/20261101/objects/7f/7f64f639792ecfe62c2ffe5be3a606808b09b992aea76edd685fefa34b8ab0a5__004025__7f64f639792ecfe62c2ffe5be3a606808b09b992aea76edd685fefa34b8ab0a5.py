@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self.fsdp_version,self.sharding_strategy,self.reshard_after_forward,self.backward_prefetch,self.mixed_precision_policy,self.auto_wrap_policy,self.cpu_offload,self.ignored_modules,self.state_dict_type,self.state_dict_config,self.optim_state_dict_config,self.limit_all_gathers,self.use_orig_params,self.param_init_fn,self.sync_module_states,self.forward_prefetch,self.activation_checkpointing,self.cpu_ram_efficient_loading,self.transformer_cls_names_to_wrap,self.min_num_params,)==(other.fsdp_version,other.sharding_strategy,other.reshard_after_forward,other.backward_prefetch,other.mixed_precision_policy,other.auto_wrap_policy,other.cpu_offload,other.ignored_modules,other.state_dict_type,other.state_dict_config,other.optim_state_dict_config,other.limit_all_gathers,other.use_orig_params,other.param_init_fn,other.sync_module_states,other.forward_prefetch,other.activation_checkpointing,other.cpu_ram_efficient_loading,other.transformer_cls_names_to_wrap,other.min_num_params,)
+  return NotImplemented
+ return __eq__

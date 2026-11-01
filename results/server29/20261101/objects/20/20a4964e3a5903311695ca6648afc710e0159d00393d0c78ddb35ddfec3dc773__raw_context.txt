@@ -1,0 +1,1601 @@
+app/src/main/java/com/ratebeer/android/db/Beer.java
+public final class Beer {
+
+	private static final float CALORIES_PER_FLOZ = 30f;
+
+	public Long _id;
+	public String name;
+	public Long styleId;
+	public String styleName;
+	public Long brewerId;
+	public String brewerName;
+	public Long brewerCountryId;
+
+	public Float alcohol;
+	public Float ibu;
+	public String description;
+	public Boolean alias;
+
+	public Float realRating;
+	public Float weightedRating;
+	public Float overallPercentile;
+	public Float stylePercentile;
+	public int rateCount;
+
+	public Date timeCached;
+
+	public static Beer fromDetails(BeerDetails details) {
+		Beer beer = new Beer();
+		beer._id = details.beerId;
+		beer.name = details.beerName;
+		beer.styleId = details.styleId;
+		beer.styleName = details.styleName;
+		beer.brewerId = details.brewerId;
+		beer.brewerName = details.brewerName;
+		beer.brewerCountryId = details.brewerCountryId;
+
+		beer.alcohol = details.alcohol;
+		beer.ibu = details.ibu;
+		beer.description = details.description;
+		beer.alias = details.alias;
+
+		beer.realRating = details.realRating;
+		beer.stylePercentile = details.stylePercentile;
+		beer.weightedRating = details.weightedRating;
+		beer.overallPercentile = details.overallPercentile;
+		beer.stylePercentile = details.stylePercentile;
+		beer.rateCount = details.rateCount;
+
+		beer.timeCached = new Date();
+		return beer;
+	}
+
+	public String getRealRatingString() {
+		if (realRating == null)
+			return "-";
+		return String.format(Locale.getDefault(), "%1.1f", realRating);
+	}
+
+	public String getWeightedRatingString() {
+		if (weightedRating == null)
+			return "-";
+		return String.format(Locale.getDefault(), "%1.1f", weightedRating);
+	}
+
+	public String getOverallPercentileString() {
+		if (overallPercentile == null)
+			return "-";
+		return String.format(Locale.getDefault(), "%1.0f", overallPercentile);
+	}
+
+	public String getStylePercentileString() {
+		if (stylePercentile == null)
+			return "-";
+		return String.format(Locale.getDefault(), "%1.0f", stylePercentile);
+	}
+
+	public String getRateCountString() {
+		return String.format(Locale.getDefault(), "%1$d", rateCount);
+	}
+
+	public String getAlcoholString() {
+		if (alcohol == null || alcohol == 0)
+			return "-";
+		return String.format(Locale.getDefault(), "%s", alcohol);
+	}
+
+	public String getIbuString() {
+		if (ibu == null || ibu == 0)
+			return "-";
+		return String.format(Locale.getDefault(), "%1.0f", ibu);
+	}
+
+	public String getCaloriesString() {
+		if (alcohol == null || alcohol == 0)
+			return "-";
+		return String.format(Locale.getDefault(), "%1.0f", alcohol * CALORIES_PER_FLOZ);
+	}
+
+	public boolean isAlias() {
+		return alias != null && alias;
+	}
+
+}
+app/src/main/java/com/ratebeer/android/db/CustomListBeer.java
+public final class CustomListBeer {
+
+	public Long _id;
+	public long listId;
+	public long beerId;
+	public String beerName;
+	public Integer stars;
+	public String note;
+
+	@Override
+	public boolean equals(Object o) {
+		return this == o || !(o == null || getClass() != o.getClass()) && _id.equals(((CustomListBeer) o)._id);
+	}
+
+	@Override
+	public int hashCode() {
+		return _id.hashCode();
+	}
+
+}
+app/src/main/java/com/ratebeer/android/api/Api.java
+public final class Api {
+
+	public static final String DOMAIN = "https://www.ratebeer.com";
+
+	private static final String ENDPOINT = DOMAIN + "/json/";
+	private static final String KEY = "tTmwRTWT-W7tpBhtL";
+	private static final String COOKIE_USERID = "UserID";
+	private static final String COOKIE_SESSIONID = "SessionID";
+	private static final long SESSION_TIMEOUT_FORCED = 30 * 60 * 1000; // 30 minute session max until forced sign in
+	private static final int RATINGS_PER_PAGE = 100;
+
+	private final Routes routes;
+	private final CookieManager cookieManager;
+	private long lastSignIn = 0;
+
+	private Api() {
+
+		HttpLoggingInterceptor logging = new HttpLoggingInterceptor(RBLog::v);
+		if (BuildConfig.DEBUG)
+			logging.setLevel(HttpLoggingInterceptor.Level.BODY);
+		cookieManager = new CookieManager(new PersistentCookieStore(), CookiePolicy.ACCEPT_ORIGINAL_SERVER);
+		OkHttpClient httpclient = new OkHttpClient.Builder()
+				.connectTimeout(8, TimeUnit.SECONDS)
+				.writeTimeout(8, TimeUnit.SECONDS)
+				.readTimeout(12, TimeUnit.SECONDS)
+				.cookieJar(new JavaNetCookieJar(cookieManager))
+				.addInterceptor(logging)
+				.addNetworkInterceptor(new ResponseInterceptor())
+				.build();
+		Gson gson = new GsonBuilder()
+				.disableHtmlEscaping()
+				.registerTypeAdapter(FeedItem.class, new FeedItemDeserializer())
+				.registerTypeAdapter(UserInfo.class, new UserInfoDeserializer())
+				.registerTypeAdapter(UserRateCount.class, new UserRateCountDeserializer())
+				.registerTypeAdapter(UserRating.class, new UserRatingDeserializer())
+				.registerTypeAdapter(BeerSearchResult.class, new BeerSearchResultDeserializer())
+				.registerTypeAdapter(BarcodeSearchResult.class, new BarcodeSearchResultDeserializer())
+				.registerTypeAdapter(BeerDetails.class, new BeerDetailsDeserializer())
+				.registerTypeAdapter(BeerRating.class, new BeerRatingDeserializer())
+				.registerTypeAdapter(BrewerySearchResult.class, new BrewerySearchResultDeserializer())
+				.registerTypeAdapter(BreweryDetails.class, new BreweryDetailsDeserializer())
+				.registerTypeAdapter(BreweryBeer.class, new BreweryBeerDeserializer())
+				.registerTypeAdapter(PlaceSearchResult.class, new PlaceSearchResultDeserializer())
+				.registerTypeAdapter(PlaceNearby.class, new PlaceNearbyDeserializer())
+				.registerTypeAdapter(PlaceDetails.class, new PlaceDetailsDeserializer())
+				.registerTypeAdapter(PlaceCheckinResult.class, new PlaceCheckinResultDeserializer())
+				.registerTypeAdapter(BeerOnTopList.class, new BeerOnTopListDeserializer())
+				.registerTypeAdapter(CountryInfo.class, new CountryInfoDeserializer())
+				.registerTypeAdapter(StateInfo.class, new StateInfoDeserializer())
+				.registerTypeAdapter(StyleInfo.class, new StyleInfoDeserializer())
+				.create();
+		Retrofit retrofit = new Retrofit.Builder()
+				.baseUrl(ENDPOINT)
+				.client(httpclient)
+				.addCallAdapterFactory(RxJavaCallAdapterFactory.create())
+				.addConverterFactory(new HtmlConverterFactory())
+				.addConverterFactory(GsonConverterFactory.create(gson))
+				.build();
+		routes = retrofit.create(Routes.class);
+
+	}
+
+	public static Api get() {
+		return Holder.INSTANCE;
+	}
+
+	public static Api api() {
+		return get();
+	}
+
+	private boolean haveLoginCookie() {
+		if (cookieManager.getCookieStore().getCookies().isEmpty())
+			return false;
+		boolean hasUserCookie = false, hasSessionCookie = false;
+		for (HttpCookie cookie : cookieManager.getCookieStore().getCookies()) {
+			if (cookie.getName().equals(COOKIE_USERID) && !TextUtils.isEmpty(cookie.getValue()) && !cookie.hasExpired())
+				hasUserCookie = true;
+			if (cookie.getName().equals(COOKIE_SESSIONID) && !TextUtils.isEmpty(cookie.getValue()) && !cookie.hasExpired())
+				hasSessionCookie = true;
+		}
+		return hasUserCookie && hasSessionCookie;
+	}
+
+	private boolean isSignedIn() {
+		return lastSignIn >= System.currentTimeMillis() - SESSION_TIMEOUT_FORCED && haveLoginCookie();
+	}
+
+	private Observable<Boolean> getLoginRoute(String username, String password) {
+		return routes.login(username, password, "on").flatMap(result -> {
+			if (haveLoginCookie()) {
+				return Observable.just(true);
+			} else {
+				return Observable.error(new IOException("Invalid login response; no session cookies received"));
+			}
+		});
+	}
+
+	/**
+	 * A wrapper observable that returns an empty sequence on success such that we can use someLoginDependentCall.startWith(getLoginCookie())
+	 */
+	private <T> Observable<T> getLoginCookie() {
+		return getLoginRoute(Session.get().getUserName(), Session.get().getPassword())
+				.subscribeOn(Schedulers.io())
+				.flatMap(result -> Observable.empty());
+	}
+
+	/**
+	 * Performs a login on the server, ensures that the rate counts are updated in our local session and emits true on success
+	 */
+	public Observable<Boolean> login(String username, String password) {
+		// @formatter:off
+		return Observable.zip(
+					// Combine the latest user counts
+					routes.getUserInfo(KEY, username)
+							.subscribeOn(Schedulers.newThread())
+							.flatMapIterable(infos -> infos)
+							.first(),
+					// And sign in the user (get login cookies)
+					getLoginRoute(username, password)
+							.subscribeOn(Schedulers.newThread()),
+					(userInfo, loginSuccess) -> userInfo)
+				// Then add the user id the user's rate counts
+				.flatMap(user -> Observable.zip(
+						Observable.just(user),
+						routes.getUserRateCount(KEY, user.userId)
+								.flatMapIterable(userRateCounts -> userRateCounts),
+						RxTuples.toPair()))
+				// Store in our own instance the new user data
+				.doOnNext(user -> Session.get().startSession(user.getValue0().userId, username, password, user.getValue1()))
+				// Store the time of this last successful login to time out the session forcefully after some time
+				.doOnNext(ignore -> lastSignIn = System.currentTimeMillis())
+				// Return login success
+				.map(ignore -> true);
+		// @formatter:on
+	}
+
+	/**
+	 * Calls the server to log out, clear cookies and clear our local session
+	 */
+	public Observable<Boolean> logout() {
+		return routes.logout().map(result -> true)
+				.map(success -> cookieManager.getCookieStore().removeAll())
+				.doOnNext(success -> Session.get().endSession());
+	}
+
+	/**
+	 * Retrieves updated rate counts from the server and persists them in our user session before emitting the updated values
+	 */
+	public Observable<UserRateCount> updateUserRateCounts() {
+		return routes.getUserRateCount(KEY, Session.get().getUserId())
+				.flatMapIterable(userRateCounts -> userRateCounts)
+				.doOnNext(counts -> Session.get().updateCounts(counts));
+	}
+
+	/**
+	 * Returns an observable sequence (list) of items that appear on the global news feed; does not require user login
+	 */
+	public Observable<FeedItem> getGlobalFeed() {
+		return routes.getFeed(KEY, 1)
+				.flatMapIterable(items -> items);
+	}
+
+	/**
+	 * Returns an observable sequence (list) of items that appear on the local news feed; requires a user to be logged in for its locale
+	 */
+	public Observable<FeedItem> getLocalFeed() {
+		Observable<FeedItem> feed = routes.getFeed(KEY, 2)
+				.flatMapIterable(items -> items);
+		if (!isSignedIn())
+			feed = feed.startWith(getLoginCookie());
+		return feed;
+	}
+
+	/**
+	 * Returns an observable sequence (list) of items that appear on the personalized friends feed; requires a user to be logged in
+	 */
+	public Observable<FeedItem> getFriendsFeed() {
+		Observable<FeedItem> feed = routes.getFeed(KEY, 0).flatMapIterable(items -> items);
+		if (!isSignedIn())
+			feed = feed.startWith(getLoginCookie());
+		return feed;
+	}
+
+	/**
+	 * Returns an observable sequence (list) of beers (search results) for a text query
+	 */
+	public Observable<BeerSearchResult> searchBeers(String query) {
+		return routes.searchBeers(KEY, Session.get().getUserId(), Normalizer.get().normalizeSearchQuery(query))
+				.flatMapIterable(results -> results);
+	}
+
+	/**
+	 * Returns an observable sequence (list) of beers (search results) for a scanned UPC barcode
+	 */
+	public Observable<BarcodeSearchResult> searchByBarcode(String barcode) {
+		return routes.searchByBarcode(KEY, barcode.trim())
+				.flatMapIterable(results -> results);
+	}
+
+	/**
+	 * Returns the full details for a beer, or throws an exception if it could not be retrieved
+	 */
+	public Observable<BeerDetails> getBeerDetails(long beerId) {
+		return routes.getBeerDetails(KEY, (int) beerId)
+				.flatMapIterable(beers -> beers).first();
+	}
+
+	/**
+	 * Returns a single id of the beer that is aliased to from a certain beer id, or throws an exception if it could not be retrieved
+	 */
+	public Observable<Long> getBeerAlias(long beerId) {
+		return routes.getBeerAlias((int) beerId)
+				.filter(alias -> alias != null)
+				.first().map(alias -> alias.id);
+	}
+
+	/**
+	 * Returns a (possibly empty) observable sequence (list) of the most recent ratings for a beer
+	 */
+	public Observable<BeerRating> getBeerRatings(long beerId) {
+		return routes.getBeerRatings(KEY, (int) beerId, null, 1, 1)
+				.flatMapIterable(ratings -> ratings);
+	}
+
+	/**
+	 * Returns the beer rating of a specific user, or null if the user did not rate it yet
+	 */
+	public Observable<BeerRating> getBeerUserRating(long beerId, long userId) {
+		return routes.getBeerRatings(KEY, (int) beerId, (int) userId, 1, 1)
+				.flatMapIterable(ratings -> ratings)
+				.firstOrDefault(null);
+	}
+
+	/**
+	 * Returns a (possibly empty) observable sequence (list) of all ratings by the logged in user, from most recent to oldest
+	 * @param onPageProgress An action, run on the main (UI) thread, which can report sync progress
+	 */
+	public Observable<UserRating> getUserRatings(Action1<Float> onPageProgress) {
+		if (Session.get().getUserId() == null)
+			return Observable.empty();
+		// Based on the up-to-date rate count, get all pages of ratings necessary and emit them in reverse order
+		Observable<Integer> pageCount = routes.getUserRateCount(KEY, Session.get().getUserId())
+				.subscribeOn(Schedulers.io())
+				.flatMapIterable(counts -> counts)
+				.doOnNext(counts -> Session.get().updateCounts(counts))
+				.map(counts -> (int) Math.ceil((float) counts.rateCount / RATINGS_PER_PAGE));
+		Observable<UserRating> ratings = Observable.combineLatest(
+				pageCount,
+				pageCount.flatMap(count -> Observable.range(1, count)),
+				RxTuples.toPair())
+				.flatMap(page -> Observable.combineLatest(
+						Observable.just(page),
+						routes.getUserRatings(KEY, page.getValue1() + 1),
+						RxTuples.toPair()))
+				.observeOn(AndroidSchedulers.mainThread())
+				.doOnNext(objects -> onPageProgress.call((((float) objects.getValue0().getValue1() + 1) / objects.getValue0().getValue0()) * 100))
+				.observeOn(Schedulers.io())
+				.flatMapIterable(Pair::getValue1);
+		if (!isSignedIn())
+			ratings = ratings.startWith(getLoginCookie());
+		return ratings;
+	}
+
+	/**
+	 * Posts or updates a rating and emits the stored rating, as validated on the server side, if the post was successful
+	 */
+	public Observable<BeerRating> postRating(Rating rating, long userId) {
+		Observable<Response<Void>> post;
+		// NOTE Manually encode the comments, as RB only accepts ISO-8859-1 encoding here...
+		String comments = Normalizer.urlEncode(rating.comments);
+		if (rating.ratingId == null)
+			post = routes.postRating(rating.beerId.intValue(), rating.aroma, rating.appearance, rating.flavor, rating.mouthfeel, rating.overall,
+					comments);
+		else
+			post = routes.updateRating(rating.beerId.intValue(), rating.ratingId.intValue(), rating.aroma, rating.appearance, rating.flavor,
+					rating.mouthfeel, rating.overall, comments);
+		return post.flatMap(posted -> routes.getBeerRatings(KEY, rating.beerId.intValue(), (int) userId, 1, 1)
+				.flatMapIterable(ratings -> ratings))
+				.filter(storedRating -> storedRating.timeEntered != null)
+				.first();
+	}
+
+	/**
+	 * Returns an observable sequence (list) of breweries (search results) for a text query
+	 */
+	public Observable<BrewerySearchResult> searchBreweries(String query) {
+		return routes.searchBreweries(KEY, Normalizer.get().normalizeSearchQuery(query))
+				.flatMapIterable(results -> results);
+	}
+
+	/**
+	 * Returns the full details for a brewery, or throws an exception if it could not be retrieved
+	 */
+	public Observable<BreweryDetails> getBreweryDetails(long breweryId) {
+		return routes.getBreweryDetails(KEY, (int) breweryId)
+				.flatMapIterable(breweries -> breweries)
+				.first();
+	}
+
+	/**
+	 * Returns a (possibly empty) observable sequence (list) of beers made by some brewery
+	 */
+	public Observable<BreweryBeer> getBreweryBeers(long breweryId) {
+		return routes.getBreweryBeers(KEY, (int) breweryId, Session.get().getUserId())
+				.flatMapIterable(beers -> beers);
+	}
+
+	/**
+	 * Returns an observable sequence (list) of places (search results) for a text query
+	 */
+	public Observable<PlaceSearchResult> searchPlaces(String query) {
+		return routes.searchPlaces(KEY, Normalizer.get().normalizeSearchQuery(query))
+				.flatMapIterable(results -> results);
+	}
+
+	/**
+	 * Returns a (possibly empty) observable sequence (list) of nearby places
+	 */
+	public Observable<PlaceNearby> getPlacesNearby(int radius, double latitude, double longitude) {
+		return routes.getPlacesNearby(KEY, radius, latitude, longitude)
+				.flatMapIterable(places -> places);
+	}
+
+	/**
+	 * Returns the full details for a place, or throws an exception if it could not be retrieved
+	 */
+	public Observable<PlaceDetails> getPlaceDetails(long placeId) {
+		return routes.getPlaceDetails(KEY, (int) placeId)
+				.flatMapIterable(places -> places)
+				.first();
+	}
+
+	/**
+	 * Performs a place check-in on the server and returns true or false to indicate success, or throws an exception if the check-in request failed
+	 */
+	public Observable<Boolean> performPlaceCheckin(long placeId) {
+		Observable<Boolean> checkin = routes.performCheckin(KEY, (int) placeId)
+				.map(result -> !TextUtils.isEmpty(result.okResult));
+		if (!isSignedIn())
+			checkin = checkin.startWith(getLoginCookie());
+		return checkin;
+	}
+
+	/**
+	 * Returns a (possibly empty) observable sequence (list) of the top 50 beers overall
+	 */
+	public Observable<BeerOnTopList> getTopOverall() {
+		return routes.getTopOverall(KEY)
+				.flatMapIterable(beers -> beers);
+	}
+
+	/**
+	 * Returns a (possibly empty) observable sequence (list) of the top 50 beers from a certain country
+	 */
+	public Observable<BeerOnTopList> getTopByCountry(long countryId) {
+		return routes.getTopByCountry(KEY, (int) countryId)
+				.flatMapIterable(beers -> beers);
+	}
+
+	/**
+	 * Returns a (possibly empty) observable sequence (list) of the top 50 beers from a certain country
+	 */
+	public Observable<BeerOnTopList> getTopByStyle(long styleId) {
+		return routes.getTopByStyle(KEY, (int) styleId)
+				.flatMapIterable(beers -> beers);
+	}
+
+	/**
+	 * Returns a (possibly empty) observable sequence (list) of countries
+	 */
+	public Observable<CountryInfo> getCountries() {
+		return routes.getCountries(KEY)
+				.flatMapIterable(countries -> countries);
+	}
+
+	/**
+	 * Returns a (possibly empty) observable sequence (list) of states (of all countries)
+	 */
+	public Observable<StateInfo> getStates() {
+		return routes.getStates(KEY)
+				.flatMapIterable(states -> states);
+	}
+
+	/**
+	 * Returns a (possibly empty) observable sequence (list) of beer styles
+	 */
+	public Observable<StyleInfo> getStyles() {
+		return routes.getStyles(KEY)
+				.flatMapIterable(styles -> styles);
+	}
+
+	private static class Holder {
+		// Holder with static instance which implements a thread safe lazy loading singleton
+		static final Api INSTANCE = new Api();
+	}
+
+}
+app/src/main/java/com/ratebeer/android/gui/lists/BeerRatingsAdapter.java
+public final class BeerRatingsAdapter extends RecyclerView.Adapter<BeerRatingsAdapter.ViewHolder> {
+
+	private final List<BeerRating> ratings;
+
+	public BeerRatingsAdapter(List<BeerRating> ratings) {
+		this.ratings = ratings;
+	}
+
+	@Override
+	public BeerRatingsAdapter.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+		return new ViewHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.list_item_beer_rating, parent, false));
+	}
+
+	@Override
+	public void onBindViewHolder(ViewHolder holder, int position) {
+		BeerRating rating = ratings.get(position);
+		Images.with(holder.avatarImage.getContext()).loadUser(rating.userName).placeholder(android.R.color.white).fit().centerCrop()
+				.into(holder.avatarImage);
+		if (rating.timeEntered == null) {
+			// Directly show comments
+			holder.ratingCommentsText.setText(asHtml(rating.comments));
+		} else {
+			// Show comments and (in grey) the rating date
+			Context context = holder.ratingCommentsText.getContext();
+			String timeEnteredText = DateUtils.formatDateTime(context, rating.timeEntered.getTime(),
+					DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_YEAR | DateUtils.FORMAT_NUMERIC_DATE);
+			SpannableStringBuilder commentsMarkup = new SpannableStringBuilder(asHtml(rating.comments));
+			commentsMarkup.append(" ");
+			commentsMarkup.append(timeEnteredText);
+			commentsMarkup.setSpan(new ForegroundColorSpan(context.getResources().getColor(R.color.grey_light)),
+					commentsMarkup.length() - timeEnteredText.length(), commentsMarkup.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			commentsMarkup.setSpan(new RelativeSizeSpan(0.8F), commentsMarkup.length() - timeEnteredText.length(), commentsMarkup.length(),
+					Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			holder.ratingCommentsText.setText(commentsMarkup);
+		}
+		holder.ratingMarkText.setBackgroundResource(ImageUrls.getColor(position, true));
+		holder.userNameText.setText(rating.userName);
+		holder.userCountText.setText(String.format(Locale.getDefault(), "%1$d", rating.userRateCount));
+		if (rating.timeEntered == null) {
+			holder.offlineBadge.setVisibility(View.VISIBLE);
+			holder.userCountryText.setVisibility(View.GONE);
+			holder.ratingMarkText.setText("-");
+		} else {
+			holder.offlineBadge.setVisibility(View.GONE);
+			holder.userCountryText.setVisibility(View.VISIBLE);
+			holder.userCountryText.setText(rating.userCountryName);
+			holder.ratingMarkText.setText(String.format(Locale.getDefault(), "%1$.1f", rating.total));
+		}
+	}
+
+	private Spanned asHtml(String raw) {
+		if (raw == null)
+			return null;
+		try {
+			return Html.fromHtml(raw);
+		} catch (Exception e) {
+			// Happens such as when running out of memory on large strings
+			return new SpannableString(raw);
+		}
+	}
+
+	@Override
+	public int getItemCount() {
+		return ratings.size();
+	}
+
+	public BeerRating get(int position) {
+		return ratings.get(position);
+	}
+
+	static class ViewHolder extends RecyclerView.ViewHolder {
+
+		final ImageView avatarImage;
+		final TextView ratingMarkText;
+		final TextView ratingCommentsText;
+		final TextView userNameText;
+		final TextView userCountText;
+		final TextView userCountryText;
+		final View offlineBadge;
+
+		public ViewHolder(View v) {
+			super(v);
+			avatarImage = (ImageView) v.findViewById(R.id.avatar_image);
+			ratingMarkText = (TextView) v.findViewById(R.id.rating_mark_text);
+			ratingCommentsText = (TextView) v.findViewById(R.id.rating_comments_text);
+			userNameText = (TextView) v.findViewById(R.id.user_name_text);
+			userCountText = (TextView) v.findViewById(R.id.user_count_text);
+			userCountryText = (TextView) v.findViewById(R.id.user_country_text);
+			offlineBadge = v.findViewById(R.id.offline_badge);
+		}
+
+	}
+
+}
+app/src/main/java/com/ratebeer/android/db/CupboardDbHelper.java
+public synchronized static DatabaseCompartment database(Context context) {
+	if (dbc == null) {
+		dbc = cupboardAll.withDatabase(connection(context));
+	}
+	return dbc;
+}
+app/src/main/java/com/ratebeer/android/gui/widget/ItemClickSupport.java
+public final class ItemClickSupport {
+
+	private final RecyclerView mRecyclerView;
+	private OnItemClickListener mOnItemClickListener;
+	private OnItemLongClickListener mOnItemLongClickListener;
+
+	private View.OnClickListener mOnClickListener = new View.OnClickListener() {
+		@Override
+		public void onClick(View v) {
+			if (mOnItemClickListener != null) {
+				RecyclerView.ViewHolder holder = mRecyclerView.getChildViewHolder(v);
+				mOnItemClickListener.onItemClicked(mRecyclerView, holder.getAdapterPosition(), v);
+			}
+		}
+
+	};
+
+	private View.OnLongClickListener mOnLongClickListener = new View.OnLongClickListener() {
+		@Override
+		public boolean onLongClick(View v) {
+			if (mOnItemLongClickListener != null) {
+				RecyclerView.ViewHolder holder = mRecyclerView.getChildViewHolder(v);
+				return mOnItemLongClickListener.onItemLongClicked(mRecyclerView, holder.getAdapterPosition(), v);
+			}
+			return false;
+		}
+	};
+
+	private RecyclerView.OnChildAttachStateChangeListener mAttachListener = new RecyclerView.OnChildAttachStateChangeListener() {
+		@Override
+		public void onChildViewAttachedToWindow(View view) {
+			if (mOnItemClickListener != null) {
+				view.setOnClickListener(mOnClickListener);
+			}
+			if (mOnItemLongClickListener != null) {
+				view.setOnLongClickListener(mOnLongClickListener);
+			}
+		}
+
+		@Override
+		public void onChildViewDetachedFromWindow(View view) {
+
+		}
+	};
+
+	private ItemClickSupport(RecyclerView recyclerView) {
+		mRecyclerView = recyclerView;
+		mRecyclerView.setTag(R.id.item_click_support, this);
+		mRecyclerView.addOnChildAttachStateChangeListener(mAttachListener);
+	}
+
+	public static ItemClickSupport addTo(RecyclerView view) {
+		ItemClickSupport support = (ItemClickSupport) view.getTag(R.id.item_click_support);
+		if (support == null) {
+			support = new ItemClickSupport(view);
+		}
+		return support;
+	}
+
+	public static ItemClickSupport removeFrom(RecyclerView view) {
+		ItemClickSupport support = (ItemClickSupport) view.getTag(R.id.item_click_support);
+		if (support != null) {
+			support.detach(view);
+		}
+		return support;
+	}
+
+	public ItemClickSupport setOnItemClickListener(OnItemClickListener listener) {
+		mOnItemClickListener = listener;
+		return this;
+	}
+
+	public ItemClickSupport setOnItemLongClickListener(OnItemLongClickListener listener) {
+		mOnItemLongClickListener = listener;
+		return this;
+	}
+
+	private void detach(RecyclerView view) {
+		view.removeOnChildAttachStateChangeListener(mAttachListener);
+		view.setTag(R.id.item_click_support, null);
+	}
+
+	public interface OnItemClickListener {
+
+		void onItemClicked(RecyclerView recyclerView, int position, View v);
+	}
+
+	public interface OnItemLongClickListener {
+
+		boolean onItemLongClicked(RecyclerView recyclerView, int position, View v);
+	}
+
+}
+app/src/main/java/com/ratebeer/android/db/Rating.java
+public final class Rating {
+
+	public Long _id;
+	public Long ratingId;
+	public Long beerId;
+	public String beerName;
+	public String brewerName;
+
+	public Integer aroma;
+	public Integer flavor;
+	public Integer mouthfeel;
+	public Integer appearance;
+	public Integer overall;
+	public Float total;
+	public String comments;
+
+	public Date timeCached;
+	public Date timeEntered;
+	public Date timeUpdated;
+
+	public boolean isUploaded() {
+		return timeEntered != null;
+	}
+
+	public Float calculateTotal() {
+		return calculateTotal(aroma, flavor, mouthfeel, appearance, overall);
+	}
+
+	@Override
+	public String toString() {
+		return "[" + _id + "] " + beerName + ": A" + aroma + " A" + appearance + " T" + flavor + " P" + mouthfeel + " O" + overall + " T" + total;
+	}
+
+	public static Rating fromUserRating(UserRating userRating) {
+		Rating rating = new Rating();
+		rating.ratingId = (long) userRating.ratingId;
+		rating.beerId = (long) userRating.beerId;
+		rating.beerName = userRating.beerName;
+		rating.brewerName = userRating.brewerName;
+
+		rating.aroma = userRating.aroma;
+		rating.flavor = userRating.flavor;
+		rating.mouthfeel = userRating.mouthfeel;
+		rating.appearance = userRating.appearance;
+		rating.overall = userRating.overall;
+		rating.total = userRating.total;
+		rating.comments = userRating.comments;
+
+		rating.timeCached = new Date();
+		rating.timeEntered = userRating.timeEntered;
+		rating.timeUpdated = userRating.timeUpdated;
+		return rating;
+	}
+
+	public static Rating fromBeerRating(Beer beer, BeerRating beerRating, Rating overrideRating) {
+		Rating rating = new Rating();
+		rating._id = overrideRating == null? null: overrideRating._id;
+		rating.ratingId = (long) beerRating.ratingId;
+		rating.beerId = beer._id;
+		rating.beerName = beer.name;
+		rating.brewerName = beer.brewerName;
+
+		rating.aroma = beerRating.aroma;
+		rating.flavor = beerRating.flavor;
+		rating.mouthfeel = beerRating.mouthfeel;
+		rating.appearance = beerRating.appearance;
+		rating.overall = beerRating.overall;
+		rating.total = beerRating.total;
+		rating.comments = beerRating.comments;
+
+		rating.timeCached = new Date();
+		rating.timeEntered = beerRating.timeEntered;
+		rating.timeUpdated = beerRating.timeUpdated;
+		return rating;
+	}
+
+	public static Rating fromOfflineRating(OfflineRating offlineRating) {
+		// Convert legacy offline rating into local rating database object
+		Rating rating = new Rating();
+		rating.ratingId = offlineRating.originalRatingId == null? null: offlineRating.originalRatingId.longValue();
+		rating.beerId = offlineRating.beerId == null ? null : offlineRating.beerId.longValue();
+		rating.beerName = offlineRating.beerName;
+
+		rating.aroma = offlineRating.aroma;
+		rating.flavor = offlineRating.taste;
+		rating.mouthfeel = offlineRating.palate;
+		rating.appearance = offlineRating.appearance;
+		rating.overall = offlineRating.overall;
+		rating.total =
+				calculateTotal(offlineRating.aroma, offlineRating.taste, offlineRating.palate, offlineRating.appearance, offlineRating.overall);
+		rating.comments = offlineRating.comments;
+
+		rating.timeCached = offlineRating.timeSaved;
+		return rating;
+	}
+
+	public static Float calculateTotal(Integer aroma, Integer flavor, Integer mouthfeel, Integer appearance, Integer overall) {
+		if (aroma == null || flavor == null || mouthfeel == null || appearance == null || overall == null)
+			return null;
+		return (float) (aroma + flavor + mouthfeel + appearance + overall) / 10F;
+	}
+
+}
+app/src/main/java/com/ratebeer/android/api/model/BeerRating.java
+public final class BeerRating {
+
+	public int ratingId;
+	public int userId;
+	public String userName;
+	public Integer userCountryId;
+	public String userCountryName;
+	public int userRateCount;
+
+	public Integer aroma;
+	public Integer flavor;
+	public Integer mouthfeel;
+	public Integer appearance;
+	public Integer overall;
+	public Float total;
+	public String comments;
+	public Date timeEntered;
+	public Date timeUpdated;
+
+}
+app/src/main/java/com/ratebeer/android/db/CupboardDbHelper.java
+public synchronized static RxDatabase rxdb(Context context) {
+	if (rxDatabase == null) {
+		rxDatabase = RxCupboard.with(cupboardAll, connection(context));
+	}
+	return rxDatabase;
+}
+app/src/main/java/com/ratebeer/android/gui/widget/CheckableImageButton.java
+public final class CheckableImageButton extends ImageButton implements Checkable {
+
+	private static final int[] CheckedStateSet = {android.R.attr.state_checked};
+
+	private boolean isChecked = false;
+
+	public CheckableImageButton(Context context) {
+		super(context);
+	}
+
+	public CheckableImageButton(Context context, AttributeSet attrs) {
+		super(context, attrs);
+	}
+
+	public CheckableImageButton(Context context, AttributeSet attrs, int defStyleAttr) {
+		super(context, attrs, defStyleAttr);
+	}
+
+	@TargetApi(Build.VERSION_CODES.LOLLIPOP)
+	@SuppressWarnings("unused")
+	public CheckableImageButton(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+		super(context, attrs, defStyleAttr, defStyleRes);
+	}
+
+	@Override
+	public boolean isChecked() {
+		return this.isChecked;
+	}
+
+	@Override
+	public void setChecked(boolean checked) {
+		if (this.isChecked != checked) {
+			this.isChecked = checked;
+			refreshDrawableState();
+		}
+	}
+
+	@Override
+	public void toggle() {
+		setChecked(!this.isChecked);
+	}
+
+	@Override
+	public int[] onCreateDrawableState(int extraSpace) {
+		final int[] drawableState = super.onCreateDrawableState(extraSpace + 1);
+		if (isChecked()) {
+			mergeDrawableStates(drawableState, CheckedStateSet);
+		}
+		return drawableState;
+	}
+
+	@Override
+	protected void drawableStateChanged() {
+		super.drawableStateChanged();
+		invalidate();
+	}
+
+}
+app/src/main/java/com/ratebeer/android/gui/widget/Animations.java
+public final class Animations {
+
+	private static final long EXPAND_COLLAPSE_DURATION = 600; // ms
+
+	public static void fadeFlip(final View in, final View out) {
+		ObjectAnimator animOut = ObjectAnimator.ofFloat(out, "alpha", 1F, 0F);
+		ObjectAnimator animIn = ObjectAnimator.ofFloat(in, "alpha", 0F, 1F);
+		in.setAlpha(0F);
+		in.setVisibility(View.VISIBLE);
+		in.setTag(View.VISIBLE);
+		out.setTag(View.INVISIBLE);
+		AnimatorSet animSetXY = new AnimatorSet();
+		animSetXY.playTogether(animOut, animIn);
+		animSetXY.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator animation) {
+				//noinspection WrongConstant
+				out.setVisibility((Integer) out.getTag());
+			}
+		});
+		animSetXY.start();
+	}
+
+	public static void fadeFlipOut(final View in, final View out1, final View out2) {
+		ObjectAnimator animOut1 = ObjectAnimator.ofFloat(out1, "alpha", 1F, 0F);
+		ObjectAnimator animOut2 = ObjectAnimator.ofFloat(out2, "alpha", 1F, 0F);
+		ObjectAnimator animIn = ObjectAnimator.ofFloat(in, "alpha", 0F, 1F);
+		in.setAlpha(0F);
+		in.setVisibility(View.VISIBLE);
+		in.setTag(View.VISIBLE);
+		out1.setTag(View.INVISIBLE);
+		out2.setTag(View.INVISIBLE);
+		AnimatorSet animSetXY = new AnimatorSet();
+		animSetXY.playTogether(animOut1, animOut2, animIn);
+		animSetXY.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator animation) {
+				//noinspection WrongConstant
+				out1.setVisibility((Integer) out1.getTag());
+				//noinspection WrongConstant
+				out2.setVisibility((Integer) out2.getTag());
+			}
+		});
+		animSetXY.start();
+	}
+
+	public static void fadeFlipIn(final View in1, final View in2, final View out) {
+		ObjectAnimator animOut = ObjectAnimator.ofFloat(out, "alpha", 1F, 0F);
+		ObjectAnimator animIn1 = ObjectAnimator.ofFloat(in1, "alpha", 0F, 1F);
+		ObjectAnimator animIn2 = ObjectAnimator.ofFloat(in2, "alpha", 0F, 1F);
+		in1.setAlpha(0F);
+		in2.setAlpha(0F);
+		in1.setVisibility(View.VISIBLE);
+		in2.setVisibility(View.VISIBLE);
+		in1.setTag(View.VISIBLE);
+		in2.setTag(View.VISIBLE);
+		out.setTag(View.INVISIBLE);
+		AnimatorSet animSetXY = new AnimatorSet();
+		animSetXY.playTogether(animOut, animIn1);
+		animSetXY.playTogether(animOut, animIn2);
+		animSetXY.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator animation) {
+				//noinspection WrongConstant
+				out.setVisibility((Integer) out.getTag());
+			}
+		});
+		animSetXY.start();
+	}
+
+	public static void collapseToTop(View view) {
+		final int startHeight = (int) view.getTag(R.id.expand_collapse_height_tag);
+		Animation animation = new Animation() {
+			@Override
+			protected void applyTransformation(float interpolatedTime, Transformation t) {
+				super.applyTransformation(interpolatedTime, t);
+				view.getLayoutParams().height = (int) (startHeight * (1 - interpolatedTime));
+				view.requestLayout();
+			}
+
+			@Override
+			public boolean willChangeBounds() {
+				return true;
+			}
+		};
+		animation.setDuration(EXPAND_COLLAPSE_DURATION);
+		animation.setAnimationListener(new Animation.AnimationListener() {
+			@Override
+			public void onAnimationStart(Animation animation) {
+
+			}
+
+			@Override
+			public void onAnimationEnd(Animation animation) {
+				view.getLayoutParams().height = startHeight;
+				view.setVisibility(View.GONE);
+				view.requestLayout();
+			}
+
+			@Override
+			public void onAnimationRepeat(Animation animation) {
+
+			}
+		});
+		view.startAnimation(animation);
+	}
+
+	public static void expandFromTop(View view) {
+		view.setVisibility(View.VISIBLE);
+		Animation animation = new Animation() {
+			@Override
+			protected void applyTransformation(float interpolatedTime, Transformation t) {
+				super.applyTransformation(interpolatedTime, t);
+				if (view.getTag(R.id.expand_collapse_height_tag) == null)
+					view.setTag(R.id.expand_collapse_height_tag, view.getHeight());
+				view.getLayoutParams().height = (int) (((int) view.getTag(R.id.expand_collapse_height_tag)) * interpolatedTime);
+				view.requestLayout();
+			}
+
+			@Override
+			public boolean willChangeBounds() {
+				return true;
+			}
+		};
+		animation.setDuration(EXPAND_COLLAPSE_DURATION);
+		view.startAnimation(animation);
+	}
+
+}
+app/src/main/java/com/ratebeer/android/gui/lists/CustomListsPopupAdapter.java
+public final class CustomListsPopupAdapter extends RecyclerView.Adapter<CustomListsPopupAdapter.ViewHolder> {
+
+	private List<CustomListWithPresence> customLists;
+
+	public CustomListsPopupAdapter(List<CustomListWithPresence> customLists) {
+		this.customLists = customLists;
+	}
+
+	@Override
+	public CustomListsPopupAdapter.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+		return new ViewHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.list_item_custom_list_popup, parent, false));
+	}
+
+	@Override
+	public void onBindViewHolder(ViewHolder holder, int position) {
+		CustomListWithPresence customList = customLists.get(position);
+		holder.nameText.setText(customList.name);
+		holder.nameText.setChecked(customList.hasBeer);
+	}
+
+	@Override
+	public int getItemCount() {
+		return customLists.size();
+	}
+
+	public CustomListWithPresence get(int position) {
+		return customLists.get(position);
+	}
+
+	static class ViewHolder extends RecyclerView.ViewHolder {
+
+		final CheckedTextView nameText;
+
+		public ViewHolder(View v) {
+			super(v);
+			nameText = (CheckedTextView) v.findViewById(R.id.name_text);
+		}
+
+	}
+
+}
+app/src/main/java/com/ratebeer/android/Session.java
+public class Session {
+
+	private Context databaseContext;
+	private SharedPreferences prefs;
+	private StoredSession stored;
+
+	public Observable<StoredSession> getUpdates(Context context, boolean emitInitial) {
+		Observable<StoredSession> updates = rxdb(context).changes(StoredSession.class).map(DatabaseChange::entity);
+		if (emitInitial)
+			updates = updates.startWith(Observable.just(stored));
+		return updates;
+	}
+
+	private static class Holder {
+		static final Session INSTANCE = new Session();
+	}
+
+	public static Session get() {
+		return Holder.INSTANCE;
+	}
+
+	private Session() {
+	}
+
+	public void init(Context context) {
+		synchronized (this) {
+			databaseContext = context.getApplicationContext();
+			prefs = PreferenceManager.getDefaultSharedPreferences(context);
+			// Resume session from the database
+			stored = database(databaseContext).query(StoredSession.class).get();
+			if (stored == null) {
+				stored = new StoredSession();
+			}
+		}
+	}
+
+	public Context getApplicationContext() {
+		return databaseContext;
+	}
+
+	public void startSession(int userId, String userName, String password, UserRateCount counts) {
+		synchronized (this) {
+			stored.userId = userId;
+			stored.userName = userName;
+			stored.password = password;
+			stored.rateCount = counts.rateCount;
+			stored.placeCount = counts.placeCount;
+			rxdb(databaseContext).put(stored);
+		}
+	}
+
+	public void updateCounts(UserRateCount counts) {
+		synchronized (this) {
+			stored.rateCount = counts.rateCount;
+			stored.placeCount = counts.placeCount;
+			rxdb(databaseContext).put(stored);
+		}
+	}
+
+	public void endSession() {
+		synchronized (this) {
+			rxdb(databaseContext).delete(stored);
+			stored = new StoredSession();
+		}
+	}
+
+	public boolean isLoggedIn() {
+		return stored.userId != null;
+	}
+
+	public Integer getUserId() {
+		return stored.userId;
+	}
+
+	public String getUserName() {
+		return stored.userName;
+	}
+
+	public String getPassword() {
+		return stored.password;
+	}
+
+	public Integer getUserRateCount() {
+		return stored.rateCount;
+	}
+
+	public boolean isUpgrade() {
+		// The "is_first_start" key was used on the old app to identify new installs and thus will always be present on upgrades
+		return prefs.contains("is_first_start");
+	}
+
+	public boolean hasIgnoredAccount() {
+		return prefs.getBoolean("has_ignored_account", false);
+	}
+
+	public void registerIgnoreAccount() {
+		prefs.edit().putBoolean("has_ignored_account", true).apply();
+	}
+
+	public boolean inDataSaverMode() {
+		return prefs.getBoolean("data_saver_mode", false);
+	}
+
+	public void setDataSaverMode(boolean useDataSaverMode) {
+		prefs.edit().putBoolean("data_saver_mode", useDataSaverMode).apply();
+	}
+
+	public boolean useMetricUnits() {
+		return prefs.getBoolean("units_in_metric", true);
+	}
+
+	public void setUseMetricUnits(boolean useMetricUnits) {
+		prefs.edit().putBoolean("units_in_metric", useMetricUnits).apply();
+	}
+
+}
+app/src/main/java/com/ratebeer/android/gui/widget/ImeUtils.java
+public final class ImeUtils {
+
+	private ImeUtils() {}
+
+	public static void showIme(@NonNull View view) {
+		InputMethodManager imm = (InputMethodManager) view.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+		imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
+	}
+
+	public static void hideIme(@NonNull View view) {
+		InputMethodManager imm = (InputMethodManager) view.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+		imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+	}
+
+}
+app/src/main/java/com/ratebeer/android/db/CustomList.java
+public final class CustomList {
+
+	public Long _id;
+	public String name;
+
+}
+app/src/main/java/com/ratebeer/android/ShareHelper.java
+public final class ShareHelper {
+
+	private static final String URL_BEER = Api.DOMAIN + "/b/%1$d/";
+	private static final String URL_BREWERY = Api.DOMAIN + "/brewers/b/%1$d/";
+	private static final String URL_PLACE = Api.DOMAIN + "/p/p/%1$d/";
+
+	private final Context context;
+
+	public ShareHelper(Context context) {this.context = context;}
+
+	public void shareBeer(long id, String name) {
+		shareLink(name, String.format(Locale.US, URL_BEER, id));
+	}
+
+	public void shareBrewery(long id, String name) {
+		shareLink(name, String.format(Locale.US, URL_BREWERY, id));
+	}
+
+	public void sharePlace(long id, String name) {
+		shareLink(name, String.format(Locale.US, URL_PLACE, id));
+	}
+
+	private void shareLink(String name, String url) {
+		Intent openIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+		List<Intent> browserIntents = new ArrayList<>();
+		for (ResolveInfo openInfo : context.getPackageManager().queryIntentActivities(openIntent, 0)) {
+			if (!openInfo.activityInfo.packageName.equals(BuildConfig.APPLICATION_ID)) {
+				Intent browserIntent = new Intent();
+				browserIntent.setComponent(new ComponentName(openInfo.activityInfo.packageName, openInfo.activityInfo.name));
+				browserIntent.setAction(Intent.ACTION_VIEW);
+				browserIntent.setData(Uri.parse(url));
+				browserIntents.add(browserIntent);
+			}
+		}
+		String shareText = context.getString(R.string.app_sharetext, name, url);
+		Intent shareIntent = new Intent(Intent.ACTION_SEND);
+		shareIntent.setType("text/plain");
+		shareIntent.putExtra(Intent.EXTRA_TEXT, shareText);
+		Intent chooserIntent = new Intent(Intent.ACTION_CHOOSER);
+		chooserIntent.putExtra(Intent.EXTRA_INTENT, shareIntent);
+		chooserIntent.putExtra(Intent.EXTRA_TITLE, context.getString(R.string.app_openorshare));
+		chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, browserIntents.toArray(new Intent[browserIntents.size()]));
+		context.startActivity(chooserIntent);
+	}
+
+}
+app/src/main/java/com/ratebeer/android/db/Db.java
+public final class Db {
+
+	private static final long MAX_AGE = 30 * 60 * 1000; // 30 minutes cache
+
+	public static Observable<SearchSuggestion> getAllHistoricSearches(Context context) {
+		return rxdb(context).query(database(context).query(HistoricSearch.class).orderBy("time desc")).map(SearchSuggestion::fromHistoricSearch);
+	}
+
+	public static Observable<SearchSuggestion> getSuggestions(Context context, String query) {
+		String whereName = "";
+		String whereBeerName = "";
+		String[] parts = query.split(" ");
+		String[] whereArgs = new String[parts.length];
+		for (int i = 0; i < parts.length; i++) {
+			whereName += (whereName.length() == 0 ? "" : " and ") + "name like ?";
+			whereBeerName += (whereBeerName.length() == 0 ? "" : " and ") + "beerName like ?";
+			whereArgs[i] = "%" + parts[i] + "%";
+		}
+
+		Observable<HistoricSearch> lastHistoric = rxdb(context).query(
+				database(context).query(HistoricSearch.class)
+						.withSelection(whereName, whereArgs)
+						.orderBy("time desc").limit(2));
+		Observable<Brewery> localBrewers = rxdb(context).query(
+				database(context).query(Brewery.class)
+						.withSelection(whereName, whereArgs)
+						.orderBy("name")
+						.limit(3));
+		Observable<Rating> localRatings = rxdb(context).query(
+				database(context).query(Rating.class)
+						.withSelection("beerId is not null and (" + whereBeerName + ")", whereArgs)
+						.orderBy("timeEntered IS NULL, timeEntered desc")
+						.limit(10));
+		Observable<Place> localPlaces = rxdb(context).query(
+				database(context).query(Place.class)
+						.withSelection(whereName, whereArgs)
+						.orderBy("rateCount desc")
+						.limit(5));
+		Observable<Beer> localBeers = rxdb(context).query(
+				database(context).query(Beer.class)
+						.withSelection(whereName, whereArgs)
+						.orderBy("rateCount" + " desc")
+						.limit(10));
+
+		return Observable.merge(
+				lastHistoric.map(SearchSuggestion::fromHistoricSearch),
+				localBrewers.map(SearchSuggestion::fromBrewery),
+				localRatings.map(SearchSuggestion::fromRating),
+				localPlaces.map(SearchSuggestion::fromPlace),
+				localBeers.map(SearchSuggestion::fromBeer))
+				.distinct(searchSuggestion -> searchSuggestion.uniqueCode());
+	}
+
+	public static Observable<Beer> getBeer(Context context, long beerId) {
+		return getBeer(context, beerId, false);
+	}
+
+	public static Observable<Beer> getBeer(Context context, long beerId, boolean refresh) {
+		Observable<Beer> fresh = api().getBeerDetails(beerId)
+				.map(Beer::fromDetails)
+				.flatMap(beer -> rxdb(context).putRx(beer));
+		if (refresh)
+			return fresh;
+		else
+			return getFresh(
+					rxdb(context).get(Beer.class, beerId),
+					fresh,
+					beer -> isFresh(context, beer.timeCached));
+	}
+
+	public static Observable<Rating> getOfflineRating(Context context, long ratingId) {
+		return rxdb(context).get(Rating.class, ratingId);
+	}
+
+	public static Observable<Rating> getOfflineRatingForBeer(Context context, long beerId) {
+		return rxdb(context).query(Rating.class, "beerId = ?", Long.toString(beerId))
+				.take(1);
+	}
+
+	public static Observable<Rating> getRating(Context context, long beerId, long userId) {
+		// @formatter:off
+		return getFresh(
+				// Local cached value (recent or an offline rating) or...
+				rxdb(context).query(Rating.class, "beerId = ?", Long.toString(beerId)),
+				// Retrieve fresh value
+				Observable.combineLatest(
+							getBeer(context, beerId),
+							api().getBeerUserRating(beerId, userId),
+							rxdb(context).query(Rating.class, "beerId = ?", Long.toString(beerId)).firstOrDefault(null),
+							RxTuples.toTriplet())
+						// When a value exists online
+						.filter(pair -> pair.getValue1() != null)
+						// Create new or override existing local rating
+						.map(pair -> Rating.fromBeerRating(pair.getValue0(), pair.getValue1(), pair.getValue2()))
+						// And store it in the database
+						.flatMap(rating -> rxdb(context).putRx(rating)),
+				rating -> !rating.isUploaded() || isFresh(context, rating.timeCached));
+		// @formatter:on
+	}
+
+	public static boolean hasSyncedRatings(Context context) {
+		return DatabaseUtils.queryNumEntries(connection(context), Rating.class.getSimpleName()) > 0;
+	}
+
+	public static Observable<Rating> getRatings(Context context) {
+		return rxdb(context).query(
+				database(context).query(Rating.class)
+						.orderBy("timeEntered IS NOT NULL, timeEntered desc, timeCached desc"));
+	}
+
+	public static Observable<Rating> syncRatings(Context context, Action1<Float> onPageProgress) {
+		// Load all user ratings
+		return api().getUserRatings(onPageProgress)
+				// Map into a local rating
+				.map(Rating::fromUserRating)
+				.flatMap(rating -> {
+					// If the rating already exists in our database, override it
+					Rating existing = database(context).query(Rating.class)
+							.withSelection("ratingId = ?", rating.ratingId.toString())
+							.get();
+					if (existing != null)
+						rating._id = existing._id;
+					return rxdb(context).putRx(rating);
+				});
+	}
+
+	public static Observable<Rating> postRating(Context context, Rating rating, long userId) {
+		// Post live rating
+		return api().postRating(rating, userId)
+				.flatMap(postedRating ->
+						// Combine into a local rating
+						Observable.combineLatest(
+								getBeer(context, rating.beerId),
+								Observable.just(postedRating),
+								Observable.just(rating),
+								Rating::fromBeerRating))
+				// Store in db
+				.flatMap(combinedRating -> rxdb(context).putRx(combinedRating))
+				// Update the rate count from the server
+				.doOnNext(combinedRating -> api().updateUserRateCounts().toBlocking().first());
+	}
+
+	public static Observable<Rating> deleteOfflineRating(Context context, Rating rating, long userId) {
+		return rxdb(context).deleteRx(rating)
+				.flatMap(deletedRating -> {
+					if (deletedRating.ratingId == null)
+						// Was local only, so we are done
+						return Observable.empty();
+					else
+						// Was stored online, so refresh from the RB server our local rating instance
+						return getRating(context, deletedRating.beerId, userId);
+				});
+	}
+
+	public static Observable<Brewery> getBrewery(Context context, long breweryId) {
+		return getBrewery(context, breweryId, false);
+	}
+
+	public static Observable<Brewery> getBrewery(Context context, long breweryId, boolean refresh) {
+		Observable<Brewery> fresh = api().getBreweryDetails(breweryId)
+				.map(Brewery::fromDetails)
+				.flatMap(brewery -> rxdb(context).putRx(brewery));
+		if (refresh)
+			return fresh;
+		else
+			return getFresh(
+					rxdb(context).get(Brewery.class, breweryId),
+					fresh,
+					brewery -> isFresh(context, brewery.timeCached));
+	}
+
+	public static Observable<Place> getPlacesNearby(Context context, Location location) {
+		int radius = 40000; // Meters
+		// Fresh (from the sever) places are received in a 40 kilometer (±25 mile) radius
+		Observable<Place> fresh = api().getPlacesNearby((int) (radius * 0.000621371192D), location.getLatitude(), location.getLongitude())
+				.map(Place::fromNearby)
+				.flatMap(place -> rxdb(context).putRx(place));
+		// Database places are received in a rough rectangular area of 40 kilometers (±0.4 degrees) in each direction
+		final double accuracy = radius / 111111;
+		String minLat = Double.toString(location.getLatitude() - accuracy);
+		String maxLat = Double.toString(location.getLatitude() + accuracy);
+		String minLong = Double.toString(location.getLongitude() - accuracy);
+		String maxLong = Double.toString(location.getLongitude() + accuracy);
+		Observable<Place> db = rxdb(context).query(Place.class, "(latitude BETWEEN ? AND ?) AND (longitude BETWEEN ? AND ?)", minLat, maxLat,
+				minLong, maxLong);
+		return Observable.merge(fresh, db);
+	}
+
+	public static Observable<Place> getPlace(Context context, long placeId) {
+		return getPlace(context, placeId, false);
+	}
+
+	public static Observable<Place> getPlace(Context context, long placeId, boolean refresh) {
+		Observable<Place> fresh = api().getPlaceDetails(placeId)
+				.map(Place::fromDetails)
+				.flatMap(place -> rxdb(context).putRx(place));
+		if (refresh)
+			return fresh;
+		else
+			return getFresh(
+					rxdb(context).get(Place.class, placeId),
+					fresh,
+					place -> isFresh(context, place.timeCached));
+	}
+
+	public static Observable<CustomListWithCount> getCustomListsWithCount(Context context) {
+		Cursor cursor = connection(context).rawQuery("select l._id, l.name, count(b._id) as beerCount from CustomList as l left outer join " +
+				"CustomListBeer as b on b.listId = l._id group by l._id having beerCount > 0 or (l.name is not null and l.name != '')", null);
+		return RxCupboard.with(cupboard(), cursor).iterate(CustomListWithCount.class);
+	}
+
+	public static Observable<CustomListWithPresence> getCustomLists(Context context, long withBeerId) {
+		Cursor cursor = connection(context).rawQuery("select l._id, l.name, (select count(*) from CustomListBeer as b where b.listId = l._id and " +
+				"b.beerId = ?) > 0 as hasBeer from CustomList as l", new String[]{Long.toString(withBeerId)});
+		return RxCupboard.with(cupboard(), cursor).iterate(CustomListWithPresence.class);
+	}
+
+	public static Observable<CustomListBeer> getCustomListBeer(Context context, long listId, long beerId) {
+		return rxdb(context).query(CustomListBeer.class, "listId = ? and beerId = ?", Long.toString(listId), Long.toString(beerId));
+	}
+
+	public static Observable<CustomListBeer> getCustomListBeers(Context context, long listId) {
+		return rxdb(context).query(CustomListBeer.class, "listId = ?", Long.toString(listId));
+	}
+
+	public static Observable<DatabaseChange<CustomListBeer>> getCustomListBeerChanges(Context context, long listId) {
+		return rxdb(context).changes(CustomListBeer.class)
+				.filter(change -> change.entity().listId == listId);
+	}
+
+	public static Observable<Integer> deleteCustomList(Context context, CustomList list) {
+		return Observable.defer(() ->
+				Observable.just(
+						database(context).delete(CustomListBeer.class, "listId = ?", Long.toString(list._id))))
+				.first()
+				.doOnNext(ignore -> rxdb(context).delete(list));
+	}
+
+	public static Observable<List<Country>> getCountries(Context context) {
+		Observable<Country> db = rxdb(context).query(Country.class);
+		Observable<Country> fresh = api().getCountries()
+				.map(Country::fromInfo)
+				.flatMap(style -> rxdb(context).putRx(style));
+		return getFresh(
+				db.toSortedList(),
+				fresh.toSortedList(),
+				stylesList -> stylesList.size() != 0 && isFresh(context, stylesList.get(0).timeCached)
+		);
+	}
+
+	public static Observable<List<Style>> getStyles(Context context) {
+		Observable<Style> db = rxdb(context).query(Style.class);
+		Observable<Style> fresh = api().getStyles()
+				.map(Style::fromInfo)
+				.flatMap(style -> rxdb(context).putRx(style));
+		return getFresh(
+				db.toSortedList(),
+				fresh.toSortedList(),
+				stylesList -> stylesList.size() != 0 && isFresh(context, stylesList.get(0).timeCached)
+		);
+	}
+
+	private static <T> Observable<T> getFresh(Observable<T> db, Observable<T> server, Func1<T, Boolean> isFresh) {
+		db = db.filter(item -> item != null);
+		return Observable.concat(
+				Observable.concat(db, server)
+						.takeFirst(isFresh::call),
+				db)
+				.take(1);
+	}
+
+	private static boolean isFresh(Context context, Date timeCached) {
+		if (ConnectivityHelper.current(context) == ConnectivityHelper.ConnectivityType.NoConnection)
+			return true;
+		return timeCached != null && timeCached.after(new Date(System.currentTimeMillis() - MAX_AGE));
+	}
+
+	public static boolean clearRatings(Context context) {
+		return database(context).delete(Rating.class, "timeEntered is not null") > 0;
+	}
+
+}
+app/src/main/java/com/ratebeer/android/gui/widget/Images.java
+public final class Images {
+
+	private final Context context;
+
+	public Images(Context context) {
+		this.context = context;
+	}
+
+	public static Images with(Context context) {
+		return new Images(context);
+	}
+
+	public RequestCreator loadBeer(long beerId) {
+		return loadBeer(beerId, false);
+	}
+
+	public RequestCreator loadBeer(long beerId, boolean highResolution) {
+		RequestCreator request =
+				Picasso.with(context).load(highResolution ? ImageUrls.getBeerPhotoHighResUrl(beerId) : ImageUrls.getBeerPhotoUrl(beerId));
+		if (Session.get().inDataSaverMode() && ConnectivityHelper.current(context) != ConnectivityHelper.ConnectivityType.Wifi)
+			request.networkPolicy(NetworkPolicy.OFFLINE);
+		return request;
+	}
+
+	public RequestCreator loadBrewery(long breweryId) {
+		return loadBrewery(breweryId, false);
+	}
+
+	public RequestCreator loadBrewery(long breweryId, boolean highResolution) {
+		RequestCreator request = Picasso.with(context).load(highResolution ? ImageUrls.getBreweryPhotoHighResUrl(breweryId) : ImageUrls
+				.getBreweryPhotoUrl(breweryId));
+		if (Session.get().inDataSaverMode() && ConnectivityHelper.current(context) != ConnectivityHelper.ConnectivityType.Wifi)
+			request.networkPolicy(NetworkPolicy.OFFLINE);
+		return request;
+	}
+
+	public RequestCreator loadUser(String username) {
+		return loadUser(username, false);
+	}
+
+	public RequestCreator loadUser(String username, boolean highResolution) {
+		RequestCreator request =
+				Picasso.with(context).load(highResolution ? ImageUrls.getUserPhotoHighResUrl(username) : ImageUrls.getUserPhotoUrl(username));
+		if (Session.get().inDataSaverMode() && ConnectivityHelper.current(context) != ConnectivityHelper.ConnectivityType.Wifi)
+			request.networkPolicy(NetworkPolicy.OFFLINE);
+		return request;
+	}
+
+}

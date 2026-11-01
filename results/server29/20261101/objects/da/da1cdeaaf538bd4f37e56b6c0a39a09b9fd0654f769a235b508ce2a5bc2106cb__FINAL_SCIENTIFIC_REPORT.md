@@ -1,0 +1,10 @@
+# Group64真实STOP交付
+
+状态：PARTIAL_RESULTS_PRESERVED_AND_STOP。实际合法完成数：{"G64-0": 0, "G64-1": 0, "G64-2": 0, "G64-3": 0}。未完成120，不输出完整准确率或伪造空科学CSV。保留首因、原日志、原失败和真实退出释放，无GPU重试/轨迹拼接/热改。
+
+{
+  "error": "RuntimeError('Unit worker exited unsuccessfully; inspect immutable log, no retry')",
+  "status": "FAIL_CLOSED_STOP",
+  "traceback": "Traceback (most recent call last):\n  File \"/data/zypan/analyses/qwen_gdn_group64_four_codec_aime26_seed1_v1/scripts/gpu_controller.py\", line 43, in run\n    C.require(proc.returncode==0,'Unit worker exited unsuccessfully; inspect immutable log, no retry')\n  File \"/data/zypan/analyses/qwen_gdn_group64_four_codec_aime26_seed1_v1/src/inherited_device_guards.py\", line 7, in require\n    if not ok:raise RuntimeError(message)\nRuntimeError: Unit worker exited unsuccessfully; inspect immutable log, no retry\n",
+  "unit": "GPU5_CODEC_MICRO"
+}

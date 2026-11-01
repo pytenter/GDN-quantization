@@ -1,0 +1,1 @@
+lambda _cls, pattern, tokens, command: _tuple_new(_cls, (pattern, tokens, command))

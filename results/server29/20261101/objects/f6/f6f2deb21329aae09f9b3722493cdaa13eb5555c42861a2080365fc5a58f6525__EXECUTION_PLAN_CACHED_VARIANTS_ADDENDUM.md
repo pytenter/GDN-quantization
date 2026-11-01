@@ -1,0 +1,15 @@
+# 执行前缓存与存储补充冻结
+
+本补充在任何新GPU资格及正式outcome之前保存，不使用任何新科学效果。
+
+原计划先检查500行主Arrow，同时允许审计其他已有兼容缓存。真实遍历发现原JSONL与主Arrow500行ID/context完全一致；已有RepoBench-P_e JSONL共300行，其中11个context重复、289个新文本。该缓存与主源有相同字段结构、RepoBench-P任务族和Python/Java语言，已独立审计原文SHA及来源。候选全集去重后789行。原始来源variant保留，不把_e伪装成原Arrow行。长度、历史排除、去重阈值、固定seed、SHA排序、N=8及Primary规则均不改变。检查前暂停、原日志和独立attempt002保留；第一attempt没有tokenization或模型forward。
+
+冻结的8篇包括7篇已有_e缓存文档与1篇主Arrow文档；不是新下载数据。原缓存没有repository/project字段，项目独立性未知，文档级符号检验/区间依赖独立性假设。文本/token去重通过不能证明项目独立。该限制保留到最终结论。
+
+数学路径全部通过原只读pilot源模块复用，新adapter只绑定本轮root/repo/task及两条件roster。增量资格：两新observer/reducer进程须与旧合格过程的所有逐字节/标量证据一致；旧8192工程anchor独立新进程恢复后8-token Parent须逐字节一致，不重跑前缀。原恢复函数另检查三个cache副本独立性，但只有Parent做8-token forward；本轮没有NoDeflation正式trajectory。
+
+存储：.55当前doc的FP参考在/data，当前doc anchor/student在新独立/tmp目录（同一GPU0，仅磁盘I/O路径不同）。.29永久归档目录为/data/zypan/qwen_functional_replication_archive/QWEN_GDN_FUNCTIONAL_CAUSAL_REPLICATION_V1。每doc四单位完成后、下一doc开始前，全部384位置两分支CPU FP64审计须满足旧冻结bound；完成全文件SHA核验与远端atomic seal后，只有这一新doc的本地tensor副本可以移除，metadata/位置映射/原manifest与SHA保留。旧正式资产不删除或修改。SSH密码不存入文件/脚本/提示。
+
+全部8篇完成再统计。95% CI为seed20261013、100000次整doc重采样的mean-Delta percentile interval，numpy linear percentile。支持规则仍为无UNRESOLVED且>=7可分辨正向；不满足支持且>=2可分辨负向时为FUNCTIONAL_EFFECT_NOT_GENERAL_IN_THIS_PANEL，否则MIXED_OR_HETEROGENEOUS_FUNCTIONAL_EFFECT；失败/未完整为INCOMPLETE_OR_ENGINEERING_STOP。弱激活仍保留，不能删除或补文档。
+
+本轮预计约42GPUh仅为旧分阶段ledger推算，真实成本由新回执记录。无GPUh硬预算及显存百分比阈值。真实数值/身份/物理失败立即STOP，保留证据，不重启单位、不热修数学路径。

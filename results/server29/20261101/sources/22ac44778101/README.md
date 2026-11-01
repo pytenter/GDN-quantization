@@ -1,0 +1,39 @@
+# qwen-gdn-c6r-c7-4x3090-deployment-v1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/worktrees/qwen-gdn-c6r-c7-4x3090-deployment-v1`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/deployment/selected_artifacts_pre_endpoint.json`](../../objects/37/371ee4a71e5af88d4c850ab382c0bbd637a4b025413a299faf9e9ecb131df140__selected_artifacts_pre_endpoint.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/source_evidence/deployment/selected_artifacts_pre_endpoint.json`](../../objects/37/371ee4a71e5af88d4c850ab382c0bbd637a4b025413a299faf9e9ecb131df140__selected_artifacts_pre_endpoint.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/source_evidence/protocol/PROTOCOL_AMENDMENT_C5R_AUXILIARY_ENDPOINT_V1.json`](../../objects/3c/3c2191f4f27a0357149fa1821fb160466f276f08f801443d8d6fe1e18c7966c5__PROTOCOL_AMENDMENT_C5R_AUXILIARY_ENDPOINT_V1.json)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/analysis/shared16_comparison.csv`](../../objects/9c/9ca041632d42611c4d0cf37789174beeb560a15c15465f3ec0d4e8d3867cba73__shared16_comparison.csv)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_PERSISTENT_WORKER_READINESS_V2/configs/v2_protocol.json`](../../objects/5a/5ac859d5936bb8929bbd9db4c556f552dee1692e6f72931841fd4bf038adda84__v2_protocol.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/configs/frozen_smoke_protocol.json`](../../objects/cd/cd2805552c505e757b7d3b02c2d42f3131e8d7d3641d3af33070d0cbec9d44dd__frozen_smoke_protocol.json)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/scripts/posttrain_closure_finalize.py`](../../objects/15/15ed906edd9c504607e8aa3ea72c3635149dfa55397d803261309a4e809881d2__posttrain_closure_finalize.py)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/scripts/deployment_failure_finalize.py`](../../objects/a8/a88ba1768f220c0f8ac0ef5ac3416c29d8097b3b705cff81f379293769bd3590__deployment_failure_finalize.py)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/configs/future_canonical60_protocol.json`](../../objects/6d/6dc9d4373389ff685728dcbc364776dc823f1b80cef54953697598cfcd89b41f__canonical60_worker_assignment.json)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/analysis/posttrain_shared16_summary.json`](../../objects/99/99c1fa0a431a4279163d167b78ab476eafd1566750e08f196c53b8d368084f7b__posttrain_shared16_summary.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/analysis/observer_repair_final_gates.json`](../../objects/e7/e76ddba4db0c2bb181273ee54c6acc0c03d55d4462ea6e19d8f1497b0f0ebaa8__observer_repair_final_gates.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/provenance/source_final_revalidation.json`](../../objects/92/9289699b27392b24e7712c05c8dfc40bae1502734628a9f343d63d2245c70fe0__observer_repair_source_revalidation.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/manifests/observer_repair_final_sha256.txt`](../../objects/3c/3c0fe04dea61c2c85a707c0f71369be5b225682b409e692da9b033c5f9f5729a__observer_repair_final_sha256.txt)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_PERSISTENT_WORKER_READINESS_V2/scripts/persistent_v2_finalize.py`](../../objects/4d/4d4b9916b15ace9abe78263cc3578f2d0cd1cbd266251fb198d81da34fdcb273__persistent_v2_finalize.py)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/analysis/posttrain_shared16_per_capture.csv`](../../objects/5a/5ad396619e2e7270e06d4772ade7f04006d90bd058f982b2a4bb86e33c3da732__posttrain_shared16_per_capture.csv)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/analysis/rotation_distances_descriptive.csv`](../../objects/ab/ab07aff28f33dc81b482b255efd13ef0168f3badb5a0f29639a0c636aa0de905__rotation_distances_descriptive.csv)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/analysis/historical_reproduction_analysis.md`](../../objects/99/9917c9f6ee6e41ba76087352837ec94690f08ce851dbd0a434c8896a05cd9177__historical_reproduction_analysis.md)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/analysis/posttrain_shared16_per_document.csv`](../../objects/62/62943994d1f7610eef1fa32a47828d824e25c07fa7f48f122d2b4f634437b37a__posttrain_shared16_per_document.csv)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/source_evidence/protocol/preregistration.json`](../../objects/00/009279fb84dd6d45f73bdfc27629a6d28de8d1a6dbfab64b65c83e9c4de5f3c8__preregistration.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_PERSISTENT_WORKER_READINESS_V2/manifests/v2_final_artifact_sha256.txt`](../../objects/4c/4c9bb61f8e5747e7e800f90e110dd9971bc5ddaaa1348bf967cccb6a66ff6d28__v2_final_artifact_sha256.txt)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/reports/observer_repair_preparation_incidents.md`](../../objects/dd/dd0c074561f26b06ac3ddf514f058652207d19a2c51ea35785ce12e804274d23__observer_repair_preparation_incidents.md)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_PERSISTENT_WORKER_READINESS_V2/configs/v2_future_canonical_protocol.json`](../../objects/08/08cf64caac28175fbd794042d5c024df2509e328fe579baeeeace6c788c795e8__v2_future_canonical_protocol.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/provenance/protected_artifact_final_revalidation.json`](../../objects/7d/7db96071806c6ea8c65f024f72a7420e3e7e87884c9163b53d90e0435d116a58__protected_artifact_final_revalidation.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/reports/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1.md`](../../objects/3e/3ebd22db054479b3413288cdae988a6f49a19d8eb56941a1abea3e3390bcdf2f__QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1.md)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/reports/QWEN_GDN_3090_OBSERVER_LIFETIME_REPAIR_SMOKE_V1.md`](../../objects/94/948d6d2df573e8fd74fa29513a556730d3c8e1846b53a1b0f4cc69aaab37749a__QWEN_GDN_3090_OBSERVER_LIFETIME_REPAIR_SMOKE_V1.md)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_PERSISTENT_WORKER_READINESS_V2/provenance/protected_artifact_final_revalidation.json`](../../objects/2b/2ba5e89b5eb33524ea9677732cde858e9c5937d64537b3bfe9f3f1cb5371ed48__protected_artifact_final_revalidation.json)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/reports/QWEN_A800_POSTTRAIN_SHARED16_REPRODUCTION_CLOSURE_V1.md`](../../objects/18/1848a73f6a69e05e543def8184e1c11176c5ce8bcd03d818be4cf9f6de76b2f7__QWEN_A800_POSTTRAIN_SHARED16_REPRODUCTION_CLOSURE_V1.md)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_PERSISTENT_WORKER_READINESS_V2/reports/QWEN_GDN_C6R_C7_4X3090_PERSISTENT_WORKER_READINESS_V2.md`](../../objects/5d/5db0eb620778e223454701fc34bd58f3a9cab0465dc905d364c3e87e0257b7d9__QWEN_GDN_C6R_C7_4X3090_PERSISTENT_WORKER_READINESS_V2.md)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/reports/QWEN_A800_POSTTRAIN_SHARED16_REPRODUCTION_CLOSURE_V1_GIT_ADDENDUM.md`](../../objects/c4/c437911a2206b73c6a11334b51d6e6079b683c8f9b43549c7c8cdf3c9bb76e2c__QWEN_A800_POSTTRAIN_SHARED16_REPRODUCTION_CLOSURE_V1_GIT_ADDENDUM.md)

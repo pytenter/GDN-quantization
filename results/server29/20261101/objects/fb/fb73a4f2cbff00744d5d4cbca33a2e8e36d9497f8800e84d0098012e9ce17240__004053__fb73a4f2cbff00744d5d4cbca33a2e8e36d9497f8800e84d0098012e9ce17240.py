@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self.compute_environment,self.distributed_type,self.mixed_precision,self.use_cpu,self.debug,self.num_processes,self.machine_rank,self.num_machines,self.gpu_ids,self.main_process_ip,self.main_process_port,self.rdzv_backend,self.same_network,self.main_training_function,self.enable_cpu_affinity,self.fp8_config,self.deepspeed_config,self.fsdp_config,self.parallelism_config,self.megatron_lm_config,self.mpirun_config,self.downcast_bf16,self.tpu_name,self.tpu_zone,self.tpu_use_cluster,self.tpu_use_sudo,self.command_file,self.commands,self.tpu_vm,self.tpu_env,self.dynamo_config,)==(other.compute_environment,other.distributed_type,other.mixed_precision,other.use_cpu,other.debug,other.num_processes,other.machine_rank,other.num_machines,other.gpu_ids,other.main_process_ip,other.main_process_port,other.rdzv_backend,other.same_network,other.main_training_function,other.enable_cpu_affinity,other.fp8_config,other.deepspeed_config,other.fsdp_config,other.parallelism_config,other.megatron_lm_config,other.mpirun_config,other.downcast_bf16,other.tpu_name,other.tpu_zone,other.tpu_use_cluster,other.tpu_use_sudo,other.command_file,other.commands,other.tpu_vm,other.tpu_env,other.dynamo_config,)
+  return NotImplemented
+ return __eq__

@@ -1,0 +1,1278 @@
+diff --git a/cleanroom_finalize.py b/cleanroom_finalize.py
+index 57b011d..5198cb5 100644
+--- a/cleanroom_finalize.py
++++ b/cleanroom_finalize.py
+@@ -8,17 +8,19 @@ def text(path,value):
+ def csv_export(path,rows):
+  if not rows:return
+  out=io.StringIO();writer=csv.DictWriter(out,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows);text(path,out.getvalue())
+-UUID='GPU-759526ed-efb2-e7f6-881c-ab098e0b05ae'
++UUID='GPU-de53f243-b271-521c-d875-d96611ed8574'
++TARGET_INDEX=6
++EXPECTED_PRIOR_SAME_TASK_GPUH=1.007654354178602
+ 
+ def resource_budget_context(prereg,current):
+  prior=prereg.get('prior_same_task_GPUh',prereg.get('prior_same_task_RTX3090_GPUh',0.0))
+- assert prior==0.0,'THIS_SAME_TASK_3090_HISTORY_HAS_ZERO_MEASURED_GPUH'
++ assert type(prior) in (int,float) and math.isfinite(prior) and prior==EXPECTED_PRIOR_SAME_TASK_GPUH,'PRIOR_SAME_TASK_3090_GPUH_NOT_BOUND_TO_ACTUAL_PREVIOUS_V2'
+  assert math.isfinite(current) and current>=0 and prior+current<=36.0,'SAME_TASK_3090_HARD_BUDGET_EXCEEDED'
+  other=prereg.get('other_task_resources',{})
+  separate=other.get('rtx4090_qualification',{}).get('cumulative_RTX4090_GPUh',prereg.get('independent_RTX4090_qualification_GPUh',3.4473476))
+  return dict(prior_same_task_RTX3090_GPUh=prior,current_execution_RTX3090_GPUh=current,
+   same_task_cumulative_RTX3090_GPUh=prior+current,remaining_same_task_RTX3090_GPUh=36.0-prior-current,
+-  MAX_SAME_TASK_RTX3090_GPUh=36.0,independent_RTX4090_qualification_GPUh=separate,
++  MAX_SAME_TASK_RTX3090_GPUh=36.0,current_execution_cap_GPUh=36.0-prior,protective_cumulative_GPUh=35.8,independent_RTX4090_qualification_GPUh=separate,
+   other_task_resources=other,independent_RTX4090_budget_scope='separate qualification-only task; reported for provenance, not charged against this3090 CleanRoom cap')
+ 
+ def optional(path,default=None):
+@@ -73,7 +75,7 @@ def cuda_observations(profiles, progress):
+         max_observed_CUDA_peak_allocated_bytes=maximum_allocated,
+         max_observed_CUDA_peak_reserved_bytes=maximum_reserved,
+         CUDA_peak_allocated_bytes=maximum_allocated,CUDA_peak_reserved_bytes=maximum_reserved,
+-        CUDA_scope='maximum observed recorded counters across separately scoped successful PROFILEs and all actual progress logs; failed-worker observations are lower bounds through last logged position, not terminal or lifetime peaks; model loading/restore excluded after frozen-loop resets; canary has its separate pre-model-load reset; no full32K peak measured')
++        CUDA_scope='maximum observed recorded counters across separately scoped verified successful or artifact-only PROFILEs and all actual progress logs; failed-worker observations are lower bounds through last logged position, not terminal or lifetime peaks; model loading/restore excluded after frozen-loop resets; canary has its separate pre-model-load reset; no full32K peak measured')
+ 
+ def resource_stop_evidence(first_stop, root, admission_assess_window=None):
+     """Verify the first pinned failure and its exact fsynced JSONL record."""
+@@ -108,10 +110,14 @@ def resource_stop_evidence(first_stop, root, admission_assess_window=None):
+                 groups=value.get('direct_NVML_processes',{})
+                 compute=groups.get('compute',{});graphics=groups.get('graphics',{})
+                 smi=value.get('SMI_all_processes',{})
+-                visibility=(not is_unknown and compute.get('status')=='PASS' and graphics.get('status')=='PASS' and smi.get('status')=='PASS')
++                early=value.get('early_SMI_compute_processes')
++                early_present='early_SMI_compute_processes' in value
++                early_valid=(not early_present or (isinstance(early,dict) and early.get('status')=='PASS' and isinstance(early.get('processes'),list) and all(isinstance(p,dict) and p.get('uuid')==UUID and str(p.get('pid','')).isdigit() for p in early['processes'])))
++                visibility=(not is_unknown and compute.get('status')=='PASS' and graphics.get('status')=='PASS' and smi.get('status')=='PASS' and early_valid)
++                early_pids={int(p['pid']) for p in early['processes']} if early_present and early_valid else set()
+                 nvml_pids={p['pid'] for p in compute.get('processes',[]) if type(p.get('pid')) is int}
+                 smi_pids={int(p['pid']) for p in smi.get('processes',[]) if str(p.get('pid','')).isdigit() and p.get('type')!='G'}
+-                union=nvml_pids|smi_pids
++                union=nvml_pids|smi_pids|early_pids
+                 owners={p['pid']:p for p in value.get('process_ownership',[]) if type(p.get('pid')) is int}
+                 owner_metadata=owners.get(owner.get('pid')) if isinstance(owner,dict) else None
+                 identity_status='N/A_NO_OWNER'
+@@ -125,6 +131,9 @@ def resource_stop_evidence(first_stop, root, admission_assess_window=None):
+                     observation_status='OBSERVED_COMPLETE_PROCESS_APIS' if visibility else 'UNKNOWN_QUERY_OR_PROCESS_VISIBILITY_FAILED',
+                     NVML_compute_PIDs=sorted(nvml_pids) if compute.get('status')=='PASS' else None,
+                     SMI_non_graphics_PIDs=sorted(smi_pids) if smi.get('status')=='PASS' else None,
++                    early_SMI_compute_source_present=early_present,
++                    early_SMI_compute_PIDs=(sorted(early_pids) if early_valid else None) if early_present else None,
++                    early_SMI_compute_status='PASS_TARGET_UUID_PID_LIST' if early_present and early_valid else 'UNKNOWN_OR_INVALID_TARGET_UUID_PID_LIST' if early_present else 'NOT_CAPTURED_LEGACY_TWO_SOURCE_SNAPSHOT',
+                     owned_NVML_usedGpuMemory_bytes=own_bytes,owned_process_snapshot_identity_status=identity_status,foreign_process_memory_excluded=True,
+                     unauthorized_PIDs_under_unchanged_exact_owner_policy=foreign,
+                     unauthorized_process_metadata=[owners.get(pid,dict(pid=pid,status='UNKNOWN_METADATA_NOT_CAPTURED')) for pid in foreign] if foreign is not None else None,
+@@ -162,9 +171,13 @@ def resource_stop_evidence(first_stop, root, admission_assess_window=None):
+                 assert forbidden==payload.get('forbidden_pids'),'PINNED_CLASSIFICATION_FORBIDDEN_PID_CONFLICT'
+                 compute=snapshot.get('direct_NVML_processes',{}).get('compute',{})
+                 smi=snapshot.get('SMI_all_processes',{})
+-                if compute.get('status')=='PASS' and smi.get('status')=='PASS':
++                early=snapshot.get('early_SMI_compute_processes')
++                early_present='early_SMI_compute_processes' in snapshot
++                early_valid=(not early_present or (isinstance(early,dict) and early.get('status')=='PASS' and isinstance(early.get('processes'),list) and all(isinstance(x,dict) and x.get('uuid')==UUID and str(x.get('pid','')).isdigit() for x in early['processes'])))
++                if compute.get('status')=='PASS' and smi.get('status')=='PASS' and early_valid:
+                     union={int(x['pid']) for x in compute.get('processes',[])}
+                     union.update(int(x['pid']) for x in smi.get('processes',[]) if x['type']!='G')
++                    if early_present:union.update(int(x['pid']) for x in early['processes'])
+                     expected_forbidden=sorted(union-({payload['owner']['pid']} if isinstance(payload['owner'],dict) else set()))
+                     assert classification.get('compute_union')==sorted(union) and forbidden==expected_forbidden,'PINNED_CLASSIFICATION_DIFFERS_FROM_UNCHANGED_RAW_UNION'
+                 elif classification.get('status')=='COMPLETE_EXACT_COMPUTE_UNION':
+@@ -193,7 +206,7 @@ def resource_stop_evidence(first_stop, root, admission_assess_window=None):
+     # Frozen in-worker device() already fsyncs a complete JSONL record before
+     # asserting. Its first failed line is usable only for the same unit/reason.
+     if not pinned and kind and doc and condition:
+-        path=root/('canary/gpu3.GPU_EXCLUSIVITY.jsonl' if kind=='canary' else
++        path=root/('canary/gpu6.GPU_EXCLUSIVITY.jsonl' if kind=='canary' else
+             ('formal/'+str(doc)+'__'+str(condition)+'__formal.GPU_EXCLUSIVITY.jsonl' if kind in ['formal1','formal2'] else 'runs/'+str(doc)+'__'+str(condition)+'__'+('resumed_parity' if kind=='fresh' else kind)+'.GPU_EXCLUSIVITY.jsonl'))
+         if path.resolve().is_relative_to(root) and path.is_file():
+             owner=optional(root/'jobs'/(str(doc)+'__'+str(condition)+'__'+kind+'.LAUNCH.json'),{}).get('identity')
+@@ -211,7 +224,7 @@ def resource_stop_evidence(first_stop, root, admission_assess_window=None):
+                 matched=any(normalize(x) and normalize(x) in reason for x in conditions)
+                 epoch=record.get('epoch')
+                 temporal=(type(stop_epoch) in (int,float) and type(epoch) in (int,float) and epoch<=stop_epoch)
+-                identity=(record.get('gpu_uuid')==UUID and record.get('gpu')==3 and isinstance(owner,dict))
++                identity=(record.get('gpu_uuid')==UUID and record.get('gpu')==TARGET_INDEX and isinstance(owner,dict))
+                 if matched and temporal and identity:
+                     snapshot=record.get('snapshot')
+                     if isinstance(snapshot,dict):
+@@ -292,7 +305,7 @@ def main():
+    assert sha(r['result_path'])==r['result_sha256']
+    assert sha(Path(r['result_path']).with_suffix('.PROFILE.json'))==r['profile_sha256']
+  ledger=read(D/'gpu_resource_ledger.json');assert not ledger['active_workers']
+- assert ledger['actual_new_GPU_hours']<=36
++ assert read(D/'preregistration.json')['prior_same_task_GPUh']+ledger['actual_new_GPU_hours']<=36
+  positions=[8192+64*k for k in range(384)]
+  spec=read(D/'FROZEN_SPEC.json');selection=read(D/'FROZEN_4DOC_SELECTION.json');routing=read(D/'EXECUTION_ROUTING.json')
+  assert spec['primary']['positions']==positions and positions[-1]==32704
+@@ -368,7 +381,7 @@ def main():
+  publish(D/'qualification_matrix.json',dict(qualified=qcount,planned=12,units=qrows))
+  publish(D/'checkpoint_manifest.json',dict(checkpoints=CP,large_payloads_remote_only=True))
+  publish(D/'run_manifest.json',dict(task=TASK,source_commit=freeze['source_commit'],formal_units=units,GPU_workers=receipts,planned_formal_trajectories=12,actual_GPU_workers=len(receipts),extra_overlap_tokens_per_formal_trajectory=64,unique_logical_consumed_tokens_per_complete_trajectory=32768,actual_formal_worker_calls_per_complete_trajectory=2))
+- peaks=[];NVML=[];profile_records=[]
++ peaks=[];NVML=[];profile_records=[];artifact_profile_records=[]
+  for r in receipts:
+   if r.get('NVML_periodic_peak_owned_bytes') is not None:NVML.append(r['NVML_periodic_peak_owned_bytes'])
+   if r['status']=='PASS':
+@@ -379,6 +392,19 @@ def main():
+    j=read(r['result_path']);memory=j.get('memory',[])
+    if isinstance(memory,dict):memory=[memory]
+    peaks.extend(memory)
++  elif r.get('artifact_status')=='PASS_ARTIFACT_BINDINGS_ONLY_RESOURCE_NOT_QUALIFIED':
++   # Actual measured resource counters remain evidence; no failed receipt can
++   # enter the unchanged qualification or formal scientific PASS loops above.
++   assert r['status']!='PASS' and r['returncode']==0
++   result_path=Path(r['result_path']);profile_path=result_path.with_suffix('.PROFILE.json');env_path=D/'jobs'/(r['tag']+'.ENV.json')
++   assert result_path.resolve().is_relative_to(D.resolve()) and profile_path.resolve().is_relative_to(D.resolve())
++   assert sha(result_path)==r['artifact_result_sha256'] and sha(profile_path)==r['artifact_profile_sha256'] and sha(env_path)==r['artifact_environment_sha256']
++   profile=read(profile_path);artifact=read(result_path)
++   assert profile['status']=='PASS_ACTUAL_FROZEN_PROFILE' and artifact['status']=='PASS' and profile['actual_environment']['LING_TARGET_GPU_UUID']==UUID
++   measured=profile['measured_CUDA_peak']
++   assert all(type(measured[k]) in (int,float) and math.isfinite(measured[k]) and measured[k]>=0 for k in ['peak_allocated','peak_reserved'])
++   peaks.append(measured)
++   artifact_profile_records.append(dict(tag=r['tag'],kind=r['kind'],receipt_status=r['status'],artifact_status=r['artifact_status'],profile_path=str(profile_path),profile_sha256=r['artifact_profile_sha256'],result_sha256=r['artifact_result_sha256'],resource_evidence_only=True,numerical_or_formal_qualification_counted=False,scope=profile.get('CUDA_scope','UNKNOWN_RESET_SCOPE'),**measured))
+  progress=progress_log_audit(D/'jobs',status_files)
+  evidence=resource_stop_evidence(optional(D/'STOP.json'),D)
+  publish(D/'audits/TERMINAL_RESOURCE_EVIDENCE_AUDIT.json',evidence)
+@@ -390,7 +416,7 @@ def main():
+  resource=dict(new_GPU_hours=ledger['actual_new_GPU_hours'],max_GPU_hours=36.,actual_GPU_worker_count=len(receipts),
+   peak_measured_CUDA_allocated=counters['max_observed_CUDA_peak_allocated_bytes'],
+   peak_measured_CUDA_reserved=counters['max_observed_CUDA_peak_reserved_bytes'],
+-  successful_PROFILE_records=profile_records,partial_progress_records=progress,
++  successful_PROFILE_records=profile_records,artifact_only_PROFILE_records=artifact_profile_records,partial_progress_records=progress,
+   max_observed_CUDA_peak_allocated_bytes=counters['max_observed_CUDA_peak_allocated_bytes'],
+   max_observed_CUDA_peak_reserved_bytes=counters['max_observed_CUDA_peak_reserved_bytes'],
+   CUDA_scope=counters['CUDA_scope'],NVML_periodic_peak_owned_bytes=max(NVML) if NVML else None,
+@@ -406,7 +432,7 @@ def main():
+  report=f'''# Ling/KDA 四文档 Clean-Room Final
+ 
+ 独立TASK：{TASK}；本次单卡执行身份：{D.name}；原科学ID：LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1。
+-终态：{totals['FINAL_EXECUTION_STATUS']}。本轮仅更换控制层，旧execution01至05及前次Clean-Room STOP全部保留，未覆盖STOP/模型/CP。本次由用户新明确授权仅GPU3串行运行，不自动增加后续尝试。
++终态：{totals['FINAL_EXECUTION_STATUS']}。本轮仅更换控制层，旧execution01至05及前次Clean-Room STOP全部保留，未覆盖STOP/模型/CP。本次由用户新明确授权仅GPU6串行运行，不自动增加后续尝试。
+ 
+ ## 科学身份与执行
+ 
+@@ -430,7 +456,7 @@ def main():
+ 
+ {json.dumps(resource,ensure_ascii=False,indent=2)}
+ 
+-预算硬上限36同任务3090新增GPUh；此前同任务3090实测0GPUh。独立4090资格任务已报告{budget["independent_RTX4090_qualification_GPUh"]!r}GPUh仅单列历史身份，不扣本任务3090额度。含canary、加载、parent、fresh64、正式两段和恢复的每worker launch-to-exit，仅GPU3按真实launch-to-exit累计；历史GPUh不计本轮额度（前次Clean-Room新增0GPUh）。运行前和第一批真实parent后更新实际测量预测，保护性35.8GPUh提前停止留退出余量，没有提高36上限。所有实际CP和FP payload由manifest真实SHA绑定，大模型/CP只留服务器，不下载模型。仅一张GPU3，未杀其他用户/重置GPU。
++预算硬上限36同任务3090新增GPUh；此前同任务3090实测1.007654354178602GPUh。独立4090资格任务已报告{budget["independent_RTX4090_qualification_GPUh"]!r}GPUh仅单列历史身份，不扣本任务3090额度。含canary、加载、parent、fresh64、正式两段和恢复的每worker launch-to-exit，仅GPU6按真实launch-to-exit累计；旧V2 GPUh计入同任务累计额度（本轮剩余34.992345645821395GPUh）。运行前和第一批真实parent后更新实际测量预测，保护性35.8GPUh提前停止留退出余量，没有提高36上限。所有实际CP和FP payload由manifest真实SHA绑定，大模型/CP只留服务器，不下载模型。仅一张GPU6，未杀其他用户/重置GPU。
+ 
+ 服务器目录：{D}；工作树：{W}。source_manifest、engineering_change_manifest、resource_admission、qualification_matrix、run_manifest、gpu_resource_ledger和hashes保存真实记录。完整8×384逐点校验仅在实际完成时为PASS，部分状态详见机器字段与原始数组。
+ 
+@@ -457,7 +483,7 @@ def main():
+ ```
+ '''
+  text(D/'FINAL_SCIENTIFIC_REPORT.md',report)
+- text(D/'FAILURE_HISTORY.md','# Failure history\n\nHistorical executions01-05 and previous Clean-Room STOP are read-only. This GPU3-only execution has new explicit human authorization. Current first STOP:\n\n```json\n'+blocker+'\n```\nNo further attempt beyond this explicitly authorized GPU3-only execution is launched.\n')
++ text(D/'FAILURE_HISTORY.md','# Failure history\n\nHistorical executions01-05 and previous Clean-Room STOP are read-only. This GPU6-only execution has new explicit human authorization. Current first STOP:\n\n```json\n'+blocker+'\n```\nNo further attempt beyond this explicitly authorized GPU6-only execution is launched.\n')
+  files={}
+  for p in sorted(D.rglob('*')):
+   if not p.is_file() or p.suffix=='.pt' or p.name.endswith('.lock') or '.partial' in p.name or p.name in ['artifact_sha256.txt','DELIVERY_VERIFICATION.json'] or p.name=='controller.log':continue
+diff --git a/cleanroom_run.py b/cleanroom_run.py
+index 7e61ea2..e6e3232 100644
+--- a/cleanroom_run.py
++++ b/cleanroom_run.py
+@@ -1,19 +1,20 @@
+ """One bounded Clean-Room controller: canary, 12 qualifications, serial science."""
+-import concurrent.futures,copy,ctypes,fcntl,json,os,signal,subprocess,sys,threading,time,traceback
++import concurrent.futures,copy,ctypes,fcntl,json,math,os,signal,subprocess,sys,threading,time,traceback
+ from pathlib import Path
+ from cleanroom_common import D,W,PYTHON,read,publish,sha,stop,event,environment,compare_exact
+ import gpu_admission as g
+ from gpu_admission import sample
+ from resource_evidence import assess_with_evidence,record_sampling_failure,ResourceEvidenceError
++from lifecycle_guard import assess_lifecycle_sample,assess_terminal_window,strict_snapshot_safety,validate_timing_envelope,validate_completion_assets
+ TASK='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1'
+ 
+ 
+-TARGET_UUID='GPU-759526ed-efb2-e7f6-881c-ab098e0b05ae'
+-TARGET_INDEX=3
++TARGET_UUID='GPU-de53f243-b271-521c-d875-d96611ed8574'
++TARGET_INDEX=6
+ def validate_single_device_routing(routing):
+- assert routing['authorized_devices']=={TARGET_UUID:TARGET_INDEX},'GPU3_ONLY_AUTHORIZATION'
++ assert routing['authorized_devices']=={TARGET_UUID:TARGET_INDEX},'GPU6_ONLY_AUTHORIZATION'
+  expected={'pg19-test-41603','pg19-test-2544','pg19-test-7987','pg19-test-26183'}
+- assert set(routing['document_devices'])==expected and set(routing['document_devices'].values())=={TARGET_UUID},'ALL_DOCUMENTS_MUST_USE_GPU3'
++ assert set(routing['document_devices'])==expected and set(routing['document_devices'].values())=={TARGET_UUID},'ALL_DOCUMENTS_MUST_USE_GPU6'
+  assert routing['formal_serial'] is True and routing['qualification_parallel_lanes']==1,'SINGLE_DEVICE_SERIAL_REQUIRED'
+  return [TARGET_UUID]
+ 
+@@ -49,7 +50,7 @@ def verify_launch_registration(freeze=None):
+  assert subprocess.check_output(['git','status','--porcelain'],cwd=W,text=True)==''
+  assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=W,text=True).strip()==freeze['source_commit'],'SOURCE_COMMIT_CHANGED'
+  for name,digest in freeze['files'].items():assert sha(W/name)==digest,('FROZEN_SOURCE_CHANGED',name)
+- assert {'cleanroom_run.py','resource_evidence.py'}<=set(freeze['files']),'RESOURCE_CONTROL_SOURCE_NOT_FROZEN'
++ assert {'cleanroom_run.py','resource_evidence.py','lifecycle_guard.py','gpu_telemetry.py'}<=set(freeze['files']),'RESOURCE_CONTROL_SOURCE_NOT_FROZEN'
+  for name,key in [('CALIBRATION_CONFIG.json','config_sha256'),('FROZEN_SPEC.json','scientific_spec_sha256'),('EXECUTION_ROUTING.json','routing_sha256'),('preregistration.json','preregistration_sha256')]:
+   assert sha(D/name)==freeze[key],('FROZEN_CONTROL_IDENTITY_CHANGED',name)
+  cpu_path=D/freeze['CPU_test_path'];assert cpu_path.resolve().is_relative_to(D.resolve())
+@@ -65,21 +66,49 @@ def verify_launch_registration(freeze=None):
+ def protected(fn,*args):
+  try:return fn(*args)
+  except BaseException as e:
+-  stop(repr(e),stage='DEPENDENCY_FAIL_CLOSED',traceback=traceback.format_exc());raise
++  if isinstance(e,ResourceEvidenceError):stop(repr(e),stage='RESOURCE_ADMISSION',evidence_path=e.evidence_path,evidence_sha256=e.evidence_sha256,forbiddenPIDs=e.forbidden_pids,original_resource_error=e.original_error)
++  else:stop(repr(e),stage='DEPENDENCY_FAIL_CLOSED',traceback=traceback.format_exc())
++  raise
+ 
+ class Controller:
+  def __init__(self):
+   self.lock=threading.RLock();self.active={};self.completed=[];self.routing=read(D/'EXECUTION_ROUTING.json')
++  self.prior_GPUh=read(D/'preregistration.json')['prior_same_task_GPUh'];assert type(self.prior_GPUh) in (int,float) and math.isfinite(self.prior_GPUh) and 0<=self.prior_GPUh<35.8,'PRIOR_CUMULATIVE_GPUH_INVALID'
+  def ledger(self):
+   now=time.time();done=sum(r['wall_seconds'] for r in self.completed);live=sum(time.monotonic()-r['started_monotonic'] for r in self.active.values())
+-  j=dict(task='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1',execution_id=D.name,MAX_CONCURRENT_GPUS=1,MAX_GPU_HOURS=36.0,protective_STOP_at_GPUh=35.8,actual_new_GPU_hours=(done+live)/3600,completed_launch_to_exit_GPU_hours=done/3600,active_workers=copy.deepcopy(list(self.active.values())),completed_workers=copy.deepcopy(self.completed),scope='actual GPU-assigned worker launch-to-exit includes model loading/restore/teardown; CPU/admission excluded; concurrent devices summed',historical_GPU_hours_not_charged_to_new_budget=True,epoch=now)
++  j=dict(task='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1',execution_id=D.name,MAX_CONCURRENT_GPUS=1,MAX_GPU_HOURS=36.0,protective_STOP_at_GPUh=35.8,actual_new_GPU_hours=(done+live)/3600,prior_same_task_GPUh=self.prior_GPUh,cumulative_same_task_GPU_hours=self.prior_GPUh+(done+live)/3600,remaining_same_task_GPU_hours=36.0-self.prior_GPUh-(done+live)/3600,completed_launch_to_exit_GPU_hours=done/3600,active_workers=copy.deepcopy(list(self.active.values())),completed_workers=copy.deepcopy(self.completed),scope='actual GPU-assigned worker launch-to-exit includes model loading/restore/teardown; CPU/admission excluded; concurrent devices summed',historical_same_task_GPU_hours_charged_to_cumulative_budget=True,epoch=now)
+   publish(D/'gpu_resource_ledger.json',j,replace=True)
+-  if (done+live)/3600>=35.8:stop('GPU_BUDGET_PROTECTIVE_STOP',used_GPUh=(done+live)/3600,hard_cap=36.0)
++  if self.prior_GPUh+(done+live)/3600>=35.8:stop('GPU_BUDGET_PROTECTIVE_STOP',used_GPUh=self.prior_GPUh+(done+live)/3600,current_execution_GPUh=(done+live)/3600,prior_GPUh=self.prior_GPUh,hard_cap=36.0)
+   return j
++ def _completion_bindings(self,result,identity,freeze,env,kind,doc,condition,uuid,base):
++  assert read(D/'SOURCE_CODE_FREEZE.json')==freeze,'SOURCE_MANIFEST_CHANGED_DURING_WORKER'
++  verify_launch_registration(freeze)
++  profile=result.with_suffix('.PROFILE.json');envpath=Path(str(base)+'.ENV.json')
++  observed=read(envpath);assert observed['identity']==identity,'COMPLETION_ENV_IDENTITY_MISMATCH'
++  keys=['PYTHONHASHSEED','CUBLAS_WORKSPACE_CONFIG','LING_GATED_RMSNORM_FIXED_CONFIG','FLA_CACHE_MODE','FLA_CONFIG_DIR','CUDA_VISIBLE_DEVICES','LING_TARGET_GPU_UUID']
++  validate_completion_assets(read(result),read(profile),observed,kind=kind,document=doc,condition=condition,uuid=uuid,expected_environment={k:env[k] for k in keys},source_verified=True,source_commit=freeze['source_commit'])
++  return dict(result_sha256=sha(result),profile_sha256=sha(profile),environment_sha256=sha(envpath),source_manifest_sha256=sha(D/'SOURCE_CODE_FREEZE.json'))
++ def _terminal_gate(self,uuid,tag,baseline):
++  # One predetermined three-point idle gate after confirmed natural exit. No retry.
++  gate_begin=time.time();gate_mono=time.monotonic();rows=[];raw_path=D/'jobs'/(tag+'.TERMINAL_RESOURCE_RAW.jsonl');pin=D/'FAILED_RESOURCE_SNAPSHOT.json'
++  for i in range(3):
++   assert not (D/'STOP.json').exists(),'GLOBAL_STOP_BEFORE_TERMINAL_GATE'
++   if i:time.sleep(5)
++   try:snap=sample(uuid)
++   except BaseException as e:record_sampling_failure(e,uuid,None,baseline,raw_path=raw_path,pinned_path=pin)
++   snap['terminal_gate_sample_index']=i
++   def checked(s,u,o,b):
++    validate_timing_envelope(s);strict_snapshot_safety(s,u,None,b)
++    return g.assess(s,u,None,b)
++   assess_with_evidence(snap,uuid,None,baseline,raw_path=raw_path,pinned_path=pin,assess_fn=checked);rows.append(snap)
++  envelope=copy.deepcopy(rows[-1]);envelope['terminal_window_snapshots']=rows
++  result=assess_with_evidence(envelope,uuid,None,baseline,raw_path=raw_path,pinned_path=pin,assess_fn=lambda s,u,o,b:assess_terminal_window(s['terminal_window_snapshots'],u,b))
++  path=D/'jobs'/(tag+'.TERMINAL_RESOURCE_PASS.json');publish(path,dict(status='PASS_ORIGINAL_THREE_POINT_TERMINAL_IDLE_GATE',samples=rows,original_window_result=result,science_trajectory_count=0,epoch=time.time()))
++  return dict(path=str(path),sha256=sha(path),status='PASS_ORIGINAL_THREE_POINT_TERMINAL_IDLE_GATE',started_epoch=gate_begin,completed_epoch=time.time(),wall_seconds=time.monotonic()-gate_mono,scope='post-wait CPU-only idle admission time excluded from GPU worker launch-to-exit')
+  def job(self,uuid,kind,doc,condition='FP'):
+   assert not (D/'STOP.json').exists(),'EXISTING_FIRST_STOP'
+   validate_single_device_routing(self.routing)
+-  assert uuid==TARGET_UUID,'UNAUTHORIZED_NON_GPU3_LAUNCH'
++  assert uuid==TARGET_UUID,'UNAUTHORIZED_NON_GPU6_LAUNCH'
+   freeze=read(D/'SOURCE_CODE_FREEZE.json')
+   verify_launch_registration(freeze)
+   tag=doc+'__'+condition+'__'+kind
+@@ -91,6 +120,13 @@ class Controller:
+   assert not Path(str(base)+'.LAUNCH.json').exists() and not result.exists(),'NO_SILENT_JOB_RETRY'
+   with self.lock:assert not self.active,'SINGLE_GPU_WORKER_ALREADY_ACTIVE'
+   admitted=g.admit(uuid,tag);assert admitted['graphics_baseline']==read(D/'resource_baselines.json')[uuid]
++  # Preserve original admission and additionally reject early CSV-only conflicts.
++  admission_rows=read(admitted['sample_path'])['samples']
++  for row in admission_rows:
++   def checked_admission(s,u,o,b):
++    validate_timing_envelope(s);strict_snapshot_safety(s,u,None,b)
++    return g.assess(s,u,None,b)
++   assess_with_evidence(row,uuid,None,admitted['graphics_baseline'],raw_path=D/'admission'/(tag+'.STRICT_RAW.jsonl'),pinned_path=D/'FAILED_RESOURCE_SNAPSHOT.json',assess_fn=checked_admission)
+   assert not (D/'STOP.json').exists(),'GLOBAL_STOP_BEFORE_LAUNCH'
+   env=environment(uuid);command=[PYTHON,'-B','-u',str(W/'cleanroom_worker.py'),'--kind',kind,'--document',doc,'--condition',condition,'--result',str(result)]
+   source_commit=freeze['source_commit']
+@@ -139,9 +175,21 @@ class Controller:
+     if now-last_guard>=10 and not (D/'STOP.json').exists():
+      try:
+       raw_path=Path(str(base)+'.RESOURCE_RAW.jsonl');pinned_path=D/'FAILED_RESOURCE_SNAPSHOT.json'
++      poll_before=process.poll()
++      if poll_before is not None:break
++      before_mono=time.monotonic();before_epoch=time.time();assert g.proc_identity(process.pid)==identity,'OWN_PROCESS_IDENTITY_CHANGED_BEFORE_SAMPLE'
+       try:snap=sample(uuid)
+       except BaseException as sampling_error:record_sampling_failure(sampling_error,uuid,identity,admitted['graphics_baseline'],raw_path=raw_path,pinned_path=pinned_path)
+-      value=assess_with_evidence(snap,uuid,identity,admitted['graphics_baseline'],raw_path=raw_path,pinned_path=pinned_path,assess_fn=g.assess);sample_count+=1
++      poll_after=process.poll();after_mono=time.monotonic()
++      snap['child_lifecycle_bracket']=dict(poll_before=poll_before,poll_after=poll_after,owner=identity,started_monotonic=before_mono,completed_monotonic=after_mono,started_epoch=before_epoch,completed_epoch=time.time())
++      def checked(s,u,o,b):
++       validate_timing_envelope(s)
++       for q in s['query_timings'].values():assert before_mono<=q['started_monotonic']<=q['completed_monotonic']<=after_mono,'QUERY_OUTSIDE_CHILD_BRACKET'
++       return assess_lifecycle_sample(s,u,o,b,poll_before,poll_after)
++      assessed=assess_with_evidence(snap,uuid,identity,admitted['graphics_baseline'],raw_path=raw_path,pinned_path=pinned_path,assess_fn=checked)
++      if assessed['lifecycle_state']=='NATURAL_EXIT_TRANSITION_NOT_RESOURCE_PASS':
++       publish(str(base)+'.NATURAL_EXIT_TRANSITION.json',dict(status='TRANSITION_NOT_RUNNING_RESOURCE_PASS',bracket=snap['child_lifecycle_bracket'],raw_path=str(raw_path),science_qualification=False));break
++      value=assessed['resource'];sample_count+=1
+       own=[p['usedGpuMemory'] for p in snap['direct_NVML_processes']['compute']['processes'] if p['pid']==identity['pid']]
+       if own:nvml_peak=max(own+[nvml_peak or 0])
+       with Path(str(base)+'.RESOURCE.jsonl').open('a') as f:f.write(json.dumps(dict(epoch=now,**value,owned_NVML_bytes=own))+'\n');f.flush();os.fsync(f.fileno())
+@@ -183,13 +231,20 @@ class Controller:
+    end=time.time();end_mono=time.monotonic()
+   finally:log.close()
+   receipt=dict(**launch,completed_epoch=end,completed_monotonic=end_mono,wall_seconds=end_mono-start_mono,epoch_span_seconds=end-start,returncode=rc,NVML_periodic_peak_owned_bytes=nvml_peak,NVML_sample_count=sample_count,NVML_scope='periodic owned PID samples every approximately10s, not instantaneous peak')
++  bindings=None
+   try:
+    assert rc==0 and result.exists(),('WORKER_NONZERO_OR_MISSING_RESULT',rc)
+-   j=read(result);assert j['status']=='PASS'
+-   profile=result.with_suffix('.PROFILE.json');assert read(profile)['status']=='PASS_ACTUAL_FROZEN_PROFILE'
+-   receipt.update(status='PASS',result_sha256=sha(result),profile_sha256=sha(profile),environment_sha256=sha(str(base)+'.ENV.json'))
++   bindings=self._completion_bindings(result,identity,freeze,env,kind,doc,condition,uuid,base)
++   assert not (D/'STOP.json').exists(),'EXISTING_FIRST_STOP_PREVENTS_RESOURCE_QUALIFIED_COMPLETION'
++   terminal=self._terminal_gate(uuid,tag,admitted['graphics_baseline'])
++   assert self._completion_bindings(result,identity,freeze,env,kind,doc,condition,uuid,base)==bindings,'COMPLETED_ASSETS_CHANGED_DURING_TERMINAL_GATE'
++   assert not (D/'STOP.json').exists(),'GLOBAL_STOP_PREVENTS_JOB_PASS'
++   receipt.update(status='PASS',terminal_resource_gate=terminal,**bindings)
+   except BaseException as e:
+-   receipt.update(status='FAILED_OR_ABORTED',reason=repr(e),supervision_failure=failure);stop(repr(e),stage=kind,tag=tag)
++   receipt.update(status='FAILED_OR_ABORTED',reason=repr(e),supervision_failure=failure)
++   if bindings is not None:receipt.update(artifact_status='PASS_ARTIFACT_BINDINGS_ONLY_RESOURCE_NOT_QUALIFIED',artifact_result_sha256=bindings['result_sha256'],artifact_profile_sha256=bindings['profile_sha256'],artifact_environment_sha256=bindings['environment_sha256'])
++   if isinstance(e,ResourceEvidenceError):stop(repr(e),stage='TERMINAL_RESOURCE_SAFETY',tag=tag,evidence_path=e.evidence_path,evidence_sha256=e.evidence_sha256,forbiddenPIDs=e.forbidden_pids,original_resource_error=e.original_error)
++   else:stop(repr(e),stage=kind,tag=tag)
+   publish(str(base)+'.EXIT.json',receipt)
+   with self.lock:self.completed.append(receipt);del self.active[uuid];self.ledger()
+   assert receipt['status']=='PASS',receipt
+@@ -223,8 +278,8 @@ class Controller:
+   current_formal_prediction=max(late_rates,default=0.)*24576*1.35+max([60.]+[p.get('loading_seconds',0.) for p in parents])
+   formal_est=max(max(hist or [3600.])*1.5,current_formal_prediction)
+   done_formal=len(list((D/'formal').glob('*__formal.json')))
+-  projected=ledger['actual_new_GPU_hours']+(12-existing_cp)*parent_est/3600+(12-qualified)*90/3600+(12-done_formal)*formal_est/3600
+-  report=dict(epoch=time.time(),status='PASS_BUDGET_FORECAST' if projected<=36 else 'STOP_BUDGET_FORECAST',used_GPUh=ledger['actual_new_GPU_hours'],projected_total_GPUh=projected,cap_GPUh=36.,unbuilt_prefixes=12-existing_cp,qualifications_remaining=12-qualified,formal_remaining=12-done_formal,parent_seconds_estimate=parent_est,formal_continuation_seconds_estimate=formal_est,new_measured_late_token_seconds=late_rates,basis='actual completed parent launch-to-exit and previous same frozen full-model formal receipts; 25% parent/50% historical formal margins and new qualification late-token throughput*1.35 plus loading; not a deadline')
++  projected=ledger['cumulative_same_task_GPU_hours']+(12-existing_cp)*parent_est/3600+(12-qualified)*90/3600+(12-done_formal)*formal_est/3600
++  report=dict(epoch=time.time(),status='PASS_BUDGET_FORECAST' if projected<=36 else 'STOP_BUDGET_FORECAST',used_GPUh=ledger['cumulative_same_task_GPU_hours'],current_execution_GPUh=ledger['actual_new_GPU_hours'],prior_same_task_GPUh=self.prior_GPUh,projected_total_GPUh=projected,cap_GPUh=36.,unbuilt_prefixes=12-existing_cp,qualifications_remaining=12-qualified,formal_remaining=12-done_formal,parent_seconds_estimate=parent_est,formal_continuation_seconds_estimate=formal_est,new_measured_late_token_seconds=late_rates,basis='actual completed parent launch-to-exit and previous same frozen full-model formal receipts; 25% parent/50% historical formal margins and new qualification late-token throughput*1.35 plus loading; not a deadline')
+   publish(D/'budget_forecast.json',report,replace=True)
+   if projected>36:stop('PROJECTED_BUDGET_EXCEEDS_36_GPUH',forecast=report);raise RuntimeError('BUDGET_FORECAST_STOP')
+ 
+@@ -250,7 +305,7 @@ def main():
+   assert len(units)==12 and all(x['status']=='PASS' for x in units)
+   publish(D/'LONG_HORIZON_QUALIFICATION.json',dict(status='PASS',count=12,units=units))
+   publish(D/'QUALIFICATION_GATES_COMPLETED.json',dict(status='ALL_EIGHT_GATES_PASS',source='newCleanRoom G0/G1/G2 identity, environment, FP/INT8 fresh64 and physical gates',full32768='PENDING'))
+-  publish(D/'resolution_contract.json',dict(status='SUPPORTED_BY_IDENTICAL_FROZEN_MATH_RUNTIME_PROFILE_AND_EXACT_FRESH64_REPLAY',threshold=3.3300064494019496e-6,threshold_origin='historical empirical arithmetic resolution, not statistical significance',new_evidence='the single authorized GPU3 actual frozen profile and zero self fullV FP32 KL; every FP/student condition exact full64 fresh replay on its own device before outcomes',limitations='not a new32K numerical error calibration; differences within the historical resolution remain NUMERICALLY_UNRESOLVED; no cross-device equality assumed'))
++  publish(D/'resolution_contract.json',dict(status='SUPPORTED_BY_IDENTICAL_FROZEN_MATH_RUNTIME_PROFILE_AND_EXACT_FRESH64_REPLAY',threshold=3.3300064494019496e-6,threshold_origin='historical empirical arithmetic resolution, not statistical significance',new_evidence='the single authorized GPU6 actual frozen profile and zero self fullV FP32 KL; every FP/student condition exact full64 fresh replay on its own device before outcomes',limitations='not a new32K numerical error calibration; differences within the historical resolution remain NUMERICALLY_UNRESOLVED; no cross-device equality assumed'))
+   event('ALL_12_QUALIFIED_FORMAL_STARTING')
+   for doc in read(D/'FROZEN_4DOC_SELECTION.json')['execution_order']:
+    uuid=ctl.routing['document_devices'][doc['document']]
+diff --git a/gpu_telemetry.py b/gpu_telemetry.py
+index e3f0c43..f514e30 100644
+--- a/gpu_telemetry.py
++++ b/gpu_telemetry.py
+@@ -1,12 +1,23 @@
+ """Read-only nvidia-smi plus direct libNVML telemetry; no CUDA context."""
+ import ctypes as C
+ import json
++import functools
+ import os
+ import pathlib
+ import subprocess
+ import time
+ import xml.etree.ElementTree as ET
+ 
++def _timed_source(fn):
++    @functools.wraps(fn)
++    def timed(*args,**kwargs):
++        a=time.monotonic();e=time.time()
++        value=fn(*args,**kwargs)
++        value['query_timing']=dict(started_monotonic=a,completed_monotonic=time.monotonic(),started_epoch=e,completed_epoch=time.time())
++        return value
++    return timed
++
++@_timed_source
+ def query(args):
+     try:
+         r = subprocess.run(args, capture_output=True, text=True, timeout=20)
+@@ -23,26 +34,27 @@ class MemoryV2(C.Structure):
+ class Util(C.Structure):
+     _fields_ = [('gpu', C.c_uint), ('memory', C.c_uint)]
+ 
++@_timed_source
+ def nvml(uuid):
+     try:
+         lib = C.CDLL('libnvidia-ml.so.1')
+         assert lib.nvmlInit_v2() == 0
+         h = C.c_void_p()
+         assert lib.nvmlDeviceGetHandleByUUID(uuid.encode(), C.byref(h)) == 0
+-        out = {}
++        out = {}; timings={}
+         mem, util = Memory(), Util()
+         for key, fun, value in [('memory', 'nvmlDeviceGetMemoryInfo', mem), ('utilization', 'nvmlDeviceGetUtilizationRates', util)]:
+-            rc = getattr(lib, fun)(h, C.byref(value))
++            a=time.monotonic();rc = getattr(lib, fun)(h, C.byref(value));timings[key]=dict(started_monotonic=a,completed_monotonic=time.monotonic(),returncode=rc)
+             out[key] = {n: getattr(value, n) for n, _ in value._fields_} if rc == 0 else dict(status='UNKNOWN', returncode=rc)
+         for key, fun, extra in [('temperature', 'nvmlDeviceGetTemperature', [0]), ('power_mW', 'nvmlDeviceGetPowerUsage', []), ('pstate', 'nvmlDeviceGetPerformanceState', []), ('SM_clock_MHz', 'nvmlDeviceGetClockInfo', [1])]:
+             value = C.c_uint()
+-            rc = getattr(lib, fun)(h, *extra, C.byref(value))
++            a=time.monotonic();rc = getattr(lib, fun)(h, *extra, C.byref(value));timings[key]=dict(started_monotonic=a,completed_monotonic=time.monotonic(),returncode=rc)
+             out[key] = value.value if rc == 0 else dict(status='UNKNOWN', returncode=rc)
+         m2 = MemoryV2(); m2.version = C.sizeof(MemoryV2) | (2 << 24)
+-        rc = lib.nvmlDeviceGetMemoryInfo_v2(h, C.byref(m2))
++        a=time.monotonic();rc = lib.nvmlDeviceGetMemoryInfo_v2(h, C.byref(m2));timings['memory_v2']=dict(started_monotonic=a,completed_monotonic=time.monotonic(),returncode=rc)
+         out['memory_v2'] = {n: getattr(m2,n) for n,_ in m2._fields_} if rc == 0 else dict(status='UNKNOWN',returncode=rc)
+         lib.nvmlShutdown()
+-        return dict(status='PASS', **out)
++        return dict(status='PASS',query_timings=timings, **out)
+     except Exception as e:
+         return dict(status='DRIVER_OR_NVML_ERROR', error=repr(e))
+ 
+@@ -78,18 +90,19 @@ def observe(uuids, path, seconds=60, interval=5):
+ class Process(C.Structure):
+     _fields_=[('pid',C.c_uint),('usedGpuMemory',C.c_ulonglong),('gpuInstanceId',C.c_uint),('computeInstanceId',C.c_uint)]
+ 
++@_timed_source
+ def nvml_processes(uuid):
+     lib=C.CDLL('libnvidia-ml.so.1'); assert lib.nvmlInit_v2()==0
+     try:
+         h=C.c_void_p();assert lib.nvmlDeviceGetHandleByUUID(uuid.encode(),C.byref(h))==0
+         out={}
+         for key,fn in [('compute','nvmlDeviceGetComputeRunningProcesses_v3'),('graphics','nvmlDeviceGetGraphicsRunningProcesses_v3')]:
+-            count=C.c_uint(0); rc=getattr(lib,fn)(h,C.byref(count),None)
+-            if rc==0 and count.value==0: out[key]=dict(status='PASS',processes=[],api=fn); continue
+-            if rc!=7: out[key]=dict(status='UNKNOWN',returncode=rc,api=fn);continue
++            a=time.monotonic();count=C.c_uint(0); rc=getattr(lib,fn)(h,C.byref(count),None)
++            if rc==0 and count.value==0: out[key]=dict(status='PASS',processes=[],api=fn,query_timing=dict(started_monotonic=a,completed_monotonic=time.monotonic())); continue
++            if rc!=7: out[key]=dict(status='UNKNOWN',returncode=rc,api=fn,query_timing=dict(started_monotonic=a,completed_monotonic=time.monotonic()));continue
+             values=(Process*(count.value+8))();count.value=len(values)
+             rc=getattr(lib,fn)(h,C.byref(count),values)
+-            out[key]=dict(status='PASS',api=fn,processes=[{n:getattr(p,n) for n,_ in Process._fields_} for p in values[:count.value]]) if rc==0 else dict(status='UNKNOWN',returncode=rc,api=fn)
++            out[key]=dict(status='PASS',api=fn,query_timing=dict(started_monotonic=a,completed_monotonic=time.monotonic()),processes=[{n:getattr(p,n) for n,_ in Process._fields_} for p in values[:count.value]]) if rc==0 else dict(status='UNKNOWN',returncode=rc,api=fn,query_timing=dict(started_monotonic=a,completed_monotonic=time.monotonic()))
+         return out
+     finally:lib.nvmlShutdown()
+ 
+@@ -102,7 +115,7 @@ def process_metadata(pid):
+ _original_sample=sample
+ 
+ def sample(uuid):
+-    s=_original_sample(uuid);s['direct_NVML_processes']=nvml_processes(uuid)
++    s=_original_sample(uuid);groups=nvml_processes(uuid);group_timing=groups.pop('query_timing');s['direct_NVML_processes']=groups
+     x=query(['nvidia-smi','-i',uuid,'-q','-x']);s['SMI_XML']=x
+     try:
+         assert x['returncode']==0
+@@ -112,7 +125,14 @@ def sample(uuid):
+     except Exception as e:s['SMI_all_processes']=dict(status='UNKNOWN',error=repr(e))
+     pids={int(p['pid']) for p in s['SMI_all_processes'].get('processes',[])}
+     for group in s['direct_NVML_processes'].values():pids.update(p['pid'] for p in group.get('processes',[]))
+-    s['process_ownership']=[process_metadata(p) for p in sorted(pids)]
++    a=time.monotonic();s['process_ownership']=[process_metadata(p) for p in sorted(pids)]
++    ownership_timing=dict(started_monotonic=a,completed_monotonic=time.monotonic())
++    s['query_timings']={key:s[key]['query_timing'] for key in ['physical','compute','fuser','direct_NVML','SMI_XML']}
++    s['query_timings'].update(direct_NVML_processes=group_timing,process_ownership=ownership_timing)
++    try:
++        from lifecycle_guard import early_compute_processes
++        s['early_SMI_compute_processes']=dict(status='PASS',processes=early_compute_processes(s,uuid))
++    except Exception as e:s['early_SMI_compute_processes']=dict(status='UNKNOWN',error=repr(e),processes=[])
+     return s
+ 
+ 
+diff --git a/lifecycle_guard.py b/lifecycle_guard.py
+new file mode 100644
+index 0000000..4b48dc3
+--- /dev/null
++++ b/lifecycle_guard.py
+@@ -0,0 +1,99 @@
++"""CPU-only lifecycle classification; no CUDA/model/scientific implementation."""
++import csv,io,math
++
++def early_compute_processes(snapshot,uuid):
++ raw=snapshot.get('compute');assert isinstance(raw,dict) and raw.get('returncode')==0,'EARLY_SMI_COMPUTE_QUERY_UNKNOWN'
++ text=raw.get('stdout');assert isinstance(text,str),'EARLY_SMI_COMPUTE_QUERY_UNKNOWN'
++ rows=[]
++ for row in csv.reader(io.StringIO(text)):
++  if not row or all(not x.strip() for x in row):continue
++  assert len(row)==3,'EARLY_SMI_COMPUTE_CSV_UNKNOWN'
++  actual,pid,memory=(x.strip() for x in row)
++  assert actual==uuid and pid.isdigit() and int(pid)>0,'EARLY_SMI_COMPUTE_IDENTITY_UNKNOWN'
++  rows.append(dict(uuid=actual,pid=int(pid),used_gpu_memory=memory))
++ return rows
++
++def validate_timing_envelope(snapshot):
++ values=snapshot.get('query_timings');assert isinstance(values,dict),'PER_QUERY_TIMING_MISSING'
++ for key in ['physical','compute','fuser','direct_NVML','direct_NVML_processes','SMI_XML','process_ownership']:
++  row=values.get(key);assert isinstance(row,dict),'PER_QUERY_TIMING_MISSING:'+key
++  a,b=row.get('started_monotonic'),row.get('completed_monotonic')
++  assert type(a) in (int,float) and type(b) in (int,float) and math.isfinite(a) and math.isfinite(b) and 0<=a<=b,'PER_QUERY_TIMING_INVALID:'+key
++ return True
++
++def strict_snapshot_safety(snapshot,uuid,owner,baseline):
++ import gpu_admission as g
++ s=snapshot
++ for key in ['physical','compute','SMI_XML']:
++  assert isinstance(s.get(key),dict) and s[key].get('returncode')==0,'SAFETY_QUERY_UNKNOWN:'+key
++ assert s.get('uuid')==uuid and len(s.get('target',[]))==1 and s['target'][0]['uuid']==uuid,'DEVICE_IDENTITY_FAILURE'
++ t=s['target'][0];assert t['name']=='NVIDIA GeForce RTX 3090' and float(t['total_MiB'])>=24576,'UNAUTHORIZED_DEVICE_TYPE'
++ n=s.get('direct_NVML');assert isinstance(n,dict) and n.get('status')=='PASS','NVML_UNAVAILABLE'
++ for key in ['memory','memory_v2','utilization','temperature','power_mW','pstate','SM_clock_MHz']:assert key in n,'NVML_API_MISSING:'+key
++ for key,value in n.items():
++  if isinstance(value,dict) and key!='query_timings':assert value.get('status','PASS')=='PASS','NVML_API_UNKNOWN:'+key
++ assert isinstance(n['memory'],dict) and all(type(n['memory'].get(k)) is int and n['memory'][k]>=0 for k in ['total','used','free']),'NVML_MEMORY_V1_UNKNOWN'
++ for key in ['gpu','memory']:
++  v=n['utilization'].get(key) if isinstance(n['utilization'],dict) else None
++  assert type(v) in (int,float) and math.isfinite(v) and 0<=v<=100,'NVML_UTILIZATION_UNKNOWN'
++ for key in ['temperature','power_mW','pstate','SM_clock_MHz']:
++  v=n[key];assert type(v) in (int,float) and math.isfinite(v) and v>=0,'NVML_API_UNKNOWN:'+key
++ for key in ['total_MiB','used_MiB','GPU_util']:
++  v=float(t[key]);assert math.isfinite(v) and v>=0,'PHYSICAL_API_UNKNOWN:'+key
++ m=n.get('memory_v2');assert isinstance(m,dict) and all(type(m.get(k)) is int and m[k]>=0 for k in ['total','free','used','reserved']),'NVML_MEMORY_UNKNOWN'
++ assert m['total']==m['free']+m['used']+m['reserved'],'MEMORY_ARITHMETIC_FAILURE'
++ assert m['free']>=g.HEADROOM,'INSUFFICIENT_FREE_MEMORY_AND_2GIB_HEADROOM'
++ groups=s.get('direct_NVML_processes');assert isinstance(groups,dict) and all(isinstance(groups.get(k),dict) and groups[k].get('status')=='PASS' and isinstance(groups[k].get('processes'),list) for k in ['compute','graphics']),'PROCESS_VISIBILITY_UNKNOWN'
++ smi=s.get('SMI_all_processes');assert isinstance(smi,dict) and smi.get('status')=='PASS' and isinstance(smi.get('processes'),list),'PROCESS_VISIBILITY_UNKNOWN'
++ graphics=g.graphics_identity(s)
++ if baseline is not None:assert graphics==baseline,'GRAPHICS_IDENTITY_CHANGED'
++ early=early_compute_processes(s,uuid)
++ captured=s.get('early_SMI_compute_processes');assert isinstance(captured,dict) and captured.get('status')=='PASS' and captured.get('processes')==early,'EARLY_SMI_COMPUTE_CAPTURE_UNKNOWN_OR_CONFLICT'
++ union={int(p['pid']) for p in groups['compute']['processes']}
++ union.update(int(p['pid']) for p in smi['processes'] if p['type']!='G');union.update(p['pid'] for p in early)
++ assert all(p>0 for p in union),'COMPUTE_PID_UNKNOWN'
++ allowed=set() if owner is None else {owner['pid']};foreign=sorted(union-allowed)
++ assert not foreign,('UNAUTHORIZED_EXTERNAL_COMPUTE_PROCESS_ALL_THREE_SOURCES',foreign)
++ if owner is not None:
++  for p in s.get('process_ownership',[]):
++   if p.get('pid')==owner['pid']:
++    assert p.get('status')=='PASS' and all(p.get(k)==owner.get(k) for k in ['pid','uid','start_ticks']),'OWN_CAPTURED_PROCESS_IDENTITY_UNKNOWN_OR_CHANGED'
++ return dict(status='SAFETY_FIELDS_VERIFIED_NOT_RESOURCE_PASS',compute_union=sorted(union),early_SMI_compute_PIDs=sorted(p['pid'] for p in early),graphics=graphics)
++
++def assess_lifecycle_sample(snapshot,uuid,owner,baseline,poll_before,poll_after,assess_fn=None):
++ assert poll_before is None,'SAMPLE_NOT_STARTED_DURING_LIVE_CHILD'
++ safety=strict_snapshot_safety(snapshot,uuid,owner,baseline)
++ if poll_after is None:
++  if assess_fn is None:
++   from gpu_admission import assess as assess_fn
++  value=assess_fn(snapshot,uuid,owner,baseline)
++  return dict(lifecycle_state='RUNNING_RESOURCE_PASS',resource=value,safety=safety)
++ assert type(poll_after) is int and poll_after==0,'NONZERO_CHILD_EXIT_DURING_SAMPLE'
++ return dict(lifecycle_state='NATURAL_EXIT_TRANSITION_NOT_RESOURCE_PASS',resource=None,safety=safety)
++
++def assess_terminal_window(rows,uuid,baseline,assess_window_fn=None):
++ assert len(rows)==3,'THREE_SAMPLES_REQUIRED'
++ for row in rows:strict_snapshot_safety(row,uuid,None,baseline)
++ if assess_window_fn is None:
++  from gpu_admission import assess_window as assess_window_fn
++ value=assess_window_fn(rows,uuid)
++ assert value['graphics_baseline']==baseline,'GRAPHICS_IDENTITY_CHANGED'
++ return value
++
++def validate_completion_assets(result,profile,environment_record,*,kind,document,condition,uuid,expected_environment,source_verified,source_commit=None):
++ assert source_verified is True,'COMPLETION_SOURCE_IDENTITY_NOT_VERIFIED'
++ assert isinstance(result,dict) and result.get('status')=='PASS','COMPLETION_RESULT_NOT_PASS'
++ assert isinstance(profile,dict) and profile.get('status')=='PASS_ACTUAL_FROZEN_PROFILE','COMPLETION_PROFILE_NOT_PASS'
++ assert isinstance(environment_record,dict) and environment_record.get('environment')==expected_environment,'COMPLETION_LAUNCH_ENVIRONMENT_MISMATCH'
++ assert profile.get('actual_environment')==expected_environment and profile.get('hash_randomization')==0,'COMPLETION_PROFILE_ENVIRONMENT_MISMATCH'
++ inner=profile.get('profile',{});assert inner.get('status')=='PASS_ACTUAL_FROZEN_RUNTIME_PROFILE' and inner.get('forward_kernels_executed') is True,'COMPLETION_ACTUAL_FORWARD_PROFILE_MISSING'
++ assert all(inner.get('environment',{}).get(k)==expected_environment[k] for k in ['PYTHONHASHSEED','CUBLAS_WORKSPACE_CONFIG','LING_GATED_RMSNORM_FIXED_CONFIG','FLA_CACHE_MODE','FLA_CONFIG_DIR']),'COMPLETION_PROFILE_INPUT_ENVIRONMENT_MISMATCH'
++ assert result.get('document')==document,'COMPLETION_DOCUMENT_MISMATCH'
++ if kind=='canary':assert result.get('UUID')==uuid,'COMPLETION_UUID_MISMATCH'
++ else:
++  assert result.get('condition')==condition,'COMPLETION_CONDITION_MISMATCH'
++  if kind=='formal1':
++   identity=result.get('identity',{});assert identity.get('UUID')==uuid and identity.get('source_commit')==source_commit,'COMPLETION_UUID_OR_SOURCE_MISMATCH'
++  elif kind=='formal2':assert result.get('gpu_uuid')==uuid,'COMPLETION_UUID_MISMATCH'
++  else:assert result.get('host',{}).get('gpu_uuid')==uuid,'COMPLETION_UUID_MISMATCH'
++ return dict(status='PASS_ARTIFACT_BINDING_ONLY_NOT_JOB_COMPLETE',kind=kind,document=document,condition=condition,uuid=uuid)
+diff --git a/prepare_gpu3_single.py b/prepare_gpu3_single.py
+index d01b800..ce5ac52 100644
+--- a/prepare_gpu3_single.py
++++ b/prepare_gpu3_single.py
+@@ -1,4 +1,4 @@
+-"""CPU-only identity registration for the newly authorized GPU3-only attempt.
++"""CPU-only identity registration for the newly authorized GPU6-only attempt.
+ 
+ Copies frozen scientific bytes; never starts a model, worker, or CUDA context.
+ The initial read-only admission window is single-shot and cannot select another GPU.
+@@ -11,9 +11,12 @@ D=Path(os.environ['LING_PROSPECTIVE_RESULTS']).resolve()
+ C=Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1')
+ O=Path('/data/zypan/worktrees/ling-kda-prospective-execution05')
+ H=Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1/execution_05')
+-TARGET='GPU-759526ed-efb2-e7f6-881c-ab098e0b05ae'
+-EXECUTION='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1_GPU3_SINGLE_V2'
+-BASE='a537dc6f8ac11a4b5066c77f2aae01def962467d'
++TARGET='GPU-de53f243-b271-521c-d875-d96611ed8574'
++TARGET_INDEX=6
++PRIOR_SAME_TASK_GPUH=1.007654354178602
++P=Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1_GPU3_SINGLE_V2')
++EXECUTION='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1_GPU6_SINGLE_V1'
++BASE='3c5837dcf61701661a935f3bbb3d2170a00f8d59'
+ from cleanroom_common import read, sha, publish as atomic_publish, compare_exact
+ from frozen_runtime_profile import validate_files, CONFIG_SHA256
+ 
+@@ -34,7 +37,7 @@ def copy_exact(source,target):
+ 
+ def main():
+     begin=time.time()
+-    assert D.name==EXECUTION and W.name=='ling-kda-4doc-cleanroom-gpu3-single-v2'
++    assert D.name==EXECUTION and W.name=='ling-kda-4doc-cleanroom-gpu6-single-v1'
+     assert not (D/'RUN_CONTROLLER.json').exists() and not (D/'STOP.json').exists()
+     assert not (D/'audits/PREPARATION_COMPLETE.json').exists(),'SINGLE_SHOT_PREPARATION_NO_REPEAT'
+     assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=W,text=True).strip()==BASE
+@@ -42,6 +45,12 @@ def main():
+     old_stop='b831befc5b34d80143a5152ef85da1b84a8b904be0f14af72f13583e77d0afda'
+     old_manifest='1a14787eb60b7385cee5b37f1662feff2fc45aad2cff343b4fb331a3424b1889'
+     assert sha(C/'STOP.json')==old_stop and sha(C/'hashes/DELIVERY_VERIFICATION.json')==old_manifest
++    previous_hashes={'STOP.json':'0acd47e7c2317207751e42f487be5dc2bdf251807bf3c497ecd667084b126b41','hashes/DELIVERY_VERIFICATION.json':'810366226d9b8480895ce2c07f0ba5b791a1b718ea677e17d53d12fd6ea55d52','gpu_resource_ledger.json':'8c49ac90178afcb659115d01b6ac98d4abc1dcefb94a48ff8b876ab74113d134','PREREGISTRATION_RECONCILIATION.json':'876c6fadde7aede053262a6b82044d354c71d545414e7d20d635d9bbbfb030ed','audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json':'c1b523e076b1dd1e2fca588576f11f0e6ee4cf3f1e1f79f5385df3a8f6f82955'}
++    for name,digest in previous_hashes.items():assert sha(P/name)==digest,('PREVIOUS_SEALED_IDENTITY_CHANGED',name)
++    previous_ledger=read(P/'gpu_resource_ledger.json')
++    assert previous_ledger['actual_new_GPU_hours']==PRIOR_SAME_TASK_GPUH and not previous_ledger['active_workers']
++    prior_audit=dict(status='PASS_ACTUAL_PREVIOUS_SEALED_LAUNCH_TO_EXIT',prior_same_task_GPUh=PRIOR_SAME_TASK_GPUH,previous_execution=str(P),previous_sealed_files={name:dict(path=str(P/name),sha256=digest) for name,digest in previous_hashes.items()},earlier_same_task_GPUh=0.0,cumulative_cap_GPUh=36.0,current_remaining_GPUh=36.0-PRIOR_SAME_TASK_GPUH,protective_cumulative_GPUh=35.8,independent_4090_not_inherited=True)
++    publish(D/'audits/SAME_TASK_BUDGET_BASELINE.json',prior_audit)
+     copied=[]
+     for n in ['CALIBRATION_CONFIG.json','FROZEN_SPEC.json','FROZEN_4DOC_SELECTION.json','SECONDARY_SPEC.json','MODEL_WEIGHT_SHA256.txt','SELECTION_FREEZE_RECEIPT.json']:
+         copied.append(copy_exact(C/n,D/n))
+@@ -50,8 +59,8 @@ def main():
+     for n,h in [('FROZEN_SPEC.json','8ae8927ed37209efccbf19c672b9baeb46c0d7f272601f8f54d1f9609b64f3d1'),('FROZEN_4DOC_SELECTION.json','a5c227d15918a249f8ae2059539c15f94668cb2afddf3aecd8a9f7e13851354b'),('preregistration/NEXT_PROSPECTIVE_4DOC_PREREGISTRATION.md','54d6d24fbc3142a692ef1a6c04a5617cf6b0abe6702a662722f34fc1b6141722')]:
+         assert sha(D/n)==h,('FROZEN_SCIENCE_SHA_CONFLICT',n)
+     publish(D/'audits/FROZEN_ASSET_COPY.json',dict(status='PASS_BYTE_IDENTICAL',files=copied,previous_attempt_read_only=True,no_historical_STOP_or_current_results_copied=True))
+-    auth='用户在2026-10-16当前聊天明确授权：现在的3090上面有空闲的GPU，你可以利用上面的一个空闲的GPU来开展实验。本轮先只读验证并选择原优先GPU3，冻结后仅GPU3全局串行；继承原四文档完整32K授权，最多1个GPU worker，原3090 CleanRoom任务累计36.0GPUh硬预算（两前次同任务均0GPUh）不变。4090资格已成功完成并独立封存，其PASS和CP均不继承。旧所有STOP只读保留，不覆盖历史，不自动迁移或追加失败后的下一attempt。'
+-    publish(D/'audits/GPU3_SINGLE_USER_AUTHORIZATION.json',dict(status='EXPLICIT_HUMAN_AUTHORIZATION',user_text='现在的3090上面有空闲的GPU，你可以利用上面的一个空闲的GPU来开展实验',execution_id=EXECUTION,scientific_protocol='LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1',previous_cleanroom_STOP=dict(path=str(C/'STOP.json'),sha256=old_stop,delivery_manifest_sha256=old_manifest),MAX_CONCURRENT_GPUS=1,MAX_TOTAL_NEW_GPUH=36.0,authorized_devices={TARGET:3},interpretation=auth,scope='same frozen four-document32K experiment with independent new execution identity; not permission to relax any scientific or physical gate'))
++    auth='用户最新明确授权新独立3090完整实验，优先空闲高编号卡。运行前只读选择GPU6并冻结其UUID；本轮仅GPU6全局串行。原同任务3090累计硬预算36.0GPUh、累计保护35.8GPUh不变；先前V2实测1.007654354178602GPUh必须计入，剩余34.992345645821395GPUh。新GPU6与旧GPU3不同，12条件全部新建own-history parent及fresh64，不继承3090或4090资格/CP/PASS。所有旧STOP永久只读，不自动换卡、重试或增科学条件。'
++    publish(D/'audits/GPU6_SINGLE_USER_AUTHORIZATION.json',dict(status='EXPLICIT_HUMAN_AUTHORIZATION',human_authorization_summary='新独立3090完整实验，优先空闲高编号卡',authorization_summary_is_verbatim_quote=False,execution_id=EXECUTION,scientific_protocol='LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1',previous_cleanroom_STOP=dict(path=str(C/'STOP.json'),sha256=old_stop,delivery_manifest_sha256=old_manifest),previous_GPU3_V2=dict(path=str(P),STOP_sha256=previous_hashes['STOP.json'],manifest_sha256=previous_hashes['hashes/DELIVERY_VERIFICATION.json'],prior_same_task_GPUh=PRIOR_SAME_TASK_GPUH),MAX_CONCURRENT_GPUS=1,MAX_TOTAL_NEW_GPUH=36.0,authorized_devices={TARGET:TARGET_INDEX},interpretation=auth,scope='same frozen four-document32K experiment with independent new execution identity; not permission to relax any scientific or physical gate'))
+     validate_files()
+     math_names=['functional_worker.py','formal_worker.py','persistent_engine_v1.py','v2_runtime.py','objective.py','run_matched_l7.py','frozen_runtime_profile.py','prospective_common.py']
+     maths={}
+@@ -61,99 +70,81 @@ def main():
+     from formal_checkpoint_control import adapted_source
+     adapted=adapted_source();assert "primary = sum(x['KL'] for x in kl)/384" in adapted
+     publish(D/'audits/MATHEMATICAL_IDENTITY.json',dict(status='PASS',unchanged_file_SHA256=maths,formal_control_adapter='unchanged CleanRoom reversible control hooks; source reversal restores original mathematical worker byte-for-byte',formal_adapter_source_sha256=sha(W/'formal_checkpoint_control.py'),adapted_formal_AST_SHA256=hashlib.sha256(ast.dump(ast.parse(adapted),include_attributes=False).encode()).hexdigest(),mathematical_kernel_changes=False))
+-    actual=read(C/'audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json')
++    actual=read(P/'audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json')
++    cached_source=read(P/'PREREGISTRATION_RECONCILIATION.json')
++    source_by_path={row['path']:row for row in cached_source['source_assets']}
+     assert actual['status']=='PASS_ACTUAL_BYTES' and len(actual['model_files'])==32 and len(actual['input_and_rotation_files'])==24
+-    checked={}
+-    for name in ['model_files','input_and_rotation_files']:
+-        checked[name]=[]
+-        for row in actual[name]:
+-            p=Path(row['path']);assert p.stat().st_size==row['bytes'] and sha(p)==row['sha256'],('ACTUAL_ASSET_SHA_FAILURE',str(p))
+-            checked[name].append(dict(row))
++    checked={'model_files':[],'input_and_rotation_files':[]}
++    for row in actual['model_files']:
++        asset=source_by_path[row['path']];path=Path(row['path']);stat=path.stat()
++        assert path.suffix=='.safetensors' and asset['sha256']==row['sha256'] and stat.st_size==row['bytes']==asset['bytes'] and stat.st_mtime_ns==asset['mtime_ns'],('CACHED_MODEL_ACTUAL_SHA_METADATA_CHANGED',str(path))
++        checked['model_files'].append(dict(row,mtime_ns=stat.st_mtime_ns,verification='PREVIOUS_ACTUAL_FULL_SHA_REUSED_WITH_UNCHANGED_SIZE_MTIME',actual_SHA_authority_path=str(P/'audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json'),actual_SHA_authority_sha256=previous_hashes['audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json'],current_full_payload_rehashed=False))
++    for row in actual['input_and_rotation_files']:
++        path=Path(row['path']);assert path.stat().st_size==row['bytes'] and sha(path)==row['sha256'],('ACTUAL_SMALL_ASSET_SHA_FAILURE',str(path))
++        checked['input_and_rotation_files'].append(dict(row,verification='CURRENT_ACTUAL_FULL_SHA'))
+     spec=read(D/'FROZEN_SPEC.json');model=Path(spec['model']['path']);model_metadata=[]
+     for filename,key in [('config.json','config_sha256'),('generation_config.json','generation_config_sha256'),('tokenizer_config.json','tokenizer_config_sha256'),('tokenizer.json','tokenizer_sha256'),('model.safetensors.index.json','weight_index_sha256')]:
+         p=model/filename;assert sha(p)==spec['model'][key],('MODEL_METADATA_CHANGED',filename)
+         model_metadata.append(dict(path=str(p),sha256=sha(p),bytes=p.stat().st_size))
+-    publish(D/'audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json',dict(status='PASS_ACTUAL_BYTES',**checked,model_metadata=model_metadata,elapsed_CPU_seconds=time.time()-begin,new_GPU_worker_count=0))
+-    audit=read(C/'PREREGISTRATION_RECONCILIATION.json')
++    publish(D/'audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json',dict(status='PASS_ACTUAL_BYTES',**checked,model_metadata=model_metadata,elapsed_CPU_seconds=time.time()-begin,new_GPU_worker_count=0,model_full_payloads_rehashed=False,model_SHA_scope='original full-byte SHA authority plus unchanged source_assets size/mtime; current inputs/rotations and model metadata actually rehashed',previous_model_audit_sha256=previous_hashes['audits/G0_ACTUAL_MODEL_INPUT_ROTATION_SHA.json']))
++    audit=read(P/'PREREGISTRATION_RECONCILIATION.json')
+     old_history=read(C/'audits/HISTORICAL_STOP_AND_MANIFEST_IDENTITIES.json')
+     for row in old_history['history']:
+         assert sha(Path(row['execution'])/'STOP.json')==row['STOP_sha256']
+         matches=[p for p in [Path(row['execution'])/'RESULT_AND_DELIVERY_HASHES.json',Path(row['execution'])/'delivery/RESULT_AND_DELIVERY_HASHES.json'] if p.exists() and sha(p)==row['manifest_sha256']]
+         assert matches,('HISTORICAL_MANIFEST_CHANGED',row['execution'])
+     old_history['history'].append(dict(execution=str(C),STOP_sha256=old_stop,manifest_sha256=old_manifest,manifest_path=str(C/'hashes/DELIVERY_VERIFICATION.json')))
++    old_history['history'].append(dict(execution=str(P),STOP_sha256=previous_hashes['STOP.json'],manifest_sha256=previous_hashes['hashes/DELIVERY_VERIFICATION.json'],manifest_path=str(P/'hashes/DELIVERY_VERIFICATION.json'),actual_GPUh=PRIOR_SAME_TASK_GPUH))
+     publish(D/'audits/HISTORICAL_STOP_AND_MANIFEST_IDENTITIES.json',old_history)
+     for n,h in audit['frozen_protocol_files'].items():assert sha(Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_MIXED_OUTCOME_RESOLUTION_V1')/n)==h,n
+     for n,h in audit['scorer_source_SHA'].items():assert sha(n)==h,n
+     for row in audit['source_assets']:
+-        p=Path(row['path']);s=p.stat();assert (s.st_size,s.st_mtime_ns)==(row['bytes'],row['mtime_ns']) and sha(p)==row['sha256'],('HISTORICAL_SOURCE_ASSET_CHANGED',str(p))
++        p=Path(row['path']);s=p.stat();assert (s.st_size,s.st_mtime_ns)==(row['bytes'],row['mtime_ns']),('HISTORICAL_SOURCE_ASSET_METADATA_CHANGED',str(p))
++        if p.suffix=='.safetensors':
++            assert any(x['path']==str(p) and x['sha256']==row['sha256'] for x in checked['model_files']),('UNBOUND_CACHED_MODEL_SHA',str(p))
++        else:assert sha(p)==row['sha256'],('HISTORICAL_SMALL_SOURCE_ASSET_CHANGED',str(p))
+     for n,h in audit['historical_STOP_preserved'].items():assert sha(n)==h,n
+     audit['historical_STOP_preserved'][str(C/'STOP.json')]=old_stop
+-    audit.update(status='PASS',current_execution=str(D),authorization_reconciliation=auth,selected_GPU=3,selected_GPU_UUID=TARGET,selected_documents=[d['document'] for d in spec['documents']],CUDA_initialized=False,new_long_GPU_scientific_units=0,disk_free_bytes=shutil.disk_usage(D).free,elapsed_seconds=time.time()-begin,actual_gpu_inventory='Not inherited: current GPU3-only actual read-only samples are in audits/INITIAL_RESOURCE_SAMPLES.json',actual_compute_inventory='Not inherited: current GPU3-only actual process evidence is in audits/INITIAL_RESOURCE_SAMPLES.json')
++    audit['historical_STOP_preserved'][str(P/'STOP.json')]=previous_hashes['STOP.json']
++    audit.update(status='PASS',current_execution=str(D),authorization_reconciliation=auth,selected_GPU=TARGET_INDEX,selected_GPU_UUID=TARGET,selected_documents=[d['document'] for d in spec['documents']],CUDA_initialized=False,new_long_GPU_scientific_units=0,disk_free_bytes=shutil.disk_usage(D).free,elapsed_seconds=time.time()-begin,actual_gpu_inventory='Not inherited: current GPU6-only actual read-only samples are in audits/INITIAL_RESOURCE_SAMPLES.json',actual_compute_inventory='Not inherited: current GPU6-only actual process evidence is in audits/INITIAL_RESOURCE_SAMPLES.json')
+     assert audit['disk_free_bytes']>=audit['required_storage_plan_bytes']
+     publish(D/'PREREGISTRATION_RECONCILIATION.json',audit)
+     selection=read(D/'FROZEN_4DOC_SELECTION.json')
+     expected=[('pg19-test-41603','H_to_L7_a50','H'),('pg19-test-2544','H_to_L6_a50','H_to_L7_a50'),('pg19-test-7987','H_to_L7_a50','H_to_L7R_a25'),('pg19-test-26183','H_to_L6_a50','H_to_L7R_a25')]
+     assert [(x['document'],x['P1_predicted_rotation'],x['L7_predicted_rotation']) for x in selection['documents']]==expected
+     mapping={doc:TARGET for doc,_,_ in expected}
+-    publish(D/'EXECUTION_ROUTING.json',dict(execution=str(D),execution_id=EXECUTION,source_worktree=str(W),reference_experiment=str(D),authorized_devices={TARGET:3},document_devices=mapping,formal_global_order=selection['execution_order'],formal_serial=True,qualification_parallel_lanes=1,MAX_CONCURRENT_GPUS=1,MAX_TOTAL_NEW_GPUH=36.0,original_checkpoint_contract_sha256=sha(D/'FROZEN_SPEC.json'),initial_device_selection='explicit new user authorization fixes GPU3 only before any current model worker; no discovery/migration/fallback to any other card'))
+-    publish(D/'FP_PAIRING_CONTRACT_GATE.json',dict(status='PASS',reference_experiment=str(D),spec_sha256=sha(D/'FROZEN_SPEC.json'),mode='CLEANROOM_OWN_FP_SAME_DOC_UUID_FROZEN_RUNTIME_GPU3_ONLY'))
+-    import torch
+-    import functional_worker as f
+-    assert not torch.cuda.is_initialized()
+-    key='pg19-test-26183__FP';cp=H/'runs'/(key+'__8192.pt');parent=H/'runs'/(key+'__parent.json');fresh=H/'runs'/(key+'__resumed_parity.json');qpath=H/'qualification_units'/(key+'.json');oldq=read(qpath)
+-    h='2e6abbe74fc5266fd26c3b74da4977cdd3849382534852503fb68a10e0f77f4f'
+-    assert sha(cp)==h==oldq['checkpoint_sha256'] and sha(parent)==oldq['parent_sha256'] and sha(fresh)==oldq['resumed_sha256']
+-    p=read(parent);oldfresh=read(fresh);compare_exact(p,oldfresh,TARGET)
+-    current_runtime=read(D/'CALIBRATION_CONFIG.json')['runtime']
+-    assert all(p['host'][k]==current_runtime[k] for k in ['kernel','driver','torch','cuda_runtime','selector']),'REUSED_FP_FROZEN_RUNTIME_IDENTITY_CONFLICT'
+-    profiles={}
+-    for stage in ['parent','resumed_parity']:
+-        path=H/'runs'/(key+'__'+stage+'.RUNTIME_PROFILE.json');profile=read(path)
+-        assert profile['status']=='PASS_ACTUAL_FROZEN_RUNTIME_PROFILE' and profile['forward_kernels_executed']
+-        assert profile['fixed_FLA_config_SHA256']==CONFIG_SHA256
+-        assert profile['actually_used_forward_configurations']['causal_conv1d_update_kernel']==dict(kwargs={'BD':8},num_ctas=1,num_stages=3,num_warps=8)
+-        assert profile['actually_used_forward_configurations']['layer_norm_gated_fwd_kernel']==dict(kwargs={'BT':16},num_ctas=1,num_stages=3,num_warps=8)
+-        profiles[stage]=dict(path=str(path),sha256=sha(path))
+-    saved=torch.load(cp,map_location='cpu',weights_only=False);entry=next(x for x in selection['documents'] if x['document']=='pg19-test-26183')
+-    assert saved['schema']=='full_native_hybrid_cache_v1' and saved['next_position']==8192 and saved['last_position']==8191
+-    assert saved['frozen_spec_sha256']==sha(D/'FROZEN_SPEC.json') and saved['token_sha256']==entry['document_identity']['token_file_sha256']
+-    assert saved['recurrent_layers']==read(D/'CALIBRATION_CONFIG.json')['layers']
+-    assert saved['audit_state'] is None and saved['quantizer_state']['rotation_sha256'] is None
+-    assert f.object_fingerprint(torch,saved['cache'])==saved['cache_fingerprint']
+-    rng={k:f.object_fingerprint(torch,saved[k]) for k in ['torch_rng','cuda_rng','python_rng','numpy_rng']}
+-    assert torch.is_tensor(saved['torch_rng']) and saved['torch_rng'].dtype==torch.uint8 and saved['torch_rng'].device.type=='cpu'
+-    assert torch.is_tensor(saved['cuda_rng']) and saved['cuda_rng'].dtype==torch.uint8 and saved['cuda_rng'].device.type=='cpu'
+-    cache_fingerprint=saved['cache_fingerprint'];prefix=saved['prefix_full_logit_sha256'];del saved
+-    reuse={key:dict(original_checkpoint=str(cp),checkpoint_sha256=h,original_parent=str(parent),parent_sha256=sha(parent),original_qualification_sha256=sha(qpath),current_fresh64_required=True)}
+-    for suffix,source in [('__8192.pt',cp),('__parent.json',parent)]:
+-        target=D/'runs'/(key+suffix);assert not target.exists() and not target.is_symlink();target.symlink_to(source)
+-    publish(D/'audits/REUSED_FP_CPU_IDENTITY.json',dict(status='PASS_ACTUAL_CPU_BYTES_NATIVE_CACHE_PROFILE_RNG_IDENTITY',key=key,UUID=TARGET,checkpoint_sha256=h,cache_fingerprint=cache_fingerprint,prefix_full_logit_sha256=prefix,RNG_fingerprints=rng,profiles=profiles,old_exact64_historical_only=True,current_fresh64_required=True,current_qualification_not_yet_passed=True,CUDA_initialized=torch.cuda.is_initialized()))
+-    publish(D/'reused_FP_bindings.json',dict(status='ELIGIBLE_SAME_UUID_FP_PREFIX_VERIFIED_PENDING_CURRENT_FRESH64',units=reuse,not_reused=[dict(document='pg19-test-41603',reason='old prefix UUID is GPU2; user authorizes only GPU3; rebuild own prefix instead of cross-device grandfathering',old_UUID='GPU-7d6246ed-c3d1-75bc-c2c7-d02eb2882cca',new_UUID=TARGET,old_checkpoint_sha256='367ad2083285fd5a74c69ead6b84e9dbe443dfd22e628ab038cf0966cc10a0a7')],other_historical_checkpoint_reuse=False))
++    publish(D/'EXECUTION_ROUTING.json',dict(execution=str(D),execution_id=EXECUTION,source_worktree=str(W),reference_experiment=str(D),authorized_devices={TARGET:TARGET_INDEX},document_devices=mapping,formal_global_order=selection['execution_order'],formal_serial=True,qualification_parallel_lanes=1,MAX_CONCURRENT_GPUS=1,MAX_TOTAL_NEW_GPUH=36.0,original_checkpoint_contract_sha256=sha(D/'FROZEN_SPEC.json'),initial_device_selection='explicit new user authorization fixes GPU6 only before any current model worker; no discovery/migration/fallback to any other card'))
++    publish(D/'FP_PAIRING_CONTRACT_GATE.json',dict(status='PASS',reference_experiment=str(D),spec_sha256=sha(D/'FROZEN_SPEC.json'),mode='CLEANROOM_OWN_FP_SAME_DOC_UUID_FROZEN_RUNTIME_GPU6_ONLY'))
++    # Different frozen UUID: no historical parent/CP or PASS can enter this run.
++    assert TARGET!='GPU-759526ed-efb2-e7f6-881c-ab098e0b05ae'
++    assert not list((D/'runs').glob('*__parent.json')) and not list((D/'runs').glob('*__8192.pt'))
++    publish(D/'reused_FP_bindings.json',dict(status='NO_SAME_UUID_PREFIX_REUSE_ALL_OWN_HISTORY_REQUIRED',units={},reason='new authorized GPU6 UUID differs from previous GPU3 and all4090 qualifications; twelve own-history parents and twelve current fresh64 workers required; no inherited PASS or checkpoint',historical_candidate_GPU3_UUID='GPU-759526ed-efb2-e7f6-881c-ab098e0b05ae',target_UUID=TARGET,other_historical_checkpoint_reuse=False))
++    publish(D/'audits/REUSED_FP_CPU_IDENTITY.json',dict(status='NOT_REUSED_DIFFERENT_FROZEN_GPU_UUID',units={},current_parent_workers_required=12,current_fresh64_workers_required=12,no_historical_parent_CP_symlinks_created=True,no_qualification_labels_inherited=True,CUDA_initialized=False))
+     hist=[]
+     for path in Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_MIXED_OUTCOME_RESOLUTION_V1').rglob('*__formal.NATURAL_EXIT.json'):
+         j=read(path)
+         if j.get('natural_exit'):hist.append(dict(path=str(path),sha256=sha(path),seconds=j['wall_seconds']))
+-    publish(D/'preregistration.json',dict(TASK='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1',execution_id=EXECUTION,scientific_protocol='LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1',preregistration_sha256='54d6d24fbc3142a692ef1a6c04a5617cf6b0abe6702a662722f34fc1b6141722',selection_sha256=sha(D/'FROZEN_4DOC_SELECTION.json'),FROZEN_SPEC_sha256=sha(D/'FROZEN_SPEC.json'),frozen_epoch=selection['frozen_epoch'],FULL_32K_EXECUTION_AUTHORIZED=True,MAX_CONCURRENT_GPUS=1,MAX_TOTAL_NEW_GPUH=36.0,initial_devices={TARGET:3},historical_formal_measurements=hist,historical_formal_worker_seconds=[r['seconds'] for r in hist],new_qualification_workers_planned=23,new_parent_workers=11,current_fresh64_workers=12,canary_model_workers=1,formal_workers=24,formal_scientific_trajectories=12,planned_long_checkpoint_cursor=16384,planned_overlap_tokens=64,global_formal_order=selection['execution_order'],all_GPU_workers_serial=True,no_new_scientific_keys=True,stats_unit='document',old_MIXED_not_combined_n6=True,new_human_authorization=auth))
+-    publish(D/'engineering_change_manifest.json',dict(status='REGISTERED_BEFORE_GPU',base_commit=BASE,changes=['fixed authorized GPU3 UUID for all four documents and every worker','maximum one scheduler GPU worker for canary,qualification,and formal','CPU registration for new explicit authorization and preserved oldSTOP; math/FLA/quantizer/KL/strict comparison unchanged'],unchanged_math=maths,formal_adapter_exact_source_reversibility=True,extra_headroom_bytes=2*2**30,low_util_threshold_percent=2,resource_window_samples=3,resource_sample_interval_seconds=5,hard_new_GPUh=36.,protective_stop_GPUh=35.8,automatic_failed_science_retry=False,automatic_second_attempt=False,allowlisted_devices_frozen_before_gpu={TARGET:3},epoch=time.time()))
+-    assert not torch.cuda.is_initialized()
++    publish(D/'preregistration.json',dict(TASK='LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1',execution_id=EXECUTION,scientific_protocol='LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1',preregistration_sha256='54d6d24fbc3142a692ef1a6c04a5617cf6b0abe6702a662722f34fc1b6141722',selection_sha256=sha(D/'FROZEN_4DOC_SELECTION.json'),FROZEN_SPEC_sha256=sha(D/'FROZEN_SPEC.json'),frozen_epoch=selection['frozen_epoch'],FULL_32K_EXECUTION_AUTHORIZED=True,MAX_CONCURRENT_GPUS=1,MAX_TOTAL_NEW_GPUH=36.0,initial_devices={TARGET:TARGET_INDEX},historical_formal_measurements=hist,historical_formal_worker_seconds=[r['seconds'] for r in hist],new_qualification_workers_planned=24,new_parent_workers=12,current_fresh64_workers=12,canary_model_workers=1,formal_workers=24,formal_scientific_trajectories=12,planned_long_checkpoint_cursor=16384,planned_overlap_tokens=64,global_formal_order=selection['execution_order'],all_GPU_workers_serial=True,no_new_scientific_keys=True,stats_unit='document',old_MIXED_not_combined_n6=True,new_human_authorization=auth,prior_same_task_GPUh=PRIOR_SAME_TASK_GPUH,remaining_GPUh=36.0-PRIOR_SAME_TASK_GPUH,protective_cumulative_GPUh=35.8,prior_same_task_resource_audit_sha256=sha(D/'audits/SAME_TASK_BUDGET_BASELINE.json'),previous_execution_resource=prior_audit,other_task_resources=read(P/'preregistration.json').get('other_task_resources',{}),no_4090_qualification_or_checkpoint_inheritance=True,budget_scope='same3090 full-science task cumulative36GPUh including priorV2 actual launch-to-exit1.007654354178602; independent4090 qualification reported separately'))
++    publish(D/'engineering_change_manifest.json',dict(status='REGISTERED_BEFORE_GPU',base_commit=BASE,changes=['fixed authorized GPU6 UUID for all four documents and every worker','maximum one scheduler GPU worker for canary,qualification,and formal','CPU registration for new explicit authorization and preserved oldSTOP; math/FLA/quantizer/KL/strict comparison unchanged'],unchanged_math=maths,formal_adapter_exact_source_reversibility=True,extra_headroom_bytes=2*2**30,low_util_threshold_percent=2,resource_window_samples=3,resource_sample_interval_seconds=5,hard_cumulative_GPUh=36.,prior_same_task_GPUh=PRIOR_SAME_TASK_GPUH,current_remaining_GPUh=36.0-PRIOR_SAME_TASK_GPUH,protective_cumulative_GPUh=35.8,automatic_failed_science_retry=False,automatic_second_attempt=False,allowlisted_devices_frozen_before_gpu={TARGET:TARGET_INDEX},epoch=time.time()))
++    assert 'torch' not in sys.modules,'CPU_PREPARATION_MUST_NOT_IMPORT_TORCH_OR_INITIALIZE_CUDA'
+     # One fixed read-only window. A busy result is retained and never changes cards.
+     from gpu_telemetry import sample,inventory
+     from gpu_admission import assess_window
+     inventory_rows,_=inventory();target=[r for r in inventory_rows if r['uuid']==TARGET]
+-    assert len(target)==1 and int(target[0]['index'])==3,'AUTHORIZED_GPU3_UUID_MAPPING_CHANGED'
+-    publish(D/'audits/INITIAL_DEVICE_DISCOVERY.json',dict(status='EXPLICIT_GPU3_ONLY_NO_SELECTION',target=target,human_steering='现在的3090上面有空闲的GPU，你可以利用上面的一个空闲的GPU来开展实验',other_GPU_use_authorized=False))
++    assert len(target)==1 and int(target[0]['index'])==TARGET_INDEX,'AUTHORIZED_GPU6_UUID_MAPPING_CHANGED'
++    publish(D/'audits/INITIAL_DEVICE_DISCOVERY.json',dict(status='EXPLICIT_GPU6_ONLY_NO_SELECTION',target=target,human_steering='新独立3090完整实验，优先空闲高编号卡',other_GPU_use_authorized=False))
+     rows=[]
+     for i in range(3):
+         rows.append(sample(TARGET))
+         if i<2:time.sleep(5)
+     publish(D/'audits/INITIAL_RESOURCE_SAMPLES.json',dict(samples={TARGET:rows}))
+-    assert all(len(s['target'])==1 and int(s['target'][0]['index'])==3 for s in rows)
++    assert all(len(s['target'])==1 and int(s['target'][0]['index'])==TARGET_INDEX for s in rows)
+     result=assess_window(rows,TARGET)
+     publish(D/'resource_admission.json',dict(status='PASS_INITIAL_THREE_SAMPLE_WINDOW',results={TARGET:result},samples={TARGET:rows}))
+     publish(D/'resource_baselines.json',{TARGET:result['graphics_baseline']})
+-    assert not torch.cuda.is_initialized()
+-    publish(D/'audits/PREPARATION_COMPLETE.json',dict(status='PASS_CPU_IDENTITIES_AND_FIXED_GPU3_READ_ONLY_INITIAL_WINDOW',execution_id=EXECUTION,CUDA_initialized=False,new_GPU_workers=0,parent_workers_planned=11,fresh64_workers_planned=12,all_workers_serial=True,elapsed_seconds=time.time()-begin,initial_window_min_free_bytes=result['min_free_bytes'],CPU_preparation_source_sha256=sha(__file__)))
+-    print('GPU3_SINGLE_CPU_PREPARATION_PASS; GPU_MODEL_WORKERS_NOT_STARTED',flush=True)
++    assert 'torch' not in sys.modules,'CPU_PREPARATION_MUST_NOT_IMPORT_TORCH_OR_INITIALIZE_CUDA'
++    publish(D/'audits/PREPARATION_COMPLETE.json',dict(status='PASS_CPU_IDENTITIES_AND_FIXED_GPU6_READ_ONLY_INITIAL_WINDOW',execution_id=EXECUTION,CUDA_initialized=False,new_GPU_workers=0,parent_workers_planned=12,fresh64_workers_planned=12,all_workers_serial=True,elapsed_seconds=time.time()-begin,initial_window_min_free_bytes=result['min_free_bytes'],CPU_preparation_source_sha256=sha(__file__)))
++    print('GPU6_SINGLE_CPU_PREPARATION_PASS; GPU_MODEL_WORKERS_NOT_STARTED',flush=True)
+ 
+ if __name__=='__main__':
+     try:main()
+diff --git a/resource_evidence.py b/resource_evidence.py
+index 7154e7c..9cfb56d 100644
+--- a/resource_evidence.py
++++ b/resource_evidence.py
+@@ -32,6 +32,17 @@ def classify_snapshot(snapshot,owner):
+         for p in snapshot['SMI_all_processes']['processes']:
+             if p['type']!='G':union.add(int(p['pid']))
+     except Exception as e:parse_errors.append(dict(source='SMI_compute_union',error=repr(e)))
++    # Additional diagnostic source emitted by the new sequential sampler.
++    # Historical snapshots without this field keep their original two-source
++    # classification; the live lifecycle guard requires the parsed third source.
++    early=snapshot.get('early_SMI_compute_processes')
++    if early is not None:
++        try:
++            assert early.get('status')=='PASS','EARLY_SMI_COMPUTE_UNKNOWN'
++            for p in early['processes']:
++                assert p['uuid']==snapshot['uuid'],'EARLY_SMI_UUID_CONFLICT'
++                union.add(int(p['pid']))
++        except Exception as e:parse_errors.append(dict(source='early_SMI_compute_union',error=repr(e)))
+     owner_pid=owner.get('pid') if isinstance(owner,dict) else None
+     allowed=set() if owner_pid is None else {int(owner_pid)}
+     snapshot_metadata={}
+@@ -70,6 +81,8 @@ def query_failures(snapshot):
+     for key in ['direct_NVML','SMI_all_processes']:
+         row=snapshot.get(key)
+         if isinstance(row,dict) and row.get('status')!='PASS':result.append(dict(source=key,raw=row))
++    early=snapshot.get('early_SMI_compute_processes')
++    if early is not None and (not isinstance(early,dict) or early.get('status')!='PASS'):result.append(dict(source='early_SMI_compute_processes',raw=early))
+     nvml=snapshot.get('direct_NVML',{})
+     if isinstance(nvml,dict):
+         for key in ['memory','memory_v2','utilization']:
+diff --git a/test_cleanroom_control.py b/test_cleanroom_control.py
+index f7e8caa..80de1a8 100644
+--- a/test_cleanroom_control.py
++++ b/test_cleanroom_control.py
+@@ -59,20 +59,21 @@ class Controls(unittest.TestCase):
+   import cleanroom_run as runner,cleanroom_common as common,time
+   with tempfile.TemporaryDirectory() as td,patch.object(runner,'D',Path(td)),patch.object(common,'D',Path(td)):
+    d=Path(td);publish(d/'EXECUTION_ROUTING.json',dict(authorized_devices={}))
+-   controller=runner.Controller();controller.completed=[dict(wall_seconds=35.7*3600)]
++   publish(d/'preregistration.json',dict(prior_same_task_GPUh=read(D/'preregistration.json')['prior_same_task_GPUh']))
++   controller=runner.Controller();controller.completed=[dict(wall_seconds=(35.7-controller.prior_GPUh)*3600)]
+    controller.active={'a':dict(started_monotonic=time.monotonic()-200),'b':dict(started_monotonic=time.monotonic()-200)}
+-   value=controller.ledger();self.assertGreater(value['actual_new_GPU_hours'],35.8);self.assertLess(value['actual_new_GPU_hours'],36.0);self.assertTrue((d/'STOP.json').exists())
++   value=controller.ledger();self.assertGreater(value['cumulative_same_task_GPU_hours'],35.8);self.assertLess(value['cumulative_same_task_GPU_hours'],36.0);self.assertTrue((d/'STOP.json').exists())
+  def test_slow_actual_parent_forecast_stops_before_large_work(self):
+   import cleanroom_run as runner,cleanroom_common as common
+   with tempfile.TemporaryDirectory() as td,patch.object(runner,'D',Path(td)),patch.object(common,'D',Path(td)):
+    d=Path(td);(d/'runs').mkdir();(d/'formal').mkdir();(d/'qualification_units').mkdir()
+    publish(d/'EXECUTION_ROUTING.json',dict(authorized_devices={}))
+-   publish(d/'preregistration.json',dict(historical_formal_worker_seconds=[3000]))
++   publish(d/'preregistration.json',dict(historical_formal_worker_seconds=[3000],prior_same_task_GPUh=read(D/'preregistration.json')['prior_same_task_GPUh']))
+    publish(d/'runs/fixture__parent.json',dict(elapsed_seconds=2000,loading_seconds=10,memory=[dict(position=512,elapsed=1),dict(position=1024,elapsed=1000)]))
+    c=runner.Controller()
+    with self.assertRaisesRegex(RuntimeError,'BUDGET_FORECAST'):c.forecast()
+    self.assertGreater(read(d/'budget_forecast.json')['projected_total_GPUh'],36)
+- def test_only_gpu3_and_all_four_documents_serial(self):
++ def test_only_gpu6_and_all_four_documents_serial(self):
+   import cleanroom_run as runner
+   routing=read(D/'EXECUTION_ROUTING.json')
+   self.assertEqual(runner.validate_single_device_routing(routing),[runner.TARGET_UUID])
+@@ -86,7 +87,7 @@ class Controls(unittest.TestCase):
+   import cleanroom_run as runner
+   c=runner.Controller()
+   with patch.object(runner.g,'admit') as admit:
+-   with self.assertRaisesRegex(AssertionError,'NON_GPU3'):c.job('GPU_OTHER','canary','pg19-test-41603')
++   with self.assertRaisesRegex(AssertionError,'NON_GPU6'):c.job('GPU_OTHER','canary','pg19-test-41603')
+    admit.assert_not_called()
+  def test_controller_executor_is_single_worker(self):
+   code=ast.parse((W/'cleanroom_run.py').read_text())
+diff --git a/test_lifecycle_guard.py b/test_lifecycle_guard.py
+new file mode 100644
+index 0000000..4ef0b0e
+--- /dev/null
++++ b/test_lifecycle_guard.py
+@@ -0,0 +1,410 @@
++"""CPU lifecycle regressions. All telemetry and artifacts are explicit fixtures, never GPU evidence."""
++import ast,copy,hashlib,inspect,io,json,os,signal,subprocess,sys,tempfile,time,unittest
++from pathlib import Path
++from unittest.mock import patch
++assert os.environ.get("CUDA_VISIBLE_DEVICES")=="","CPU_REGRESSION_MUST_HIDE_CUDA"
++assert os.environ.get("PYTHONDONTWRITEBYTECODE")=="1","CPU_REGRESSION_NO_PYCACHE"
++W=Path(__file__).resolve().parent
++D=Path(os.environ["LING_PROSPECTIVE_RESULTS"]).resolve()
++UUID="GPU-de53f243-b271-521c-d875-d96611ed8574"
++OLD_D=Path("/data/zypan/experiment_runs/LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1_GPU3_SINGLE_V2")
++ORIGINAL_GPU_ADMISSION_SHA="e51b98fefe0c1c3359f8e7995ed7439e6bc3c50fec66f28d79d995d56f78f21a"
++import gpu_admission as g
++import lifecycle_guard as lifecycle
++import resource_evidence as evidence
++import cleanroom_common as common
++CHILD_EVENTS=[]
++HISTORICAL_REPLAY=[]
++
++def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
++def load(p):return json.loads(Path(p).read_text())
++def canonical(v):return json.dumps(v,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode()
++def fixture_query(stdout=""):
++ return dict(command=["CPU_SYNTHETIC_FIXTURE_NO_GPU_QUERY"],returncode=0,stdout=stdout,stderr="")
++def baseline():
++ return [dict(pid=4040,uid=120,start_ticks=3403,comm="Xorg",status="PASS")]
++def idle_fixture():
++ total=24576*2**20;reserved=452*2**20;used=15*2**20
++ return dict(CPU_SYNTHETIC_FIXTURE_NOT_GPU_EVIDENCE=True,uuid=UUID,epoch=100.,
++  physical=fixture_query(),target=[dict(index="6",uuid=UUID,name="NVIDIA GeForce RTX 3090",total_MiB="24576",used_MiB="15",GPU_util="0")],
++  compute=fixture_query(),early_SMI_compute_processes=dict(status="PASS",processes=[]),fuser=dict(command=["CPU_FIXTURE"],returncode=1,stdout="",stderr=""),
++  direct_NVML=dict(status="PASS",temperature=30,power_mW=20000,pstate=8,SM_clock_MHz=210,memory=dict(total=total,free=total-reserved-used,used=reserved+used),
++   memory_v2=dict(version=33554472,total=total,free=total-reserved-used,used=used,reserved=reserved),utilization=dict(gpu=0,memory=0)),
++  direct_NVML_processes=dict(compute=dict(status="PASS",api="CPU_FIXTURE",processes=[]),
++   graphics=dict(status="PASS",api="CPU_FIXTURE",processes=[dict(pid=4040,usedGpuMemory=4677632)])),
++  SMI_XML=fixture_query("<nvidia_smi_log><timestamp>CPU_FIXTURE</timestamp><gpu><uuid>"+UUID+"</uuid><fb_memory_usage><used>15 MiB</used></fb_memory_usage></gpu></nvidia_smi_log>"),
++  SMI_all_processes=dict(status="PASS",processes=[dict(pid="4040",type="G",name="/usr/lib/xorg/Xorg",used_memory="4 MiB")]),
++  process_ownership=baseline())
++
++def add_pid(s,pid,api="all",owner=None):
++ if api in ("all","NVML"):s["direct_NVML_processes"]["compute"]["processes"].append(dict(pid=pid,usedGpuMemory=1024))
++ if api in ("all","SMI_XML"):s["SMI_all_processes"]["processes"].append(dict(pid=str(pid),type="C",name="CPU_FIXTURE",used_memory="1 MiB"))
++ if api in ("all","SMI_EARLY"):
++  s["compute"]["stdout"]+=f"{UUID}, {pid}, 1\n"
++  s["early_SMI_compute_processes"]["processes"]=lifecycle.early_compute_processes(s,UUID)
++ if owner is not None:
++  s["process_ownership"].append(dict(owner,status="PASS",comm="CPU_FIXTURE"))
++ return s
++
++def material_fixture(owner,listed=True):
++ s=idle_fixture();m=s["direct_NVML"]["memory_v2"];m["used"]=1000*2**20;m["free"]=m["total"]-m["reserved"]-m["used"]
++ s["direct_NVML"]["memory"]["used"]=m["used"]+m["reserved"];s["direct_NVML"]["memory"]["free"]=m["free"]
++ s["target"][0]["used_MiB"]="1000"
++ if listed:add_pid(s,owner["pid"],owner=owner)
++ return s
++
++class CPUChild:
++ def __init__(self,root,exit_code=0,artifacts=None):
++  self.root=Path(root);self.exit_code=exit_code;self.process=None;self.artifacts=artifacts
++ def __enter__(self):
++  self.root.mkdir(parents=True,exist_ok=True)
++  if self.artifacts is not None:(self.root/"CPU_INPUT_ARTIFACTS.json").write_text(json.dumps(self.artifacts))
++  # A real interpreter with CUDA hidden. No model/library imports.
++  program=r'''import json,os,pathlib,sys,time
++root=pathlib.Path(sys.argv[1]);code=int(sys.argv[2])
++print("CPU_CHILD_READY",flush=True)
++sys.stdin.readline()
++(root/"CPU_RESULT.json").write_text(json.dumps(dict(status="CPU_SYNTHETIC_RESULT",pid=os.getpid())))
++(root/"CPU_PROFILE.json").write_text(json.dumps(dict(status="CPU_SYNTHETIC_PROFILE",CUDA_used=False)))
++if (root/"CPU_INPUT_ARTIFACTS.json").exists():
++ for name,value in json.loads((root/"CPU_INPUT_ARTIFACTS.json").read_text()).items():(root/name).write_text(json.dumps(value,sort_keys=True))
++sys.exit(code)
++'''
++  env=dict(os.environ,CUDA_VISIBLE_DEVICES="",PYTHONDONTWRITEBYTECODE="1")
++  self.process=subprocess.Popen([sys.executable,"-B","-u","-c",program,str(self.root),str(self.exit_code)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=env)
++  assert self.process.stdout.readline().strip()=="CPU_CHILD_READY"
++  self.identity=g.proc_identity(self.process.pid);assert self.identity["pid"]==self.process.pid
++  return self
++ def natural_finish_inside_sampling(self):
++  started=time.monotonic();before=self.process.poll();assert before is None
++  self.process.stdin.write("EXIT\n");self.process.stdin.flush()
++  # Waiting models a read-only sampling call spanning a real child exit.
++  rc=self.process.wait(timeout=5);time.sleep(.025)
++  CHILD_EVENTS.append(dict(pid=self.identity["pid"],identity=self.identity,poll_before=before,poll_after=rc,elapsed=time.monotonic()-started,CPU_only=True,fixture_artifacts_not_science=True))
++  return before,rc
++ def __exit__(self,*exc):
++  if self.process.poll() is None:
++   try:self.process.stdin.write("EXIT\n");self.process.stdin.flush();self.process.wait(timeout=5)
++   except Exception:self.process.terminate();self.process.wait(timeout=5)
++  for stream in [self.process.stdin,self.process.stdout,self.process.stderr]:
++   if stream:stream.close()
++
++class LifecycleRegression(unittest.TestCase):
++ def setUp(self):
++  self.tmp=tempfile.TemporaryDirectory(prefix="CPU_LIFECYCLE_FIXTURE_",dir=D/"audits")
++  self.root=Path(self.tmp.name)
++ def tearDown(self):self.tmp.cleanup()
++ def check(self,s,owner,before=None,after=0):
++  return lifecycle.assess_lifecycle_sample(s,UUID,owner,baseline(),before,after,assess_fn=g.assess)
++ def assert_rejected(self,s,owner,before=None,after=0,regex=None):
++  with self.assertRaises((AssertionError,ValueError,KeyError,RuntimeError)) as caught:self.check(s,owner,before,after)
++  if regex:self.assertIn(regex,str(caught.exception))
++  return str(caught.exception)
++
++ def test_01_real_child_exits_during_sample_transition_is_not_resource_PASS(self):
++  with CPUChild(self.root) as c:
++   s=material_fixture(c.identity,listed=False);s["compute"]["stdout"]=f"{UUID}, {c.identity['pid']}, 1000\n";s["early_SMI_compute_processes"]["processes"]=lifecycle.early_compute_processes(s,UUID)
++   before,after=c.natural_finish_inside_sampling()
++   v=self.check(s,c.identity,before,after)
++   self.assertEqual(v["lifecycle_state"],"NATURAL_EXIT_TRANSITION_NOT_RESOURCE_PASS")
++   self.assertNotEqual(v.get("status"),"PASS")
++   self.assertTrue((self.root/"CPU_RESULT.json").exists());self.assertTrue((self.root/"CPU_PROFILE.json").exists())
++ def test_02_live_child_complete_owner_still_uses_original_predicate(self):
++  with CPUChild(self.root) as c:
++   v=self.check(material_fixture(c.identity),c.identity,None,c.process.poll())
++   self.assertEqual(v["lifecycle_state"],"RUNNING_RESOURCE_PASS")
++ def test_03_live_child_missing_owner_is_original_line43_STOP(self):
++  with CPUChild(self.root) as c:self.assert_rejected(material_fixture(c.identity,False),c.identity,None,None,"MATERIAL_MEMORY_WITHOUT_ATTRIBUTABLE_COMPUTE_PID")
++ def test_04_nonzero_natural_child_exit_rejected(self):
++  with CPUChild(self.root,7) as c:
++   before,after=c.natural_finish_inside_sampling();self.assertEqual(after,7);self.assert_rejected(idle_fixture(),c.identity,before,after)
++ def test_05_signal_exit_rejected(self):
++  with CPUChild(self.root) as c:
++   before=c.process.poll();c.process.send_signal(signal.SIGTERM);after=c.process.wait(timeout=5)
++   self.assertLess(after,0);self.assert_rejected(idle_fixture(),c.identity,before,after)
++ def test_06_already_exited_before_sample_is_rejected(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling();self.assert_rejected(idle_fixture(),c.identity,0,0)
++ def test_07_actual_live_PID_starttime_change_rejected(self):
++  with CPUChild(self.root) as c:
++   wrong=dict(c.identity,start_ticks=c.identity["start_ticks"]+1)
++   self.assert_rejected(material_fixture(wrong),wrong,None,None,"OWN_PROCESS_IDENTITY_CHANGED")
++ def test_08_actual_live_UID_change_rejected(self):
++  with CPUChild(self.root) as c:
++   wrong=dict(c.identity,uid=c.identity["uid"]+1)
++   self.assert_rejected(material_fixture(wrong),wrong,None,None,"OWN_PROCESS_IDENTITY_CHANGED")
++ def test_09_three_sources_foreign_still_rejected_after_exit(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling()
++   for api in ["SMI_EARLY","NVML","SMI_XML"]:
++    with self.subTest(api=api):
++     s=add_pid(idle_fixture(),2147483001,api);self.assert_rejected(s,c.identity)
++ def test_10_same_UID_real_other_CPU_child_is_not_authorized(self):
++  with CPUChild(self.root/"a") as owner,CPUChild(self.root/"b") as other:
++   self.assertEqual(owner.identity["uid"],other.identity["uid"])
++   s=add_pid(material_fixture(owner.identity),other.identity["pid"],owner=other.identity)
++   self.assert_rejected(s,owner.identity,None,None)
++ def test_11_UNKNOWN_returncode_for_each_SMI_source_rejected_after_exit(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling()
++   for source in ["physical","compute","SMI_XML"]:
++    with self.subTest(source=source):
++     s=idle_fixture();s[source]["returncode"]=None;self.assert_rejected(s,c.identity)
++ def test_12_UNKNOWN_NVML_and_parsed_process_sources_rejected_after_exit(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling()
++   for source in ["direct_NVML","SMI_all_processes"]:
++    s=idle_fixture();s[source]["status"]="UNKNOWN"
++    with self.subTest(source=source):self.assert_rejected(s,c.identity)
++   for group in ["compute","graphics"]:
++    s=idle_fixture();s["direct_NVML_processes"][group]["status"]="UNKNOWN"
++    with self.subTest(group=group):self.assert_rejected(s,c.identity)
++ def test_13_UNKNOWN_NVML_memory_utilization_rejected_after_exit(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling()
++   for field in ["memory","memory_v2","utilization"]:
++    s=idle_fixture();s["direct_NVML"][field]=dict(status="UNKNOWN",returncode=999)
++    with self.subTest(field=field):self.assert_rejected(s,c.identity)
++ def test_14_missing_query_sources_are_not_empty_idle(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling()
++   for source in ["physical","compute","SMI_XML","direct_NVML","direct_NVML_processes","SMI_all_processes","early_SMI_compute_processes"]:
++    s=idle_fixture();del s[source]
++    with self.subTest(source=source):self.assert_rejected(s,c.identity)
++ def test_15_malformed_early_CSV_rejected(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling();s=idle_fixture();s["compute"]["stdout"]="not,a,valid,row"
++   self.assert_rejected(s,c.identity)
++ def test_16_wrong_target_UUID_rejected(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling();s=idle_fixture();s["target"][0]["uuid"]="GPU_OTHER"
++   self.assert_rejected(s,c.identity)
++ def test_17_graphics_baseline_change_rejected(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling();s=idle_fixture();s["process_ownership"][0]["start_ticks"]+=1
++   self.assert_rejected(s,c.identity)
++ def test_18_unknown_graphics_owner_rejected(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling();s=idle_fixture();s["process_ownership"][0]["status"]="UNKNOWN"
++   self.assert_rejected(s,c.identity)
++ def test_19_memory_arithmetic_rejected(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling();s=idle_fixture();s["direct_NVML"]["memory_v2"]["free"]-=1
++   self.assert_rejected(s,c.identity)
++ def test_20_insufficient_true_headroom_rejected(self):
++  with CPUChild(self.root) as c:
++   c.natural_finish_inside_sampling();s=idle_fixture();m=s["direct_NVML"]["memory_v2"];m["free"]=g.HEADROOM-1;m["used"]=m["total"]-m["reserved"]-m["free"]
++   self.assert_rejected(s,c.identity)
++ def test_21_terminal_exact_three_original_idle_samples_PASS(self):
++  rows=[idle_fixture() for unused in range(3)]
++  v=lifecycle.assess_terminal_window(rows,UUID,baseline(),assess_window_fn=g.assess_window)
++  self.assertEqual(v["status"],"PASS");self.assertEqual(v["sample_count"],3)
++ def test_22_terminal_wrong_sample_count_rejected(self):
++  for count in [0,1,2,4]:
++   with self.subTest(count=count),self.assertRaises((AssertionError,ValueError)):
++    lifecycle.assess_terminal_window([idle_fixture() for unused in range(count)],UUID,baseline(),assess_window_fn=g.assess_window)
++ def test_23_terminal_any_one_foreign_sample_rejected(self):
++  for index in range(3):
++   for api in ["SMI_EARLY","NVML","SMI_XML"]:
++    rows=[idle_fixture() for unused in range(3)];add_pid(rows[index],2147483002,api)
++    with self.subTest(index=index,api=api),self.assertRaises((AssertionError,ValueError,KeyError)):
++     lifecycle.assess_terminal_window(rows,UUID,baseline(),assess_window_fn=g.assess_window)
++ def test_24_terminal_any_one_UNKNOWN_sample_rejected(self):
++  for index in range(3):
++   rows=[idle_fixture() for unused in range(3)];rows[index]["direct_NVML_processes"]["compute"]["status"]="UNKNOWN"
++   with self.subTest(index=index),self.assertRaises((AssertionError,ValueError,KeyError)):
++    lifecycle.assess_terminal_window(rows,UUID,baseline(),assess_window_fn=g.assess_window)
++ def test_25_terminal_material_GPU_util_rejected(self):
++  rows=[idle_fixture() for unused in range(3)];rows[-1]["direct_NVML"]["utilization"]["gpu"]=3
++  with self.assertRaisesRegex(AssertionError,"OCCUPANCY"):lifecycle.assess_terminal_window(rows,UUID,baseline(),assess_window_fn=g.assess_window)
++ def test_26_terminal_material_allocation_rejected(self):
++  owner=dict(pid=2147483003,uid=1,start_ticks=1);rows=[idle_fixture(),idle_fixture(),material_fixture(owner,False)]
++  with self.assertRaises(AssertionError):lifecycle.assess_terminal_window(rows,UUID,baseline(),assess_window_fn=g.assess_window)
++ def test_27_historical_failed_raw_keeps_original_line43_STOP(self):
++  p=OLD_D/"FAILED_RESOURCE_SNAPSHOT.json";raw=p.read_bytes();pin=json.loads(raw)
++  self.assertEqual(hashlib.sha256(raw).hexdigest(),"22cd8873acee4ed2f17732cca03bdb4bf612890bebc6f6e08ee05c67fa9d14a9")
++  s=pin["snapshot"];owner=pin["owner"];before=hashlib.sha256(canonical(s)).hexdigest()
++  with patch.object(g,"proc_identity",lambda pid:copy.deepcopy(owner)):
++   with self.assertRaisesRegex(AssertionError,"MATERIAL_MEMORY_WITHOUT_ATTRIBUTABLE_COMPUTE_PID"):g.assess(copy.deepcopy(s),pin["uuid"],owner,pin["baseline"])
++  self.assertEqual(before,hashlib.sha256(canonical(s)).hexdigest())
++  HISTORICAL_REPLAY.append(dict(path=str(p),SHA256=sha(p),snapshot_SHA256=before,original_assertion="MATERIAL_MEMORY_WITHOUT_ATTRIBUTABLE_COMPUTE_PID",old_STOP_retained=True,retroactive_PASS=False,PID_resolver_fixture_only=True))
++ def test_28_raw_snapshot_fsynced_before_lifecycle_predicate(self):
++  s=idle_fixture();raw=self.root/"raw.jsonl";pin=self.root/"FAIL.json"
++  def predicate(snapshot,uuid,owner,base):
++   rows=raw.read_text().splitlines();self.assertEqual(len(rows),1)
++   self.assertEqual(json.loads(rows[0])["snapshot"],snapshot)
++   return lifecycle.assess_lifecycle_sample(snapshot,uuid,owner,base,None,0,assess_fn=g.assess)
++  value=evidence.assess_with_evidence(s,UUID,dict(pid=1),baseline(),raw_path=raw,pinned_path=pin,assess_fn=predicate)
++  self.assertEqual(value["lifecycle_state"],"NATURAL_EXIT_TRANSITION_NOT_RESOURCE_PASS");self.assertFalse(pin.exists())
++  tree=ast.parse(inspect.getsource(evidence.append_raw_snapshot))
++  self.assertTrue(any(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=="fsync" for n in ast.walk(tree)))
++ def test_29_first_STOP_is_not_overwritten(self):
++  with patch.object(common,"D",self.root):
++   common.stop("CPU_FIXTURE_FIRST",stage="CPU_TEST_ONLY");before=sha(self.root/"STOP.json")
++   common.stop("CPU_FIXTURE_SECOND",stage="CPU_TEST_ONLY")
++   self.assertEqual(before,sha(self.root/"STOP.json"));self.assertEqual(load(self.root/"STOP.json")["reason"],"CPU_FIXTURE_FIRST")
++ def test_30_gpu_admission_predicate_bytes_unchanged(self):
++  self.assertEqual(sha(W/"gpu_admission.py"),ORIGINAL_GPU_ADMISSION_SHA)
++ def test_31_controller_actual_sampling_is_bracketed_by_poll(self):
++  import cleanroom_run as runner
++  source=inspect.getsource(runner.Controller.job);self.assertIn("poll_before",source);self.assertIn("poll_after",source)
++  tree=ast.parse(source.lstrip());names=[n.func.id for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)]
++  self.assertIn("assess_lifecycle_sample",names)
++  attrs=[n.func.attr for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)]
++  self.assertIn("_completion_bindings",attrs);self.assertIn("_terminal_gate",attrs)
++  self.assertIn("validate_completion_assets",inspect.getsource(runner.Controller._completion_bindings))
++  self.assertIn("assess_terminal_window",inspect.getsource(runner.Controller._terminal_gate))
++  assigns={n.targets[0].id:n.lineno for n in ast.walk(tree) if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)}
++  sample_lines=[n.lineno for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=="sample"]
++  self.assertEqual(len(sample_lines),1);self.assertLess(assigns["poll_before"],sample_lines[0]);self.assertLess(sample_lines[0],assigns["poll_after"])
++ def completion_fixture(self,kind="parent"):
++  expected=dict(PYTHONHASHSEED="0",CUBLAS_WORKSPACE_CONFIG=":4096:8",LING_GATED_RMSNORM_FIXED_CONFIG="BT16_W8",FLA_CACHE_MODE="default",FLA_CONFIG_DIR=str(W/"frozen_fla_configs"),CUDA_VISIBLE_DEVICES="6",LING_TARGET_GPU_UUID=UUID)
++  result=dict(status="PASS",document="pg19-test-41603",condition="H",host=dict(gpu_uuid=UUID),CPU_SYNTHETIC_FIXTURE_NOT_GPU_EVIDENCE=True)
++  if kind=="canary":result["UUID"]=UUID
++  if kind=="formal1":result["identity"]=dict(UUID=UUID,source_commit="CPU_FIXTURE_SOURCE")
++  if kind=="formal2":
++   del result["host"];result.update(gpu_uuid=UUID,endpoint=32768,vocabulary_dimension=157184)
++  profile=dict(status="PASS_ACTUAL_FROZEN_PROFILE",actual_environment=expected.copy(),hash_randomization=0,profile=dict(status="PASS_ACTUAL_FROZEN_RUNTIME_PROFILE",forward_kernels_executed=True,environment={k:expected[k] for k in ["PYTHONHASHSEED","CUBLAS_WORKSPACE_CONFIG","LING_GATED_RMSNORM_FIXED_CONFIG","FLA_CACHE_MODE","FLA_CONFIG_DIR"]}),CPU_SYNTHETIC_FIXTURE_NOT_GPU_EVIDENCE=True)
++  environment=dict(environment=expected.copy(),CPU_SYNTHETIC_FIXTURE_NOT_GPU_EVIDENCE=True)
++  kw=dict(kind=kind,document="pg19-test-41603",condition="H",uuid=UUID,expected_environment=expected,source_verified=True,source_commit="CPU_FIXTURE_SOURCE")
++  return result,profile,environment,kw
++ def test_32_completion_binding_all_worker_kinds_positive(self):
++  for kind in ["canary","parent","fresh","formal1","formal2"]:
++   with self.subTest(kind=kind):
++    a,b,c,kw=self.completion_fixture(kind)
++    if kind=="formal2":
++     # True frozen formal_worker final publish layout, not a mirror of the helper.
++     tree=ast.parse((W/"formal_worker.py").read_text())
++     outputs=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=="dict" and any(k.arg=="endpoint" and isinstance(k.value,ast.Constant) and k.value.value==32768 for k in n.keywords)]
++     layouts=[{k.arg for k in n.keywords} for n in outputs]
++     self.assertTrue(any("gpu_uuid" in keys and "host" not in keys for keys in layouts))
++     self.assertNotIn("host",a);self.assertEqual(a["gpu_uuid"],UUID)
++    v=lifecycle.validate_completion_assets(a,b,c,**kw)
++    self.assertEqual(v["status"],"PASS_ARTIFACT_BINDING_ONLY_NOT_JOB_COMPLETE")
++ def test_33_completion_rejects_missing_or_failed_result_PROFILE(self):
++  for which in ["result_missing","result_FAIL","profile_missing","profile_FAIL"]:
++   a,b,c,kw=self.completion_fixture()
++   if which=="result_missing":a=None
++   if which=="result_FAIL":a["status"]="FAIL"
++   if which=="profile_missing":b=None
++   if which=="profile_FAIL":b["status"]="FAIL"
++   with self.subTest(which=which),self.assertRaises((AssertionError,KeyError,TypeError)):lifecycle.validate_completion_assets(a,b,c,**kw)
++ def test_34_completion_rejects_environment_seed_profile_and_forward_drift(self):
++  for which in ["launch_env","actual_env","hash_flag","inner_status","forward","inner_env"]:
++   a,b,c,kw=self.completion_fixture()
++   if which=="launch_env":c["environment"]["PYTHONHASHSEED"]="1"
++   if which=="actual_env":b["actual_environment"]["FLA_CACHE_MODE"]="bad"
++   if which=="hash_flag":b["hash_randomization"]=1
++   if which=="inner_status":b["profile"]["status"]="UNKNOWN"
++   if which=="forward":b["profile"]["forward_kernels_executed"]=False
++   if which=="inner_env":b["profile"]["environment"]["FLA_CONFIG_DIR"]="/CPU_BAD"
++   with self.subTest(which=which),self.assertRaises(AssertionError):lifecycle.validate_completion_assets(a,b,c,**kw)
++ def test_35_completion_rejects_scientific_source_device_and_input_identity_drift(self):
++  for which in ["document","condition","uuid","source_verified","formal1source"]:
++   a,b,c,kw=self.completion_fixture("formal1" if which=="formal1source" else "parent")
++   if which=="document":a["document"]="pg19-test-OTHER"
++   if which=="condition":a["condition"]="OTHER"
++   if which=="uuid":a["host"]["gpu_uuid"]="GPU_OTHER"
++   if which=="source_verified":kw["source_verified"]=False
++   if which=="formal1source":a["identity"]["source_commit"]="CPU_WRONG"
++   with self.subTest(which=which),self.assertRaises(AssertionError):lifecycle.validate_completion_assets(a,b,c,**kw)
++ def test_36_per_query_timing_envelope_valid_and_missing_invalid(self):
++  keys=["physical","compute","fuser","direct_NVML","direct_NVML_processes","SMI_XML","process_ownership"]
++  good=idle_fixture();good["query_timings"]={k:dict(started_monotonic=float(i),completed_monotonic=float(i)+.01) for i,k in enumerate(keys)}
++  self.assertTrue(lifecycle.validate_timing_envelope(good))
++  for key in keys:
++   bad=copy.deepcopy(good);del bad["query_timings"][key]
++   with self.subTest(key=key),self.assertRaises(AssertionError):lifecycle.validate_timing_envelope(bad)
++  for value in [float("nan"),-1,False,"UNKNOWN"]:
++   bad=copy.deepcopy(good);bad["query_timings"]["compute"]["started_monotonic"]=value
++   with self.subTest(value=str(value)),self.assertRaises(AssertionError):lifecycle.validate_timing_envelope(bad)
++ def test_37_same_task_prior_is_charged_separate4090_is_not(self):
++  import cleanroom_finalize as finalizer
++  prior=load(D/"preregistration.json")["prior_same_task_GPUh"]
++  self.assertAlmostEqual(prior,1.007654354178602,places=14)
++  value=finalizer.resource_budget_context(dict(prior_same_task_GPUh=prior,independent_RTX4090_qualification_GPUh=3.447347587855119),.25)
++  self.assertAlmostEqual(value["same_task_cumulative_RTX3090_GPUh"],prior+.25,places=14)
++  self.assertAlmostEqual(value["remaining_same_task_RTX3090_GPUh"],36-prior-.25,places=14)
++  self.assertAlmostEqual(value["current_execution_cap_GPUh"],36-prior,places=14)
++  with self.assertRaises(AssertionError):finalizer.resource_budget_context(dict(prior_same_task_GPUh=prior),36-prior+.001)
++ def test_38_controller_actual_prior_active_ledger_protective_STOP(self):
++  import cleanroom_run as runner
++  prior=load(D/"preregistration.json")["prior_same_task_GPUh"]
++  fixture=self.root/"BUDGET_CPU_FIXTURE";fixture.mkdir()
++  common.publish(fixture/"EXECUTION_ROUTING.json",load(D/"EXECUTION_ROUTING.json"))
++  common.publish(fixture/"preregistration.json",dict(prior_same_task_GPUh=prior))
++  with patch.object(runner,"D",fixture),patch.object(common,"D",fixture):
++   c=runner.Controller();c.completed=[dict(wall_seconds=(35.75-prior)*3600)]
++   c.active={"CPU_SYNTHETIC_NOT_GPU_WORKER":dict(started_monotonic=time.monotonic()-.06*3600)}
++   value=c.ledger();self.assertAlmostEqual(value["prior_same_task_GPUh"],prior)
++   self.assertGreater(value["cumulative_same_task_GPU_hours"],35.8);self.assertLess(value["cumulative_same_task_GPU_hours"],36)
++   self.assertAlmostEqual(value["cumulative_same_task_GPU_hours"],value["actual_new_GPU_hours"]+prior,places=13)
++   self.assertEqual(load(fixture/"STOP.json")["reason"],"GPU_BUDGET_PROTECTIVE_STOP")
++ def test_39_real_CPU_child_exit_complete_artifacts_and_terminal_full_chain(self):
++  a,b,c,kw=self.completion_fixture()
++  artifacts={"result.json":a,"result.PROFILE.json":b,"environment.json":c}
++  with CPUChild(self.root,artifacts=artifacts) as child:
++   transition=material_fixture(child.identity,False)
++   before,after=child.natural_finish_inside_sampling()
++   value=self.check(transition,child.identity,before,after)
++   self.assertEqual(value["lifecycle_state"],"NATURAL_EXIT_TRANSITION_NOT_RESOURCE_PASS")
++   digests={name:sha(self.root/name) for name in artifacts}
++   accepted=lifecycle.validate_completion_assets(load(self.root/"result.json"),load(self.root/"result.PROFILE.json"),load(self.root/"environment.json"),**kw)
++   self.assertEqual(accepted["status"],"PASS_ARTIFACT_BINDING_ONLY_NOT_JOB_COMPLETE")
++   terminal=lifecycle.assess_terminal_window([idle_fixture() for unused in range(3)],UUID,baseline(),assess_window_fn=g.assess_window)
++   self.assertEqual(terminal["sample_count"],3);self.assertEqual(terminal["status"],"PASS")
++   self.assertEqual(digests,{name:sha(self.root/name) for name in artifacts})
++   CHILD_EVENTS[-1]["CPU_SYNTHETIC_completion_artifacts_SHA256"]=digests
++   CHILD_EVENTS[-1]["terminal_fixture_count"]=3
++ def test_40_missing_any_mandatory_NVML_field_after_exit_rejected(self):
++  with CPUChild(self.root) as child:
++   child.natural_finish_inside_sampling()
++   for field in ["memory","memory_v2","utilization","temperature","power_mW","pstate","SM_clock_MHz"]:
++    snapshot=idle_fixture();del snapshot["direct_NVML"][field]
++    with self.subTest(field=field):self.assert_rejected(snapshot,child.identity)
++ def test_41_early_SMI_capture_UNKNOWN_or_conflict_after_exit_rejected(self):
++  with CPUChild(self.root) as child:
++   child.natural_finish_inside_sampling()
++   for kind in ["UNKNOWN","conflict"]:
++    snapshot=idle_fixture()
++    if kind=="UNKNOWN":snapshot["early_SMI_compute_processes"]["status"]="UNKNOWN"
++    else:snapshot["early_SMI_compute_processes"]["processes"]=[dict(uuid=UUID,pid=2147483006,used_gpu_memory="1")]
++    with self.subTest(kind=kind):self.assert_rejected(snapshot,child.identity)
++ def test_42_each_source_foreign_has_durable_first_pin_after_child_exit(self):
++  with CPUChild(self.root) as child:
++   child.natural_finish_inside_sampling()
++   for api in ["SMI_EARLY","NVML","SMI_XML"]:
++    snapshot=add_pid(idle_fixture(),2147483007,api);raw=self.root/(api+".jsonl");pin=self.root/(api+".FAIL.json")
++    predicate=lambda ss,u,o,b:lifecycle.assess_lifecycle_sample(ss,u,o,b,None,0,assess_fn=g.assess)
++    with self.subTest(api=api),self.assertRaises(evidence.ResourceEvidenceError) as failure:
++     evidence.assess_with_evidence(snapshot,UUID,child.identity,baseline(),raw_path=raw,pinned_path=pin,assess_fn=predicate)
++    pinned=load(pin);self.assertEqual(pinned["forbidden_pids"],[2147483007])
++    self.assertEqual(pinned["snapshot"],snapshot);ref=pinned["raw_reference"]
++    raw_bytes=raw.read_bytes()[ref["offset"]:ref["offset"]+ref["bytes"]]
++    self.assertEqual(hashlib.sha256(raw_bytes).hexdigest(),ref["line_sha256"])
++    first_sha=sha(pin)
++    with self.assertRaises(evidence.ResourceEvidenceError):evidence.assess_with_evidence(add_pid(idle_fixture(),2147483008,api),UUID,child.identity,baseline(),raw_path=raw,pinned_path=pin,assess_fn=predicate)
++    self.assertEqual(sha(pin),first_sha)
++ def test_43_no_model_or_CUDA_was_imported(self):
++  self.assertNotIn("torch",sys.modules);self.assertNotIn("fla",sys.modules)
++
++def main():
++ (D/"audits").mkdir(exist_ok=True)
++ stream=io.StringIO();suite=unittest.defaultTestLoader.loadTestsFromTestCase(LifecycleRegression)
++ result=unittest.TextTestRunner(stream=stream,verbosity=2).run(suite)
++ report=dict(status="PASS" if result.wasSuccessful() and not result.skipped else "FAIL",scope="CPU_LIFECYCLE_REGRESSION_ONLY",
++  tests=result.testsRun,skips=len(result.skipped),failures=len(result.failures),errors=len(result.errors),log=stream.getvalue(),
++  actual_CPU_child_lifecycle_events=CHILD_EVENTS,historical_failed_raw_replay=HISTORICAL_REPLAY,
++  fixtures="All GPU telemetry and completion artifacts are CPU synthetic fixtures, not GPU/model evidence",
++  mocks="read-only original PID resolver only for replay of an already exited historical owner; common.D only isolates CPU first-STOP test",
++  actual_GPU_workers=0,numerical_qualification=False,science_trajectory_count=0,no_model_or_CUDA_import=True,
++  source_SHA256={n:sha(W/n) for n in ["test_lifecycle_guard.py","lifecycle_guard.py","gpu_telemetry.py","gpu_admission.py","resource_evidence.py","cleanroom_run.py","cleanroom_common.py","cleanroom_finalize.py"]},
++  prior_report_preserved=dict(path="audits/CPU_LIFECYCLE_REGRESSION_PRE_FORMAL2_SCHEMA.json",SHA256="1bca4bb01658f1cc7f180b35dba019bed67a8091833f4b4e1534630c54f5118a",status="PASS_CPU_ONLY_SUPERSEDED",reason="Independent prepare audit found frozen formal2 uses top-level gpu_uuid, no host; control helper and CPU fixture corrected before any GPU launch; final report binds corrected guard and true publish AST layout"),
++  preparation_failure_preserved=dict(path="audits/CPU_LIFECYCLE_PREPARATION_01.json",SHA256=sha(D/"audits/CPU_LIFECYCLE_PREPARATION_01.json"),status="FAIL",reason="CPU test AST fixture incorrectly expected completion and terminal pure calls inline in Controller.job; production uses _completion_bindings and _terminal_gate methods; test corrected to inspect real call chain plus poll/sample ordering; no production predicate changed"),
++  epoch=time.time())
++ out=Path(sys.argv[1]) if len(sys.argv)>1 else D/"audits/CPU_LIFECYCLE_REGRESSION.json"
++ assert out.parent.resolve()==(D/"audits").resolve(),"REPORT_ONLY_NEW_D_AUDITS"
++ with out.open("x") as f:json.dump(report,f,ensure_ascii=False,sort_keys=True,indent=2,allow_nan=False);f.write("\n");f.flush();os.fsync(f.fileno())
++ print(stream.getvalue(),flush=True);print(json.dumps(dict(status=report["status"],tests=result.testsRun,report=str(out),SHA256=sha(out))),flush=True)
++ assert result.wasSuccessful() and not result.skipped
++if __name__=="__main__":main()
+diff --git a/test_resource_evidence.py b/test_resource_evidence.py
+index dd5f131..cfd7533 100644
+--- a/test_resource_evidence.py
++++ b/test_resource_evidence.py
+@@ -278,10 +278,10 @@ print(json.dumps(dict(first_SHA=before,second_SHA=after,reason=second["reason"],
+ 
+     def test_17_same_task3090_budget_excludes_independent4090(self):
+         import cleanroom_finalize as finalizer
+-        value=finalizer.resource_budget_context(dict(prior_same_task_RTX3090_GPUh=0.0,
++        value=finalizer.resource_budget_context(dict(prior_same_task_GPUh=1.007654354178602,
+             independent_RTX4090_qualification_GPUh=3.4473476),1.25)
+-        self.assertEqual(value["same_task_cumulative_RTX3090_GPUh"],1.25)
+-        self.assertEqual(value["remaining_same_task_RTX3090_GPUh"],34.75)
++        self.assertEqual(value["same_task_cumulative_RTX3090_GPUh"],1.25+1.007654354178602)
++        self.assertEqual(value["remaining_same_task_RTX3090_GPUh"],34.75-1.007654354178602)
+         self.assertEqual(value["independent_RTX4090_qualification_GPUh"],3.4473476)
+         with self.assertRaises(AssertionError):
+             finalizer.resource_budget_context(dict(prior_same_task_RTX3090_GPUh=0),36.1)
+@@ -290,15 +290,15 @@ print(json.dumps(dict(first_SHA=before,second_SHA=after,reason=second["reason"],
+         program='''import json,time
+ from cleanroom_run import Controller,D
+ controller=Controller()
+-controller.completed=[dict(wall_seconds=35.75*3600)]
++controller.completed=[dict(wall_seconds=(35.75-controller.prior_GPUh)*3600)]
+ controller.active={"CPU_SYNTHETIC_NOT_GPU_WORKER":dict(started_monotonic=time.monotonic()-.06*3600)}
+ row=controller.ledger()
+-assert 35.8<row["actual_new_GPU_hours"]<36.
++assert 35.8<row["cumulative_same_task_GPU_hours"]<36.
+ assert (D/"STOP.json").exists()
+ print(json.dumps(dict(ledger=row,STOP=json.loads((D/"STOP.json").read_text()),fixture_only=True,actual_GPU_workers=0)))
+ '''
+         routing=load(D/"EXECUTION_ROUTING.json")
+-        row,root=self.fixture_subprocess(program,{"EXECUTION_ROUTING.json":routing})
++        row,root=self.fixture_subprocess(program,{"EXECUTION_ROUTING.json":routing,"preregistration.json":dict(prior_same_task_GPUh=1.007654354178602)})
+         self.assertEqual(row["ledger"]["MAX_GPU_HOURS"],36.0)
+         self.assertEqual(row["actual_GPU_workers"],0)
+         self.assertIn("BUDGET",row["STOP"]["reason"])

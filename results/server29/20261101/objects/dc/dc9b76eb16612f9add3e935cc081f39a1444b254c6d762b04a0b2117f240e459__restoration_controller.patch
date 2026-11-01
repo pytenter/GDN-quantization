@@ -1,0 +1,61 @@
+--- frozen/scripts/restoration_controller.py
++++ CPU_CONTROL_REVISION_01/scripts/restoration_controller.py
+@@ -110,8 +110,40 @@
+  return {'devices':devices,'apps':apps}
+ def validate_gpu(observation,own_pid=None,minimum_free=23000):
+  rows=[x for x in observation['devices']if x['physical_index']==0];require(len(rows)==1 and rows[0]['uuid']==UUID and'3090'in rows[0]['name']and rows[0]['memory_total_MiB']>=24000,'Actual GPU identity/memory differs');foreign=[x for x in observation['apps']if x['uuid']==UUID and x['pid']!=own_pid];require(not foreign,'Selected GPU has foreign compute process; do not kill it')
++ if own_pid is not None:require(not any(x['pid']==own_pid and x['uuid']!=UUID for x in observation['apps']),'Own worker PID is present on an unauthorized GPU UUID')
+  if own_pid is None:require(rows[0]['memory_free_MiB']>=minimum_free,'Insufficient exclusive GPU memory')
+  return rows[0]
++def require_own_gpu_identity(own_pid,observation=None):
++ # PRE/POST worker admission: actual process records must be nonempty and
++ # exclusively the authorized physical UUID. Keep full failed evidence.
++ receipt=dict(status='FAIL_CLOSED_STOP',own_pid=int(own_pid),expected_uuid=UUID,expected_physical_index=0,observation=None,own_records=[],actual_UUIDs=[],actual_identity='UNRESOLVED')
++ try:
++  obs=query_gpu()if observation is None else observation;receipt['observation']=obs;own=[x for x in obs['apps']if x['pid']==own_pid];receipt.update(own_records=own,actual_UUIDs=sorted({x['uuid']for x in own}));validate_gpu(obs,own_pid=own_pid);require(own,'Own worker PID absent from actual NVML compute records');require(all(x['uuid']==UUID for x in own),'Own worker actual UUID differs');receipt.update(status='PASS',actual_identity='ONLY_AUTHORIZED_UUID');return receipt
++ except BaseException as exc:
++  receipt['error']=type(exc).__name__+':'+str(exc);exc.gpu_identity_receipt=receipt;raise
++
++def require_driver_ordinal_identity(library_rows,*,driver_factory=None,environment=None):
++ # Future authorized child only. This performs driver initialization/enumeration
++ # without requesting a context, retaining exact driver-file and UUID evidence.
++ # It is never called by --check or prior to worker permit admission.
++ import ctypes,uuid
++ env=os.environ if environment is None else environment;receipt=dict(status='FAIL_CLOSED_STOP',expected_uuid=UUID,CUDA_VISIBLE_DEVICES=env.get('CUDA_VISIBLE_DEVICES'),logical_ordinal=0,visible_device_count=None,actual_uuid=None,driver=None,calls=[],context_creation_API_calls=0,kernel_launch_API_calls=0)
++ try:
++  require(env.get('CUDA_VISIBLE_DEVICES')=='0','Driver ordinal check requires exact CUDA_VISIBLE_DEVICES=0');candidates={}
++  for row in library_rows:
++   p=Path(row.get('resolved_path',row['path'])).resolve()
++   if p.name.startswith('libcuda.so'):candidates[str(p)]=row
++  require(len(candidates)==1,'Exactly one frozen resolved libcuda.so driver required');path,row=next(iter(candidates.items()));p=Path(path);a=p.stat();h=sha(p);z=p.stat();require((a.st_dev,a.st_ino,a.st_size,a.st_mtime_ns)==(z.st_dev,z.st_ino,z.st_size,z.st_mtime_ns)and z.st_size==row['bytes']and h==row['sha256'],'Driver file differs from bound SHA/bytes');receipt['driver']=dict(path=path,bytes=z.st_size,sha256=h,device=z.st_dev,inode=z.st_ino,mtime_ns=z.st_mtime_ns)
++  lib=(driver_factory or ctypes.CDLL)(path)
++  class CUuuid(ctypes.Structure):_fields_=[('bytes',ctypes.c_ubyte*16)]
++  init=lib.cuInit;countfn=lib.cuDeviceGetCount;get=lib.cuDeviceGet;uuid_name='cuDeviceGetUuid_v2'if hasattr(lib,'cuDeviceGetUuid_v2')else'cuDeviceGetUuid';getuuid=getattr(lib,uuid_name)
++  for fn,args in [(init,[ctypes.c_uint]),(countfn,[ctypes.POINTER(ctypes.c_int)]),(get,[ctypes.POINTER(ctypes.c_int),ctypes.c_int]),(getuuid,[ctypes.POINTER(CUuuid),ctypes.c_int])]:fn.argtypes=args;fn.restype=ctypes.c_int
++  def call(name,fn,*args):
++   rc=int(fn(*args));receipt['calls'].append(dict(api=name,return_code=rc));require(rc==0,'CUDA Driver identity API failure:'+name+':'+str(rc))
++  call('cuInit',init,0);count=ctypes.c_int();call('cuDeviceGetCount',countfn,ctypes.byref(count));receipt['visible_device_count']=count.value;require(count.value==1,'Driver visible count is not one under CVD=0; ordinal interpretation unqualified');dev=ctypes.c_int();call('cuDeviceGet',get,ctypes.byref(dev),0);value=CUuuid();call(uuid_name,getuuid,ctypes.byref(value),dev.value);actual='GPU-'+str(uuid.UUID(bytes=bytes(value.bytes)));receipt['actual_uuid']=actual;require(actual==UUID,'Driver logical ordinal0 UUID differs from authorized physical UUID');a=p.stat();require((a.st_dev,a.st_ino,a.st_size,a.st_mtime_ns)==(z.st_dev,z.st_ino,z.st_size,z.st_mtime_ns)and sha(p)==h,'Driver changed during ordinal observation');receipt.update(status='PASS',scope='DRIVER_ENUMERATION_ONLY_NO_CONTEXT_OR_NUMERIC_PROOF');return receipt
++ except BaseException as exc:
++  receipt['error']=type(exc).__name__+':'+str(exc);exc.driver_identity_receipt=receipt;raise
++
+ def budget_action(unit,elapsed,plan):
+  require(math.isfinite(elapsed)and elapsed>=0,'Invalid monotonic elapsed');fits=plan['hard_seconds']-elapsed>=plan['dispatch_max_seconds']+plan['cleanup_reserve_seconds']and elapsed<plan['protective_seconds']
+  if fits:return 'DISPATCH'
+@@ -166,7 +198,7 @@
+    if rc is None:last_alive=poll_time
+    else:exit_event(rc)
+    try:
+-    obs=observe_gpu(deadline);own=[x for x in obs['apps']if x['uuid']==UUID and x['pid']==active.pid]
++    obs=observe_gpu(deadline);own=[x for x in obs['apps']if x['pid']==active.pid]
+     if own:last_seen=clock()
+     if rc is not None and not own:release_event();break
+    except Exception as exc:errors.append(type(exc).__name__+':'+str(exc))
+@@ -189,7 +221,7 @@
+     poll_time=clock();rc=active.poll()
+     if rc is None:last_alive=poll_time
+     else:exit_event(rc)
+-    require(clock()<permit['dispatch_deadline_monotonic'],'DISPATCH_OR_PROTECTIVE_LIMIT');disk_guard(root,plan);current=observe_gpu(permit['dispatch_deadline_monotonic']);validate_gpu(current,own_pid=active.pid);own=[x for x in current['apps']if x['uuid']==UUID and x['pid']==active.pid]
++    require(clock()<permit['dispatch_deadline_monotonic'],'DISPATCH_OR_PROTECTIVE_LIMIT');disk_guard(root,plan);current=observe_gpu(permit['dispatch_deadline_monotonic']);validate_gpu(current,own_pid=active.pid);own=[x for x in current['apps']if x['pid']==active.pid]
+     if own:last_seen=clock();ledger.event('OWN_GPU_PID_PRESENT',unit_id=unit['id'],worker_identity=worker_id)
+     if exit_seen is not None and not own:release_event();break
+     sleeper(.25)

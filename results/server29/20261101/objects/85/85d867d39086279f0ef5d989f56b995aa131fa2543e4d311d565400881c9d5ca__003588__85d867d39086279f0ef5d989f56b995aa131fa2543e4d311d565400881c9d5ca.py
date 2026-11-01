@@ -1,0 +1,1 @@
+lambda _cls, out, err: _tuple_new(_cls, (out, err))

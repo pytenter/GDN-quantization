@@ -1,0 +1,1158 @@
+android app/jiraForAndroid/src/jira/For/Android/TaskDetails/TaskDetailsActivity.java
+enum Tabs {
+	basicInfo, comments, worklog, attachments;
+
+	static Tabs fromInt(int a) {
+		switch (a) {
+			case 0:
+				return comments;
+			case 1:
+				return basicInfo;
+			case 2:
+				return worklog;
+			case 3:
+				return attachments;
+		}
+		return null;
+	}
+}
+android app/jiraForAndroid/src/jira/For/Android/TaskDetails/Comments/LoadCommentsThread.java
+public class LoadCommentsThread extends Thread<List<Comment>> {
+
+	Issue task;
+
+	private final ConnectorComments connectorComments;
+
+	public LoadCommentsThread(View view, TaskDetailsActivity activity,
+	                          Issue task, ConnectorComments connectorComments) {
+		super(view, activity);
+		this.task = task;
+		this.connectorComments = connectorComments;
+	}
+
+	@Override
+	protected void onPreExecute() {
+		super.onPreExecute();
+	}
+
+	protected synchronized void onPostExecute(List<Comment> result) {
+		super.hideProgressBar();
+		// TODO Connector ma zwraca� nulla jak nic nie ma naprawde!
+		ListView listView = (ListView) activity
+		        .findViewById(R.id.comments_list_listview);
+		if (result == null) {
+			result = new ArrayList<Comment>();
+		}
+		CommentsAdapter adapter = new CommentsAdapter(
+		        activity.getBaseContext(), result);
+
+		listView.setAdapter(adapter);
+		listView.setEmptyView(activity
+		        .findViewById(R.id.comments_list_no_comments));
+	}
+
+	@Override
+	protected synchronized List<Comment> doInBackground(Void... params) {
+		try {
+			return connectorComments.getComments(task.getKey());
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			setException(e);
+		}
+		return null;
+	}
+
+}
+android app/jiraForAndroid/src/jira/For/Android/Connector/ConnectorComments.java
+@Singleton
+public class ConnectorComments {
+
+	@Inject
+	private Connector connector;
+	@Inject
+	private KSoapExecutor soap;
+
+    public synchronized List<Comment> getComments(String issueKey)
+	        throws CommunicationException, AuthorizationException,
+	        AuthenticationException {
+		if (issueKey == null) {
+			throw new IllegalArgumentException("issueKey cannot be null");
+		}
+
+		SoapObject getComments = SoapObjectBuilder.start()
+		        .withMethod("getComments")
+		        .withProperty("token", connector.getToken())
+		        .withProperty("issueKey", issueKey).build();
+
+		@SuppressWarnings("unchecked")
+        Vector<SoapObject> vc = soap.execute(getComments, Vector.class);
+		if (vc == null) {
+			return null;
+		}
+
+		List<Comment> comments = new ArrayList<Comment>();
+
+		SoapObject p;// Temporary variable!
+		for (int i = 0; i < vc.size(); ++i) {
+			p = vc.get(i);
+
+			// TODO consider whether all these fields are necessary
+
+			String author = p.getPropertySafelyAsString("author");
+			if (author == null || author.compareToIgnoreCase("null") == 0) {
+				System.out.println("Ej no tak nie powinno być!!!!!!!!!");
+			}
+
+			comments.add(new Comment(connector.downloadUserInformation(author),
+			        p.getPropertySafelyAsString("body"), p
+			                .getPropertySafelyAsString("groupLevel"), p
+			                .getPropertySafelyAsString("id"), p
+			                .getPropertySafelyAsString("roleLevel"), p
+			                .getPropertySafelyAsString("updateAuthor"), p
+			                .getPropertySafelyAsString("created"), p
+			                .getPropertySafelyAsString("updated")));
+		}
+
+		return comments;
+	}
+
+	/**
+	 * Adds a comment to the specified issue
+	 * 
+	 * @param message
+	 * @param issueKey
+	 * @throws AuthenticationException
+	 * @throws AuthorizationException
+	 * @throws CommunicationException
+	 */
+	public void addComment(String issueKey, Comment comment)
+	        throws CommunicationException, AuthorizationException,
+	        AuthenticationException {
+
+		if (comment == null || issueKey == null) {
+			throw new IllegalArgumentException("Wrong arguments\ncomment: "
+			        + comment.toString() + "\nissueKey: " + issueKey);
+		}
+
+		SoapObject remoteComment = new SoapObject(
+		        "http://beans.soap.rpc.jira.atlassian.com", "RemoteComment");
+
+		remoteComment.addProperty("body", comment.getBody());
+
+		SoapObject addComment = SoapObjectBuilder.start()
+		        .withMethod("addComment")
+		        .withProperty("token", connector.getToken())
+		        .withProperty("issueKey", issueKey)
+		        .withSoapObject(remoteComment).build();
+
+		soap.execute(addComment);
+	}
+}
+android app/jiraForAndroid/src/jira/For/Android/DataTypes/DataTypesMethods.java
+public class DataTypesMethods {
+
+	private static final String datePattern = "yyyy-MM-ddHH:mm:ss";
+	private static final SimpleDateFormat simpleDateFormat = new SimpleDateFormat(
+	        datePattern);
+	private static SimpleDateFormat simpleDateFormatGMT = setFormatGMT();
+
+	private static SimpleDateFormat setFormatGMT() {
+		SimpleDateFormat sdf = new SimpleDateFormat(datePattern);
+		sdf.setTimeZone(TimeZone.getTimeZone("GMT"));
+		return sdf;
+	}
+
+	public static Date GMTStringToLocalDate(String dateAsString) {
+		Date date = null;
+		dateAsString = dateAsString.replace('T', ' ');
+		try {
+			date = simpleDateFormatGMT.parse(dateAsString);
+		} catch (ParseException e) {
+			DLog.e("Error, program was unable to parse string to date",
+			        e.getMessage());
+			e.printStackTrace();
+		}
+
+		return date;
+	}
+
+	public static Date stringToDate(String dateAsString) {
+		Date date = null;
+		dateAsString = dateAsString.replace('T', ' ');
+		try {
+			date = simpleDateFormat.parse(dateAsString);
+		} catch (ParseException e) {
+			DLog.e("Error, program was unable to parse string to date",
+			        e.getMessage());
+			e.printStackTrace();
+		}
+		return date;
+	}
+
+	public static String dateToString(Date dateAsDate) {
+		return simpleDateFormat.format(dateAsDate);
+	}
+
+	public static String dateToGMTString(Date dateAsDate) {
+
+		return simpleDateFormatGMT.format(dateAsDate);
+	}
+}
+android app/jiraForAndroid/src/jira/For/Android/ImagesCacher/ImagesCacher.java
+public class ImagesCacher {
+
+	private static ImagesCacher INSTANCE = null;
+	private Context applicationContext;
+
+	public HashMap<String, Bitmap> issuesPrioritesBitmaps = new HashMap<String, Bitmap>();
+	public HashMap<String, Bitmap> issuesStatusesBitmaps = new HashMap<String, Bitmap>();
+	public HashMap<String, Bitmap> issuesTypesBitmaps = new HashMap<String, Bitmap>();
+
+	private HashMap<String, IssueType> issueTypes;
+	private HashMap<String, Priority> priorities;
+	private HashMap<String, Status> statuses;
+
+	private ImagesCacher(HashMap<String, IssueType> issueTypes,
+	                     HashMap<String, Priority> priorities,
+	                     HashMap<String, Status> statuses, Context context) {
+		this.issueTypes = issueTypes;
+		this.priorities = priorities;
+		this.statuses = statuses;
+		applicationContext = context;
+	}
+
+	public static synchronized ImagesCacher getInstance() {
+		return INSTANCE;
+	}
+
+	public static synchronized ImagesCacher getInstance2(
+	        HashMap<String, IssueType> issueTypes,
+	        HashMap<String, Priority> priorities,
+	        HashMap<String, Status> statuses, Context context) {
+		if (INSTANCE == null) {
+			INSTANCE = new ImagesCacher(issueTypes, priorities, statuses,
+			        context);
+		}
+		return INSTANCE;
+	}
+
+	public void clearMemory() {
+		issuesPrioritesBitmaps.clear();
+		issuesStatusesBitmaps.clear();
+		issuesTypesBitmaps.clear();
+
+		// TODO Jeszcze wyczyścić pamięć stałą!
+	}
+
+	public void downloadAllNeededData() {
+
+		downloadIconTypes();
+
+		downloadIconPriorites();
+
+		downloadIconStatuses();
+	}
+
+	public void flushToMemory() {
+		flushHashMap(issuesPrioritesBitmaps);
+		flushHashMap(issuesStatusesBitmaps);
+		flushHashMap(issuesTypesBitmaps);
+	}
+
+	private void flushHashMap(HashMap<String, Bitmap> input) {
+
+		Set<String> keySet = input.keySet();
+		for (String key : keySet) {
+			try {
+				FileOutputStream fileOutputStream = applicationContext
+				        .openFileOutput(key, Context.MODE_WORLD_WRITEABLE);
+				input.get(key).compress(Bitmap.CompressFormat.PNG, 90,
+				        fileOutputStream);
+				fileOutputStream.close();
+			} catch (Exception e) {
+				Log.e(this.toString(), "Writing file to memory error!!!");
+				e.printStackTrace();
+			}
+		}
+	}
+
+	private boolean downloadIcon(HashMap<String, ?> mapaIN,
+	        HashMap<String, Bitmap> mapaOUT) throws IOException {
+		System.out.println("POBIERAM!!!!!!!!!!!!");
+		Bitmap bmp;
+
+		String urlOfIcon;
+		URL url;
+		URLConnection connection;
+		InputStream inputStream;
+		for (String id : mapaIN.keySet()) {
+
+			if (mapaOUT.containsKey(id) == false) {
+				System.out.println("Nie mam id:" + id);
+				urlOfIcon = ((IconUrlProvider) mapaIN
+				        .get(id)).getIcon();
+				url = new URL(urlOfIcon);
+				connection = url.openConnection();
+
+				inputStream = connection.getInputStream();
+
+				BufferedInputStream bufferedInputStream = new BufferedInputStream(
+				        inputStream);
+
+				ByteArrayBuffer baf = new ByteArrayBuffer(256);
+				int current = 0;
+				while ((current = bufferedInputStream.read()) != -1) {
+					baf.append((byte) current);
+				}
+
+				bmp = BitmapFactory.decodeByteArray(baf.toByteArray(), 0,
+				        baf.length());
+
+				if (bmp == null) Log.e("IssueType",
+				        "Nie udało się odkodowac pliku: " + urlOfIcon);
+
+				mapaOUT.put(id, bmp);
+			}
+		}
+
+		return true;
+	}
+
+	private void downloadIconTypes() {
+		try {
+			downloadIcon(issueTypes, issuesTypesBitmaps);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	private void downloadIconPriorites() {
+		try {
+			downloadIcon(priorities, issuesPrioritesBitmaps);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	private void downloadIconStatuses() {
+		try {
+			downloadIcon(statuses, issuesStatusesBitmaps);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+}
+android app/jiraForAndroid/src/jira/For/Android/DataTypes/Issue.java
+public class Issue implements Serializable {
+
+	private static final long serialVersionUID = 1L;
+	private String id, assignee, assigneeFullName, description, environment, key, priority,
+	        project, reporter, reporterFullName, resolution, status, summary, type;
+	private long votes;
+
+	private Date updated, created, duedate;// xsd:dateTime
+
+	// Poniższe zostaną poprawione w przyszłości
+	//private String fixVersions;// impl:ArrayOf_tns1_RemoteVersion
+	//private String customFieldValues;// impl:ArrayOf_tns1_RemoteCustomFieldValue
+	//private String components;// impl:ArrayOf_tns1_RemoteComponent
+	//private String attachmentNames;// impl:ArrayOf_xsd_string
+	//private String affectsVersions;// impl:ArrayOf_tns1_RemoteVersion
+
+	@Deprecated
+	public void pochwalSie() {
+		System.out.println("\nKey: " + key + "\nassignee: " + assignee
+		        + "\nsummary: " + summary + "\nid: " + id + "\ndescription: "
+		        + description + "\nevn: " + environment + "\nPriority: "
+		        + priority + "\nproject: " + project + "\nreporter: "
+		        + reporter + "\nresolution: " + resolution + "\nstatus: "
+		        + status + "\nsummary: " + summary + "\ntype: " + type
+		        + "\nvotes: " + votes);
+	}
+
+	public Issue(String id, String assignee, String assigneeFullName,
+				 String description, String updated, String created,
+				 String duedate, String environment, String key,
+				 String priority, String project, String reporter,
+				 String reporterFullName, String resolution, String status,
+				 String summary, String type, long votes) {
+
+		setId(id);
+		setAssignee(assignee);
+		setAssigneeFullName(assigneeFullName);
+		setDescription(description);
+		setEnvironment(environment);
+		setKey(key);
+		setPriority(priority);
+		setProject(project);
+		setReporter(reporter);
+		setReporterFullName(reporterFullName);
+		setResolution(resolution);
+		setStatus(status);
+		setSummary(summary);
+		setType(type);
+		setVotes(votes);
+
+		// Parsing dates
+		setDuedate(duedate);
+		setCreated(created);
+		setUpdated(updated);
+	}
+
+	public final String getId() {
+		return id;
+	}
+
+	public final void setId(String id) {
+		if (id == null || id.compareToIgnoreCase("null") == 0) this.id = "NO ID";
+		else this.id = id;
+	}
+
+	public final String getAssigneeName() {
+		return assignee;
+	}
+
+	public final void setAssignee(String assignee) {
+		if (assignee == null || assignee.compareToIgnoreCase("null") == 0) this.assignee = "NO ASSIGNEE";
+		else this.assignee = assignee;
+	}
+	
+	public final String getAssigneeFullName() {
+		return assigneeFullName;
+	}
+	
+	public final void setAssigneeFullName(String assigneeFullName) {
+		if (assigneeFullName == null || assigneeFullName.compareToIgnoreCase("null") == 0)
+			this.assigneeFullName = "Unassigned";
+		else this.assigneeFullName = assigneeFullName;
+	}
+
+	public final String getDescription() {
+		return description;
+	}
+
+	public final void setDescription(String description) {
+		if (description == null || description.compareToIgnoreCase("null") == 0) this.description = "NO DESCRIPTION";
+		else this.description = description;
+	}
+
+	public final String getEnvironment() {
+		return environment;
+	}
+
+	public final void setEnvironment(String environment) {
+		if (environment == null || environment.compareToIgnoreCase("null") == 0) this.environment = "NO ENVIRONMENT";
+		else this.environment = environment;
+	}
+
+	public final String getKey() {
+		return key;
+	}
+
+	public final void setKey(String key) {
+		if (key == null || key.compareToIgnoreCase("null") == 0) this.key = "NO KEY";
+		else this.key = key;
+	}
+
+	public final String getPriority() {
+		return priority;
+	}
+
+	public final void setPriority(String priority) {
+		if (priority == null || priority.compareToIgnoreCase("null") == 0) this.priority = "NO PRIORITY";
+		else this.priority = priority;
+	}
+
+	public final String getProject() {
+		return project;
+	}
+
+	public final void setProject(String project) {
+		if (project == null || project.compareToIgnoreCase("null") == 0) this.project = "NO PROJECT";
+		else this.project = project;
+	}
+
+	public final String getReporterName() {
+		return reporter;
+	}
+
+	public final void setReporter(String reporter) {
+		if (reporter == null || reporter.compareToIgnoreCase("null") == 0) this.reporter = "NO REPORTER";
+		else this.reporter = reporter;
+	}
+	
+	public final String getReporterFullName() {
+		return reporterFullName;
+	}
+	
+	public final void setReporterFullName(String reporterFullName) {
+		if (reporterFullName == null || reporterFullName.compareToIgnoreCase("null") == 0)
+			this.reporterFullName = "NO REPORTER";
+		else this.reporterFullName = reporterFullName;
+	}
+
+	public final String getResolution() {
+
+		return resolution;
+	}
+
+	public final void setResolution(String resolution) {
+		if (resolution == null || resolution.compareToIgnoreCase("null") == 0) this.resolution = "Unresolved";
+		//else this.resolution = resolution;
+		else this.resolution = "Fixed";
+	}
+
+	public final String getStatus() {
+
+		return status;
+	}
+
+	public final void setStatus(String status) {
+		if (status == null || status.compareToIgnoreCase("null") == 0) this.status = "NO STATUS";
+		else this.status = status;
+	}
+
+	public final String getSummary() {
+
+		return summary;
+	}
+
+	public final void setSummary(String summary) {
+		if (summary == null || summary.compareToIgnoreCase("null") == 0) this.summary = "NO SUMMARY";
+		else this.summary = summary;
+	}
+
+	public final String getType() {
+
+		return type;
+	}
+
+	public final void setType(String type) {
+		if (type == null || type.compareToIgnoreCase("null") == 0) this.type = "NO TYPE";
+		else this.type = type;
+	}
+
+	public final long getVotes() {
+		return votes;
+	}
+
+	public final void setVotes(long votes) {
+		this.votes = votes;
+	}
+	
+	public final Date getUpdatedAsDate() {
+		return updated;
+	}
+
+	public final String getUpdated() {
+		if (updated == null) return "NO UPDATED";
+		return updated.toLocaleString();
+	}
+
+	public final void setUpdated(String updated) {
+		this.updated = DataTypesMethods.GMTStringToLocalDate(updated);
+	}
+
+	public final String getCreated() {
+		if (created == null) return "NO CREATED";
+		return created.toLocaleString();
+	}
+
+	public final void setCreated(String created) {
+
+		if (created != null && created.compareToIgnoreCase("null") != 0) {
+			this.created = DataTypesMethods.GMTStringToLocalDate(created);
+		}
+	}
+
+	public final String getDuedate() {
+		if (duedate == null) return "NO DUEDATE";
+		return duedate.toLocaleString();
+	}
+
+	public final void setDuedate(String duedate) {
+
+		if (duedate != null && duedate.compareToIgnoreCase("null") != 0) {
+			this.duedate = DataTypesMethods.stringToDate(duedate);
+		}
+	}
+}
+android app/jiraForAndroid/src/jira/For/Android/TaskDetails/Comments/AddCommentThread.java
+public class AddCommentThread extends Thread<Void> {
+
+	private Comment comment;
+	private String issueKey;
+	private final ConnectorComments connectorComments;
+
+	public AddCommentThread(TaskDetailsActivity taskDetailsActivity,
+	                        Comment comment, String issueKey, ConnectorComments connectorComments) {
+		super(taskDetailsActivity);
+		this.comment = comment;
+		this.issueKey = issueKey;
+		this.connectorComments = connectorComments;
+	}
+
+	@Override
+	protected synchronized void onPreExecute() {
+
+		// Showing progressbar activity while adding comment and refreshing list
+
+		// TODO Dodać ukrywania listy tasków
+		view.findViewById(R.id.edit_text_comment).setVisibility(View.INVISIBLE);
+		view.findViewById(R.id.button_send_comment).setVisibility(
+		        View.INVISIBLE);
+
+		view.findViewById(R.id.comments_list_listview).setVisibility(
+		        View.INVISIBLE);
+
+		view.findViewById(R.id.data_is_loading).setVisibility(View.VISIBLE);
+		view.findViewById(R.id.progress_bar).setVisibility(View.VISIBLE);
+	};
+
+	@Override
+	protected Void doInBackground(Void... params) {
+		DLog.i("AddCommentThread", "doInBackground() <-- i'm here");
+		try {
+			connectorComments.addComment(issueKey, comment);
+		} catch (Exception e) {
+			setException(e);
+		}
+		return null;
+	}
+
+	@Override
+	protected synchronized void onPostExecute(Void cos) {
+		DLog.i("AddCommentThread", "onPostExecute <--- i'm here");
+		hideProgressBar();
+
+		EditText messageOfComment = (EditText) view
+		        .findViewById(R.id.edit_text_comment);
+		messageOfComment.setVisibility(TextView.VISIBLE);
+		view.findViewById(R.id.button_send_comment).setVisibility(View.VISIBLE);
+		view.findViewById(R.id.comments_list_listview).setVisibility(
+		        View.VISIBLE);
+
+		// Jeżeli udało się wysłać komentarz //TODO zrobić to lepiej
+		if (ex == null) {
+			
+			System.out.println("Wiec wysłałem komentarz?");
+			// If we send msg so we clear field/focus etc.
+			messageOfComment.setText("");
+			messageOfComment.clearFocus();
+			InputMethodManager inputMethodManager = (InputMethodManager) activity
+			        .getSystemService(Context.INPUT_METHOD_SERVICE);
+			inputMethodManager.hideSoftInputFromWindow(
+			        messageOfComment.getWindowToken(),
+			        InputMethodManager.RESULT_UNCHANGED_SHOWN);
+
+			// Adding comment to the list :D move this to thread when add is
+			// succesfull
+			ListView listView = (ListView) activity
+			        .findViewById(R.id.comments_list_listview);
+			CommentsAdapter listAdapter = (CommentsAdapter) listView
+			        .getAdapter();
+			listAdapter.addComment(comment);
+			listAdapter.notifyDataSetChanged();
+		}
+		else {
+
+			System.out
+			        .println("Nie udalo się dodać komentarza!!!!!!!!!!!!!!!!!!!");
+			showFailInformation();
+		}
+	}
+}
+android app/jiraForAndroid/src/jira/For/Android/Connector/Connector.java
+@Singleton
+public final class Connector {
+
+	@Inject
+	private ConnectorUser connectorUser;
+	@Inject
+	private ConnectorIssueTypes connectorIssueTypes;
+	@Inject
+	private ConnectorPriority connectorPriority;
+	@Inject
+	private ConnectorStatus connectorStatus;
+	@Inject
+	private AuthenthicationService authenthicationService = new AuthenthicationService();
+	private String username;
+	private HashMap<String, User> users = new HashMap<String, User>();;
+	private ImagesCacher imagesCacher;
+	public HashMap<String, String> issuesTypesNames = new HashMap<String, String>();
+	public HashMap<String, String> issuesPrioritiesNames = new HashMap<String, String>();
+	public HashMap<String, String> issuesStatusesNames = new HashMap<String, String>();
+	private static HashMap<String, IssueType> issueTypes = new HashMap<String, IssueType>();
+	private static HashMap<String, Priority> priorities = new HashMap<String, Priority>();
+	private static HashMap<String, Status> statuses = new HashMap<String, Status>();
+	// Namespace we dontneed it now.
+	private boolean isConnected = false;
+
+	public boolean getIsConnected() {
+		return isConnected;
+	}
+
+	public void setIsConnected(boolean isConnected) {
+		this.isConnected = isConnected;
+	}
+
+	private void setUsernamePasswordUrl(String username, String password,
+	        String url) {
+
+		this.username = username;
+	}
+
+	/**
+	 * This method login user to jira and get a token form it.
+	 * 
+	 * @return Returns true if login gone okey.
+	 * @throws AuthorizationException
+	 * @throws Exception
+	 */
+	public boolean jiraLogin(String username, String password, String url,
+	        boolean secureConnection) throws AuthenticationException,
+	        CommunicationException, AuthorizationException {
+		String protocol = secureConnection ? "https://" : "http://";
+		URL surl;
+        try {
+	        surl = new URL(protocol+url);
+        } catch (MalformedURLException e) {
+	        throw new CommunicationException(e);
+        }
+		authenthicationService.login(username, password, surl);
+
+		downloadIssueTypes();
+		downloadPriorities();
+		downloadStatuses();
+		imagesCacher = ImagesCacher.getInstance2(issueTypes, priorities,
+		        statuses, null);
+		imagesCacher.downloadAllNeededData();
+		setUsernamePasswordUrl(username, password, url);
+		return true;
+	}
+
+	/**
+	 * This method logout user from the server.
+	 * 
+	 * @return Returns true if logout gone okey.
+	 * @throws Exception
+	 */
+	public boolean jiraLogout() {
+		authenthicationService.logout();
+		return true;
+	}
+
+	/**
+	 * Download User full information
+	 * 
+	 * @throws AuthenticationException
+	 * @throws AuthorizationException
+	 * @throws CommunicationException
+	 * @throws Exception
+	 */
+	User downloadUserInformation(String username)
+	        throws CommunicationException, AuthorizationException,
+	        AuthenticationException {
+
+		if (!users.containsKey(username)) {
+			users.put(username, connectorUser.jiraGetUser(username));
+		}
+		return getUser(username);
+	}
+
+	/**
+	 * Get user form HashMap
+	 * 
+	 * @return
+	 */
+	public User getUser(String username) {
+		return users.get(username);
+	}
+
+	/**
+	 * Get all users
+	 */
+	public HashMap<String, User> getUsers() {
+		// System.out.println("Mam tyle userow: " + users.size());
+		return users;
+	}
+
+	/**
+	 * Get user logged in this application
+	 * 
+	 * @return
+	 * @throws Exception
+	 */
+	public User getThisUser() {
+
+		return getUser(username);
+	}
+
+	/*
+	 * Poniższe metody dotyczące IssueTypes i Priorities nie działają do końca
+	 * (nie wiedzieć czemu, wywalają błędy o nullowości HashMapy), jednakże są
+	 * one tutaj, by uniknąć niepotrzebnych mergy w najbliższym czasie, - Michał
+	 */
+	/**
+	 * Download all issue types
+	 * 
+	 * @throws AuthenticationException
+	 * @throws AuthorizationException
+	 * @throws CommunicationException
+	 * @throws Exception
+	 */
+	public void downloadIssueTypes() throws CommunicationException,
+	        AuthorizationException, AuthenticationException {
+		issueTypes = connectorIssueTypes.jiraGetIssueTypes();
+	}
+
+	/**
+	 * Get issue type from HashMap
+	 */
+	public IssueType getIssueType(String type) {
+		return issueTypes.get(type);
+	}
+
+	/**
+	 * Get all issue types
+	 */
+	public HashMap<String, IssueType> getIssueTypes() {
+		return issueTypes;
+	}
+
+	/**
+	 * Download all priorities
+	 * 
+	 * @throws AuthenticationException
+	 * @throws AuthorizationException
+	 * @throws CommunicationException
+	 * @throws RemoteException
+	 * @throws Exception
+	 */
+	public void downloadPriorities() throws CommunicationException,
+	        AuthorizationException, AuthenticationException {
+		priorities = connectorPriority.jiraGetPriorities();
+	}
+
+	/**
+	 * Get priority type from HashMap
+	 */
+	public Priority getPriority(String priority) {
+		DLog.i("ilosc priorytetow", String.valueOf(priorities.size()));
+		return priorities.get(priority);
+	}
+
+	/**
+	 * Download all statuses
+	 * 
+	 * @throws AuthenticationException
+	 * @throws AuthorizationException
+	 * @throws CommunicationException
+	 * @throws Exception
+	 */
+	public void downloadStatuses() throws CommunicationException,
+	        AuthorizationException, AuthenticationException {
+		statuses = connectorStatus.jiraGetStatuses();
+	}
+
+	/**
+	 * Get status type from HashMap
+	 */
+	public Status getStatus(String status) {
+		return statuses.get(status);
+	}
+
+	/**
+	 * Get all priorities
+	 */
+	public HashMap<String, Priority> getPriorities() {
+		return priorities;
+	}
+
+	/**
+	 * @return Returns the Token
+	 */
+	public String getToken() {
+		return authenthicationService.getToken();
+	}
+
+
+	/**
+	 * Check do we have internet connection simply is data transfer is available
+	 */
+	public boolean doWeHaveInternet(Context context) {
+
+		if (context == null) {
+			DLog.e("Connector", "doWeHaveInternet() context is NULL!");
+			return false;
+		}
+		ConnectivityManager manager = (ConnectivityManager) context
+		        .getSystemService(Context.CONNECTIVITY_SERVICE);
+
+		NetworkInfo netInfo = manager.getActiveNetworkInfo();
+		if (netInfo == null) {
+			return false;
+		}
+
+		return netInfo.isConnected();
+	}
+
+}
+android app/jiraForAndroid/src/jira/For/Android/Connector/ConnectorWorkLog.java
+@Singleton
+public class ConnectorWorkLog {
+
+	@Inject
+	private Connector connector;
+	@Inject
+	private KSoapExecutor soap;
+
+	public synchronized List<WorkLog> getWorklog(String issueKey)
+	        throws IOException, XmlPullParserException, Exception {
+
+		if (issueKey == null) throw new Exception("Bad arguments\nIssue key:"
+		        + issueKey);
+
+		SoapObject getWorklogs = SoapObjectBuilder.start()
+		        .withMethod("getWorklogs")
+		        .withProperty("token", connector.getToken())
+		        .withProperty("issueKey", issueKey).build();
+
+		return downloadFromServer(getWorklogs);
+
+	}
+
+	private synchronized List<WorkLog>
+	        downloadFromServer(SoapObject getWorklogs)
+	                throws CommunicationException, AuthorizationException,
+	                AuthenticationException {
+
+		@SuppressWarnings("unchecked")
+        Vector<SoapObject> vc = soap.execute(getWorklogs, Vector.class);
+		if (vc == null) return null;
+		Log.e("worklogi", Integer.toString(vc.size()));
+		List<WorkLog> worklogs = new ArrayList<WorkLog>();
+
+		SoapObject p;// Pomocnicza zmienna!
+		for (int i = 0; i < vc.size(); ++i) {
+			p = vc.get(i);
+
+			String author = p.getPropertySafelyAsString("author");
+			if (author == null || author.compareToIgnoreCase("null") == 0) System.out
+			        .println("Ej no tak nie powinno być!!!!!!!!!");
+			String created = p.getPropertySafelyAsString("created");
+			if (created == null || created.compareToIgnoreCase("null") == 0) System.out
+			        .println("Ej no tak nie powinno być!!!!!!!!!");
+			String startDate = p.getPropertySafelyAsString("startDate");
+			if (startDate == null || startDate.compareToIgnoreCase("null") == 0) System.out
+			        .println("Ej no tak nie powinno być!!!!!!!!!");
+			String updated = p.getPropertySafelyAsString("updated");
+			if (updated == null || updated.compareToIgnoreCase("null") == 0) System.out
+			        .println("Ej no tak nie powinno być!!!!!!!!!");
+
+			worklogs.add(new WorkLog(connector.downloadUserInformation(author),
+			        p.getPropertySafelyAsString("comment"), p
+			                .getPropertySafelyAsString("timeSpent"), p
+			                .getPropertySafelyAsString("updateAuthor"),
+			        DataTypesMethods.GMTStringToLocalDate(created),
+			        DataTypesMethods.GMTStringToLocalDate(startDate),
+			        DataTypesMethods.GMTStringToLocalDate(updated),
+			        Long.parseLong(p
+			                .getPropertySafelyAsString("timeSpentInSeconds"))));
+		}
+
+		Log.e("worklogi1", Integer.toString(worklogs.size()));
+
+		return worklogs;
+
+	}
+
+}
+android app/jiraForAndroid/src/jira/For/Android/TaskDetails/WorkLog/LoadWorkLogThread.java
+public class LoadWorkLogThread extends Thread<List<WorkLog>> {
+
+	Issue task;
+	private final ConnectorWorkLog connectorWorklog;
+
+	public LoadWorkLogThread(View view, TaskDetailsActivity activity,
+	                         Issue task, ConnectorWorkLog connector) {
+		super(view, activity);
+		this.task = task;
+		this.connectorWorklog = connector;
+	}
+
+	protected synchronized void onPostExecute(List<WorkLog> result) {
+		super.hideProgressBar();
+		// TODO Connector ma zwracać nulla jak nic nie ma naprawde!
+		if (result == null) {
+			view.findViewById(R.id.worklog_list_no_worklog).setVisibility(
+			        View.VISIBLE);
+		}
+		else {
+			WorkLogAdapter adapter = new WorkLogAdapter(
+			        activity.getBaseContext(), result);
+			ListView listView = (ListView) activity
+			        .findViewById(R.id.worklog_listview);
+			listView.setVisibility(View.VISIBLE);
+			listView.setAdapter(adapter);
+		}
+	}
+
+	@Override
+	protected synchronized List<WorkLog> doInBackground(Void... params) {
+		try {
+			return connectorWorklog.getWorklog(task.getKey());
+		} catch (Exception e) {
+			setException(e);
+		}
+		return null;
+	}
+
+}
+android app/jiraForAndroid/src/jira/For/Android/DataTypes/Comment.java
+public class Comment {
+
+	private String body, groupLevel, id, roleLevel, updateAuthor;
+	private Date created, updated;
+	private User author;
+
+	@Deprecated
+	public void pochwalSie() {
+		System.out.println("\nAuthor: " + getAuthorFullName() + "\nBody: "
+		        + getBody() + "\nGroup Level: " + getGroupLevel() + "\nid: "
+		        + getId() + "\nRoleLevel: " + getRoleLevel()
+		        + "\nUpdate author: " + getUpdateAuthor() + "\nCreated: "
+		        + getCreated() + "\nUpdated: " + getUpdated());
+	}
+
+	public Comment(User author, String body, String groupLevel, String id,
+	               String roleLevel, String updateAuthor, String created,
+	               String updated) {
+		setAuthor(author);
+		setBody(body);
+		setGroupLevel(groupLevel);
+		setId(id);
+		setRoleLevel(roleLevel);
+		setUpdateAuthor(updateAuthor);
+		setCreated(created);
+		setUpdated(updated);
+	}
+
+	// TODO Zaimplementować toString()
+	@Override
+	public String toString() {
+		return "RemoteComment{author=" + author.getName() + "; body=" + body
+		        + "; roleLevel=null; }";// tak na szybkiego
+	};
+
+	public final String getAuthorName() {
+		return author.getName();
+	}
+
+	public String getAuthorFullName() {
+		return author.getFullname();
+	}
+
+	public final String getBody() {
+		return body;
+	}
+
+	public final String getGroupLevel() {
+		return groupLevel;
+	}
+
+	public final String getId() {
+		return id;
+	}
+
+	public final String getRoleLevel() {
+		return roleLevel;
+	}
+
+	public final String getUpdateAuthor() {
+		return updateAuthor;
+	}
+
+	public final String getCreated() {
+		return created.toLocaleString();
+	}
+
+	public final String getUpdated() {
+		return updated.toLocaleString();
+	}
+
+	public final void setAuthor(User author) {
+		this.author = author;
+	}
+
+	public final void setBody(String body) {
+		if (body == null || body.compareToIgnoreCase("null") == 0) this.body = "NO BODY";
+		else this.body = body;
+	}
+
+	public final void setGroupLevel(String groupLevel) {
+		if (groupLevel == null || groupLevel.compareToIgnoreCase("null") == 0) this.groupLevel = "NO GROUP LEVEL";
+		else this.groupLevel = groupLevel;
+	}
+
+	public final void setId(String id) {
+		if (id == null || id.compareToIgnoreCase("null") == 0) this.id = "NO ID";
+		else this.id = id;
+	}
+
+	public final void setRoleLevel(String roleLevel) {
+		if (roleLevel == null || roleLevel.compareToIgnoreCase("null") == 0) this.roleLevel = "NO ROLE LEVEL";
+		else this.roleLevel = roleLevel;
+	}
+
+	public final void setUpdateAuthor(String updateAuthor) {
+		if (updateAuthor == null
+		        || updateAuthor.compareToIgnoreCase("null") == 0) this.updateAuthor = "NO UPDATE AUTHOR";
+		else this.updateAuthor = updateAuthor;
+	}
+
+	public final void setCreated(String created) {
+		if (created != null && created.compareToIgnoreCase("null") != 0) {
+			this.created = DataTypesMethods.GMTStringToLocalDate(created);
+		}
+	}
+
+	public final void setUpdated(String updated) {
+		if (updated != null && updated.compareToIgnoreCase("null") != 0) {
+			this.updated = DataTypesMethods.GMTStringToLocalDate(updated);
+		}
+	}
+}
+android app/jiraForAndroid/src/jira/For/Android/DLog.java
+public class DLog {
+
+	public static void i(String message) {
+		Log.i("jira_for_android", message);
+	}
+
+	public static void i(String TAG, String message) {
+		Log.i(TAG, message);
+	}
+
+	public static void e(String message) {
+		Log.e("jira_for_android", message);
+	}
+
+	public static void e(String TAG, String message) {
+		Log.e(TAG, message);
+	}
+}
+android app/jiraForAndroid/src/jira/For/Android/PagerView/ViewForPagerInterface.java
+public interface ViewForPagerInterface {
+
+	public String getTitle(int a);
+
+	public View loadView(LayoutInflater inflater, int pos);
+
+	public int getLength();
+
+}

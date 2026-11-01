@@ -1,0 +1,826 @@
+# Codex正式科研任务：Qwen/GDN Group32 四配置 AIME26 Seed1 全量评测
+
+## 0. 任务身份与核心目标
+
+**任务名称：**
+
+`QWEN_GDN_GROUP32_FOUR_CODEC_AIME26_SEED1_V1`
+
+**目标模型：** Qwen3.5-9B / GDN
+
+**服务器：** Qwen服务器，4×RTX3090 24GB。
+
+**运行基础：** 已完成FP吞吐恢复及INT8短程资格的`HISTORICAL_PORT`。
+
+### 核心目标
+
+使用四种Group32 INT8配置，分别完成AIME26全部30道题、seed=1的自由生成和Frozen V4评分，总计120条正式生成。
+
+直接回答：
+
+1. 不使用Hadamard时，Asym32是否比Sym32提高AIME26正确率？
+2. 使用Hadamard时，Asym32是否比Sym32提高正确率？
+3. Hadamard是否改善Group32对称和非对称INT8的数学推理能力？
+4. Hadamard与非对称量化是否存在可观察的交互效应？
+
+**本任务的主要科学指标是AIME26最终正确率，不是State MSE或Future-KL。**
+
+不得增加新的Future-KL实验作为AIME前置筛选。
+
+### 执行原则
+
+- 优先复用已经合格的源码、Codec和GPU资格证据。
+- 不重新研究FP Runtime吞吐。
+- 不引入Dual-M、Learned Rotation或其他量化方法。
+- 不修改模型权重。
+- 不修改GDN recurrence数学。
+- 不改变正式采样器或评分器。
+- 不使用FP16/BF16未量化persistent recurrent buffer。
+- 不使用低频requantization。
+- 不根据部分AIME正确率修改Codec。
+- 不进行无限次工程修补、隐式重试或参数搜索。
+- 所有科学和工程结果均在新独立root中保存，历史实验只读。
+
+---
+
+## 一、冻结四组AIME26配置
+
+正式采用以下2×2实验矩阵。
+
+| ID | Rotation | Codec | Group Size | Scale |
+|---|---|---|---|---|
+| Q0 | Identity，无Hadamard | Symmetric INT8 | 32 | FP32 |
+| Q1 | Identity，无Hadamard | Asymmetric INT8 | 32 | FP32 |
+| Q2 | Key-side H128 | Symmetric INT8 | 32 | FP32 |
+| Q3 | Key-side H128 | Asymmetric INT8 | 32 | FP32 |
+
+四组均沿GDN State的**Key维度**进行量化分组。
+
+对于128×128的Key×Value状态矩阵：
+
+- 每个Value列的128个Key元素拆成4个连续的32元素Group。
+- 每个Group独立计算scale。
+- Sym使用INT8 codes。
+- Asym使用UINT8 codes、FP32 scale和整数zero-point。
+
+正式执行前必须通过真实源码确认State shape与布局，不得跨head、layer或者Value列混合分组。
+
+### 本任务不新增的配置
+
+不运行：
+
+- C128 Sym。
+- C128 Asym。
+- C64 Sym/Asym。
+- Dual-M。
+- C6R/C7 Learned Rotation。
+- 额外FP AIME正式生成。
+
+历史FP和其他Codec正确率可以作为背景，但不能未经协议核验就作为本次严格匹配的对照。
+
+---
+
+## 二、直接继承已经完成的HISTORICAL_PORT资格
+
+### 2.1 FP Runtime已恢复成功
+
+已完成任务：
+
+`QWEN_GDN_HISTORICAL_RUNTIME_GPU_RECOVERY_V1`
+
+状态：
+
+`HISTORICAL_PORT_FP_QUALIFIED_SPEED_RECOVERED`
+
+当前实际GPU短窗口结果：
+
+- OLD恢复版FP三次中位：13.774973185423399 TPS。
+- NEW_STRICT FP本轮参考：7.741047785182266 TPS。
+
+恢复模式仍是`HISTORICAL_PORT`，历史完整二进制EXACT身份UNKNOWN。
+
+不要重新运行FP吞吐恢复实验。
+
+### 2.2 已完成的INT8短程资格
+
+任务：
+
+`QWEN_GDN_HISTORICAL_PORT_INT8_GROUP32_QUALIFICATION_V1`
+
+终态：
+
+`INT8_SHORT_RUNTIME_QUALIFIED`
+
+历史条件与本次条件的映射：
+
+| 已完成条件 | 本次使用 |
+|---|---|
+| 原B0：H+C128 Sym | 历史参考，不属于四配置 |
+| 原B1：H+C32 Sym | **Q2** |
+| 原B2：H+C32 Asym | **Q3** |
+
+已核验：
+
+- GPU Codec数学资格通过。
+- 32/128/512-token真实持续QDQ完成。
+- 同GPU0 UUID双fresh逐Tensor数值与字节一致。
+- 24层GDN从token0逐tokenQDQ/writeback。
+- 下一kernel真实消费已QDQ状态。
+- 不使用未量化高精度continuation shadow。
+
+已有Q2/Q3数学实现应当直接复用。
+
+不得因为本次改了条件编号，就重新实现、改变或重跑全部历史资格。
+
+### 2.3 已有Codec吞吐
+
+匹配128 warmup +128 measurement：
+
+| 本次方法 | 历史短窗TPS |
+|---|---:|
+| Q2：H+C32 Sym | 8.773311488635922 |
+| Q3：H+C32 Asym | 8.628929769729911 |
+
+这两个值仅用于规划资源，不是长程实际吞吐保证。
+
+FP的13.775 TPS也不能当作INT8实际速度。
+
+### 2.4 源码身份
+
+必须恢复本轮INT8任务的实际Source Manifest及SHA。
+
+其中基础历史恢复使用407项有效源码清单，后续任务已有额外合法控制修订。
+
+以本次INT8资格真正执行的最终源码清单和身份为准，不得自动退回旧版控制器或将先前407项清单冒充整个新INT8代码闭包。
+
+不重复创建过去已经核验的巨型raw资产。
+
+---
+
+## 三、只新增Q0/Q1无Hadamard路径
+
+当前最重要的工程增量是：
+
+- Q0：Native Key坐标 + Sym32。
+- Q1：Native Key坐标 + Asym32。
+
+### 3.1 Native Group32
+
+Q0/Q1在原生Key坐标中执行量化，不进行Hadamard变换。
+
+必须确认：
+
+1. KDA以外的Qwen GDN State实际Key×Value布局。
+2. Group32沿Key维度分组。
+3. 没有偷偷调用H128。
+4. 不会将已旋转的State误认为Native State。
+5. GDN Query、Key及readout坐标与State保持一致。
+6. 原生GDN更新数学不改变。
+
+不要简单删除一处Hadamard调用后就宣布无Hadamard版本正确。
+
+应使用无量化Native FP路径进行短程数学对照，证明Q0/Q1的坐标处理正确。
+
+### 3.2 Q0对称INT8
+
+保持原有Sym32的数值规则：
+
+- FP32 scale。
+- 每个32元素Group独立amax。
+- 原有rounding、clipping与scale floor。
+- INT8 codes。
+- 立即解码和writeback。
+
+只改变Hadamard开关，不重新设计Sym32算法。
+
+### 3.3 Q1非对称INT8
+
+优先复用原Q3已经通过GPU资格的Asym32 Codec。
+
+不得重新发明另一套非对称量化。
+
+沿用：
+
+- Include-zero extrema。
+- FP32 scale。
+- 冻结的Tensor/Tensor除255运算路径。
+- RNE舍入。
+- UINT8 zero-point。
+- UINT8 codes。
+- 整数扩宽后减zero-point。
+- FP32解码。
+- 原始scale floor及数值边界规则。
+
+Q1/Q3应该共享同一个Asym32核心Codec，只允许旋转坐标不同。
+
+### 3.4 先完成CPU微型资格
+
+只新增Q0/Q1必要的：
+
+- Group轴检查。
+- Native/H坐标切换。
+- Codec数学检查。
+- 真实State Fixture。
+- zero-point与scale检查。
+- 非有限值与边界测试。
+- 错误分组负控。
+- Writeback与next-consumption负控。
+
+不要重新执行整个Qwen历史CPU研究。
+
+---
+
+## 四、冻结Qwen AIME26正式生成协议
+
+### 4.1 数据集
+
+使用AIME2026完整30道题。
+
+固定：
+
+`seed = 1`
+
+每种配置全部运行30题，总计120条自由生成。
+
+必须冻结：
+
+- 30道题的原始ID。
+- 题目文本。
+- Prompt模板。
+- Chat Template。
+- Tokenizer。
+- Prompt token IDs及SHA。
+- 问题顺序。
+- 生成Seed。
+- 评分器源码身份。
+
+不能因已有历史AIME结果而挑题、改Prompt或者选择有利的输入。
+
+### 4.2 生成长度
+
+Qwen继续沿用历史正式AIME协议：
+
+`max_new_tokens = 81920`
+
+这是最大新生成token数，不是Ling的256K动态Context预算。
+
+须额外确保模型、Runtime和Cache支持：
+
+`prompt_tokens + 81920`
+
+所需总上下文容量。
+
+不允许在不通知的情况下把81920解释成包含Prompt的总token数。
+
+不能因为某配置生成较慢就缩短其长度。
+
+### 4.3 采样配置
+
+从最近已封存的Qwen正式AIME Runner恢复完整采样语义。
+
+已知目标协议包括：
+
+| 参数 | 值 |
+|---|---|
+| Thinking | True |
+| do_sample | True |
+| temperature | 1.0 |
+| top_p | 0.95 |
+| top_k | 20 |
+| min_p | 0 |
+| presence_penalty | 1.5 |
+| repetition_penalty | 1.0 |
+| seed | 1 |
+| max_new_tokens | 81920 |
+
+Presence penalty必须沿用原Qwen正式协议，仅针对生成输出token按原实现处罚一次，不能错误处罚Prompt或者叠加多次。
+
+特别核验：
+
+- Sampler实际源码。
+- RNG初始化和重置。
+- top-k/top-p/min-p的实际处理顺序。
+- 采样器确定性许可范围。
+- Thinking token与EOS处理。
+- Prompt token是否进入Penalty历史。
+- EOS和合法length终止条件。
+
+历史Sampler如依赖`repair_sampler_scope_v1`，应当恢复与本次Runtime兼容且数学一致的实际行为，而不是直接复制代码后未经资格就运行。
+
+**四种方法必须使用同一份冻结Sampler实现。**
+
+HISTORICAL_PORT可以保留自身数学协议，但不得让Q0/Q1与Q2/Q3使用不同采样器。
+
+---
+
+## 五、统一Prefill与Persistent QDQ
+
+这是正式实验的关键工程门禁。
+
+本次全部学生条件必须采用同一冻结QDQ时序。
+
+现有Group32短程资格使用：
+
+- token0开始。
+- query length=1。
+- 全24个GDN层逐tokenQDQ。
+- QDQ后立即writeback。
+- 下一token读取该QDQ state。
+
+**正式AIME应优先保持这一已经通过资格的token0 persistent语义。**
+
+如果Prompt采用多token Prefill，必须验证每个Prompt token之后均执行真实QDQ/writeback。
+
+不能：
+
+- Prompt阶段保留未量化State。
+- 只在整个Prompt结束时QDQ一次，却宣称全程persistent。
+- 对Q0/Q1使用Native Prefill，而对Q2/Q3使用另一套量化时序。
+- 使用高精度shadow state进行下一token递推。
+- 把Chunk末尾QDQ冒充Chunk内部逐tokenQDQ。
+
+若历史高吞吐Runtime的多token Prefill无法满足上述合同，应使用已经通过资格的stepwise路径处理Prompt，并在正式执行前核验它与后续Decode的状态连续性。
+
+由于这可能不同于历史81920 AIME的Prefill协议，历史正确率只作背景，不能直接用作新Codec严格匹配基线。
+
+必须分别保存：
+
+- Prompt阶段QDQ计数。
+- Decode阶段QDQ计数。
+- 每层覆盖情况。
+- Writeback身份。
+- 下一kernel实际消费的短程证据。
+- 稀疏抽样状态指纹。
+
+正式长程运行保留真正的QDQ和必要数值检查，但不要每token写出全部State Tensor，避免不必要的I/O。
+
+---
+
+## 六、四张RTX3090的GPU资格与调度
+
+### 6.1 设备资格
+
+Qwen服务器使用四张实际RTX3090 24GB。
+
+每张GPU必须核验：
+
+- GPU UUID。
+- GPU型号及计算能力。
+- 可用显存。
+- Driver。
+- PyTorch/CUDA运行环境。
+- 模型权重及实际动态库身份。
+- GPU owner-PID。
+- 外部任务占用。
+- 数值Runtime身份。
+
+不得仅凭GPU0、GPU1等逻辑编号推断物理设备身份。
+
+旧Group32资格在GPU0完成，不能直接宣称其他三张卡已经获得相同资格。
+
+但可以复用已有完整源码和数值Fixture，在其他GPU上执行**必要的最小跨设备Canary**，不重新进行整套512-token历史重复测试，除非前置合同实际要求。
+
+### 6.2 GPU最小资格
+
+先在GPU0验证新增Q0/Q1。
+
+建议：
+
+1. GPU Codec-only数学。
+2. 32-token真实GDN。
+3. 128-token持续QDQ。
+4. 必要的512-token fresh重复性。
+5. AIME自由采样非测试文本资格。
+6. EOS、length与Cache reset。
+7. 正确的下一kernel消费。
+
+Q2/Q3则优先复用已经通过的512-token资格，新增AIME Prefill/Sampler相关的必要检查。
+
+随后在GPU1/2/3执行最小跨设备资格，确认四张卡都能合法运行四个条件。
+
+如果跨设备数值不逐字节相等，不能自动放宽任何冻结的单设备资格；应保留硬件差异并判断各GPU是否满足自身的数值及fresh-process合同。
+
+### 6.3 正式调度：以问题为单位
+
+**禁止每张GPU只固定运行一种Codec。**
+
+因为即使四张都是3090，也可能存在不同的数值环境和设备差异。
+
+本任务采用：
+
+`QUESTION_BUNDLE = {Q0,Q1,Q2,Q3}`
+
+同一道题的四种配置必须在同一GPU UUID上完成。
+
+初始题量：
+
+| GPU | 问题数 | 生成数 |
+|---|---:|---:|
+| GPU0 | 8 | 32 |
+| GPU1 | 8 | 32 |
+| GPU2 | 7 | 28 |
+| GPU3 | 7 | 28 |
+
+总计30题、120条生成。
+
+具体题号通过冻结的确定性hash分配，并在正式生成前写入manifest。
+
+可以基于非AIME吞吐估算，在没有查看任何AIME答案与正确率之前调整各卡的题目数量。
+
+一旦正式科学生成开始，不得根据结果重新分配题目。
+
+### 6.4 样本独立性
+
+每个样本必须独立初始化：
+
+- seed=1的Sampler RNG。
+- Recurrent State。
+- Attention KV Cache。
+- 当前样本Prompt。
+- Codec状态。
+- 生成token历史。
+- Presence penalty历史。
+
+若多个样本共用常驻模型实例，必须用非AIME负控证明请求之间的缓存和RNG完整重置。
+
+不能用上一方法已经生成的State继续下一方法。
+
+如果缓存隔离无法证明，应采用独立fresh process。
+
+四卡可并行执行不同问题bundle；同卡样本不得并发导致显存或状态混用。
+
+---
+
+## 七、正式AIME前的长程资格
+
+已有512-token数值资格是必要证据，但不能直接外推81920-token长程稳定性。
+
+建议使用非AIME冻结文本进行有限的长上下文资格。
+
+至少检查：
+
+- 数千token连续QDQ后是否finite。
+- State scale、codes和zero-point是否保持合法。
+- Cache位置及长度增长是否正确。
+- Native Group32与Hadamard Group32是否都没有坐标漂移。
+- 长Context下显存是否可承受。
+- EOS/length处理。
+- Sampler RNG是否可复现。
+- GPU释放和重新初始化。
+- 长程过程中是否存在异常的未量化State路径。
+
+不得将这些Canary作为Future-KL科学实验。
+
+不能因为数值Canary通过就宣称AIME正确率会提高。
+
+对于非AIME短程/长程检查，尽量使用此前已验证的CPU或GPU工具，不要无必要开发新的监控框架。
+
+如果无法建立81920上限所需的合法Runtime和内存配置，不允许悄悄缩短正式生成长度。
+
+---
+
+## 八、正式GPU执行权限与资源纪律
+
+当前任务必须单独获得四GPU执行许可。
+
+前序Group32任务中用户取消GPU时间预算限制，不应自动解释为本任务已经获得新的完整AIME GPU执行授权。
+
+如果用户在本任务中明确授权四张GPU长时间执行，则**不要沿用此前0.5GPUh/1800秒的小型Canary预算**。
+
+正式运行可以不设置人为GPUh硬上限，但必须明确记录这一授权范围，并保留：
+
+- 实际设备与UUID限制。
+- 外部进程独占门禁。
+- 显存安全检查。
+- 磁盘空间与写入上限。
+- 真实无进展watchdog。
+- 清理资源预留。
+- 进程生命周期记录。
+- 非法状态fail-closed停止。
+
+无进展watchdog不能冒充全任务时间预算。
+
+GPU实际费用和累计使用情况必须持续记录，不能因没有时间限制就忽略资源账本。
+
+### 正式前成本预测
+
+Qwen四组共120条，每条最多81920个新token。
+
+理论最大新token数：
+
+`120 × 81920 = 9,830,400`
+
+真实生成数量取决于EOS和合法length结束。
+
+使用Q0–Q3实际非AIME预热吞吐，估算：
+
+- 单GPU总任务时间。
+- 四GPU总墙钟。
+- 总GPUh。
+- 模型加载、Prompt Prefill、采样及解码开销。
+- 日志及最终生成资产大小。
+- 若大量题目触及长度上限的最坏情况。
+
+不要把此前8.6–8.8 TPS短窗速度直接当成81K长程稳定速度。
+
+用户未要求在长任务中为了节省GPU时间牺牲截断长度或科学协议。
+
+---
+
+## 九、正式120条AIME26生成
+
+只有以下门禁全部通过才开始：
+
+1. 四个Codec CPU/GPU数学资格PASS。
+2. Q0/Q1真实Native路径PASS。
+3. Q2/Q3既有H路径资格有效。
+4. 四GPU设备身份与各自Runtime资格PASS。
+5. Prompt与Sampler身份PASS。
+6. token0 persistent QDQ和next-consumption PASS。
+7. 长上下文资源资格PASS。
+8. 30道题×4配置×seed1任务名单冻结。
+9. 四卡问题分配冻结。
+10. 本次四卡GPU执行授权有效。
+
+### 正式执行
+
+按冻结任务名单执行：
+
+`30 problems × 4 codecs × seed1 = 120 samples`
+
+每条样本：
+
+- 使用相同冻结Prompt与Chat Template。
+- 独立seed=1初始化。
+- 独立Cache与Recurrent State。
+- 按对应Codec从token0执行QDQ。
+- 最多81920个new tokens。
+- 完整保存生成token IDs及文本。
+- 保留合法EOS或length终止。
+- 不使用其他Codec生成的状态。
+
+任务开始后，不得根据部分AIME答案修改：
+
+- 量化公式。
+- Group Size。
+- Hadamard。
+- 采样参数。
+- Prompt。
+- GPU分配。
+- 评分器。
+- 正确率判定规则。
+
+### 运行中监控
+
+保留轻量级：
+
+- 当前问题ID。
+- Codec ID。
+- GPU UUID。
+- 生成token数。
+- 运行墙钟。
+- TPS统计。
+- nonfinite状态。
+- Recurrent QDQ计数。
+- 任务状态。
+- GPU资源状态。
+- EOS/length/runtime终止原因。
+
+生成过程中应定期将合法进度写入append-only记录。
+
+不要每token保存完整大词表logits或全模型State；本次主科学目标是AIME准确率，过量日志会显著影响运行效率。
+
+### 失败及恢复
+
+如果遇到数值、代码身份或QDQ写回错误，立即触发相应fail-closed停止并保留完整首差异。
+
+如果只是资源或进程中断：
+
+- 保存原已生成token。
+- 保留真实退出和释放证据。
+- 若没有经过验证的精确状态/RNG恢复机制，不允许将另一次重新生成的文本拼接到当前轨迹。
+- 不进行隐式多次重试来挑选正确答案。
+
+若仅部分样本完成，报告PARTIAL，不得用完成子集准确率冒充完整30题的正式结果。
+
+---
+
+## 十、Frozen V4正式评分
+
+全部合法生成完成后，调用原Qwen冻结的Frozen V4评分器。
+
+不得自行重写评分规则。
+
+必须执行：
+
+1. 官方Frozen V4评分。
+2. 独立CPU重评分。
+3. 同一sample逐payload校验。
+4. 正确/错误与最终答案提取检查。
+5. 正确数与准确率汇总。
+6. 所有生成结果与源代码/输入SHA绑定。
+
+保留原rightmost claim、tentative answer、retraction和restatement过滤规则。
+
+不得根据评分结果改变生成文本、截断位置或答案解析。
+
+### 主结果表
+
+| 方法 | Correct/30 | Accuracy |
+|---|---:|---:|
+| Q0：Sym32 | 实测 | 实测 |
+| Q1：Asym32 | 实测 | 实测 |
+| Q2：H+Sym32 | 实测 | 实测 |
+| Q3：H+Asym32 | 实测 | 实测 |
+
+每种方法只有30题、一个seed。
+
+因此这是冻结配置的探索性对照，不允许将少数题目的差异直接解释为已证实的广泛泛化。
+
+AIME26已被历史研究多次使用，不得称其为此前从未观察过的全新独立测试集。
+
+---
+
+## 十一、科学分析：2×2交互
+
+本任务必须完整报告四种方法的配对效果。
+
+### 11.1 非对称量化的作用
+
+无Hadamard：
+
+`Q1 - Q0`
+
+有Hadamard：
+
+`Q3 - Q2`
+
+分别报告：
+
+- 救回多少题。
+- 丢失多少题。
+- 净正确数。
+- 准确率差。
+
+### 11.2 Hadamard的作用
+
+对称量化：
+
+`Q2 - Q0`
+
+非对称量化：
+
+`Q3 - Q1`
+
+同样提供逐题配对分析。
+
+### 11.3 交互作用
+
+定义：
+
+`I = (Acc_Q3 - Acc_Q2) - (Acc_Q1 - Acc_Q0)`
+
+解释：
+
+- I>0：在本次样本上，Hadamard条件下Asym的准确率增量更大。
+- I<0：在本次样本上，Asym的增量在Hadamard条件下更小。
+- I=0：没有观察到该准确率差中差。
+
+不能仅凭I的正负宣称已经建立机制因果解释。
+
+### 11.4 逐题结果
+
+每道题保存：
+
+| Problem ID | Q0 | Q1 | Q2 | Q3 |
+|---|---|---|---|---|
+| AIME26-01 | correct/incorrect | ... | ... | ... |
+| ... | ... | ... | ... | ... |
+| AIME26-30 | ... | ... | ... | ... |
+
+同时记录每题四配置的：
+
+- 最终答案。
+- 生成token数。
+- EOS或length原因。
+- GPU UUID。
+- 是否finite。
+- 运行时间。
+
+只有真实数据产生后才能填写。
+
+另外分别提供GPU0–GPU3的题目分组描述，不把不同题目难度导致的差异误当作GPU速度或精度差异。
+
+---
+
+## 十二、交付文件与独立封存
+
+新root：
+
+`QWEN_GDN_GROUP32_FOUR_CODEC_AIME26_SEED1_V1`
+
+至少交付：
+
+1. `EXECUTION_PLAN.md`
+2. `FOUR_CODEC_NUMERICAL_CONTRACT.md`
+3. `HISTORICAL_PORT_SOURCE_AUDIT.md`
+4. `AIME26_SEED1_PROTOCOL.json`
+5. `AIME26_DATASET_FREEZE.json`
+6. `GPU_UUID_AND_RUNTIME_AUDIT.json`
+7. `QUESTION_GPU_ASSIGNMENT.json`
+8. `CPU_CODEC_QUALIFICATION.json`
+9. `GPU_CODEC_QUALIFICATION.json`
+10. `PREFILL_AND_QDQ_AUDIT.json`
+11. `FREE_GENERATION_CANARY.json`
+12. `RESOURCE_AND_COST_ESTIMATE.md`
+13. `FORMAL_PROGRESS.json`
+14. `FORMAL_RESULTS_120.jsonl`
+15. `AIME26_FROZEN_V4_SCORES.json`
+16. `AIME26_PER_PROBLEM_RESULTS.csv`
+17. `AIME26_PAIRWISE_INTERACTION.json`
+18. `GENERATION_LENGTH_AND_THROUGHPUT.md`
+19. `RESOURCE_LEDGER.json`
+20. `FINAL_SCIENTIFIC_REPORT.md`
+21. `SHA256_MANIFEST.json`
+22. `FINAL_SEAL_RECEIPT.json`
+
+必须提供源码、模型、Sampler、评分器、实际输入、GPU设备、Codec及正式生成结果的完整身份链。
+
+原CPU/FP/Group32资格资产只读引用。
+
+若实际没有完成对应阶段，不得创建填有假数据的输出文件。
+
+大模型及大量原始GPU数据可以留在Qwen服务器，只需保留可复核的SHA与引用，不必无条件下载全部大Tensor。
+
+---
+
+## 十三、实际执行顺序
+
+请高效完成当前合法执行范围内的工作，不要只生成计划，也不要反复追加小修补任务。
+
+**Phase A：准备与资格**
+
+1. 恢复最新HISTORICAL_PORT和Group32短程GPU资格。
+2. 核验现有Q2/Q3。
+3. 新增Q0/Q1无Hadamard路径。
+4. 冻结四配置数值合同。
+5. 完成必要CPU微型测试。
+6. 完成4张3090的最小GPU数学/自由生成资格。
+7. 冻结Sampler、Prompt、QDQ时序及EOS。
+
+**Phase B：资源与调度**
+
+8. 冻结30题与seed1输入。
+9. 用非AIME预热测量四种Codec资源需求。
+10. 检查81920-token长上下文能力。
+11. 按问题bundle分配四张GPU。
+12. 核验本次正式GPU执行授权。
+13. 准备独立worker、资源记录和合法停止机制。
+
+**Phase C：正式AIME**
+
+14. 四卡并行启动冻结任务。
+15. 完成120条生成。
+16. 按Frozen V4正式评分。
+17. 完成逐题配对和交互分析。
+
+**Phase D：交付**
+
+18. 独立核验评分与执行身份。
+19. 汇总GPU资源、生成长度及失败事件。
+20. 输出完整科学报告。
+21. 封存新任务，保持全部历史资产不变。
+
+### 停止条件
+
+- 数值合同FAIL。
+- GPU设备或源码身份FAIL。
+- 无Hadamard坐标语义FAIL。
+- Asym32编码资格FAIL。
+- Persistent QDQ/writeback或next-consumption FAIL。
+- Sampler与正式冻结协议不一致。
+- 256K Ling参数被错误带入Qwen。
+- 原81920新token上限无法合法满足。
+- 资源或GPU占用门禁FAIL。
+- 非finite。
+- 用户本任务GPU权限不成立。
+
+以上情况应保存原始证据并明确STOP，不允许为了完成120条而放宽数学或科学条件。
+
+## 最终成功标准
+
+只有满足以下条件，才能报告：
+
+`FORMAL_COMPLETE_120_120_AND_STOP`
+
+- 四种方法全部获得必要的GPU数值资格。
+- 30题×4配置×seed1全部合法生成完成。
+- 120条均有独立模型输入、Sampler与Cache身份。
+- 持续QDQ/writeback符合冻结合同。
+- Frozen V4评分全部完成并通过独立核验。
+- 逐题配对及交互分析完成。
+- 资源、退出、源码及科学资产证据完整。
+
+如果只完成部分任务，必须报告真实数量及`PARTIAL_RESULTS_PRESERVED_AND_STOP`，不能推断未完成样本的准确率。
+
+**最终目标：在4张RTX3090上，一次性完成Qwen/GDN Group32四配置AIME26完整30题、seed1的公平配对实验，直接验证对称量化、非对称量化和Hadamard对长链数学推理正确率的影响。**

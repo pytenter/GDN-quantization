@@ -1,0 +1,702 @@
+# Codex科研任务：Qwen/GDN历史高吞吐Runtime的INT8 Group32接入与资格验证 V1
+
+## 一、任务身份与目标
+
+任务名称：
+
+`QWEN_GDN_HISTORICAL_PORT_INT8_GROUP32_QUALIFICATION_V1`
+
+模型：Qwen3.5-9B / GDN。
+
+运行基础：已经获得FP短程数值资格和吞吐恢复的`HISTORICAL_PORT`。
+
+### 核心目标
+
+在不改变已恢复FP Runtime数学路径的前提下，实现并验证以下三个INT8实验条件：
+
+| 编号 | Codec | 目的 |
+|---|---|---|
+| B0 | Key-H128 + C128 Sym | 建立匹配的原始量化基线 |
+| B1 | Key-H128 + C32 Sym | 只检验Group Size 128→32 |
+| B2 | Key-H128 + C32 Asym | 检验Group32下非对称量化的额外作用 |
+
+本次不加入Dual-M、Permutation、Learned Rotation或其他新量化方法。
+
+主要问题：
+
+1. 恢复版Runtime能否正确执行真实INT8 persistent QDQ？
+2. Group32 Sym能否保持GDN State更新及下一token读取语义？
+3. Group32 Asym能否通过scale、zero-point、codes及状态写回资格？
+4. 三种方法能否在完全相同的恢复版运行协议下公平比较？
+5. 实际INT8吞吐是多少？相比历史OLD_H+C128是否存在明显额外开销？
+6. 哪些条件已经具备进入32K Future-KL Pilot的资格？
+
+**本任务的成功标准是数值和运行资格，不要求Group32提前证明Future-KL优于Group128。**
+
+本次不启动正式32K、AIME26或Rotation训练。
+
+---
+
+## 二、最新已经确认的Runtime基线
+
+前序任务：
+
+`QWEN_GDN_HISTORICAL_RUNTIME_GPU_RECOVERY_V1`
+
+科学/工程状态：
+
+`HISTORICAL_PORT_FP_QUALIFIED_SPEED_RECOVERED`
+
+真实GPU实测：
+
+| 配置 | TPS |
+|---|---:|
+| OLD恢复版FP，三次中位 | 13.774973185423399 |
+| 本轮NEW FP参考 | 7.741047785182266 |
+
+恢复版已经完成：
+
+- 真实Qwen3.5-9B FP forward。
+- 两次32-token fresh-process数值比较。
+- GDN State、Cache、Logits检查。
+- 真实激活驱动的CPU FP64递推资格。
+- 单GPU设备身份与资源释放审计。
+- 三次128 warmup +128 measurement吞吐测量。
+
+重要限制：
+
+- 恢复模式仍是`HISTORICAL_PORT`。
+- 历史完整二进制EXACT身份UNKNOWN。
+- 当前只获得FP短前缀和短窗口资格。
+- H+C128/C32 Sym/Asym尚未获得GPU资格。
+- 13.775 TPS是FP吞吐，不能当作未来INT8吞吐。
+
+**不要重新运行旧版FP恢复任务，也不要重新开展吞吐根因调查。**
+
+### 源码身份
+
+前序GPU任务使用407项有效源码清单：
+
+- 403项继承。
+- 4项明确修订。
+- 父有效清单SHA：
+  `64ca5853e4ed65ab3e2c59d9deb85b4aa026f0f712abd5496495b7b912fcb457`
+
+必须从实际交付目录核验最终源码与执行身份，不得使用过时的405+2清单替代。
+
+前序报告明确本轮未执行最终seal、未删除raw。后续引用时必须保留这个事实，不得自行替它补造封存证明。
+
+所有历史目录保持只读。
+
+---
+
+## 三、总体执行原则
+
+1. 先恢复和核验源码身份，再实现新Codec。
+2. 尽可能复用现有C128及先前Group32 CPU数学实现。
+3. 不修改历史OLD FP forward、GDN recurrent kernel或Cache数学。
+4. 不重新设计Hadamard。
+5. 不改变模型权重、dtype或Attention/MLP。
+6. 不使用SGLang。
+7. 不引入新的高精度persistent recurrent buffer。
+8. 不采用延迟requantization。
+9. 不为了追求速度关闭必要检查。
+10. 不依赖历史NEW_STRICT的数值作为新协议匹配基线。
+11. 不通过更改量化数值规则使某个候选看起来更好。
+12. 如果数值资格失败，一次性保存完整首差异证据并停止相关分支，不开展重复修补。
+
+采用独立实验root，隔离新INT8实现。
+
+---
+
+# 四、阶段A：CPU-only恢复旧C128和Group32数学
+
+## A1. 核验C128原始合同
+
+优先找到：
+
+- 已恢复HISTORICAL_PORT实际模型forward。
+- 旧版Hadamard注入源码。
+- 原C128 Sym Codec。
+- GDN state QDQ/writeback。
+- 原CPU数值fixture。
+- 已有Qwen Group128/64 Asym CPU研究资产。
+- 新历史移植Runtime有效源码清单。
+
+首先确认实际State形状和量化轴。
+
+按现有研究合同，GDN沿Key方向分组。
+
+对于实际128×128 Key×Value State：
+
+C128：
+
+每个Value列中的128个Key元素共享量化参数。
+
+C32：
+
+每个Value列中的128个Key元素被划分为4个连续32元素组。
+
+必须通过源码确认真实shape、layout和grouping，不得假设所有层都能按相同reshape直接处理。
+
+### 元数据精度
+
+此前Qwen canonical C128 Sym使用FP32 scale。
+
+本次主实验建议统一：
+
+`SCALE_DTYPE=FP32`
+
+因此：
+
+- B0使用原canonical C128的真实FP32 scale合同。
+- B1采用同一FP32 scale精度。
+- B2同样采用FP32 scale及整数zero-point。
+
+不能将历史FP16 Group128/64 CPU实验中的数值直接当作本任务FP32匹配结果。
+
+如果实际原C128源码与这里描述存在差异，以核验后的canonical实现为准，并在正式冻结前明确记录。
+
+FP16 scale可作为后续独立敏感性实验，不进入本次主GPU矩阵。
+
+## A2. B0：Sym128
+
+严格复用原C128 Sym量化数学。
+
+典型表达为：
+
+\[
+s_g=\frac{\max |X_g|}{127}
+\]
+
+\[
+q=\operatorname{clip}(\operatorname{round}(X_g/s_g),-127,127)
+\]
+
+\[
+\hat X=s_gq
+\]
+
+实际safe scale、rounding、dtype和clipping规则必须来自原源码。
+
+B0不能因为接入新Runtime而改变Codec数学。
+
+## A3. B1：Sym32
+
+仅将每个Group包含的Key元素数量从128改成32。
+
+其他规则与B0一致。
+
+必须确认：
+
+- 每个Value列产生4个Group。
+- 不跨Value列共享scale。
+- 不跨head或layer混Group。
+- 每个Group独立计算FP32 scale。
+- codes使用INT8。
+- 重建后的State恢复原Key×Value布局。
+- Hadamard坐标变换及逆变换正确。
+
+## A4. B2：Asym32
+
+每个32元素Group计算：
+
+\[
+a_g=\min(0,\min X_g)
+\]
+
+\[
+b_g=\max(0,\max X_g)
+\]
+
+\[
+s_g=\frac{b_g-a_g}{255}
+\]
+
+\[
+z_g=\operatorname{clip}
+\left(\operatorname{round}(-a_g/s_g),0,255\right)
+\]
+
+\[
+q=\operatorname{clip}
+\left(\operatorname{round}(X_g/s_g)+z_g,0,255\right)
+\]
+
+\[
+\hat X=s_g(q-z_g)
+\]
+
+具体要求：
+
+- UINT8 codes。
+- FP32 scale。
+- UINT8 zero-point。
+- 减zero-point前转换为足够宽的有符号整数。
+- 与Sym32保持相同Hadamard、分组方向和QDQ插入位置。
+- 全零、常数、极小scale和边界情况采用冻结的明确规则。
+- 不使用在线FP Oracle选择量化参数。
+
+### 跨设备算术注意事项
+
+此前Ling的Asym32出现过CPU/GPU标量除法与舍入路径不一致的问题。
+
+本任务必须提前处理这一风险：
+
+- 冻结scale、zero-point和code的运算顺序。
+- 明确FP32除法及rounding实现语义。
+- 独立保存CPU数学参考。
+- GPU微型Codec资格优先于完整模型Canary。
+- 如果CPU/GPU不一致，在首次数值失败时保存量化前输入及各阶段中间bits。
+
+不能在发生差异后临时修改scale dtype、rounding或strict parity阈值。
+
+如原Codec合同不足以保证指定的bit-level算术结果，应在科学评分前提出明确的新版本数值合同，而不是悄悄修改历史结果。
+
+---
+
+# 五、阶段B：冻结统一Persistent QDQ科学协议
+
+这一阶段非常重要。
+
+历史OLD与NEW的QDQ时序不同：
+
+- 历史OLD H短窗口首token不执行QDQ，256 token窗口中有255次。
+- NEW对应窗口从首token执行QDQ，共256次。
+- 旧AIME又存在整段Prompt不量化Prefill的特殊协议。
+
+**这些旧差异不能进入Group32的新匹配比较。**
+
+## B1. 本次统一协议
+
+建议新建：
+
+`HISTORICAL_PORT_PERSISTENT_INT8_GROUP32_V1`
+
+要求：
+
+1. 使用已经恢复的HISTORICAL_PORT FP计算数学。
+2. 对三种学生条件使用完全相同的模型输入和Hadamard。
+3. 从冻结的第一个需要持久保存的recurrent更新开始执行QDQ。
+4. 之后每个token、每个量化GDN state均QDQ并写回。
+5. 下一token必须实际消费上一token的QDQ状态。
+6. 不允许保留未量化State作为下一次更新输入。
+7. B0/B1/B2的QDQ注入位置和时间必须一致。
+8. 不得保留历史OLD首token漏QDQ行为并称其符合token0 persistent语义。
+
+如果历史prefill采用多token chunk，必须确认其中每个token的state是否真正经历QDQ。
+
+若不能在chunk内部逐token执行QDQ，应使用原生且数学合格的stepwise路径，或在资格阶段标记无法满足token0 persistent合同。
+
+不能把chunk末尾单次QDQ冒充整段逐tokenQDQ。
+
+### 注意
+
+本协议可能与历史OLD_H+C128不完全一致。
+
+这是允许的，因为本次建立的是独立匹配的INT8科研协议。
+
+但必须确保：
+
+**FP的历史数学路径不因新INT8适配而被修改。**
+
+如果新协议的首tokenQDQ或逐tokenprefill方式改变INT8吞吐，必须如实计入新INT8运行成本。
+
+## B2. Writeback资格
+
+对于预冻结的layer/head/token：
+
+必须核对：
+
+- QDQ之前的State。
+- INT8/UINT8 codes。
+- scales及zero-points。
+- QDQ重建后的State。
+- 写入Cache的State。
+- 下一次GDN kernel实际读取的initial_state。
+
+尤其检查：
+
+\[
+S_{t+1}^{\mathrm{kernel\ input}}
+=
+\operatorname{writeback}(QDQ(S_t))
+\]
+
+这里的等价判定遵守实际Carrier dtype及冻结数值合同。
+
+不能仅比较日志中两个对象指针，也不能用QDQ后State的hash代替下一kernel消费验证。
+
+---
+
+# 六、阶段C：CPU数值资格
+
+本阶段不使用GPU。
+
+必须对B0/B1/B2完成：
+
+1. 全零Group。
+2. 全正Group。
+3. 全负Group。
+4. 对称及非对称范围。
+5. FP32 scale边界。
+6. zero-point舍入边界。
+7. codes半整数边界。
+8. 极小scale。
+9. Code饱和及Clipping。
+10. 多head、跨layer布局。
+11. 非连续Tensor。
+12. Hadamard及Inverse Hadamard。
+13. QDQ状态更新。
+14. 重复QDQ行为。
+15. fresh-process CPU重复性。
+16. 故意跳过writeback的负控。
+17. 故意修改zero-point的负控。
+18. 错误分组轴的负控。
+
+特别注意：动态重新计算scale后的重复QDQ不必然逐字节幂等，不应设置错误的幂等断言。
+
+B0必须与原canonical C128参考建立数值Parity。
+
+对于B1/B2，保存独立可复核的数值结果。
+
+不要为通过新方法而修改历史C128参考。
+
+---
+
+# 七、阶段D：最小GPU Codec和真实模型资格
+
+## D1. GPU授权
+
+默认：
+
+`ALLOW_GPU_CANARY=NO`
+
+此提示词不代表用户已经授权GPU。
+
+仅当用户另行明确授权、permit有效、资源身份合格时才可执行。
+
+必须继承有效的Driver/NVML设备身份门禁：
+
+- 实际GPU UUID绑定。
+- 逻辑GPU0正确映射。
+- 只使用授权设备。
+- 进程owner-PID匹配。
+- 不抢占其他任务。
+- 全UUID释放检查。
+- 源码和动态库身份检查。
+
+不能直接跳过前序已建立的安全控制。
+
+### 硬预算
+
+建议新任务首次GPU Canary硬上限：
+
+- 单张RTX3090。
+- 最多0.5 GPUh。
+- 总GPU墙钟最多1800秒。
+- 1650秒保护停止。
+- 150秒清理预留。
+
+上述上限必须在GPU执行前经用户独立授权并写入permit。
+
+不能将历史1800秒无进展watchdog当作总墙钟硬预算。
+
+## D2. GPU Codec-only资格
+
+正式加载9B模型前，先用预冻结的真实State小样本与合成边界Fixture检查B0/B1/B2。
+
+检查：
+
+- 分组轴。
+- FP32 scale。
+- zero-point。
+- codes。
+- Decode。
+- Hadamard坐标。
+- CPU/GPU数值一致性。
+- 同设备重复性。
+
+对严格编码字段按照冻结合同检查。
+
+任何CPU/GPU数值差异必须保留最早差异和完整相关证据。
+
+尤其B2需要保存：
+
+- 原始preQDQ Group。
+- min/max。
+- FP32 scale。
+- zero-point。
+- round前后的编码值。
+- UINT8 codes。
+- Decode。
+
+避免重复Ling Asym32中“实际失败输入没有保存，后续只能猜测根因”的问题。
+
+若Codec-only无法通过：
+
+**停止该条件的真实模型资格，不自动修改实现或重试。**
+
+其他互不依赖且预登记的条件可以继续，但必须遵守同一GPU总预算。
+
+## D3. 真实9B模型Canary
+
+只有对应Codec的GPU数学资格通过，才开始真实模型。
+
+建议执行：
+
+- 32-token。
+- 128-token。
+- 512-token。
+
+优先依次完成B0/B1/B2的32-token资格，再升级到128/512；不得因为其中某条未通过就将其写成科学负结果。
+
+每个条件必须：
+
+1. 从同一冻结初始输入开始。
+2. 使用同一H128。
+3. 使用原HISTORICAL_PORT数学。
+4. 执行全部GDN层。
+5. 每token QDQ/writeback。
+6. 检查下一kernel实际消费。
+7. 检查数值finite。
+8. 记录实际Codec配置。
+9. 执行fresh-process重复性测试。
+10. 记录显存、wall、资源身份。
+
+必须区分：
+
+- Codec数学资格。
+- 真实模型接入资格。
+- Persistent next-consumption资格。
+- Fresh-process稳定性。
+- 资源资格。
+
+它们不能用一个笼统的PASS互相替代。
+
+### FP Native参考
+
+恢复版FP已完成32-token和短窗口资格。
+
+本任务优先复用其合法证据，不重复运行完整FP恢复实验。
+
+仅在新INT8协议的prefill或执行身份变化导致旧FP不再可比时，补充最小必要的同协议FP参考。
+
+---
+
+# 八、阶段E：匹配吞吐测试
+
+只有相关Codec完成GPU数值资格后，才测吞吐。
+
+在相同HISTORICAL_PORT下分别测：
+
+- B0 C128 Sym。
+- B1 C32 Sym。
+- B2 C32 Asym。
+
+固定：
+
+- 128-token warmup。
+- 128-token measurement。
+- 相同cache位置。
+- 相同输入。
+- 同一GPU。
+- 无Profiler。
+- 测量窗口中不启用逐token观测。
+- 计时前后明确CUDA同步。
+
+实际记录：
+
+| 条件 | TPS | ms/token | GPU显存峰 | 资格 |
+|---|---|---|---|---|
+| B0 | 实测 | 实测 | 实测 | |
+| B1 | 实测 | 实测 | 实测 | |
+| B2 | 实测 | 实测 | 实测 | |
+
+如预算不足以执行合法性能窗，则对应字段`NOT_RUN`，不要借用历史H+C128的9.064610 TPS填入当前结果。
+
+特别说明：
+
+**本次不要求INT8达到13.775 TPS。**
+
+13.775是FP的已验证吞吐，INT8因为增加Hadamard和QDQ操作可能更慢。
+
+本阶段只判断Group32新增的运行开销，不以速度作为Codec数值资格通过的必要条件。
+
+---
+
+# 九、后续32K Future-KL方案：本次只准备
+
+如果三种条件获得完整GPU资格，可以准备：
+
+`QWEN_GDN_GROUP32_FUTURE_KL_PILOT_V1`
+
+但不能在本任务中直接启动。
+
+建议以后在独立文档上执行：
+
+| 方法 | 作用 |
+|---|---|
+| FP_NATIVE | 同协议完整FP参考 |
+| H+C128 Sym | Group128匹配基线 |
+| H+C32 Sym | Group32效果 |
+| H+C32 Asym | 非对称量化额外效果 |
+
+从token0开始真实persistent QDQ。
+
+采用Qwen已有科学协议：
+
+- 32768-token输入。
+- 384个冻结评分位置。
+- 完整248320词表。
+- FP32 KL(FP_NATIVE || Student)。
+- 文档级聚合。
+- 相同模型、Runtime和输入身份。
+
+预期主要比较：
+
+\[
+\Delta_{\mathrm{group}}
+=
+KL(H+C128)-KL(H+C32\,Sym)
+\]
+
+\[
+\Delta_{\mathrm{asym}}
+=
+KL(H+C32\,Sym)-KL(H+C32\,Asym)
+\]
+
+两者正值表示新方法降低Future-KL。
+
+不得直接使用历史NEW_STRICT的KL值充当这次匹配对照。
+
+后续Pilot需要独立预算和用户新授权。
+
+不得因短程Canary通过就自动进入32K。
+
+---
+
+# 十、资源计量及停止条件
+
+所有新GPU过程使用append-only事件：
+
+- dispatch。
+- first process exit。
+- first owned-resource release。
+- 全UUID释放。
+- actual wall。
+- 资源监控观察上下界。
+
+若无法精确测定物理GPUh：
+
+`EXACT_GPUh=UNRESOLVED`
+
+不能把进程预留区间写成精确GPU计算时间。
+
+### 必须立即停止相关GPU分支的情况
+
+- 设备身份不匹配。
+- 原源码SHA不匹配。
+- 模型或关键依赖身份异常。
+- Group轴错误。
+- CPU/GPU Canonical数值资格失败。
+- nonfinite。
+- QDQ写回未被下一kernel消费。
+- 高精度shadow state继续参与递归。
+- fresh-process稳定性失败。
+- OOM。
+- GPU预算超限。
+
+停止时保存首差异，不能自动更换Codec参数或降低门禁。
+
+若某一分支失败，不得补造其他分支的运行状态；共享资源门禁失败时则全任务停止。
+
+---
+
+# 十一、交付文件
+
+新建独立root：
+
+`QWEN_GDN_HISTORICAL_PORT_INT8_GROUP32_QUALIFICATION_V1`
+
+至少交付：
+
+1. `EXECUTION_PLAN.md`
+2. `SOURCE_AND_RUNTIME_IDENTITY.md`
+3. `HISTORICAL_PORT_INT8_PROTOCOL.md`
+4. `CODEC_NUMERICAL_CONTRACT.md`
+5. `CPU_CODEC_QUALIFICATION.json`
+6. `CPU_REFERENCE_PARITY.json`
+7. `GPU_CODEC_ONLY_QUALIFICATION.json`
+8. `GPU_FULL_MODEL_CANARY.json`
+9. `NEXT_CONSUMPTION_AUDIT.json`
+10. `FRESH_PROCESS_DETERMINISM.json`
+11. `INT8_THROUGHPUT_RESULTS.csv`
+12. `RESOURCE_LEDGER.json`
+13. `GROUP32_FUTURE_KL_NEXT_STAGE_PLAN.md`
+14. `FINAL_SCIENTIFIC_REPORT.md`
+15. `SHA256_MANIFEST.json`
+16. `FINAL_SEAL_RECEIPT.json`
+
+实际没有执行的GPU阶段标记`NOT_RUN`。
+
+不产生填有历史数字的假当前测量CSV。
+
+所有历史任务和未封存raw保持原样，不修改或删除。
+
+## 最终必须回答
+
+1. B0是否真正复现原canonical C128 Sym数学？
+2. B1 Group32 Sym是否通过GPU Codec数学及真实QDQ资格？
+3. B2 Group32 Asym是否通过CPU/GPU scale、zero-point、codes和decode资格？
+4. 三种Codec是否共享完全相同的Runtime与QDQ时序？
+5. 是否从首个token起真实persistent QDQ？
+6. 是否证明下一GDN kernel确实消费已QDQ状态？
+7. 同卡fresh-process重复性是否合格？
+8. 三种INT8条件的真实TPS各是多少？
+9. 是否存在Group32的显存、clipping或数值风险？
+10. 哪些候选真正具备进入匹配32K Future-KL实验的资格？
+
+### 最终分类
+
+可以分别报告每个条件的状态：
+
+- `CPU_CODEC_QUALIFIED`
+- `GPU_CODEC_QUALIFIED`
+- `PERSISTENT_QDQ_CANARY_QUALIFIED`
+- `FRESH_PROCESS_QUALIFIED`
+- `INT8_SHORT_RUNTIME_QUALIFIED`
+- `NUMERICAL_QUALIFICATION_FAIL`
+- `PERSISTENCE_CONTRACT_FAIL`
+- `GPU_RESOURCE_FAIL`
+- `NOT_RUN`
+
+同时给出整个任务的最终状态，不得因为B0通过就将B1/B2自动升级为PASS。
+
+---
+
+# 十二、实际执行要求
+
+请直接完成当前授权范围内的工作，不要只写规划。
+
+执行顺序：
+
+1. 查找已恢复历史OLD Runtime实际交付与407项源码清单。
+2. 核验历史FP恢复证据和本次任务身份。
+3. 在隔离副本中恢复C128 Sym原Codec。
+4. 实现C32 Sym与C32 Asym。
+5. 冻结FP32 scale、zero-point、rounding及QDQ时序。
+6. 完成全部CPU数值与回归资格。
+7. 准备GPU-only微型Codec测试及真实模型Canary。
+8. 检查GPU授权、permit、资源身份和硬预算。
+9. 已授权则执行GPU Codec-only资格。
+10. 对通过的Codec执行32/128/512-token真实persistent QDQ资格。
+11. 验证全GDN层的writeback与next-consumption。
+12. 数值合格且预算允许时执行匹配128+128吞吐测试。
+13. 给出哪些条件可以进入下一阶段32K Future-KL。
+14. 独立复核，封存新任务实际产生的证据。
+
+不在失败后开展额外参数搜索、无限重试或性能优化。
+
+**最终目标：在已经恢复13.775 TPS FP速度的HISTORICAL_PORT基础上，建立一套可重复、可审计、真实每token Persistent INT8 QDQ的C128/C32科学运行环境，为后续Group32对称与非对称量化的长期功能研究做好准备。**

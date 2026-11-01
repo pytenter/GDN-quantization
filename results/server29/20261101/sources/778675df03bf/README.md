@@ -1,0 +1,50 @@
+# qwen_oscar_resident_rotation_efficient_qualification_archive
+
+原始相对目录：`qwen_oscar_resident_rotation_efficient_qualification_archive`
+
+原结构化状态：**FAILED_OR_REJECTED**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`QWEN_GDN_OSCAR_RESIDENT_ROTATION_EFFICIENT_QUALIFICATION_V1/HANDOFF.md`](../../objects/be/be1cbb600dab42bce4b6429692c28a94d4cd9489385b4855cce7829ab1c7aa0b__PRIOR_HANDOFF.md)
+- [`QWEN_GDN_OSCAR_RESIDENT_ROTATION_EFFICIENT_QUALIFICATION_V1/FINAL_SEAL_RECEIPT.json`](../../objects/4a/4a93da599397d19bfeec2deda0615d4631ab9d26ad10982543eccc934552b8df__FINAL_SEAL_RECEIPT.json)
+- [`QWEN_GDN_OSCAR_RESIDENT_ROTATION_EFFICIENT_QUALIFICATION_V1/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`QWEN_GDN_OSCAR_RESIDENT_ROTATION_EFFICIENT_QUALIFICATION_V1/FINAL_PREFLIGHT_REPORT.md`](../../objects/c1/c128765f3db239df96235461bc05474a0ecaef91939be96955619a66a9326324__FINAL_PREFLIGHT_REPORT.md)
+- [`QWEN_GDN_OSCAR_RESIDENT_ROTATION_EFFICIENT_QUALIFICATION_V1/AIME26_SEED1_PROTOCOL.json`](../../objects/8c/8cc760b3f5bcbe75e14e0059abc7da6f0116e00a37949382f4c7c06d7f93ab9a__AIME26_SEED1_PROTOCOL.json)
+- [`QWEN_GDN_OSCAR_RESIDENT_ROTATION_EFFICIENT_QUALIFICATION_V1/RESIDENT_EXECUTION_PLAN.md`](../../objects/22/224c1a94c7031dad0e1dbb1a8aa3dcd54e65a9f23efd650c5f62e473e661f887__RESIDENT_EXECUTION_PLAN.md)
+- [`QWEN_GDN_OSCAR_RESIDENT_ROTATION_EFFICIENT_QUALIFICATION_V1/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`QWEN_GDN_OSCAR_RESIDENT_ROTATION_EFFICIENT_QUALIFICATION_V1/FINAL_ARCHIVE_VERIFICATION.json`](../../objects/4c/4cfc8986ab5f16cc210c5fb0e56903d986c4de5b36554ff9b8cfddea87d886b6__FINAL_ARCHIVE_VERIFICATION.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_exit_race_repair_20261023/HANDOFF.md`](../../objects/91/9176955e628fba3b9f613074f9ee3e77e097a4bc37bbc40bccbdd5f638296c8e__HANDOFF.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_gpu_continuation_20261022/HANDOFF.md`](../../objects/8c/8cb6916404b9cda2eb64675af1bfc846df439cb87e21f566f43a445887d2fcd9__HANDOFF.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_engineering_repair_20261022/HANDOFF.md`](../../objects/7a/7a9e9539a862c2e74ec0415577aae126c5105349fad0d9d766b3e001aa6b701a__HANDOFF.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_profiler_exit_repair_20261023/HANDOFF.md`](../../objects/e3/e3c9143a970bf2ee32f1db3cceca37756a7ea92a574762014536d9d0903f35e9__HANDOFF.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_qualification_continuation_20261023/HANDOFF.md`](../../objects/5e/5e824fb9ad96d5d5066939f7490862ed71bb58ba7c991516f0bb5a83c0384e17__HANDOFF.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_exit_race_repair_20261023/FINAL_SEAL_RECEIPT.json`](../../objects/25/2584b2bf29ea874494d2835997613dfb08dae81b20e70e0b21d82028a0d4f0b1__FINAL_SEAL_RECEIPT.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_exit_race_repair_20261023/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_gpu_continuation_20261022/FINAL_SEAL_RECEIPT.json`](../../objects/a1/a19b30d3725b894b78aac33795ccac29ab61a7bc1ec8e69e238b48c47de41b9c__FINAL_SEAL_RECEIPT.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_gpu_continuation_20261022/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_engineering_repair_20261022/FINAL_SEAL_RECEIPT.json`](../../objects/4d/4dd325528af15e8cd2c57ac8f744b6a24ff44840425c24793ca0d86d3139e5f8__FINAL_SEAL_RECEIPT.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_engineering_repair_20261022/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_exit_race_repair_20261023/AIME26_SEED1_PROTOCOL.json`](../../objects/8c/8cc760b3f5bcbe75e14e0059abc7da6f0116e00a37949382f4c7c06d7f93ab9a__AIME26_SEED1_PROTOCOL.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_exit_race_repair_20261023/FINAL_SCIENTIFIC_REPORT.md`](../../objects/65/655071f63a6f757bb182c224c15d93c59e6e0469ac404a387a4ffcc865de5750__FINAL_SCIENTIFIC_REPORT.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_exit_race_repair_20261023/RESIDENT_EXECUTION_PLAN.md`](../../objects/22/224c1a94c7031dad0e1dbb1a8aa3dcd54e65a9f23efd650c5f62e473e661f887__RESIDENT_EXECUTION_PLAN.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_gpu_continuation_20261022/AIME26_SEED1_PROTOCOL.json`](../../objects/8c/8cc760b3f5bcbe75e14e0059abc7da6f0116e00a37949382f4c7c06d7f93ab9a__AIME26_SEED1_PROTOCOL.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_gpu_continuation_20261022/FINAL_SCIENTIFIC_REPORT.md`](../../objects/7d/7de03db5fa60462c4e93e0c2bfbdce1ca19347497c59b35891fde1e0d3c0c1e3__FINAL_SCIENTIFIC_REPORT.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_gpu_continuation_20261022/RESIDENT_EXECUTION_PLAN.md`](../../objects/22/224c1a94c7031dad0e1dbb1a8aa3dcd54e65a9f23efd650c5f62e473e661f887__RESIDENT_EXECUTION_PLAN.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_exit_race_repair_20261023/provenance/PRIOR_HANDOFF.md`](../../objects/be/be1cbb600dab42bce4b6429692c28a94d4cd9489385b4855cce7829ab1c7aa0b__PRIOR_HANDOFF.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_gpu_continuation_20261022/provenance/PRIOR_HANDOFF.md`](../../objects/be/be1cbb600dab42bce4b6429692c28a94d4cd9489385b4855cce7829ab1c7aa0b__PRIOR_HANDOFF.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_profiler_exit_repair_20261023/FINAL_SEAL_RECEIPT.json`](../../objects/f0/f0cce48d3407d178eaabad447fe013cd39a7638aab5a9ed3c0a929da21a72746__FINAL_SEAL_RECEIPT.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_profiler_exit_repair_20261023/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_engineering_repair_20261022/AIME26_SEED1_PROTOCOL.json`](../../objects/8c/8cc760b3f5bcbe75e14e0059abc7da6f0116e00a37949382f4c7c06d7f93ab9a__AIME26_SEED1_PROTOCOL.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_engineering_repair_20261022/FINAL_SCIENTIFIC_REPORT.md`](../../objects/cc/cc906942833160e5dd22b3207a15a9369f1219c76889aaeab345bc2324214ece__FINAL_SCIENTIFIC_REPORT.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_engineering_repair_20261022/RESIDENT_EXECUTION_PLAN.md`](../../objects/22/224c1a94c7031dad0e1dbb1a8aa3dcd54e65a9f23efd650c5f62e473e661f887__RESIDENT_EXECUTION_PLAN.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_exit_race_repair_20261023/FINALIZER_CHAIN_STARTED.json`](../../objects/f4/f45dc5b98df51ddf9af0087528e9891122eeffd1451e2091fdbfb5b75be326fe__FINALIZER_CHAIN_STARTED.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_exit_race_repair_20261023/HISTORY_SCORES_VERIFIED.json`](../../objects/27/2712561b33c3ac067fb5b92ff09a6ea3590927b49245072e42bb6cb0afc3a03e__HISTORY_SCORES_VERIFIED.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_exit_race_repair_20261023/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_gpu_continuation_20261022/FINALIZER_CHAIN_STARTED.json`](../../objects/80/802d2a7b0aec58e6ac2ff5ab18e683c21687c0c3273b41ff2eb69680b1a2eb31__FINALIZER_CHAIN_STARTED.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_gpu_continuation_20261022/HISTORY_SCORES_VERIFIED.json`](../../objects/27/2712561b33c3ac067fb5b92ff09a6ea3590927b49245072e42bb6cb0afc3a03e__HISTORY_SCORES_VERIFIED.json)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_gpu_continuation_20261022/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_engineering_repair_20261022/provenance/PRIOR_HANDOFF.md`](../../objects/be/be1cbb600dab42bce4b6429692c28a94d4cd9489385b4855cce7829ab1c7aa0b__PRIOR_HANDOFF.md)
+- [`qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_engineering_repair_20261022/FINALIZER_CHAIN_STARTED.json`](../../objects/b7/b77a48c42cd88ca5e92f74bdfc365264198546890d940777788af6b5c0bf0c07__FINALIZER_CHAIN_STARTED.json)

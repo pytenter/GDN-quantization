@@ -1,0 +1,6 @@
+def __create_fn__(_type_frame_exec_strategy, _type_apply_to_code, _type_guarded_code, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_frame_exec_strategy, _dflt_apply_to_code, _dflt_guarded_code, _return_type):
+ def __init__(self,frame_exec_strategy:_type_frame_exec_strategy=_HAS_DEFAULT_FACTORY,apply_to_code:_type_apply_to_code=_dflt_apply_to_code,guarded_code:_type_guarded_code=_dflt_guarded_code)->_return_type:
+  self.frame_exec_strategy=_dflt_frame_exec_strategy() if frame_exec_strategy is _HAS_DEFAULT_FACTORY else frame_exec_strategy
+  self.apply_to_code=apply_to_code
+  self.guarded_code=guarded_code
+ return __init__

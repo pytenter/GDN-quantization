@@ -1,0 +1,5505 @@
+src/main/java/erjang/ETask.java
+public abstract class ETask<H extends EHandle> extends kilim.Task {
+
+	private static Logger log = Logger.getLogger("erjang.proc");
+
+    /*==================== Constants =============================*/
+
+    public static final EAtom am_normal = EAtom.intern("normal");
+	protected static final EAtom am_java_exception = EAtom
+			.intern("java_exception");
+	private static final EAtom am_DOWN = EAtom.intern("DOWN");
+	private static final EAtom am_process = EAtom.intern("process");
+
+    private static final int MAX_MAILBOX_SIZE = 1000;
+
+    /*==================== Typedefs ==============================*/
+    public enum STATE {
+        INIT, RUNNING, EXITING, DONE
+    };
+
+    private static final int MUTATOR_COUNT_ONE = (1<<4);
+    private static final int PSTATE_MASK = MUTATOR_COUNT_ONE - 1;
+    private static final int MUTATOR_COUNT_MASK = ~PSTATE_MASK;
+
+    /*==================== Process state ====================================*/
+
+    /** Process lifecycle:
+     *
+     *   INIT -----> RUNNING --------------------> DONE
+     *     \           \                       /
+     *     v           v                      /
+     *   INIT w/      RUNNING w/             /
+     *   exit_reason  exit_reason           /
+     *     \              \                /
+     *      -------------------> EXITING --
+     *
+     * For reliability (trigger-once guarantee) of exit-actions, the following invariant is enforced:
+     * Once the state is DONE, the set of exit-actions (links, monitors, and exit hooks) MUST NOT
+     * change (as there would be e.g. add/perform race conditions in that case),
+     * This is accompliced by keeping the pstate in an AtomicInteger together with the number of current exit-action
+     * mutators, in such a manner that the (logical) transition to DONE can only occur when there are zero mutators.
+     * (Value: <code>(n_mutators << 4) | (STATE value)</code>,  where n_mutators is the number of actual mutators
+     * plus the number of wannabe mutators.
+     *
+     * The critical invariant here is:
+     *     <em>When the state value part is DONE, the number of actual
+     * mutators will not increase</em>.
+     * (The number of wannabe mutators may increase, but immediate decreases
+     * once the DONE-ness of the state is discovered; the distinction between
+     * wannabe mutators and non-mutators is really a performance question,
+     * allowing use of getAndAdd().)
+     *
+     * Changes to links/monitors/exit hooks must honour this updating pattern.
+     * TODO: Follow through on this.
+     */
+    private AtomicInteger pstate_and_mutator_count = new AtomicInteger(STATE.INIT.ordinal());
+
+    private AtomicReference<PersistentHashSet<EHandle>>
+            linksref = new AtomicReference<PersistentHashSet<EHandle>>(PersistentHashSet.EMPTY);
+
+    protected Map<ERef,EHandle> monitors = new ConcurrentHashMap<ERef, EHandle>();
+
+    // this is not synchronized, as we only mess with it from this proc
+    // TODO That is not accurate, cf. do_proc_termination->send_monitor_exit call. --ESS
+    private Map<ERef,ETuple2> is_monitoring = new HashMap<ERef, ETuple2>();
+
+
+    protected final Mailbox<EObject> mbox = new Mailbox<EObject>(10, MAX_MAILBOX_SIZE);
+
+    /** Reduction counter. */
+    private int reds;
+
+    /** Exit signal and reason -
+     *  null when task is alive or terminated normally; non-null when task is terminated/terminating abnormally.
+     *  Killer and exit_reason are always set together.
+     * */
+    protected volatile EObject exit_reason;
+    protected Throwable killer;
+
+    private Mailbox<EObject> print_trace;
+    private Runnable run_on_stack;
+
+    /*==================== Instance methods ====================================*/
+
+    /**
+	 * @return
+	 */
+	public abstract H self_handle();
+
+    /*--------- Link related ----------------------------*/
+
+    public void unlink(EHandle other) throws Pausable {
+		unlink_oneway(other);
+		other.unlink_oneway(self_handle());
+	}
+	
+	public boolean unlink_oneway(EHandle handle) {
+        int ps = exit_action_mutator_lock();
+        try {
+            if (ps == STATE.DONE.ordinal()) return false; // Too late.
+
+            PersistentHashSet old, links;
+            try {
+
+                do {
+                    old = linksref.get();
+                    links = (PersistentHashSet) old.disjoin(handle);
+                } while (!linksref.weakCompareAndSet(old, links));
+                return true;
+
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        } finally {
+            exit_action_mutator_unlock();
+        }
+	}
+	
+	protected boolean has_no_links() {
+		IPersistentSet<EHandle> links = linksref.get();
+		return links.count() == 0;
+	}
+
+	/**
+	 * @param task
+	 * @throws Pausable
+	 */
+	public void link_to(ETask<?> task) throws Pausable {
+		link_to(task.self_handle());
+	}
+
+	public void link_to(EHandle handle) throws Pausable {
+		if (link_oneway(handle)) {
+          handle.link_oneway((EHandle) self_handle()); // Ignore failure if linker has received SIG_EXIT
+        } else {
+			link_failure(handle);
+		}
+	}
+
+	public boolean link_oneway(EHandle h) {
+        int ps = exit_action_mutator_lock();
+        try {
+            if (ps == STATE.DONE.ordinal()) return false; // Too late.
+
+            PersistentHashSet old, links;
+            try {
+                do {
+                    old = linksref.get();
+                    links = (PersistentHashSet) old.cons(h);
+                } while (!linksref.weakCompareAndSet(old, links));
+                return true;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+
+        } finally {
+            exit_action_mutator_unlock();
+        }
+    }
+
+	public ESeq links() {
+		ESeq res = ERT.NIL;
+		for (EHandle h : linksref.get()) {
+			res = res.cons(h);
+		}
+		return res;
+	}
+
+	/**
+	 * @param h
+	 * @throws Pausable 
+	 * @throws Pausable 
+	 * @throws Pausable 
+	 * @throws Pausable 
+	 */
+	protected void link_failure(EHandle h) throws Pausable  {
+		throw new ErlangError(ERT.am_noproc);
+	}
+
+    /*--------- Monitor related -------------------------*/
+    /**
+     * @param object
+     * @param ref TODO
+     * @param selfHandle
+     * @return
+     * @throws Pausable
+     */
+    public boolean monitor(EHandle observed, EObject object, ERef ref) throws Pausable {
+        if (!observed.add_monitor(self_handle(), ref)) {
+            //	System.err.println("unable to add monitor to self="+self_handle()+" pid="+observed+" ref="+ref);
+            return false;
+        }
+        this.is_monitoring.put(ref, new ETuple2(observed, object));
+        return true;
+    }
+
+    public boolean monitor(EObject object, ERef ref) throws Pausable {
+        this.is_monitoring.put(ref, new ETuple2(object, object));
+        return true;
+    }
+
+    /**
+     * @param r
+     * @return
+     * @throws Pausable
+     */
+    public EObject demonitor(ERef r) throws Pausable {
+        ETuple2 pair = is_monitoring.remove(r);
+        if (pair == null) {
+            return null;
+        }
+
+        return pair.elem1;
+    }
+
+    /**
+     * @param ref TODO
+     * @param self2
+     * @return
+     */
+    public boolean add_monitor(EHandle target, ERef ref) {
+        int ps = exit_action_mutator_lock();
+        try {
+            if (ps == STATE.DONE.ordinal()) return false; // Too late.
+
+            monitors.put(ref, target);
+            return true;
+        } finally {
+            exit_action_mutator_unlock();
+        }
+    }
+
+    /**
+     * @param r
+     */
+    public boolean remove_monitor(ERef r, boolean flush) {
+        int ps = exit_action_mutator_lock();
+        try {
+            if (ps == STATE.DONE.ordinal()) return false; // Too late.
+
+            EHandle val = monitors.remove(r);
+        } finally {
+            exit_action_mutator_unlock();
+        }
+
+        if (flush) {
+            // TODO: do we need to represent flush somehow?
+        }
+        return true; //TODO
+    }
+
+    public EHandle get_monitored_process(ERef monitor) {
+        ETuple2 tup = is_monitoring.get(monitor);
+        if (tup == null) return null;
+        return tup.elem1.testHandle();
+    }
+
+    public EObject get_monitored_object(ERef monitor) {
+        ETuple2 tup = is_monitoring.get(monitor);
+        return tup.elem2;
+    }
+
+
+    /*--------- Process state ---------------------------*/
+
+    /**
+     * @return
+     */
+    public boolean exists() {
+        int ps = get_state_dirtyread();
+        return ps == STATE.INIT.ordinal() || ps == STATE.RUNNING.ordinal();
+    }
+
+    /*--------- Termination related ---------------------*/
+    /* (non-Javadoc)
+	 * @see kilim.Task#checkKill()
+	 */
+    @Override
+    public void checkKill() {
+        check_exit();
+    }
+
+    /**
+     * will check if this process have received an exit signal (and we're not
+     * trapping)
+     */
+    public final void check_exit() {
+        do_check_exit();
+
+        if (print_trace != null) {
+            Mailbox<EObject> mb = print_trace;
+            if (mb != null) {
+
+                H handle = self_handle();
+                ESeq trace = new ErlangError(ERT.am_ok).getTrace();
+                mb.putb(new ETuple2(handle, trace));
+
+            }
+            print_trace = null;
+        }
+
+        if (run_on_stack != null) {
+            Runnable mb = run_on_stack;
+            run_on_stack = null;
+
+            if (mb != null) {
+                try {
+                    mb.run();
+                } catch (Throwable e) {
+                    e.printStackTrace();
+                }
+            }
+
+        }
+    }
+
+    /** because the above is called a bazillion times, we split this out to make it easier to inline */
+    private void do_check_exit() throws ErlangExitSignal {
+        if (exit_reason != null) {
+            set_state_if_later(STATE.EXITING); // The state might be done, in case
+                                               // this is called from a subsequent yield
+
+            // Build and throw exception
+            EObject reason = exit_reason;
+            exit_reason = null;
+            //System.err.println("---- [" + killer + "]");
+            ErlangExitSignal e = new ErlangExitSignal(reason, killer);
+            //e.printStackTrace();
+            //System.err.println("---- [ ... ]");
+            throw e;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+	protected void do_proc_termination(EObject exit_reason) throws Pausable {
+        // Precondition: pstate is DONE, exit-action mutator count is zero.
+        this.exit_reason = exit_reason;
+		H me = self_handle();
+		EAtom name = me.name;
+		for (EHandle handle : linksref.get()) {
+			try {
+			handle.exit_signal(me, exit_reason, false);
+			} catch (Error e) {
+				log.severe("EXCEPTION IN EXIT HANDLER");
+				log.log(Level.FINE, "details: ", e);
+				throw e;
+			} catch (RuntimeException e) {
+				log.severe("EXCEPTION IN EXIT HANDLER");
+				log.log(Level.FINE, "details: ", e);
+				throw e;
+			}
+		}
+		for (Map.Entry<ERef, EHandle> ent : monitors.entrySet()) {
+			EHandle pid = ent.getValue();
+			ERef ref = ent.getKey();
+
+			pid.send_monitor_exit((EHandle)me, ref, exit_reason);
+		}
+		if (name != ERT.am_undefined && name != null) {
+			ERT.unregister(name);
+		}
+	}
+	
+
+	public void send_monitor_exit(EHandle from, ERef ref, EObject reason) throws Pausable {
+		ETuple2 pair = is_monitoring.get(ref);
+		if (pair != null) {
+			mbox_send(ETuple.make(am_DOWN, ref, am_process, pair.elem2, reason));
+		}
+	}
+
+
+    /*--------- Mbox related ----------------------------*/
+
+    /**
+     * @return
+     */
+    public Mailbox<EObject> mbox() {
+        return mbox;
+    }
+
+    /**
+	 * @throws Pausable
+	 * 
+	 */
+	public void mbox_wait() throws Pausable {
+		mbox.untilHasMessage();
+	}
+
+	/**
+	 * @param longValue
+	 */
+	public boolean mbox_wait(long timeoutMillis) throws Pausable {
+		return mbox.untilHasMessage(timeoutMillis);
+	}
+
+	/**
+	 * @param msg
+	 * @throws Pausable
+	 */
+	public void mbox_send(EObject msg) throws Pausable {
+		mbox.put(msg);
+	}
+
+	/**
+	 * @return
+	 * @throws Pausable
+	 */
+	public void mbox_remove_one() throws Pausable {
+		mbox.get();
+	}
+
+	/**
+	 * @param from
+	 * @param reason
+	 * @param is_erlang_exit2 TODO
+	 */
+	public final void send_exit(EHandle from, EObject reason, boolean is_erlang_exit2) throws Pausable {
+		if (log.isLoggable(Level.FINE)) {
+			log.log (Level.FINE, "exit " + from + " -> " + this + ", reason="+reason, new Throwable("trace"));
+		}
+		
+		// ignore exit signals from myself
+		if (from == self_handle()) {
+			return;
+		}
+		
+		// make sure we don't also send him an exit signal
+		if (!is_erlang_exit2)
+			unlink_oneway(from);
+
+        int ps = get_state_dirtyread();
+        if (ps == STATE.DONE.ordinal() ||
+                ps == STATE.EXITING.ordinal() ||
+                exit_reason != null)
+        {
+            // we have already received one exit signal, ignore
+            // subsequent ones...
+            return;
+        }
+        process_incoming_exit(from, reason, is_erlang_exit2);
+    }
+
+	protected abstract void process_incoming_exit(EHandle from, EObject reason, boolean is_erlang_exit2) throws Pausable
+			;
+
+    /*--------- Reduction count ------------------------*/
+
+    public int get_reductions() { return reds;}
+
+    public void bump_reductions(int amount) throws Pausable {
+        reds += amount;
+        if (reds > 1000) {
+            reds = 0;
+            Task.yield();
+        }
+
+    }
+
+    /*--------- Process state locking -------------------*/
+
+    /** Returns the state value.
+     * Must be paired with exit_action_mutator_unlock! */
+    protected final int exit_action_mutator_lock() {
+        int v = pstate_and_mutator_count.getAndAdd(MUTATOR_COUNT_ONE);
+        return v & PSTATE_MASK;
+    }
+
+    protected final void exit_action_mutator_unlock() {
+        pstate_and_mutator_count.getAndAdd(-MUTATOR_COUNT_ONE);
+    }
+
+    protected final void set_state_to_done_and_wait_for_stability() throws Pausable {
+        // Set state to DONE:
+        int state_and_mutator_count = try_set_state(STATE.DONE);
+
+        // Wait for any exit-action mutator count to drop to zero:
+        int iter_count = 0;
+        while ((state_and_mutator_count & MUTATOR_COUNT_MASK) != 0) {
+            if ((++iter_count) % 16 == 0) Task.yield();
+            state_and_mutator_count = pstate_and_mutator_count.get();
+        }
+
+        // Invariant: state is DONE and there are no exit-action mutators.
+        assert pstate_and_mutator_count.get() == STATE.DONE.ordinal();
+    }
+
+    protected final void set_state(STATE new_state) {
+        if (try_set_state(new_state) == -1) {
+            System.err.println("Internal consistency error: bad process state transition to "+new_state+" ("+pstate_and_mutator_count.get()+")");
+            // But go on regardless...
+        }
+    }
+
+    protected final void set_state_if_later(STATE new_state) {
+        try_set_state(new_state); // ignore any error result
+    }
+
+    /** Returns old state and mutator count (packed) - or (-1) if state transition is invalid. */
+    private final int try_set_state(STATE new_state) {
+        int old_value, new_value;
+        int new_state_value = new_state.ordinal();
+        do {
+            old_value = pstate_and_mutator_count.get();
+            int old_state_value = old_value & PSTATE_MASK;
+            if (old_state_value >= new_state_value) return -1;
+            new_value = (old_value & MUTATOR_COUNT_MASK) | new_state_value;
+        } while (!pstate_and_mutator_count.compareAndSet(old_value, new_value));
+        return old_value;
+    }
+
+    protected final int get_state_dirtyread() {
+        return pstate_and_mutator_count.get() & PSTATE_MASK;
+    }
+
+    protected final int get_pstate_for_debug() {
+        return pstate_and_mutator_count.get();
+    }
+
+    /*--------- Miscellaneous ---------------------------*/
+
+    public void printStackTrace(Mailbox<EObject> info) {
+        this.print_trace = info;
+        this.resume();
+    }
+
+    public void runOnStack(Runnable info) {
+        this.run_on_stack = info;
+        this.resume();
+    }
+
+}
+src/main/java/erjang/EPID.java
+public abstract class EPID extends EHandle {
+	static Logger log = Logger.getLogger("erjang.proc");
+	/**
+	 * 
+	 */
+	public EPID(EAbstractNode node) {
+		super(node);
+	}
+	
+	@Override
+	int cmp_order() {
+		return CMP_ORDER_PID;
+	}
+	
+	public EPID testPID() {
+		return this;
+	}
+	
+	@Override
+	public String toString() {
+		if (node()==ERT.getLocalNode().node) {
+			return "<" + creation() + "." + serial() + "." + id() + ">";			
+		} else {
+			return "<" + node() + "." + creation() + "." + serial() + "." + id() + ">";
+		}
+	}
+
+	public boolean match(ETermPattern matcher, EMatchContext r) {
+		return matcher.match(this, r);
+	}
+	
+	@Override
+	public ETermPattern compileMatch(Set<Integer> out) {
+		return EPattern.compilePattern(this, out);
+	}
+
+	public EString getName() {
+		return EString.fromString(toString());
+	}
+	
+	@Override
+	int compare_same(EObject rhs) {
+		if (rhs == this) return 0;
+		EPID op = (EPID) rhs;
+		if (id() != op.id()) { if (id() < op.id()) return -1; return 1; } 
+		if (serial() != op.serial()) { if (serial() < op.serial()) return -1; return 1; } 
+		if (creation() != op.creation()) { if (creation() < op.creation()) return -1; return 1; } 
+		return node().compareTo(op.node());
+	}
+
+	@Override
+	public int hashCode() {
+		return (100000007 * id() +
+				200000033 * serial() +
+				300000007 * creation() +
+				400000009 * node().hashCode());
+	}
+
+	/**
+	 * @param gl
+	 */
+	public abstract void set_group_leader(EPID gl);
+
+	/**
+	 * erlang:process_info/0
+	 */
+	public abstract EObject process_info();
+	
+	/**
+	 * erlang:process_info/1
+	 */
+	public abstract EObject process_info(EObject spec);
+
+	public static EPID read(EInputStream ei) throws IOException {
+		return ei.read_pid();
+	}
+
+	/**
+	 * @param node
+	 * @param id
+	 * @param serial
+	 * @param creation
+	 * @return
+	 */
+	public static EPID make(EAtom node, int id, int serial, int creation) {
+		if (node == ERT.getLocalNode().node) {
+
+			EPID res = EProc.find(id, serial);
+			if (res != null) return res;
+
+			log.warning("deadpid <"+id+"."+serial+"."+creation+">");
+			// return DEADPID?
+		}
+		EAbstractNode peer = EPeer.get(node);
+
+		if (peer instanceof EPeer) {
+			return new EExternalPID((EPeer) peer, id, serial, creation);
+		} else {
+			log.fine("localnode="+ERT.getLocalNode().node+"; asking="+node);
+			// Presumably another node
+			// might be local with different name
+			return new EExternalPID(EPeer.get_or_create(node, creation, 0, 0), id, serial, creation);
+		}
+	}
+
+	/**
+	 * @return
+	 */
+	public abstract boolean is_alive_dirtyread();
+
+	public void encode(EOutputStream eos) {
+		eos.write_pid(node.node, id(), serial(), creation());
+	}
+
+	protected int serial() {
+		throw new erjang.NotImplemented();
+		
+	}
+
+	protected int id() {
+		throw new erjang.NotImplemented();
+		
+	}
+
+	protected int creation() {
+		throw new erjang.NotImplemented();
+		
+	}
+
+}
+src/main/java/erjang/ERT.java
+@Module(value = "erlang")
+public class ERT {
+
+	public static Logger log = Logger.getLogger("erjang");
+	static Logger ipclog = Logger.getLogger("erjang.ipc");
+	public static EAtom am_badsig = EAtom.intern("badsig");
+	public static EAtom am_file = EAtom.intern("file");
+	public static EAtom am_line = EAtom.intern("line");
+
+	public static EObject raise(EObject trace, EObject value) throws ErlangException {
+		// log.warning("raise "+trace);
+		if (trace instanceof ErlangException.ExceptionAsObject) {
+			ErlangException etrace = ((ErlangException.ExceptionAsObject) trace).getException();
+			EAtom clazz = etrace.getExClass();
+			ESeq traz = etrace.getLazyTrace();
+			throw new ErlangRaise(clazz, value, traz);
+		} else if (trace==am_exit || trace==am_error || trace==am_throw) {
+			log.warning("Pre-R10-1 exception style is not supported.");
+		}
+
+		ESeq trz;
+		if ((trz = trace.testSeq()) != null) {
+			throw new ErlangRaise(am_error, value, trz);
+		}
+
+		Throwable error = new Throwable("bad argument to raise2 :: "+ trace.getClass().getName());
+		log.log(Level.WARNING, "bad argument to raise2: ("+value+", "+trace+")", error);
+		throw ERT.badarg(trace, value);
+	}
+
+  public static final EAtom am_badmap = EAtom.intern("badmap");
+  public static final EAtom am_badkey = EAtom.intern("badkey");
+	public static final EAtom am_badarg = EAtom.intern("badarg");
+	public static final EAtom am_notsup = EAtom.intern("notsup");
+	public static final EAtom AM_BADMATCH = EAtom.intern("badmatch");
+	public static final EAtom AM_BADARITH = EAtom.intern("badarith");
+	public static final EAtom am_module = EAtom.intern("module");
+
+	public static ECons cons(EObject h, EObject t) {
+		return t.cons(h);
+	}
+
+	public static ErlangError badarg() {
+		throw new ErlangError(am_badarg);
+	}
+
+	public static ErlangError notsup() {
+		throw new ErlangError(am_notsup);
+	}
+
+	public static ErlangError badarg(EObject... args) {
+		throw new ErlangError(am_badarg, args);
+	}
+
+    public static ErlangError badkey(EObject key) {
+        throw new ErlangError(am_badkey, key);
+    }
+
+    public static ErlangError badmap(EObject obj) {
+        throw new ErlangError(am_badmap, obj);
+    }
+
+	/** Utility method throws <code>erlang:error('badarg', [o1, o2])</code>. */
+	public static ErlangError badarg(EObject o1, EObject o2) throws ErlangError {
+		throw new ErlangError(am_badarg, NIL.cons(o2).cons(o1));
+	}
+
+	public static ErlangError badarg(EObject o1) throws ErlangError {
+		throw new ErlangError(am_badarg, NIL.cons(o1));
+	}
+
+	public static ErlangError badarith(EObject... args) {
+		throw new ErlangError(AM_BADARITH, args);
+	}
+
+	public static ErlangError badarith(EObject o1, EObject o2) throws ErlangError {
+		throw new ErlangError(AM_BADARITH, NIL.cons(o2).cons(o1));
+	}
+
+	public static ErlangError badarith(int o1, EObject o2) {
+		throw new ErlangError(AM_BADARITH, NIL.cons(o2).cons(o1));
+	}
+
+	public static ErlangError badarith(EObject o1, int o2) {
+		throw new ErlangError(AM_BADARITH, NIL.cons(o2).cons(o1));
+	}
+
+	public static ErlangError badarith(double o1, EObject o2) {
+		throw new ErlangError(AM_BADARITH, NIL.cons(o2).cons(o1));
+	}
+
+	public static ErlangError badarith(EObject o1, double o2) {
+		throw new ErlangError(AM_BADARITH, NIL.cons(o2).cons(o1));
+	}
+
+	public static ErlangError badarith(BigInteger o1, EObject o2) {
+		throw new ErlangError(AM_BADARITH, NIL.cons(o2).cons(o1));
+	}
+
+	public static ErlangError badfun(EObject o) {
+		throw new ErlangError(new ETuple2(am_badfun, o));
+	}
+
+
+	public static final EAtom TRUE = EAtom.intern("true");
+	public static final EAtom FALSE = EAtom.intern("false");
+
+	public static boolean eq(EObject o1, EObject o2) {
+		return o1 == null ? o2 == null : o1.equals(o2);
+	}
+
+	public static boolean eq(EAtom o1, EAtom o2) {
+		return o1 == o2;
+	}
+
+	public static EAtom as_atom_or_null(EObject o) {
+		return o == null ? null : o.testAtom();
+	}
+
+	public static ECons as_nonempty_list_or_null(EObject o) {
+		return o == null ? null : o.testNonEmptyList();
+	}
+
+	public static ENil as_nil_or_null(EObject o) {
+		return o == null ? ERT.NIL : o.testNil();
+	}
+
+	public static EDouble as_float_or_null(EObject o) {
+		return o == null ? null : o.testFloat();
+	}
+
+	/**
+	 * @param s
+	 * @return
+	 */
+	public static EPID loopkup_pid(ESeq name) {
+		String str = name.stringValue();
+		for (EProc p : EProc.all_tasks.values()) {
+			if (p.self_handle().toString().equals( str ) ) {
+				return p.self_handle();
+			}
+		}
+		throw ERT.badarg(name);
+	}
+
+	// "definer" holds a reference to ClassLoader#defineClass
+	static private final Method definer;
+	static {
+		try {
+			definer = ClassLoader.class.getDeclaredMethod("defineClass",
+					new Class[] { String.class, byte[].class, int.class,
+							int.class });
+			definer.setAccessible(true);
+		} catch (Exception e) {
+			throw new ErlangError(e);
+		}
+	}
+
+	/**
+	 * @param classLoader
+	 * @param name
+	 * @param data
+	 * @param i
+	 * @param length
+	 * @return
+	 */
+	@SuppressWarnings("unchecked")
+	public static <T> Class<? extends T> defineClass(ClassLoader classLoader,
+			String name, byte[] data) {
+		/*
+		 * Class<? extends ETuple> res = (Class<? extends ETuple>)
+		 * loader2.define(name, data);
+		 */
+		Class<? extends T> res;
+		try {
+			res = (Class<? extends T>) definer.invoke(classLoader, name.replace('/', '.'), data, 0,
+					data.length);
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+
+		if (!name.equals(res.getName())) {
+			throw new Error();
+		}
+
+		return res;
+	}
+
+	public static ESmall box(int v) {
+		return ESmall.make(v);
+	}
+
+	/**
+	 * Boxes a <code>long</code> value to an EInteger (EBig or ESmall)
+	 * 
+	 * @param longValue
+	 * @return
+	 */
+	public static EInteger box2(long longVal) {
+
+		// very simple: see if the longValue can be converted
+		// to an int and back again without loosing it's value
+
+		int intVal = (int) longVal;
+		if (longVal == (long) intVal) {
+			return ESmall.make(intVal);
+		} else {
+			return new EBig(longVal);
+		}
+	}
+
+	public static EInteger box(long longVal) {
+
+		int intVal = (int)longVal;
+		
+		if (intVal == longVal) {
+			return ESmall.make(intVal);
+		} else {
+			return new EBig(longVal);
+		}
+
+	}
+
+	/**
+	 * @param doubleVal
+	 * @return
+	 */
+	public static EDouble box(double doubleVal) {
+		return new EDouble(doubleVal);
+	}
+
+	static BigInteger INT_MIN_AS_BIG = BigInteger.valueOf(Integer.MIN_VALUE);
+	static BigInteger INT_MAX_AS_BIG = BigInteger.valueOf(Integer.MAX_VALUE);
+	private static final ENode localNode = new ENode();
+
+	/**
+	 * @param add
+	 * @return
+	 */
+	public static EInteger box(BigInteger res) {
+
+		if (res.compareTo(INT_MIN_AS_BIG) < 0)
+			return new EBig(res);
+
+		if (res.compareTo(INT_MAX_AS_BIG) > 0)
+			return new EBig(res);
+
+		return ESmall.make(res.intValue());
+	}
+
+	public static EInteger box_parse(String str) {
+		return box(new BigInteger(str));
+	}
+	
+	/**
+	 * @param b
+	 * @return
+	 */
+	public static EAtom box(boolean bool) {
+		return bool ? TRUE : FALSE;
+	}
+
+	/**
+	 * @param b
+	 * @return
+	 */
+	public static EAtom guard(boolean bool) {
+		return bool ? TRUE : FALSE;
+	}
+
+	public static final ENil NIL = new ENil();
+	public static final EAtom am_EXIT = EAtom.intern("EXIT");
+	public static final EAtom am_ERROR = EAtom.intern("ERROR");
+	public static final EAtom IGNORED = EAtom.intern("ignored");
+	private static final EAtom am_badmatch = EAtom.intern("badmatch");
+	private static final EAtom am_case_clause = EAtom.intern("case_clause");
+	public static final EAtom am_undefined = EAtom.intern("undefined");
+	public static final EObject am_receive_clause = EAtom
+			.intern("receive_clause");
+	public static final EObject AM_NOT_IMPLEMENTED = EAtom
+			.intern("not_implemented");
+	public static final EAtom AM_TIMEOUT = EAtom.intern("timeout");
+	public static final EAtom am_try_case_clause = EAtom
+			.intern("try_case_clause");
+	public static final EAtom am_if_clause = EAtom.intern("if_clause");
+	public static final EBinary EMPTY_BINARY = new EBinary(new byte[0]);
+	public static final ByteBuffer[] EMPTY_BYTEBUFFER_ARR = new ByteBuffer[0];
+	public static final ByteBuffer EMPTY_BYTEBUFFER = ByteBuffer.allocate(0);
+	public static final EAtom am_infinity = EAtom.intern("infinity");
+	public static final EAtom am_noproc = EAtom.intern("noproc");
+	public static final EAtom am_error = EAtom.intern("error");
+	public static final EAtom am_exit = EAtom.intern("exit");
+	public static final EAtom am_throw = EAtom.intern("throw");
+	public static final EAtom am_badfile = EAtom.intern("badfile");
+	public static final EAtom am_value = EAtom.intern("value");
+	public static final EAtom am_timeout = EAtom.intern("timeout");
+	public static final EAtom am_function_clause = EAtom
+			.intern("function_clause");
+	public static final EAtom am_ok = EAtom.intern("ok");
+	public static final EAtom am_noconnect = EAtom.intern("noconnect");
+	public static final EAtom am_latin1 = EAtom.intern("latin1");
+	public static final EAtom am_utf8 = EAtom.intern("utf8");
+	public static final EAtom am_unicode = EAtom.intern("unicode");
+	private static final EAtom am_init = EAtom.intern("init");
+	private static final EAtom am_stop = EAtom.intern("stop");
+	protected static final EAtom am_new = EAtom.intern("new");
+
+	public static EBitStringBuilder bs_init(int size, int flags) {
+		if (size<0) throw ERT.badarg();
+		return new EBitStringBuilder(size, flags);
+	}
+
+	public static EBitStringBuilder bs_initBits(int size, int flags) {
+		if (size<0) throw ERT.badarg();
+		return new EBitStringBuilder(size/8, size%8, flags);
+	}
+
+	/**
+	 * @param e
+	 * @return
+	 */
+	public static String describe_exception(Throwable e) {
+		StringWriter sw = new StringWriter();
+		PrintWriter pw = new PrintWriter(sw);
+		pw.print("java trace: ");
+		e.printStackTrace(pw);
+		pw.close();
+		return sw.toString();
+	}
+
+	public static void test_fun(EObject orig, EFun fun) {
+		if (fun == null) {
+			if ((orig.testFunction()) != null) {
+				throw new ErlangError(new ETuple2(am_badarity, new ETuple2(orig, NIL)));
+			} else {
+				throw badfun(orig);
+			}
+		}
+	}
+	
+	static EInteger max_send_time = ERT.box(4294967295L);
+	static ESmall zero = ERT.box(0);
+	
+	public static final boolean gt(EInteger v1, EInteger v2) {
+		return v1.erlangCompareTo(v2) > 0;
+	}
+	
+	public static final boolean lt(EInteger v1, EInteger v2) {
+		return v1.erlangCompareTo(v2) < 0;
+	}
+	
+/*
+	public static final <T> boolean le(Comparable<T> v1, T v2) {
+		return v1.erlangCompareTo(v2) <= 0;
+	}
+	*/
+	
+	@BIF
+	public static EObject cancel_timer(EObject ref)
+	{
+		// check arguments 
+		ERef timer_ref = ref.testReference();
+		if (timer_ref == null) throw ERT.badarg();
+		
+		long time_left = ETimerTask.cancel(timer_ref);
+		
+		if (time_left > 0) {
+			return ERT.box(time_left);
+		} else {
+			return ERT.FALSE;
+		}
+	}
+	
+	@BIF
+	public static EObject read_timer(EObject ref)
+	{
+		// check arguments 
+		ERef timer_ref = ref.testReference();
+		if (timer_ref == null) throw ERT.badarg();
+		
+		long time_left = ETimerTask.read_timer(timer_ref);
+		
+		if (time_left > 0) {
+			return ERT.box(time_left);
+		} else {
+			return ERT.FALSE;
+		}
+	}
+	
+	@BIF
+	public static EObject send_after(final EProc proc, EObject time, final EObject rcv, final EObject msg)
+	{
+		// check arguments 
+		EInteger when = time.testInteger();
+		final EInternalPID rcv_pid = rcv.testInternalPID();
+		EAtom rcv_atom = rcv.testAtom();
+		
+		if (when == null 
+			|| gt(when, max_send_time)
+			|| lt(when, zero)
+			|| (rcv_pid == null && rcv_atom == null)) {
+			throw ERT.badarg(time, rcv, msg);
+		}
+			
+		ETimerTask send_task = new ETimerTask(rcv_pid) {
+			@Override
+			public void on_timeout()  throws Pausable {
+				
+				EHandle p;
+				if ((p = rcv.testHandle()) != null) {
+					p.send(proc.self_handle(), msg);
+					return;
+				}
+
+				p = register.get(rcv);
+				if (p != null) {
+					p.send(proc.self_handle(), msg);
+				}
+			}
+		};
+		
+		send_task.schedule(when.longValue());
+
+		return send_task.ref;
+	}
+
+	@BIF
+	public static EObject start_timer(EObject time, final EObject rcv, final EObject msg)
+	{
+		// check arguments 
+		EInteger when = time.testInteger();
+		final EInternalPID rcv_pid = rcv.testInternalPID();
+		EAtom rcv_atom = rcv.testAtom();
+		
+		if (when == null 
+			|| gt(when, max_send_time)
+			|| lt(when, zero)
+			|| (rcv_pid == null && rcv_atom == null)) {
+			throw ERT.badarg(time, rcv, msg);
+		}
+			
+		ETimerTask send_task = new ETimerTask(rcv_pid) {
+			@Override
+			public void on_timeout() throws Pausable {
+				
+				ETuple3 timeout_msg = new ETuple3();
+				timeout_msg.elem1 = am_timeout;
+				timeout_msg.elem2 = this.ref;
+				timeout_msg.elem3 = msg;
+				
+				EHandle p;
+				if ((p = rcv.testHandle()) != null) {
+					p.sendb(timeout_msg);
+					return;
+				}
+
+				p = register.get(rcv);
+				if (p != null) {
+					p.sendb(timeout_msg);
+				}
+			}
+		};
+		
+		send_task.schedule(when.longValue());
+
+		return send_task.ref;
+	}
+	
+	@Import(module="erlang", fun="dsend", arity=2)
+	static EFun erlang__dsend__2;
+	
+	@Import(module="erlang", fun="dsend", arity=3)
+	static EFun erlang__dsend__3;
+	
+	/**
+	 * @param owner
+	 * @param make
+	 * @throws Pausable
+	 */
+	@BIF(name = "!")
+	public static EObject send(EProc proc, EObject pid, EObject msg) throws Pausable {
+		// TODO handle ports also?
+		proc.check_exit();
+
+		// log.log(Level.FINER, "ignored options to send: " + options);
+
+		EHandle p;
+		EAtom reg_name;
+		if ((p = pid.testHandle()) != null) {
+			send_to_handle(proc, p, msg);
+		} else if ((reg_name = pid.testAtom()) != null) {
+			send_to_locally_registered(proc, reg_name, msg);
+		} else {
+			ETuple t;
+			EAtom node_name;
+			if ((t = pid.testTuple()) != null && t.arity()==2 &&
+				(reg_name = t.elm(1).testAtom()) != null &&
+				(node_name = t.elm(2).testAtom()) != null)
+			{
+				send_to_remote(proc, t, node_name, reg_name, msg, null);
+			} else { // PID was of a bad type.
+				ipclog.info("trying to send message to "+pid+" failed.");
+				throw badarg(pid, msg);
+			}
+		}
+		// Arguments were of valid types; return the message:
+		return msg;
+	}
+
+	@BIF
+	public static EObject send(EProc proc, final EObject pid, final EObject msg, EObject options) throws Pausable {
+		// TODO handle ports also?
+		proc.check_exit();
+
+		// log.log(Level.FINER, "ignored options to send: " + options);
+
+		EHandle handle;
+		EAtom reg_name;
+		if ((handle = pid.testHandle()) != null) {
+			send_to_handle(proc, handle, msg);
+			return am_ok;
+		} else if ((reg_name = pid.testAtom()) != null) {
+			boolean ok = send_to_locally_registered(proc, reg_name, msg);
+			if (ok) return am_ok;
+			else throw badarg(pid, msg);
+		} else {
+			ETuple t;
+			EAtom node_name;
+			if ((t = pid.testTuple()) != null && t.arity()==2 &&
+				(reg_name = t.elm(1).testAtom()) != null &&
+				(node_name = t.elm(2).testAtom()) != null)
+			{
+				return send_to_remote(proc, t, node_name, reg_name, msg, options);
+			} else { // PID was of a bad type.
+				ipclog.info("trying to send message to "+pid+" failed.");
+				throw badarg(pid, msg);
+			}
+		}
+	}
+
+	private static EObject send_to_remote(EProc proc, ETuple dest, EAtom node_name, EAtom reg_name, EObject msg, EObject options) throws Pausable {
+		// INVARIANT: t == ETuple.make(node_name, reg_name)
+
+		if (node_name == getLocalNode().node) { // We're talking to ourselves
+			send_to_locally_registered(proc, reg_name, msg);
+			return am_ok; // Even if the process does not exist.
+			//TODO: Return 'noconnect' if options contain noconnect?...
+		} else { // We're talking to another node
+			if (ipclog.isLoggable(Level.FINE)) {
+				ipclog.fine("sending msg "+dest+" ! "+msg);
+			}
+
+			EAbstractNode node = EPeer.get(node_name);
+			if (node == null) {
+				EObject[] args = (options!=null
+								  ? new EObject[] { dest, msg, options }
+								  : new EObject[] { dest, msg, ERT.NIL });
+				return erlang__dsend__3.invoke(proc, args);
+			} else {
+				node.dsig_reg_send(proc.self_handle(), reg_name, msg);
+				return am_ok;
+			}
+		}
+	}
+
+	private static boolean send_to_locally_registered(EProc proc, EAtom name, EObject msg) throws Pausable {
+		EHandle handle;
+		if ((handle = register.get(name)) != null) {
+			send_to_handle(proc, handle, msg);
+			return true;
+		} else return false;
+	}
+
+	private static void send_to_handle(EProc proc, EHandle handle, EObject msg) throws Pausable {
+        int penalty = handle.send(proc.self_handle(), msg);
+        proc.bump_reductions(penalty);
+	}
+
+	/**
+	 * @return
+	 */
+	public static ENode getLocalNode() {
+		return localNode;
+	}
+
+	static EAtom am_undef = EAtom.intern("undef");
+
+	/**
+	 * @param fun
+	 * @return
+	 */
+	public static ErlangException undef(FunID fun, EObject... args) {
+		throw new ErlangError(am_undef, args);
+	}
+
+	public static EFun resolve_fun(EObject mod, EObject fun, int arity) {
+		EAtom f = fun.testAtom();
+		if (f == null) {
+			throw ERT.badarg(mod, fun, ESmall.make(arity));
+		}
+
+		JavaObject jo;
+		if ((jo = mod.testJavaObject()) != null) {
+			return jo.resolve_fun(f, arity);
+		}
+		
+		EAtom m = mod.testAtom();
+		
+		if (m == null)
+		{
+			final ETuple tup;
+			EAtom pmod;
+			if ((tup = mod.testTuple()) != null 
+					&& tup.arity() > 0
+					&& (pmod=tup.elm(1).testAtom()) != null) {
+				
+				final EFun pfun = EModuleManager.resolve(new FunID(pmod, f, arity+1));
+				
+				return EFunCG.get_fun_with_handler(pmod.getName(), f.getName(), arity, new EFunHandler() {
+                    @Override
+                    public EObject invoke(EProc proc, EObject[] args) throws Pausable {
+                        EObject[] real_args = new EObject[args.length + 1];
+                        System.arraycopy(args, 0, real_args, 0, args.length);
+                        real_args[args.length] = tup;
+                        return pfun.invoke(proc, real_args);
+                    }
+                }, ERT.class.getClassLoader());
+				
+			}
+			
+			throw ERT.badarg(mod, fun, ESmall.make(arity));
+		}
+		EFun efun = EModuleManager.resolve(new FunID(m, f, arity));
+
+		return efun;
+	}
+
+    public static EObject apply_last(EProc proc, EObject mod, EObject fun, EObject args) throws Pausable {
+		ESeq seq = args.testSeq();
+		if (seq == null) { throw ERT.badarg(mod, fun, args); }
+		return apply_list_last(proc, mod, fun, seq, seq.length());
+	}
+	
+	public static EObject apply_list_last(EProc proc, EObject mod, EObject fun,
+			ESeq seq, int len) throws Pausable {
+		EAtom f = fun.testAtom();
+		ESeq a = seq.testSeq();
+
+		if (f == null || a == null)
+			throw ERT.badarg(mod, fun, seq);
+
+		EFun found = resolve_fun(mod, fun, len);
+
+		if (len > 9) {
+			// TODO: make it real tail recursion in stead
+			return found.invoke(proc, a.toArray());
+		}
+
+		proc.tail = found;
+		a = a.reverse();
+
+		switch (len) {
+		default:
+			throw new NotImplemented();
+		case 9:
+			proc.arg8 = a.head();
+			a = a.tail();
+		case 8:
+			proc.arg7 = a.head();
+			a = a.tail();
+		case 7:
+			proc.arg6 = a.head();
+			a = a.tail();
+		case 6:
+			proc.arg5 = a.head();
+			a = a.tail();
+		case 5:
+			proc.arg4 = a.head();
+			a = a.tail();
+		case 4:
+			proc.arg3 = a.head();
+			a = a.tail();
+		case 3:
+			proc.arg2 = a.head();
+			a = a.tail();
+		case 2:
+			proc.arg1 = a.head();
+			a = a.tail();
+		case 1:
+			proc.arg0 = a.head();
+			a = a.tail();
+		case 0:
+		}
+
+		return EProc.TAIL_MARKER;
+	}
+
+	static Map<EAtom, EHandle> register = new ConcurrentHashMap<EAtom, EHandle>();
+
+	/**
+	 * @param aname
+	 * @param handle
+	 */
+	public static void register(EAtom aname, EHandle handle) {
+		register.put(aname, handle);
+		handle.setName(aname);
+	}
+
+	public static boolean unregister(EAtom aname) {
+		EHandle val = register.remove(aname);
+		if (val != null) {
+			val.setName(ERT.am_undefined);
+			return true;
+		} else {
+			return false;
+		}		
+	}
+
+	/**
+	 * @param regname
+	 * @return
+	 */
+	public static EObject whereis(EObject regname) {
+		EObject result = register.get(regname);
+		if (result == null) {
+			// System.out.println(regname + " => " + am_undefined);
+			return am_undefined;
+		} else {
+			// System.out.println(regname + " => " + result);
+			return result;
+		}
+	}
+
+	public static EObject badmatch(EObject val) {
+		throw new ErlangError(new ETuple2(am_badmatch, val));
+	}
+
+	public static void paranoiaCheck(final EObject e, String details) {
+		if (e == null) throw new Error("Bif returned null: "+details);
+	}
+
+	public static EObject decode_exception2(final ErlangException e) {
+		return e.getCatchValue();
+	}
+
+	public static ETuple3 decode_exception3(final ErlangException e) {
+		return e.getTryValue();
+	}
+
+	public static EObject case_end(EObject val) {
+		throw new ErlangError(ETuple.make(am_case_clause, val));
+	}
+
+	public static EObject if_end() {
+		throw new ErlangError(am_if_clause);
+	}
+
+	public static EObject try_case_end(EObject val) {
+		throw new ErlangError(ETuple.make(am_try_case_clause, val));
+	}
+
+	static kilim.Scheduler scheduler = new kilim.Scheduler(threadPoolSize());
+	static kilim.Scheduler async_scheduler = new kilim.Scheduler(asyncThreadPoolSize());
+	public static EAtom am_io = EAtom.intern("io");
+	public static EAtom am_attributes = EAtom.intern("attributes");
+	public static EAtom am_compile = EAtom.intern("compile");
+	public static EAtom am_exports = EAtom.intern("exports");
+	public static EAtom am_badfun = EAtom.intern("badfun");
+	public static EAtom am_badarity = EAtom.intern("badarity");
+
+	public static EAtom am_name = EAtom.intern("name");
+	public static EAtom am_arity = EAtom.intern("arity");
+	public static EAtom am_env = EAtom.intern("env");
+
+	public static EAtom am_index = EAtom.intern("index");
+	public static EAtom am_new_index = EAtom.intern("new_index");
+	public static EAtom am_new_uniq = EAtom.intern("new_uniq");
+	public static EAtom am_uniq = EAtom.intern("uniq");
+	public static EAtom am_pid = EAtom.intern("pid");
+	public static EAtom am_type = EAtom.intern("type");
+	public static EAtom am_local = EAtom.intern("local");
+	public static EAtom am_external = EAtom.intern("external");
+	public static EAtom am_DOWN = EAtom.intern("DOWN");
+	public static EAtom am_killed = EAtom.intern("killed");
+
+	public static void run(Task task) {
+		task.setScheduler(scheduler);
+		task.start();
+	}
+	
+	public static void run_async(Task task) {
+		task.setScheduler(async_scheduler);
+		task.start();
+	}
+	
+	 /*
+	  * Skeleton for receive statement:
+	  *
+	  *      L1:          <-------------------+
+	  *                   <-----------+       |
+	  *     	     	       	      |   	  |
+	  *             loop_rec L2 ------+---+   |
+	  *             ...               |   |   |
+	  *             remove_message 	  |   |	  |
+	  *             jump L3           |   |   |
+	  *		        ...	              |   |   |
+	  *		loop_rec_end L1         --+   |   |
+	  *      L2:          <---------------+   |
+	  *	   	wait L1          -----------------+      or wait_timeout
+	  *		timeout
+	  *
+	  *	 L3:    Code after receive...
+	  *
+	  */
+
+	/** peek mbox at current index (proc.midx), which is 0 upon entry to the loop. */
+	public static EObject loop_rec(EProc proc) {
+		int idx = proc.midx;
+		proc.in_receive = true;
+		EObject msg = proc.mbox.peek(idx);		
+		if (ipclog.isLoggable(Level.FINE)) ipclog.fine("WAIT| entered loop #"+idx+" message="+msg);
+		return msg;
+	}
+
+	/** remove current message, and reset message index */
+	public static void remove_message(EProc proc) {
+		proc.mbox.remove(proc.midx);
+		proc.midx = 0;
+		proc.timeout_start = 0L;
+		proc.in_receive = false;
+	}
+
+	/** message did not match incoming, goto next message (will be followed by goto top-of-loop)*/
+	public static void loop_rec_end(EProc proc) {
+		proc.midx += 1;
+	}
+
+	/** wait for howlong, for one more message to be available */
+	public static boolean wait_timeout(EProc proc, EObject howlong)
+			throws Pausable {
+		try {
+			proc.check_exit();
+
+		if (ipclog.isLoggable(Level.FINE)) ipclog.fine("WAIT| "+proc+" waits for messages for "+howlong+" ms");
+			if (howlong == am_infinity) {
+				proc.mbox.untilHasMessages(proc.midx+1);
+				proc.check_exit();
+				if (ipclog.isLoggable(Level.FINE)) ipclog.fine("WAIT| "+proc+" wakes up on message");
+				return true;
+			} else {
+				long now = System.currentTimeMillis();
+				if (proc.midx == 0 || proc.timeout_start == 0L) {
+					proc.timeout_start = now;
+				}
+				
+				EInteger ei;
+				if ((ei = howlong.testInteger()) == null)
+					throw new ErlangError(EAtom.intern("timeout_value"));
+
+				long end = proc.timeout_start + ei.longValue();
+				long left = end - now;
+				
+				if (left < 0) { 
+					return false;
+				}
+
+				if (!proc.in_receive) {
+					Task.sleep(left);
+					return false;
+				} else {
+				
+
+				if (ipclog.isLoggable(Level.FINE)) ipclog.fine("WAIT| "+proc+" waiting for "+left+"ms for msg #"+(proc.midx+1));
+				boolean res = proc.mbox
+					.untilHasMessages(proc.midx + 1, left);
+				proc.check_exit();
+				if (ipclog.isLoggable(Level.FINE)) ipclog.fine("WAIT| "+proc+" wakes up "+(res?"on message" : "after timeout"));
+				
+				return res;
+				}
+			}
+		} finally {
+			proc.in_receive = false;
+		}
+	}
+
+	/** wait forever, for one more message to be available */
+	public static void wait(EProc proc) throws Pausable {
+		try {
+			int idx = proc.midx + 1;
+			if (ipclog.isLoggable(Level.FINE)) ipclog.fine("WAIT| "+proc+" waits for "+idx+" messages");
+			proc.mbox.untilHasMessages(idx);
+			if (ipclog.isLoggable(Level.FINE)) ipclog.fine("WAIT| "+proc+" wakes up after timeout; now has "+(idx));
+		} finally {
+			proc.in_receive = false;
+		}		
+	}
+
+	/** message reception timed out, reset message index */
+	public static void timeout(EProc proc) {
+		if (ipclog.isLoggable(Level.FINE)) ipclog.fine("WAIT| "+proc+" timed out");
+		proc.midx = 0;
+		proc.timeout_start = 0L;
+		proc.in_receive = false;
+	}
+
+	public static int unboxToInt(EInteger i) {
+		return i.intValue();
+	}
+
+	public static int unboxToInt(EObject i) {
+		ESmall ii;
+		if ((ii = i.testSmall()) == null)
+			throw ERT.badarg(i);
+		return ii.value;
+	}
+
+	public static int unboxToInt(ENumber i) {
+		return i.intValue();
+	}
+
+	public static double unboxToDouble(EInteger i) {
+		return i.doubleValue();
+	}
+
+	public static double unboxToDouble(ENumber i) {
+		return i.doubleValue();
+	}
+
+	public static double unboxToDouble(EObject i) {
+		ENumber num;
+		if ((num = i.testNumber()) == null)
+			throw ERT.badarg(i);
+		return num.doubleValue();
+	}
+
+	public static double unboxToDouble(int i) {
+		return i;
+	}
+
+	public static Boolean asBoolean(EObject obj) {
+		if (obj == ERT.TRUE) return true;
+		if (obj == ERT.FALSE) return false;
+		return null;
+	}
+
+	public static void check_exit(EProc p) {
+		p.check_exit();
+	}
+
+	public static EObject func_info(EAtom mod, EAtom fun, int arity) {
+		throw new ErlangError(am_function_clause);
+	}
+
+	public static EObject func_info(EAtom mod, EAtom fun, ESeq args) {
+		throw new ErlangError(am_function_clause, args);
+	}
+
+	public static ERef make_ref() {
+		return getLocalNode().createRef();
+	}
+	
+	/**
+	 * @param command
+	 * @return
+	 */
+	public static EDriver find_driver(EString command) {
+		String name = command.stringValue();
+		int idx = name.indexOf(' ');
+		if (idx != -1) {
+			name = name.substring(0, idx);
+		}
+		return Drivers.getDriver(name);
+	}
+
+	/**
+	 * @param job
+	 */
+	public static void run_async(final EAsync job, final EDriverTask dt) {
+		run_async(new Task() {
+			@Override
+			public void execute() throws Pausable, Exception {
+				job.async();
+				dt.async_done(job);
+			}
+		});
+	}
+
+	/**
+	 * @return
+	 */
+	public static int threadPoolSize() {
+		String threads = ErjangConfig.getString("erjang.beam.option.S");
+		if (threads != null) {
+		    try {
+		        return Math.max(2, Integer.parseInt(threads));
+		    } catch (NumberFormatException e) {
+		        // ignore //
+		    }
+        }
+		
+		return Math.max(2, Runtime.getRuntime().availableProcessors()/2);
+	}
+
+	public static int asyncThreadPoolSize() {
+		String threads = ErjangConfig.getString("erjang.beam.option.A");
+		if (threads != null)
+			return Integer.parseInt(threads);
+		else
+			return 10;
+	}
+
+	public static int processLimit() {
+		String threads = ErjangConfig.getString("erjang.beam.option.P");
+		if (threads != null)
+			return Integer.parseInt(threads);
+		else
+			return 500000;
+	}
+
+	public static ESeq registered() {
+		ESeq res = ERT.NIL;
+		for (EAtom reg : register.keySet()) {
+			res = res.cons(reg);
+		}
+		return res;
+	}
+
+	/** Shuts down currently running OTP */
+	public static void shutdown() {
+		EObject init_proc = whereis(am_init);
+		ETuple tup = ETuple.make(am_stop, am_stop);
+		EPID init_pid;
+		if ((init_pid = init_proc.testPID()) != null) {
+			init_pid.sendb(tup);
+		}
+	}
+	
+	/**
+	 * Shutdown Kilim schedulers.
+	 */
+	/*package*/ static void shutdownSchedulers() {
+		scheduler.shutdown();
+		async_scheduler.shutdown();
+	}
+
+	static protected volatile InputStream in = System.in;
+	static protected volatile PrintStream out = System.out;
+	static protected volatile PrintStream err = System.err;
+	
+	public static void set_stdio(InputStream in,
+			PrintStream out, PrintStream err) {
+		// avoid null
+		ERT.in = (in != null ? in : new NullInputStream());
+		ERT.out = (out != null ? out : new PrintStream(new NullOutputStream()));
+		ERT.err = (err != null ? err : new PrintStream(new NullOutputStream()));
+	}
+
+	public static void set_stdio(InputStream in,
+			OutputStream out, OutputStream err) {
+		// avoid null
+		ERT.in = (in != null ? in : new NullInputStream());
+		ERT.out = (out != null ? new PrintStream(out) : new PrintStream(new NullOutputStream()));
+		ERT.err = (err != null ? new PrintStream(err) : new PrintStream(new NullOutputStream()));
+	}
+
+	public static void setInputStream(InputStream in) {
+		ERT.in = (in != null ? in : new NullInputStream());
+	}
+
+	public static InputStream getInputStream() {
+		return in;
+	}
+
+	public static void setOutputStream(PrintStream out) {
+		ERT.out = (out != null ? out : new PrintStream(new NullOutputStream()));
+	}
+
+	public static void setOutputStream(OutputStream out) {
+		ERT.out = (out != null ? new PrintStream(out) : new PrintStream(new NullOutputStream()));
+	}
+
+	public static PrintStream getOutputStream() {
+		return out;
+	}
+
+	public static void setErrorStream(PrintStream err) {
+		ERT.err = (err != null ? err : new PrintStream(new NullOutputStream()));
+	}
+
+	public static void setErrorStream(OutputStream err) {
+		ERT.err = (err != null ? new PrintStream(err) : new PrintStream(new NullOutputStream()));
+	}
+
+	public static PrintStream getErrorStream() {
+		return err;
+	}
+
+	public static File newFile(String file_name) {
+		File file = new File(file_name);
+		if (file.isAbsolute())
+			return file;
+		return new File(Posix.getCWD(), file_name);
+	}
+
+	public static void debug(String text) {
+		log.fine(text);
+	}
+	
+	public static void debug(boolean condition, String text) {
+		if (condition) {
+			debug(text);
+		}
+	}
+
+	static class NullInputStream extends InputStream {
+		@Override
+		public int read() throws IOException {
+			return -1;
+		}
+	}
+	static class NullOutputStream extends OutputStream {
+		@Override
+		public void write(int arg0) throws IOException {
+			// ignore
+		}
+		@Override
+		public void write(byte[] b) throws IOException {
+			// ignore
+		}
+		@Override
+		public void write(byte[] b, int off, int len) throws IOException {
+			// ignore
+		}
+	}
+
+	/**
+	 * contains versions, paths and other information.
+	 * use {@link ERT#setRuntimeInfo(RuntimeInfo)} to set this field.
+	 */
+	public static RuntimeInfo runtime_info = null;
+	
+	public static void setRuntimeInfo(RuntimeInfo info) {
+		// TODO perform synchronization? We usually set this 
+		// field only once from Main before ERT is started
+		runtime_info = info;
+		if (runtime_info != null) {
+			System.setProperty("erjang.path", runtime_info.erl_bootstrap_ebindir);
+		}
+	}
+	
+	public static EObject compile_elixir_regex(EObject patt, EObject opts) {
+		byte[] ops = opts.testBinary().getByteArray();
+		ECons l = ECompiledRE.decode_options(ops);
+		EObject tup = erjang.m.re.Native.compile(patt, l);
+		return tup.testTuple().elm(2);
+	}
+
+	public static void print_all_stack_traces() {
+		System.err.println("== Trace ==");
+
+		Mailbox<EObject> mbox = new Mailbox<>( EProc.process_count() );
+
+		ESeq all = EProc.processes();
+		for(EObject o : all) {
+			EInternalPID pid = (EInternalPID) o;
+			pid.task().printStackTrace( mbox );
+		}
+
+		while (true) {
+			EObject o = mbox.getb(1000);
+			if (o == null)
+				break;
+
+			ETuple2 tup = ETuple2.cast(o);
+			EHandle handle = tup.elm(1).testHandle();
+			ESeq stack = tup.elm(2).testSeq();
+
+			System.err.println("\n == "+handle+" : "+handle.name);
+			for (EObject elm : stack) {
+
+				ETuple4 tup4 = ETuple4.cast(elm);
+
+				if (tup4 != null) {
+					ESeq args = tup4.elem3.testSeq();
+					ESmall arity = tup4.elem3.testSmall();
+					if (arity == null && args != null) {
+						arity = ERT.box(args.length());
+					}
+
+					StringBuffer file_line = new StringBuffer();
+
+					ESeq info = tup4.elem4.testSeq();
+					if (info != null) {
+						String file = "?";
+						int line = -1;
+						for (EObject inf : info) {
+							ETuple2 t;
+							if ((t=ETuple2.cast(inf)) != null) {
+								ESmall n;
+								EString f;
+								if (t.elem1 == ErlangException.am_line && ((n = t.elem2.testSmall()) != null)) {
+									line = n.value;
+								} else
+								if (t.elem1 == ErlangException.am_file && ((f = t.elem2.testString()) != null)) {
+									file = f.stringValue();
+								}
+							}
+						}
+						if ( line != -1) {
+							file_line.append('(').append(file).append(':').append(line).append(')');
+						}
+					}
+
+					String module = tup4.elem1.toString();
+					String mfa;
+					System.err.print( mfa = make_width(20, module) + ":" + tup4.elem2 + "/" + arity );
+					System.err.println( " " + make_width(65-mfa.length(), file_line.toString()));
+				} else {
+					System.err.println(elm);
+				}
+			}
+		}
+	}
+	
+	private static String make_width(int n, String s) {
+		if (s.length() > n) return s;
+		StringBuilder sb = new StringBuilder();
+		while ((sb.length()+s.length()) < n) {
+			sb.append(' ');
+		}
+		sb.append(s);
+		return sb.toString();
+	}
+	
+	/*
+	 * 
+		async_scheduler.schedule(new Task() {
+			@Override
+			public void execute() throws Pausable, Exception {
+				try {
+				execute0();
+				} catch (Throwable e) {
+					e.printStackTrace();
+				}
+			}
+				
+			public void execute0() throws Pausable, Exception {
+				
+				System.err.println("== Trace ==");
+				
+				Mailbox<EObject> mbox = new Mailbox<>( EProc.process_count() );
+				
+				ESeq all = EProc.processes();
+				for(EObject o : all) {
+					EInternalPID pid = (EInternalPID) o;
+					
+					pid.task().printStackTrace( mbox );
+					
+				}
+
+				while (mbox.untilHasMessages(1, 1000L)) {
+					ETuple2 tup = (ETuple2) mbox.get();
+					EHandle handle = tup.elm(1).testHandle();
+					ESeq stack = tup.elm(2).testSeq();
+					
+					System.err.println(" == "+handle+" : "+handle.name);
+					for (EObject o : stack) {
+						System.err.println(o);
+					}
+				}
+				
+			}
+		}); */
+
+
+	public static void do_trace(EProc proc, EAtom what, EObject info) throws Pausable {
+
+		EPID pid = proc.get_trace_flags().tracer;
+
+		EObject msg = ETuple4.make_tuple(am_trace, proc.self_handle(), what, info);
+
+		pid.send(proc.self_handle(), msg);
+
+	}
+
+	public static void do_trace(EProc proc, EAtom what, EObject info, EObject message) throws Pausable {
+
+		EPID pid = proc.get_trace_flags().tracer;
+
+		EObject msg = ETuple.make(am_trace, proc.self_handle(), what, info, message);
+
+		pid.send(proc.self_handle(), msg);
+
+	}
+
+
+	@BIF
+	public static EInteger trace_pattern(EProc proc, EObject arg0, EObject arg1, EObject arg2) {
+
+		ETuple3 mfa = ETuple3.cast(arg0);
+		EAtom mod, fun;
+
+		if (mfa == null
+				|| (mod=mfa.elem1.testAtom()) == null
+				|| (fun=mfa.elem2.testAtom()) == null) {
+			throw ERT.badarg(arg0, arg1, arg2);
+		}
+
+		int count = EModuleManager.trace_pattern(proc.self_handle(), mod, fun, mfa.elem3, arg1, arg2);
+
+		return ERT.box(count);
+	}
+
+	static TraceFlags global_trace_flags = new TraceFlags();
+
+	@BIF
+	public static EInteger trace(EProc self_proc, EObject arg0, EObject arg1, EObject arg2) {
+		EInternalPID pid = arg0.testInternalPID();
+		EAtom all = arg0.testAtom();
+		EObject how = arg1.testBoolean();
+		ESeq flags = arg2.testSeq();
+
+		if ((pid == null && all != am_all) || how == null || flags == null)
+		{
+			throw ERT.badarg(arg0, arg1, arg2);
+		}
+
+		EInternalPID self = self_proc.self_handle();
+
+		if (all == am_all) {
+			ESeq allprocs = EProc.processes();
+			int result = allprocs.length();
+			global_trace_flags.update(how == ERT.TRUE, flags, self);
+			while (!allprocs.isNil()) {
+				EProc proc = allprocs.head().testInternalPID().task();
+				allprocs = allprocs.tail();
+
+				if (proc.trace_flags != null) {
+					proc.trace_flags.update(how == ERT.TRUE, flags, self);
+				}
+			}
+
+			return ERT.box(result);
+
+		} else {
+			EProc proc = pid.task();
+
+			if (!proc.is_alive_dirtyread()) {
+				return ESmall.ZERO;
+			}
+
+			if (proc.trace_flags == null) {
+				proc.trace_flags = global_trace_flags.clone();
+			}
+
+			proc.trace_flags.update(how == ERT.TRUE, flags, self);
+
+			return ESmall.ONE;
+		}
+
+
+	}
+
+	static EAtom am_trace = EAtom.intern("trace");
+	static EAtom am_call = EAtom.intern("call");
+	static EAtom am_all = EAtom.intern("all");
+	static EAtom am_send = EAtom.intern("send");
+	static EAtom am_receive = EAtom.intern("receive");
+	static EAtom am_procs = EAtom.intern("procs");
+	static EAtom am_tracer = EAtom.intern("tracer");
+	static EAtom am_silent = EAtom.intern("silent");
+
+	static public class TraceFlags implements Cloneable {
+
+		boolean call = false;
+		boolean arity = false;
+		boolean send = false;
+		boolean receive = false;
+		boolean procs = false;
+		EPID tracer = null;
+		public boolean silent;
+
+		public TraceFlags clone() {
+			try {
+				return (TraceFlags)super.clone();
+			} catch (CloneNotSupportedException e) {
+				throw new RuntimeException(e);
+			}
+		}
+
+		public void update(boolean how, ESeq flags, EPID self)
+		{
+			ETuple2 t;
+			EPID p;
+			while(!flags.isNil()) {
+				EObject flag = flags.head();
+				flags = flags.tail();
+
+				if (flag == am_arity) {
+					arity = how;
+				} else if (flag == am_call) {
+					call = how;
+				} else if (flag == am_send) {
+					send = how;
+				} else if (flag == am_receive) {
+					receive = how;
+				} else if (flag == am_procs) {
+					procs = how;
+				} else if (flag == am_silent) {
+					silent = how;
+				} else if ((t=ETuple2.cast(flag))!= null
+						&& t.elem1==am_tracer) {
+					tracer = t.elem2.testPID();
+				} else if (flag == am_all) {
+					call    = how;
+					arity   = how;
+					send    = how;
+					receive = how;
+				} else {
+					throw ERT.badarg(flag);
+				}
+			}
+
+			if (how==true && tracer == null) {
+				tracer = self;
+			}
+		}
+	}
+}
+src/main/java/erjang/EModuleManager.java
+public class EModuleManager {
+
+	static Logger log = Logger.getLogger(EModuleManager.class.getName());
+	
+	static private Map<EAtom, ModuleInfo> infos = new ConcurrentHashMap<EAtom, ModuleInfo>();
+
+	// static FunctionInfo undefined_function = null;
+	static EAtom am_prep_stop = EAtom.intern("prep_stop");
+	static EAtom am___info__ = EAtom.intern("__info__");
+	static EAtom am_call = EAtom.intern("call");
+	static EAtom am_return_from = EAtom.intern("return_from");
+	static EAtom am_exception_from = EAtom.intern("exception_from");
+	static EAtom am_trace = EAtom.intern("trace");
+	static EAtom am_global = EAtom.intern("global");
+	static EAtom am_local = EAtom.intern("local");
+	static EAtom am_meta = EAtom.intern("meta");
+
+	static class FunctionInfo {
+		private final FunID fun;
+
+		/**
+		 * @param fun
+		 */
+		public FunctionInfo(FunID fun) {
+			this.fun = fun;
+		}
+
+		EModule defining_module;
+		EFun resolved_value;
+		boolean is_exported;
+
+		Collection<FunctionBinder> resolve_points = new HashSet<FunctionBinder>();
+		private EFun error_handler;
+
+	        private ClassLoader getModuleClassLoader() {
+		    if (defining_module != null) {
+			return defining_module.getModuleClassLoader();
+		    } else {
+			return new EModuleClassLoader(null);
+		    }
+	        }
+
+		/**
+		 * @param ref
+		 * @throws IllegalAccessException
+		 * @throws IllegalArgumentException
+		 */
+		synchronized void add_import(final FunctionBinder ref) {
+			resolve_points.add(ref);
+			if (is_exported && resolved_value != null) {
+				// System.out.println("binding "+fun+" "+resolved_value+" -> "+ref);
+				if (traceHandler == null) {
+					ref.bind(resolved_value);
+				} else {
+					ref.bind(traceHandler.self);
+				}
+			} else {
+				EFun h = getFunErrorHandler();
+				ref.bind(h);
+			}
+		}
+		
+		synchronized void add_internal(final FunctionBinder ref) throws Exception {
+			resolve_points.add(ref);
+		}
+		
+		synchronized void unbind() throws Exception {
+			Collection<FunctionBinder> gone = null;
+
+			for (FunctionBinder f : resolve_points) {
+				if (f.bind(getFunErrorHandler()) == false) {
+					if (gone == null) { gone = new ArrayList<>(); }
+					gone.add(f);
+				}
+			}
+
+			if (traceHandler != null) {
+				traceHandler.target = getFunErrorHandler();
+			}
+
+			if (gone != null) { resolve_points.removeAll(gone); }
+		}
+
+		boolean isImportedSomewhere() {
+			return !resolve_points.isEmpty();
+		}
+
+		private EFun getTargetFunction() {
+			if (resolved_value != null) {
+				return resolved_value;
+			} else {
+				return getFunErrorHandler();
+			}
+		}
+
+		private EFun getFunErrorHandler() {
+			if (error_handler != null) {
+				return error_handler;
+			}
+			
+			error_handler = makeErrorHandler();
+			return error_handler;
+		}
+
+		private EFun makeErrorHandler() {
+			return EFunCG.get_fun_with_handler(fun.module.getName(), fun.function.getName(), fun.arity,
+                    new EFunHandler() {
+
+                        @Override
+                        public String toString() {
+                            return "#EFunHandler<" + fun.toString() + ">";
+                        }
+
+                        public EObject invoke(EProc proc, EObject[] args)
+                                throws Pausable {
+
+                            /** Get reference to error_handler:undefined_function/3 */
+
+                            EFun uf = proc.undefined_function.resolved_value;
+
+                            /** this is just some debugging info to help understand downstream errors */
+                            if (get_module_info(fun.module).is_loaded()) {
+                                if (Boolean.getBoolean("erjang.declare_missing_imports") && fun.function != am_prep_stop && fun.function != am___info__)
+                                    log.log(Level.INFO, "MISSING " + fun);
+                            } else {
+                                log.log(Level.FINER, "resolving" + fun);
+                            }
+
+                            Class<?> c = null;
+                            try {
+                                c = Class.forName(fun.module.getName());
+                            } catch (ClassNotFoundException e) {
+                            }
+
+                            if (c != null) {
+                                if (fun.function == ERT.am_new) {
+                                    Constructor[] cons = c.getConstructors();
+                                    return JavaObject.choose_and_invoke_constructor(proc, args, cons);
+                                } else {
+                                    Method[] methods = c.getMethods();
+                                    return JavaObject.choose_and_invoke_method(proc, null, fun.function, args, methods, true);
+                                }
+                            }
+
+                            if (uf == null) {
+                                if (!module_loaded(fun.module)) {
+                                    try {
+                                        EModuleLoader.find_and_load_module(fun.module.getName());
+                                    } catch (IOException e) {
+                                        // we don't report this separately; it ends up causing an undefined below...
+                                    }
+                                }
+
+                                if (resolved_value != null) {
+                                    return resolved_value.invoke(proc, args);
+                                }
+
+                                /** this is just some debugging info to help understand downstream errors */
+                                log.log(Level.INFO, "failed to load " + fun + " (" + proc.undefined_function + " not found)");
+
+                                throw new ErlangUndefined(fun.module,
+                                        fun.function, fun.arity);
+                            } else {
+                                ESeq arg_list = ESeq.fromArray(args);
+                                ESeq ufa = ESeq.fromArray(new EObject[]{
+                                        fun.module, fun.function, arg_list});
+                                return ErlBif.apply_last(proc, uf, ufa);
+                                //	return uf.apply(proc, ufa);
+                            }
+                        }
+                    },
+                    getModuleClassLoader());
+		}
+
+		/**
+		 * @param fun2
+		 * @param value
+		 */
+		synchronized void add_export(EModule definer, FunID fun2, EFun value)
+				throws Exception {
+			this.is_exported = true;
+			this.defining_module = definer;
+			bind(value);
+		}
+		
+		void bind(EFun value) {
+			this.resolved_value = value;
+			if (traceHandler == null) {
+				Collection<FunctionBinder> gone = null;
+				for (FunctionBinder f : resolve_points) {
+					// System.out.println("binding " + fun2 + " " + value + " -> " + f);
+					if (f.bind(value) == false) {
+						if (gone == null) { gone = new ArrayList<>(); }
+						gone.add(f);
+					}
+				}
+				if (gone != null) {
+					resolve_points.removeAll(gone);
+				}
+			} else {
+				traceHandler.target = value;
+			}
+		}
+
+		/**
+		 * @return
+		 * 
+		 */
+		public EFun resolve() {
+			if (traceHandler == null) {
+				return getTargetFunction();
+			} else {
+				return traceHandler.self;
+			}
+		}
+
+		/**
+		 * @return
+		 */
+		public boolean exported() {
+			return resolved_value != null && is_exported;
+		}
+
+		public void trace_pattern(EObject spec, TraceOpts opts) {
+			if (traceHandler == null) {
+				if (spec == ERT.FALSE)
+					return;
+				traceHandler = new TraceHandler(this);
+
+			} else if (spec==ERT.FALSE) {
+
+				// uninstall tracer //
+				EFun target = traceHandler.target;
+				traceHandler = null;
+				bind(target);
+				return;
+			}
+
+			traceHandler.apply(opts);
+		}
+
+		TraceHandler traceHandler;
+	}
+
+	static class TraceHandler implements EFunHandler {
+
+		AtomicLong counter = new AtomicLong(0);
+
+		EFun target;
+		final EFun self;
+		final FunID funID;
+		private EMatchSpec match_spec;
+
+		public void apply(TraceOpts spec) {
+			this.match_spec = spec.match_spec;
+		}
+
+
+		TraceHandler(FunctionInfo h) {
+			funID = h.fun;
+			target = h.getTargetFunction();
+			self = EFunCG.get_fun_with_handler(
+					funID.module.getName(),
+					funID.function.getName(),
+					funID.arity,
+					this,
+					TraceHandler.class.getClassLoader());
+
+		}
+
+		@Override
+		public EObject invoke(EProc proc, EObject[] args) throws Pausable {
+			ESeq argList = EList.fromArray(args);
+			EMatchSpec.TraceState state = before(proc, argList);
+
+			if (state == null || (state.return_trace==false && state.exception_trace==false))
+				return ErlBif.apply_last(proc, target, argList);
+
+			EObject result;
+			try {
+				result = target.invoke(proc, args);
+
+			} catch (ErlangException e) {
+
+				if (state.exception_trace && !proc.get_trace_flags().silent) {
+					ETuple3 info = ETuple3.make_tuple(funID.module, funID.function, ERT.box(funID.arity));
+					ERT.do_trace(proc, am_exception_from, info, new ETuple2(e.getExClass(), e.reason()));
+				}
+
+				throw e;
+			}
+
+			if (state.return_trace && !proc.get_trace_flags().silent) {
+				ETuple3 info = ETuple3.make_tuple(funID.module, funID.function, ERT.box(funID.arity));
+				ERT.do_trace(proc, am_return_from, info, result);
+			}
+
+			return result;
+		}
+
+		EMatchSpec.TraceState before(EProc proc, ESeq argList) throws Pausable {
+			if (!proc.get_trace_flags().call)
+				return null;
+
+			EMatchSpec.TraceState state = null;
+			if (match_spec==null || (state=match_spec.matches(proc, argList)) != null) {
+				counter.incrementAndGet();
+
+				// send {trace, Pid, call, {M, F, Args}}
+
+				EObject arg = (proc.get_trace_flags().arity)
+						? ERT.box(funID.arity)
+						: argList;
+
+				if (!proc.get_trace_flags().silent && (state==null||state.message != ERT.FALSE)) {
+					ETuple3 info = ETuple3.make_tuple(funID.module, funID.function, arg);
+					if ((state == null || state.message == ERT.TRUE))
+						ERT.do_trace(proc, am_call, info);
+					else
+						ERT.do_trace(proc, am_call, info, state.message);
+
+				}
+
+			}
+			return state;
+		}
+
+	}
+
+	static class ModuleInfo {
+
+		protected static final EAtom am_badfun = EAtom.intern("badfun");
+		private EModule resident;
+		private EAtom module;
+		private EBinary module_md5 = empty_md5;
+		Map<FunID, FunctionInfo> binding_points = new ConcurrentHashMap<FunID, FunctionInfo>();
+
+		/**
+		 * @param module
+		 */
+		public ModuleInfo(EAtom module) {
+			this.module = module;
+		}
+
+		/**
+		 * @param fun
+		 * @param ref
+		 * @return
+		 * @throws Exception
+		 */
+		public void add_import(FunID fun, FunctionBinder ref) {
+			FunctionInfo info = get_function_info(fun);
+			info.add_import(ref);
+		}
+
+		public void add_internal(FunID fun, FunctionBinder ref) throws Exception {
+			FunctionInfo info = get_function_info(fun);
+			info.add_internal(ref);
+		}
+
+		synchronized FunctionInfo get_function_info(FunID fun) {
+			FunctionInfo info = binding_points.get(fun);
+			if (info == null) {
+				binding_points.put(fun, info = new FunctionInfo(fun));
+			}
+			return info;
+		}
+
+		/**
+		 * @param fun
+		 * @param value
+		 * @throws Exception
+		 */
+		public void add_export(EModule definer, FunID fun, EFun value)
+				throws Exception {
+			get_function_info(fun).add_export(definer, fun, value);
+		}
+
+		/**
+		 * @param eModule
+		 */
+		public void setModule(EModule eModule) {
+			this.resident = eModule;
+		}
+
+		/**
+		 * @param fun
+		 * @return
+		 */
+		public EFun resolve(FunID fun) {
+			return get_function_info(fun).resolve();
+		}
+
+		/**
+		 * @param fun
+		 * @return
+		 */
+		public boolean exports(FunID fun) {
+			return get_function_info(fun).exported();
+		}
+
+		/**
+		 * @return
+		 */
+		public boolean is_loaded() {
+			return resident != null;
+		}
+		
+		public EAtom unload() throws Exception {
+			
+			if (resident == null) {
+				return ERT.am_undefined;
+			}
+
+			java.lang.System.gc();
+
+			resident = null;
+			ArrayList<FunID> unreferenced = new ArrayList<>();
+			for (FunctionInfo fi : this.binding_points.values()) {
+				fi.unbind();
+				if (!fi.isImportedSomewhere()) {
+					unreferenced.add(fi.fun);
+				}
+			}
+			for (FunID fid : unreferenced) {
+				binding_points.remove(fid);
+			}
+			this.resident = null;
+			this.module_md5 = empty_md5;
+			
+			return ERT.TRUE;
+		}
+
+		/**
+		 * @return
+		 */
+		public synchronized ESeq get_attributes() {
+			ESeq res;
+			
+			if (resident == null)
+				res = ERT.NIL;
+			else
+				res = resident.attributes();
+			
+			return res;
+		}
+
+		public synchronized ESeq get_compile() {
+			ESeq res;
+			
+			if (resident == null)
+				res = ERT.NIL;
+			else
+				res = resident.compile();
+			
+			return res;
+		}
+
+		/**
+		 * 
+		 */
+		public void warn_about_unresolved() {
+			if (resident != null) {
+				for (FunctionInfo fi : binding_points.values()) {
+					if ((fi.resolved_value == null) && (fi.fun.module != this.module)) {
+						log.log(Level.INFO, "unresolved after load: "+fi.fun);
+					}
+				}
+			}
+		}
+
+		public ESeq get_exports() {
+			ESeq rep = ERT.NIL;
+			
+			for (FunctionInfo fi : binding_points.values()) {
+				if (fi.exported()) {
+					rep = rep.cons(new ETuple2(fi.fun.function, ERT.box(fi.fun.arity)));
+				}
+			}
+
+			return rep;
+		}
+
+		Map<Integer,EFunMaker> new_map = new HashMap<Integer, EFunMaker>();
+		Map<Long,EFunMaker> old_map = new HashMap<Long, EFunMaker>();
+		
+		/** resolve a fun we got from a R5+ node 
+		 * @param arity */
+		public EFun resolve(EPID pid, EBinary md5, int index, final int old_uniq, final int old_index, int arity, EObject[] freevars) {
+			if (resident == null) {				
+				throw new NotImplemented("calling FUN before module "+this.module+" is loaded");
+			}
+			
+			EFunMaker maker = new_map.get(index);
+			
+			if (maker == null || !md5.equals(module_md5)) {
+				LocalFunID fid = new LocalFunID(module, ERT.am_undefined, arity, old_index, index, old_uniq, md5);
+				return EFunCG.get_fun_with_handler(this.module.getName(), "badfun", 0, new EFunHandler() {					
+					@Override
+					public EObject invoke(EProc proc, EObject[] args) throws Pausable {
+						throw new ErlangError(am_badfun, args);
+					}
+					
+					@Override
+					public String toString() {
+						return "#Fun<" + module + "." +  old_index + "." + old_uniq + ">";
+					}
+				}, this.getClass().getClassLoader());
+			}
+			
+			return maker.make(pid, freevars);
+		}
+
+		static final EBinary empty_md5 = new EBinary(new byte[16]);
+		
+		/** resolve a fun we got from a pre-R5 node */
+		public EFun resolve(final EPID pid, final int old_uniq, final int old_index, final EObject[] freevars) {
+			EFunMaker maker = old_map.get((((long)old_index)<<32)|(long)old_uniq);
+			
+			if (maker==null) {				
+				LocalFunID fid = new LocalFunID(module, ERT.am_undef, 0, old_index, 0, old_uniq, empty_md5);
+				return EFunCG.get_fun_with_handler(module.getName(), "badfun", 0, new EFunHandler() {					
+					@Override
+					public EObject invoke(EProc proc, EObject[] args) throws Pausable {
+						throw new ErlangError(am_badfun, args);
+					}
+					
+					@Override
+					public String toString() {
+						return "#Fun<" + module + "." +  old_index + "." + old_uniq + ">";
+					}
+				}, this.getClass().getClassLoader());
+			}
+			
+			return maker.make(pid, freevars);
+		}
+		
+		/** used to register a lambda/local function */
+		public void register(LocalFunID fun_id, EFunMaker maker) {
+			module_md5 = fun_id.new_uniq;
+			new_map.put(fun_id.new_index, maker);
+			old_map.put((((long)fun_id.index) << 32) | (long)fun_id.uniq , maker);
+		}
+
+		public void bind_nif(FunID id, EFunHandler handler) throws Exception {
+			
+			ClassLoader loader = this.getClass().getClassLoader();
+			if (is_loaded()) {
+				loader = resident.getModuleClassLoader();
+			}
+			
+            EFun fun = EFunCG.get_fun_with_handler(
+            		id.module.getName(), 
+            		id.function.getName(), 
+            		id.arity, 
+            		handler, 
+            		loader);
+            
+            FunctionInfo fi = get_function_info(id);
+            
+            fi.bind(fun);
+            
+		}
+
+		public int trace_pattern(EAtom fun, int argi, EObject spec, TraceOpts opts) {
+			ArrayList<FunctionInfo> fis = new ArrayList<FunctionInfo>();
+			for ( Map.Entry<FunID,FunctionInfo> ent : binding_points.entrySet()) {
+				FunID fid = ent.getKey();
+				boolean is_fun = (fun == am__) || (fun == fid.function);
+				boolean is_arg = argi == -1 || (argi == fid.arity);
+
+				if (is_fun & is_arg) {
+				  fis.add(ent.getValue());
+				}
+			}
+
+			for (int i = 0; i < fis.size(); i++) {
+				fis.get(i).trace_pattern(spec, opts);
+			}
+
+			return fis.size();
+		}
+
+	}
+
+	public static void add_import(FunID fun, FunctionBinder ref) {
+		get_module_info(fun.module).add_import(fun, ref);
+	}
+
+	public static void add_internal(FunID fun, FunctionBinder ref) throws Exception {
+		get_module_info(fun.module).add_internal(fun, ref);
+	}
+
+	static ModuleInfo get_module_info(EAtom module) {
+		ModuleInfo mi;
+		synchronized (infos) {
+			mi = infos.get(module);
+			if (mi == null) {
+				infos.put(module, mi = new ModuleInfo(module));
+			}
+		}
+		return mi;
+	}
+
+	public static void add_export(EModule mod, FunID fun, EFun value) throws Exception {
+		get_module_info(fun.module).add_export(mod, fun, value);
+	}
+
+	// static private Map<EAtom, EModule> modules = new HashMap<EAtom,
+	// EModule>();
+
+	static void setup_module(EModule mod_inst) throws Error {
+
+		ModuleInfo module_info = get_module_info(EAtom.intern(mod_inst.module_name()));
+		module_info.setModule(mod_inst);
+
+		try {
+			mod_inst.registerImportsAndExports();
+		} catch (Exception e) {
+			throw new Error(e);
+		}
+
+		module_info.warn_about_unresolved();
+	}
+	
+	public static void register_lambda(LocalFunID lambda_id, Class<? extends EFun> fun) {
+		get_module_info(lambda_id.module).register(lambda_id, new EClassEFunMaker(fun));
+	}
+
+	public static void bind_nif(FunID id, EFunHandler handler) throws Exception
+	{
+		get_module_info(id.module).bind_nif(id, handler);
+	}
+
+	/**
+	 * @param start
+	 * @return
+	 */
+	public static EFun resolve(FunID start) {
+		return get_module_info(start.module).resolve(start);
+	}
+	
+	public static EFun resolve(EPID pid, EAtom module, EBinary md5, int index, int old_uniq, int old_index, int arity, EObject[] freevars) {
+		return get_module_info(module).resolve(pid, md5, index, old_uniq, old_index, arity, freevars);
+	}
+
+	public static EFun resolve(EPID pid, EAtom module, int old_uniq, int old_index, EObject[] freevars) {
+		return get_module_info(module).resolve(pid, old_uniq, old_index, freevars);
+	}
+
+	/**
+	 * @param m
+	 * @param f
+	 * @param a
+	 * @return
+	 */
+	public static boolean function_exported(EAtom m, EAtom f, int a) {
+		FunID fun = new FunID(m, f, a);
+		return get_module_info(m).exports(fun);
+	}
+
+	/**
+	 * @param m
+	 * @return
+	 */
+	public static boolean module_loaded(EAtom m) {
+		ModuleInfo mi = get_module_info(m);
+		return mi.is_loaded();
+	}
+
+	/**
+	 * @param mod
+	 * @return
+	 */
+	public static ESeq get_attributes(EAtom mod) {
+		ModuleInfo mi = get_module_info(mod);
+		return mi.get_attributes();
+	}
+
+	public static ESeq get_compile(EAtom mod) {
+		ModuleInfo mi = get_module_info(mod);
+		return mi.get_compile();
+	}
+
+	/**
+	 * @param mod
+	 * @return
+	 */
+	public static ESeq get_exports(EAtom mod) {
+		ModuleInfo mi = get_module_info(mod);
+		return mi.get_exports();
+	}
+
+	public static abstract class FunctionBinder {
+		public abstract boolean bind(EFun value);
+		public abstract FunID getFunID();
+	}
+
+	public static ESeq loaded_modules() {
+		EAtom[] mods;
+		synchronized (infos) {
+			mods = infos.keySet().toArray(new EAtom[0]);
+		}
+		ESeq out = ERT.NIL;
+		for (int i = 0; i < mods.length; i++) {
+			out = out.cons(mods[i]);
+		}
+		return out;
+	}
+
+	public static EAtom delete_module(EAtom module) {
+		ModuleInfo mi = get_module_info(module);
+		try {
+			return mi.unload();
+		} catch (ErlangException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new ErlangError(e);
+		}
+	}
+
+	public static EModule get_loaded_module(EAtom module) {
+		ModuleInfo mi = get_module_info(module);
+		return mi.resident;
+	}
+
+
+	static final EAtom am__ = EAtom.intern("_");
+
+	public EModuleManager() {
+	}
+
+	public static int trace_pattern(EPID self, EAtom mod, EAtom fun, EObject arg, EObject spec, EObject opts) {
+
+		int argi = (arg == am__) ? -1 : arg.testSmall().asInt();
+
+		ArrayList<ModuleInfo> mis = new ArrayList<ModuleInfo>();
+		if (mod == am__) {
+			ModuleInfo mi;
+			synchronized (infos) {
+				mis.addAll(infos.values());
+			}
+		} else {
+			ModuleInfo mi = get_module_info(mod);
+			mis.add(mi);
+		}
+
+		TraceOpts topts = new TraceOpts(self, spec, opts);
+
+		int count = 0;
+		for (int i = 0; i < mis.size(); i++) {
+			ModuleInfo mi = mis.get(i);
+			count += mi.trace_pattern(fun, argi, spec, topts);
+		}
+
+		return count;
+	}
+
+	static class TraceOpts {
+
+		EMatchSpec match_spec = null;
+		boolean is_global = true;
+		EPID meta = null;
+
+		TraceOpts(EPID self, EObject spec, EObject opts) {
+			ESeq seq = spec.testSeq();
+			if (seq != null) {
+				match_spec = EMatchSpec.compile(seq);
+			}
+
+			ESeq o = opts.testSeq();
+			if (o == null) return;
+
+			while(!o.isNil()) {
+				EObject v = o.head();
+				o = o.tail();
+
+				ETuple2 t2;
+				if (v == am_global) {
+					is_global = true;
+				} else if (v == am_local) {
+					is_global = false;
+				} else if (v == am_meta) {
+					meta = self;
+				} else if ((t2=ETuple2.cast(v)) != null && t2.elem1 == am_meta) {
+					meta = t2.elem2.testPID();
+				}
+			}
+		}
+
+	}
+}
+src/main/java/erjang/ETuple.java
+public abstract class ETuple extends EObject implements Cloneable /* , Indexed */{
+
+	@Override
+	int cmp_order() {
+		return CMP_ORDER_TUPLE;
+	}
+
+	@Override
+	int compare_same(EObject rhs) {
+		ETuple other = (ETuple) rhs;
+		
+		// TODO: is this the correct ordering? .. it seems so:
+		//
+		// 1> {1,2} < {3}.
+		// false
+		// 2> {2} < {1,1}.
+		// true
+		// 3> {2,2} < {1,1}.
+		// false
+		// 4> {1,1} > {2,2}.
+		// false
+		// 5> {1,1} < {2,2}.
+		// true
+
+		if (arity() < other.arity())
+			return -1;
+		if (arity() > other.arity())
+			return 1;
+
+		for (int i = 1; i <= arity(); i++) {
+			int cmp = elm(i).erlangCompareTo(other.elm(i));
+			if (cmp != 0)
+				return cmp;
+		}
+
+		return 0;
+	}
+
+	public ETuple testTuple() {
+		return this;
+	}
+	
+	public boolean match(ETermPattern matcher, EMatchContext r) {
+		return matcher.match(this, r);
+	}
+
+	@Override
+	public ETermPattern compileMatch(Set<Integer> out) {
+		return EPattern.compilePattern(this, out);
+	}
+
+
+
+	public abstract int arity();
+
+	public abstract EObject elm(int i);
+
+	public static ETuple make(int len) {
+		switch (len) {
+		case 0:
+			return new ETuple0();
+		case 1:
+			return new ETuple1();
+		case 2:
+			return new ETuple2();
+		case 3:
+			return new ETuple3();
+		case 4:
+			return new ETuple4();
+		default:
+			return make_big(len);
+		}
+	}
+
+	public static ETuple make(EObject... array) {
+		ETuple res = make(array.length);
+		for (int i = 0; i < array.length; i++) {
+			res.set(i + 1, array[i]);
+		}
+		return res;
+	}
+
+	@Override
+	public ETuple clone() {
+		try {
+			return (ETuple) super.clone();
+		} catch (CloneNotSupportedException e) {
+			throw new Error();
+		}
+	}
+
+	/** Basis for erlang:setelement - clone this and set element.
+	 * 
+	 * Equivalent to 
+	 * 
+	 * <pre> ETuple res = x.clone();
+	 * res.set(index, term);</pre>
+	 * TODO: it may make sense (for performance) to code generate this
+	 * specifically for each subclass.  Lets do that when it pops
+	 * up in a profiler one day.
+	 * 
+	 * @param index 1-based index to set
+	 * @param term value to put at index 
+	 * @return copy of this, with index position set to term.
+	 */
+	public ETuple setelement(int index, EObject term) {
+		ETuple t = clone();
+		t.set(index, term);
+		return t;
+	}
+
+	public abstract void set(int index, EObject term);
+
+	public abstract ETuple blank();
+
+	private static final Type EOBJECT_TYPE = Type.getType(EObject.class);
+	private static final String EOBJECT_DESC = EOBJECT_TYPE.getDescriptor();
+	private static final Type ETUPLE_TYPE = Type.getType(ETuple.class);
+	private static final String ETUPLE_NAME = ETUPLE_TYPE.getInternalName();
+	private static final Type ETERM_TYPE = Type.getType(EObject.class);
+
+	private static Map<Integer, ETuple> protos = new HashMap<Integer, ETuple>();
+
+	@SuppressWarnings("unchecked")
+	private static ETuple make_big(int size) {
+
+		ETuple proto = protos.get(size);
+
+		if (proto == null) {
+			try {
+				Class<? extends ETuple> c = get_tuple_class(size);
+				protos.put(size, proto = c.newInstance());
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		}
+
+		return proto.blank();
+	}
+
+	/*
+	 * static class XClassLoader extends ClassLoader { public XClassLoader() {
+	 * super(ETuple.class.getClassLoader()); }
+	 * 
+	 * Class<?> define(String name, byte[] b) { return super.defineClass(name,
+	 * b, 0, b.length); } }
+	 * 
+	 * static XClassLoader loader2 = new XClassLoader();
+	 */
+
+	@SuppressWarnings("unchecked")
+	static public Class<? extends ETuple> get_tuple_class(int num_cells) {
+
+		try {
+			return (Class<? extends ETuple>) Class.forName(ETuple.class.getName() + num_cells);
+		} catch (ClassNotFoundException e) {
+			// make it!
+		}
+
+		byte[] data = make_tuple_class_data(num_cells);
+
+		//dump(ETUPLE_NAME + num_cells, data);
+
+		String name = (ETUPLE_NAME + num_cells).replace('/', '.');
+
+        synchronized (ETuple.class) { // Avoid race conditions
+            try {
+                // Has the class been defined in the meantime?
+                return (Class<? extends ETuple>) Class.forName(ETuple.class.getName() + num_cells);
+            } catch (ClassNotFoundException e) {
+                // It is still not defined - do it
+                return ERT.defineClass(ETuple.class.getClassLoader(), name, data);
+            }
+        }
+	}
+
+	static byte[] make_tuple_class_data(int num_cells) {
+		ClassWriter cww = new ClassWriter(ClassWriter.COMPUTE_FRAMES|ClassWriter.COMPUTE_MAXS);
+
+		CheckClassAdapter cw = new CheckClassAdapter(cww);
+
+		String this_class_name = ETUPLE_NAME + num_cells;
+		String super_class_name = ETUPLE_NAME;
+		cw.visit(Opcodes.V1_4, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER,
+				this_class_name, null, super_class_name, null);
+
+		// create fields
+
+		for (int i = 1; i <= num_cells; i++) {
+			cw.visitField(Opcodes.ACC_PUBLIC, "elem" + i, ETERM_TYPE
+					.getDescriptor(), null, null);
+		}
+
+		// create count method
+		create_count(cw, num_cells);
+
+		// create cast method
+		create_cast(cw, num_cells);
+		create_cast2(cw, num_cells);
+
+		// create constructor
+		create_constructor(cw, super_class_name);
+
+		// create copy
+		create_tuple_copy(num_cells, cw, this_class_name, super_class_name);
+
+		create_tuple_make(num_cells, cw, this_class_name, super_class_name);
+		create_tuple_make2(num_cells, cw, this_class_name, super_class_name);
+		// create nth
+		create_tuple_nth(num_cells, cw, this_class_name);
+
+		// create set
+		create_tuple_set(num_cells, cw, this_class_name);
+
+		cw.visitEnd();
+		byte[] data = cww.toByteArray();
+
+		// dump(this_class_name, data);
+
+		return data;
+	}
+
+	private static void create_tuple_copy(int i, ClassVisitor cw,
+			String this_class_name, String super_class_name) {
+		MethodVisitor mv;
+		make_blank_bridge(cw, this_class_name, super_class_name);
+
+		mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "blank", "()L"
+				+ this_class_name + ";", null, null);
+		mv.visitCode();
+		mv.visitTypeInsn(Opcodes.NEW, this_class_name);
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, this_class_name, "<init>",
+				"()V");
+
+		mv.visitInsn(Opcodes.ARETURN);
+
+		mv.visitMaxs(3, 3);
+		mv.visitEnd();
+	}
+
+	private static void create_tuple_make(int i, ClassVisitor cw,
+			String this_class_name, String super_class_name) {
+		MethodVisitor mv;
+
+		mv = cw.visitMethod(Opcodes.ACC_PUBLIC|Opcodes.ACC_STATIC, "create", "()L"
+				+ this_class_name + ";", null, null);
+		mv.visitCode();
+		mv.visitTypeInsn(Opcodes.NEW, this_class_name);
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, this_class_name, "<init>",
+				"()V");
+
+		mv.visitInsn(Opcodes.ARETURN);
+
+		mv.visitMaxs(3, 3);
+		mv.visitEnd();
+	}
+
+	private static void create_tuple_make2(int arity, ClassVisitor cw,
+			String this_class_name, String super_class_name) {
+		MethodVisitor mv;
+
+		StringBuffer sb = new StringBuffer("(");
+		for (int i = 0; i<arity; i++) sb.append(EOBJECT_DESC);
+		sb.append(")L");
+		sb.append(this_class_name);
+		sb.append(";");
+		
+		mv = cw.visitMethod(Opcodes.ACC_PUBLIC|Opcodes.ACC_STATIC, "make_tuple", sb.toString(), null, null);
+
+		mv.visitCode();
+		mv.visitTypeInsn(Opcodes.NEW, this_class_name);
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, this_class_name, "<init>",
+				"()V");
+
+		for (int i = 0; i < arity; i++) {
+			mv.visitInsn(Opcodes.DUP);
+			mv.visitVarInsn(Opcodes.ALOAD, i);
+			mv.visitFieldInsn(Opcodes.PUTFIELD, this_class_name, "elem"+(i+1), EOBJECT_DESC);
+		}
+		
+		mv.visitInsn(Opcodes.ARETURN);
+
+		mv.visitMaxs(3, arity);
+		mv.visitEnd();
+	}
+
+	private static void make_blank_bridge(ClassVisitor cw,
+			String this_class_name, String super_class_name) {
+		MethodVisitor mv;
+		mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_SYNTHETIC
+				| Opcodes.ACC_BRIDGE, "blank", "()L" + super_class_name + ";",
+				null, null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, this_class_name, "blank",
+				"()L" + this_class_name + ";");
+		mv.visitInsn(Opcodes.ARETURN);
+		mv.visitMaxs(1, 1);
+		mv.visitEnd();
+	}
+
+	private static void create_tuple_nth(int n_cells, ClassVisitor cw,
+			String this_class_name) {
+		MethodVisitor mv;
+		mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "elm", "(I)"
+				+ ETERM_TYPE.getDescriptor(), null, null);
+		mv.visitCode();
+
+		Label dflt = new Label();
+		Label[] labels = new Label[n_cells];
+		for (int i = 0; i < n_cells; i++) {
+			labels[i] = new Label();
+		}
+
+		mv.visitVarInsn(Opcodes.ILOAD, 1);
+		mv.visitTableSwitchInsn(1, n_cells, dflt, labels);
+
+		for (int zbase = 0; zbase < n_cells; zbase++) {
+
+			mv.visitLabel(labels[zbase]);
+
+			mv.visitVarInsn(Opcodes.ALOAD, 0); // load this
+			String field = "elem" + (zbase + 1);
+
+			mv.visitFieldInsn(Opcodes.GETFIELD, this_class_name, field,
+					ETERM_TYPE.getDescriptor());
+			mv.visitInsn(Opcodes.ARETURN);
+		}
+
+		mv.visitLabel(dflt);
+
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.ILOAD, 1);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, ETUPLE_NAME, "bad_nth", "(I)"
+				+ ETERM_TYPE.getDescriptor());
+		mv.visitInsn(Opcodes.ARETURN); // make compiler happy
+
+		mv.visitMaxs(3, 2);
+		mv.visitEnd();
+	}
+
+	private static void create_tuple_set(int n_cells, ClassVisitor cw,
+			String this_class_name) {
+		MethodVisitor mv;
+		mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "set", "(I"
+				+ ETERM_TYPE.getDescriptor() + ")V", null, null);
+		mv.visitCode();
+
+		Label dflt = new Label();
+		Label[] labels = new Label[n_cells];
+		for (int i = 0; i < n_cells; i++) {
+			labels[i] = new Label();
+		}
+
+		mv.visitVarInsn(Opcodes.ILOAD, 1);
+		mv.visitTableSwitchInsn(1, n_cells, dflt, labels);
+
+		for (int zbase = 0; zbase < n_cells; zbase++) {
+
+			mv.visitLabel(labels[zbase]);
+
+			mv.visitVarInsn(Opcodes.ALOAD, 0); // load this
+			mv.visitVarInsn(Opcodes.ALOAD, 2); // load term
+
+			String field = "elem" + (zbase + 1);
+
+			mv.visitFieldInsn(Opcodes.PUTFIELD, this_class_name, field,
+					ETERM_TYPE.getDescriptor());
+			mv.visitInsn(Opcodes.RETURN);
+		}
+
+		mv.visitLabel(dflt);
+
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.ILOAD, 1);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, ETUPLE_NAME, "bad_nth", "(I)"
+				+ ETERM_TYPE.getDescriptor());
+		mv.visitInsn(Opcodes.POP);
+		mv.visitInsn(Opcodes.RETURN); // make compiler happy
+
+		mv.visitMaxs(3, 3);
+		mv.visitEnd();
+	}
+
+	protected final EObject bad_nth(int i) {
+		throw ERT.badarg(this);
+	}
+
+	private static void create_count(ClassVisitor cw, int n) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "arity", "()I",
+				null, null);
+		mv.visitCode();
+
+		if (n <= 5) {
+			mv.visitInsn(Opcodes.ICONST_0 + n);
+		} else {
+			mv.visitLdcInsn(new Integer(n));
+		}
+		mv.visitInsn(Opcodes.IRETURN);
+		mv.visitMaxs(1, 1);
+		mv.visitEnd();
+	}
+
+	private static void create_cast(ClassVisitor cw, int n) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC
+				| Opcodes.ACC_STATIC, "cast", "(L" + ETUPLE_NAME + ";)L"
+				+ ETUPLE_NAME + n + ";", null, null);
+		mv.visitCode();
+
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, ETUPLE_NAME, "arity", "()I");
+
+		if (n <= 5) {
+			mv.visitInsn(Opcodes.ICONST_0 + n);
+		} else {
+			mv.visitLdcInsn(new Integer(n));
+		}
+
+		Label fail = new Label();
+
+		mv.visitJumpInsn(Opcodes.IF_ICMPNE, fail);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitTypeInsn(Opcodes.CHECKCAST, ETUPLE_NAME + n);
+		mv.visitInsn(Opcodes.ARETURN);
+
+		mv.visitLabel(fail);
+		mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitInsn(Opcodes.ARETURN);
+
+		mv.visitMaxs(2, 2);
+		mv.visitEnd();
+	}
+
+
+	private static void create_cast2(ClassVisitor cw, int n) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC
+				| Opcodes.ACC_STATIC, "cast", "(L" + Type.getInternalName(EObject.class) + ";)L"
+				+ ETUPLE_NAME + n + ";", null, null);
+		mv.visitCode();
+
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitTypeInsn(Opcodes.INSTANCEOF, ETUPLE_NAME + n);
+		
+		Label fail = new Label();
+
+		mv.visitJumpInsn(Opcodes.IFEQ, fail);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitTypeInsn(Opcodes.CHECKCAST, ETUPLE_NAME + n);
+		mv.visitInsn(Opcodes.ARETURN);
+
+		mv.visitLabel(fail);
+		mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitInsn(Opcodes.ARETURN);
+
+		mv.visitMaxs(2, 2);
+		mv.visitEnd();
+	}
+
+	private static void create_constructor(ClassVisitor cw,
+			String super_class_name) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V",
+				null, null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0); // load this
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, super_class_name, "<init>",
+				"()V");
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(1, 1);
+		mv.visitEnd();
+	}
+
+	public static void dump(String name, byte[] data) {
+
+		name = name.replace('.'	, '/');
+		File out_dir;
+		
+		int idx = name.lastIndexOf('/');
+		if (idx == -1) {
+			out_dir = new File("target/woven");
+		} else {
+		String pkg = name.substring(0, name.lastIndexOf('/'));
+		out_dir = new File(new File("target/woven"), pkg);
+		}
+		out_dir.mkdirs();
+
+		FileOutputStream fo;
+		try {
+			String fname = "target/woven/" + name + ".class";
+			fo = new FileOutputStream(fname);
+			fo.write(data);
+			fo.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder("{");
+		for (int i = 1; i <= this.arity(); i++) {
+			if (i != 1)
+				sb.append(',');
+			sb.append(elm(i));
+		}
+		sb.append("}");
+		return sb.toString();
+	}
+
+	/*
+	 * TODO: Make compatible with Erlang
+	 */
+	@Override
+	public int hashCode() {
+		int arity = arity();
+		int result = arity;
+		for (int i = 0; i < arity; i++) {
+			result *= 3;
+			result += elm(i + 1).hashCode();
+		}
+		return result;
+	}
+
+	@Override
+	public boolean equalsExactly(EObject obj) {
+		if (obj instanceof ETuple) {
+			ETuple ot = (ETuple) obj;
+			if (arity() != ot.arity())
+				return false;
+			for (int i = 0; i < arity(); i++) {
+				if (!elm(i + 1).equalsExactly(ot.elm(i + 1)))
+					return false;
+			}
+			return true;
+		}
+		return false;
+	}
+
+	static String tos(EObject o) {
+		EBinary bin = o.testBinary();
+		return new String(bin.getByteArray(), IO.UTF8);
+	}
+	
+	@Override
+	public Type emit_const(MethodVisitor fa) {
+
+		Type type = Type.getType(this.getClass());
+
+		fa.visitTypeInsn(Opcodes.NEW, type.getInternalName());
+		fa.visitInsn(Opcodes.DUP);
+		fa.visitMethodInsn(Opcodes.INVOKESPECIAL, type.getInternalName(),
+				"<init>", "()V");
+
+		for (int i = 0; i < arity(); i++) {
+			fa.visitInsn(Opcodes.DUP);
+			((EObject) elm(i + 1)).emit_const(fa);
+			fa.visitFieldInsn(Opcodes.PUTFIELD, type.getInternalName(), "elem"
+					+ (i + 1), ETERM_TYPE.getDescriptor());
+		}
+
+		return type;
+	}
+
+	/**
+	 * @param eInputStream
+	 * @return
+	 * @throws IOException 
+	 */
+	public static ETuple read(EInputStream buf) throws IOException {
+		final int arity = buf.read_tuple_head();
+
+		ETuple res = ETuple.make(arity);
+		for (int i = 0; i < arity; i++) {
+			res.set(i+1, buf.read_any());
+		}
+		return res;
+	}
+	
+	/* (non-Javadoc)
+	 * @see erjang.EObject#encode(erjang.EOutputStream)
+	 */
+	@Override
+	public void encode(EOutputStream eos) {
+        int arity = arity();
+        
+        EBinary bin;
+		ETuple e2;
+
+		eos.write_tuple_head(arity);
+
+        for (int i = 1; i <= arity; i++) {
+            eos.write_any(elm(i));
+        }
+	}
+
+	
+	
+}
+src/main/java/erjang/ESmall.java
+public final class ESmall extends EInteger {
+
+	private static final Type ESMALL_TYPE = Type.getType(ESmall.class);
+	public static final ESmall ZERO = new ESmall(0);
+	public static final ESmall MINUS_ONE = new ESmall(-1);
+	public static final ESmall ONE = new ESmall(1);
+	public final int value;
+
+	final static int PREALLOC_COUNT = 0xff; // Must be at least 256.
+	static final ESmall[] little = new ESmall[PREALLOC_COUNT+1];
+	static {
+		for (int i = 0; i < little.length; i++) {
+			little[i] = new ESmall(i);
+		}
+	}
+
+	@Override
+	public byte[] encode_unsigned() {
+	    if (value < 0) throw ERT.badarg(this);
+        if (value < 0x100) {
+            return new byte[]{ 
+                    (byte)( value & 0xff )
+            };
+        }
+        if (value < 0x10000) {
+            return new byte[]{ 
+                    (byte)((value&0xff00) >> 8), 
+                    (byte)( value&0x00ff ) 
+            };
+        }
+        if (value < 0x1000000) {
+            return new byte[]{ 
+                    (byte)((value&0xff0000) >> 16), 
+                    (byte)((value&0x00ff00) >> 8), 
+                    (byte)( value&0x0000ff ) 
+            };
+        }
+        return new byte[]{ 
+                (byte)((value&0xff000000) >>> 24), 
+                (byte)((value&0x00ff0000) >>> 16), 
+                (byte)((value&0x0000ff00) >>> 8), 
+                (byte)( value&0x000000ff ) 
+        };
+	}
+
+	@Override
+	public ESmall testSmall() {
+		return this;
+	}
+
+	public ESmall(int value) {
+		this.value = value;
+	}
+	
+	@Override
+	public int hashCode() {
+		return value;
+	}
+
+	public long longValue() {
+		return value;
+	}
+	
+	public EInteger inc() { 
+		if (value==Integer.MAX_VALUE) { 
+			return ERT.box((long)Integer.MAX_VALUE + 1L); 
+		} else {
+			return ERT.box(value+1);
+		}
+	}
+	
+	public EInteger dec() { 		
+		if (value==Integer.MIN_VALUE) { 
+			return ERT.box((long)Integer.MIN_VALUE - 1L); 
+		} else {
+			return ERT.box(value-1);
+		}
+	}
+
+	public boolean is_zero() { return value==0; }
+
+	@Override
+	public void visitIOList(EIOListVisitor out) throws ErlangError {
+		if ((value & 0xff) != value)
+			throw ERT.badarg();
+		
+		out.visit(value);
+	}
+	
+	@Override
+	public boolean collectIOList(List<ByteBuffer> out) {
+		ByteBuffer b = ByteBuffer.allocate(1);
+		b.put(0, (byte) value);
+		out.add(b);
+		return true;
+	}
+	
+	public boolean equals(EObject other) {
+		if (other == this) return true;
+		if (other instanceof ESmall)
+			return ((ESmall)other).value == value;
+		if (other instanceof EDouble)
+			return ((EDouble)other).value == value;
+		return false;
+	}
+	
+	@Override
+	int compare_same(EObject rhs) {
+		return rhs.r_compare_same(this);
+	}
+
+	int r_compare_same(ESmall lhs) {
+		if (lhs.value < value)
+			return -1;
+		if (lhs.value == value) 
+			return 0;
+		return 1;
+	}
+
+	int r_compare_same(EBig lhs) {
+		return lhs.value.compareTo(BigInteger.valueOf(value));
+	}
+
+	int r_compare_same(EDouble lhs) {
+		return lhs.value < value ? -1 : lhs.value == value ? 0 : 1;
+	}
+
+	@Override
+	public boolean equalsExactly(EObject rhs) {
+		return rhs.r_equals_exactly(this);
+	}
+
+	boolean r_equals_exactly(ESmall lhs) {
+		return lhs.value == value;
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see erjang.EObject#asInt()
+	 */
+	@Override
+	public int asInt() {
+		return value;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (obj instanceof ESmall) {
+			ESmall o = (ESmall) obj;
+			return o.value == value;
+		}
+		return false;
+	}
+
+	@Override
+	public int intValue() {
+		return value;
+	}
+
+	@Override
+	public String toString() {
+		return String.valueOf(value);
+	}
+
+	@Override
+	public org.objectweb.asm.Type emit_const(MethodVisitor fa) {
+
+		fa.visitLdcInsn(new Integer(value));
+		fa.visitMethodInsn(Opcodes.INVOKESTATIC, ESMALL_TYPE.getInternalName(), 
+				"make", "(I)Lerjang/ESmall;");
+		
+		Type type = ESMALL_TYPE;
+
+		return type;
+	}
+
+	@Override
+	public EInteger abs() {
+		// OBS: abs(Integer.MIN_VALUE) cannot be represented by an ESmall.
+		return ERT.box(Math.abs((long)value));
+	}
+
+	/**
+	 * @param v
+	 * @return
+	 */
+	public static ESmall make(int v) {
+		if ((v & PREALLOC_COUNT)==v) return little[v];
+		else return new ESmall(v);
+	}
+
+	//
+	// Arithmetic
+	//
+
+	public double doubleValue() {
+		return value;
+	}
+
+	public BigInteger bigintValue() {
+		return BigInteger.valueOf(value);
+	}
+
+	public ENumber add(EObject other, boolean guard) {
+		return other.add(value, guard);
+	}
+
+	@BIF(name="+")
+	public ENumber add(EObject rhs) { 
+		return rhs.add(value, false);
+	}
+
+	public EInteger add(int b, boolean guard) {
+		int a = value;
+		int r=a+b;
+		if (( (a^r) & (b^r) ) < 0)
+			return ERT.box((long)a + (long)b); 
+		return ERT.box(r);
+	}
+
+	/** overflow check due to http://www.drdobbs.com/jvm/signalling-integer-overflows-in-java/210500001 */
+	@BIF(name="+")
+	public EInteger add(ESmall rhs) { 
+		int a = value;
+		int b = rhs.value;
+		int r=a+b;
+		if (( (a^r) & (b^r) ) < 0)
+			return ERT.box((long)a + (long)b); 
+		return ERT.box(r);
+	}
+
+	public ENumber add(double lhs, boolean guard) {
+		return ERT.box(lhs + value);
+	}
+
+	public ENumber add(BigInteger lhs, boolean guard) {
+		return ERT.box(lhs.add(BigInteger.valueOf(value)));
+	}
+
+	/* subtract */
+
+	public ENumber subtract(EObject other, boolean guard) {
+		return other.r_subtract(value, guard);
+	}
+
+	public ENumber subtract(ESmall rhs) { 
+		return ERT.box((long)value - (long)rhs.value);
+	}
+
+	@Deprecated
+	public ENumber subtract(int rhs) { 
+			return ERT.box((long)value - rhs);
+	}
+
+	public ENumber r_subtract(int lhs, boolean guard) {
+		return ERT.box((long) lhs - (long) value);
+	}
+
+	public ENumber r_subtract(double lhs, boolean guard) {
+		return ERT.box(lhs - value);
+	}
+
+	public ENumber r_subtract(BigInteger lhs, boolean guard) {
+		return ERT.box(lhs.subtract(BigInteger.valueOf(value)));
+	}
+
+	// integer division erlang:'*'/2
+
+	@BIF(name="*")
+	public ENumber multiply(EObject other) {
+		return other.r_multiply(value);
+	}
+
+	public EInteger r_multiply(int lhs) {
+		return ERT.box((long) lhs * (long) value);
+	}
+
+	public EDouble r_multiply(double lhs) {
+		return ERT.box(lhs * value);
+	}
+
+	public EInteger r_multiply(BigInteger lhs) {
+		return ERT.box(lhs.multiply(BigInteger.valueOf(value)));
+	}
+
+	@Override
+	public ENumber negate() {
+		return new ESmall(-value);
+	}
+	
+	// integer division erlang:div/2
+
+	public EDouble divide(EObject other) {
+		return other.r_divide(value);
+	}
+
+	public EDouble r_divide(int lhs) {
+		if (value==0) throw ERT.badarith(lhs, this);
+		return ERT.box((double) lhs / value);
+	}
+
+	public EDouble r_divide(double lhs) {
+		if (value==0) throw ERT.badarith(ERT.box(lhs), this);
+		return ERT.box(lhs / value);
+	}
+
+	public EDouble r_divide(BigInteger lhs) {
+		if (value==0) throw ERT.badarith(ERT.box(lhs), this);
+		return ERT.box(lhs.doubleValue() / value);
+	}
+
+	// integer division erlang:div/2
+
+	public EInteger idiv(EObject other) {
+		return other.r_idiv(value);
+	}
+
+	public EInteger idiv(int rhs) {
+		if (rhs==0) throw ERT.badarith(this, ERT.box(rhs));
+		return ERT.box(value / rhs);
+	}
+
+	public EInteger r_idiv(int lhs) {
+		if (value==0) throw ERT.badarith(ERT.box(lhs), this);
+		return ERT.box((long) lhs / (long) value);
+	}
+
+	public EInteger r_idiv(BigInteger lhs) {
+		if (value==0) throw ERT.badarith(lhs, this);
+		return ERT.box(lhs.divide(BigInteger.valueOf(value)));
+	}
+
+	// remainder erlang:rem/2
+
+	public ESmall irem(int rhs) {
+		if (rhs==0) throw ERT.badarith(this, ERT.box(rhs));
+		return ERT.box(value % rhs);
+	}
+
+	public EInteger irem(EObject other) {
+		return other.r_irem(value);
+	}
+
+	public EInteger r_irem(int lhs) {
+		if (value==0) throw ERT.badarith(ERT.box(lhs), this);
+		return ERT.box(lhs % value);
+	}
+
+	public EInteger r_irem(BigInteger lhs) {
+		if (value==0) throw ERT.badarith(ERT.box(lhs), this);
+		return ERT.box(lhs.remainder(BigInteger.valueOf(value)));
+	}
+
+	// shift right erlang:shr/2
+
+	public EInteger bsr(EObject other) {
+		return other.r_bsr(value);
+	}
+
+	public EInteger r_bsr(int lhs) {
+		
+		/** it's a small positive integer in the range 0..31 */
+		if ((value & ~31) == 0) 
+			return ERT.box((lhs >> value));
+
+		if (value >= 32) {
+			if (lhs < 0)
+				return ESmall.MINUS_ONE;
+			else
+				return ZERO;
+		} else /* if (value < 0) */ {
+			return ERT.box(BigInteger.valueOf(lhs).shiftRight(value));
+		}
+	}
+
+	public EInteger r_bsr(BigInteger lhs) {
+		return ERT.box(lhs.shiftRight(value));
+	}
+
+	// shift right erlang:shl/2
+
+	public EInteger bsl(EObject other) {
+		return other.r_bsl(value);
+	}
+
+	public EInteger r_bsl(int lhs) {
+		if ((value & ~31) == 0) 
+			return ERT.box(((long)lhs) << value);
+		return ERT.box(BigInteger.valueOf(lhs).shiftLeft(value));
+	}
+
+	public EInteger r_bsl(BigInteger lhs) {
+		return ERT.box(lhs.shiftLeft(value));
+	}
+
+	// binary and - erlang:band/2
+
+	public EInteger band(EObject other) {
+		return other.band(value);
+	}
+
+	public EInteger band(int lhs) {
+		return ERT.box((lhs & value));
+	}
+
+	public EInteger band(BigInteger lhs) {
+		return ERT.box(lhs.and(BigInteger.valueOf(value)));
+	}
+
+	// binary or - erlang:band/2
+
+	public EInteger bor(EObject other) {
+		return other.bor(value);
+	}
+
+	public EInteger bor(int lhs) {
+		return ERT.box((lhs | value));
+	}
+
+	public EInteger bor(BigInteger lhs) {
+		return ERT.box(lhs.or(BigInteger.valueOf(value)));
+	}
+
+	// binary xor - erlang:band/2
+
+	public EInteger bxor(EObject other) {
+		return other.bxor(value);
+	}
+
+	public EInteger bxor(int lhs) {
+		return ERT.box((lhs ^ value));
+	}
+
+	public EInteger bxor(BigInteger lhs) {
+		return ERT.box(lhs.xor(BigInteger.valueOf(value)));
+	}
+
+	public EInteger bnot() {
+		return ERT.box(~value);
+	}
+
+	@Override
+	public void encode(EOutputStream eos) {
+		eos.write_int(value);
+	}
+}
+src/main/java/erjang/Main.java
+public class Main {
+	public static final String SYSTEM_ARCHITECTURE = "java";
+	public static final String DRIVER_VERSION = "1.5";
+	
+
+	/**
+	 * @param args
+	 * @throws IOException 
+	 * @throws IllegalAccessException 
+	 * @throws InstantiationException 
+	 * @throws ClassNotFoundException 
+	 */
+	public static void main(String[] args) throws Exception {
+		
+		// enforce Kilim to optimize for code size before anything else
+		System.setProperty("kilim.optimize_codesize", "true");
+		
+		ErjangConfig.init();
+
+        ArrayList<String> regular_args = new ArrayList<>();
+		ArrayList<String> extra_args   = new ArrayList<>();
+        CommandLineParser.parseArgumentList(args, regular_args, extra_args);
+
+        RuntimeInfo runtimeInfo = determineRuntimeInfo(args, regular_args);
+
+		if (runtimeInfo == null) {
+			System.err.println("Erjang cannot find its BEAM files.");
+			System.err.println("- You can set OTPROOT, pass -root /path/to/erlang, or put 'erl' in your PATH.");
+			System.exit(1);
+		}
+		
+		try {
+			// verify we have a working configuration
+			runtimeInfo.verify();
+		}
+		catch (RuntimeException e) {
+			String reason = e.getMessage();
+			ERT.log.severe(reason);
+			System.err.println(reason);
+			return;
+		}
+
+        if (! regular_args.contains("-root")) {
+            String root = runtimeInfo.erl_rootdir;
+            regular_args.add(0,"-root");
+            regular_args.add(1, root);
+        }
+
+		if (! regular_args.contains("-home")) {
+            regular_args.add(0, "-home");
+            regular_args.add(1, System.getProperty("user.home"));
+		}
+
+		ERT.setRuntimeInfo(runtimeInfo);
+		
+		if (!(new File(runtimeInfo.erl_bootstrap_ebindir)).exists() && !runtimeInfo.erl_bootstrap_ebindir.startsWith(EFile.RESOURCE_PREFIX)) {
+			ERT.log.severe("No bootstrap classes at: "+runtimeInfo.erl_bootstrap_ebindir);
+			throw new IllegalArgumentException("No bootstrap classes at: "+runtimeInfo.erl_bootstrap_ebindir);
+		}
+		
+		@SuppressWarnings({})
+		SignalHandler handler = new SignalHandler() {
+			
+			@Override
+			public void handle(Signal arg0) {				
+				ERT.print_all_stack_traces();
+			}
+		};
+		
+		sun.misc.Signal.handle(new Signal("HUP"), handler);
+
+        ArrayList<String> actual_args = new ArrayList<>(regular_args);
+        if (! extra_args.isEmpty()) {
+            actual_args.add("-extra");
+            actual_args.addAll(extra_args);
+        }
+		OTPMain.main(regular_args.toArray(new String[regular_args.size()]));
+	}
+
+    private static RuntimeInfo determineRuntimeInfo(String[] args, ArrayList<String> regular_args) {
+        String cmd_line_root = null;
+        String otp_version = (ErjangConfig.hasString("erjang.otp.version") ? ErjangConfig.getString("erjang.otp.version", null) : null);
+        String erts_version = (ErjangConfig.hasString("erjang.erts.version") ? "erts-"+ErjangConfig.getString("erjang.erts.version", null) : null);
+        String ertsVersionFromCommandLine = System.getProperty("erjang.beam.option.e");
+        if (ertsVersionFromCommandLine != null) {
+            erts_version = ertsVersionFromCommandLine;
+        }
+
+        for (int i = 0; i < regular_args.size(); i++) {
+            String arg = regular_args.get(i);
+            if ("-root".equals(arg) && i < args.length) {
+                cmd_line_root = regular_args.get(i+1);
+                i +=1;
+            } else if ("-env".equals(arg) && (i+1) < args.length) {
+                ErjangConfig.setenv(regular_args.get(i+1), regular_args.get(i+2));
+                i += 2;
+            }/* else if ("+e".equals(arg) && i < args.length) {
+                // TODO: Handle both "+eVVV" and "+e VVV". Alternatively, getProperty("erjang.beam.option.e") to avoid duplication.
+                erts_version = regular_args.get(i+1);
+                i += 1;
+            }*/
+        }
+
+        return RuntimeInfo.setup(erts_version, otp_version, cmd_line_root);
+    }
+}
+src/main/java/erjang/EAtom.java
+public final class EAtom extends EObject implements CharSequence {
+
+	public EAtom testAtom() {
+		return this;
+	}
+
+	@Override
+	public boolean match(ETermPattern matcher, EMatchContext r) {
+		return matcher.match(this, r);
+	}
+
+	@Override
+	public ETermPattern compileMatch(Set<Integer> out) {
+		return EPattern.compilePattern(this, out);
+	}
+
+
+
+	public EAtom testBoolean() {
+		if ( this==ERT.TRUE || this == ERT.FALSE) return this;
+		return null;
+	}
+
+	private final String value;
+	public final int hash;
+
+	@Override
+	int compare_same(EObject rhs) {
+		return compareTo((EAtom) rhs);
+	}
+	
+	private static ConcurrentHashMap<String, EAtom> interns = new ConcurrentHashMap<String, EAtom>();
+
+	private EAtom(String name) {
+		this.value = name;
+		this.hash = name.hashCode();
+	}
+
+	@Override
+	int cmp_order() {
+		return CMP_ORDER_ATOM;
+	}
+	
+	static Pattern ATOM = Pattern.compile("[a-z_]([a-z]|[A-Z]|@|_|[0-9])*");
+
+	@Override
+	public String toString() {
+		if (ATOM.matcher(value).matches()) {
+			return value;
+		} else {
+			return "'" + encode_escapes(value) + "'";
+		}
+	}
+
+	/**
+	 * @param value2
+	 * @return
+	 */
+	private String encode_escapes(CharSequence seq) {
+		StringBuffer sb = new StringBuffer();
+		for (int i = 0; i < seq.length(); i++) {
+			char ch = seq.charAt(i);
+			if ((ch >= 0x20 && ch <= 0x7f) && ch != '\'' && ch != 0x7f) {
+				sb.append(ch);
+			} else {
+				switch (ch) {
+				case '\t':
+					sb.append("\\t");
+					break;
+				case '\n':
+					sb.append("\\n");
+					break;
+				case '\r':
+					sb.append("\\r");
+					break;
+				case '\f':
+					sb.append("\\f");
+					break;
+				case '\b':
+					sb.append("\\b");
+					break;
+				case '\'':
+					sb.append("\\'");
+					break;
+				default:
+					sb.append("\\");
+					sb.append('x');
+					if (ch < 0x10) sb.append('0');
+					sb.append(Integer.toHexString(ch).toUpperCase());
+				}
+			}
+		}
+		return sb.toString();
+	}
+
+	public boolean isAtom(String name) {
+		return interns.contains(name);
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		return this == obj;
+	}
+
+	@Override
+	public int hashCode() {
+		return hash;
+	}
+
+	// used by NIF API
+	public byte[] latin1_bytes() {
+		return value.getBytes(StandardCharsets.ISO_8859_1);
+	}
+
+	// used by NIF API
+	public int latin1_length() {
+		return value.length();
+	}
+
+	public static EAtom intern(String name) {
+		
+		
+		
+		EAtom res = interns.get(name);
+		if (res == null) {
+
+			boolean changed = false;
+			char[] data = name.toCharArray();
+			for (int i = 0; i < data.length; i++) 
+			{
+				if ((data[i] & 0xff00) != 0) changed = true;
+				data[i] = (char) (data[i] & 0xff);
+			}
+
+			if (changed)
+				name = new String(data);
+			
+			EAtom new_val = new EAtom(name);
+			do {
+				res = interns.putIfAbsent(name, new_val);
+			} while (res == null);
+		}
+
+		return res;
+	}
+
+	public static EAtom existing_atom(String name) {
+		EAtom res = interns.get(name);
+		if (res == null) {
+			throw ERT.badarg(EString.fromString(name));
+		}
+
+		return res;
+	}
+
+	public static EAtom existing_atom_or_null(String name) {
+		return interns.get(name);
+	}
+
+	@Override
+	public char charAt(int index) {
+		return value.charAt(index);
+	}
+
+	@Override
+	public int length() {
+		return value.length();
+	}
+
+	@Override
+	public CharSequence subSequence(int start, int end) {
+		return value.subSequence(start, end);
+	}
+
+	public String getName() {
+		return value;
+	}
+
+	private static final Type EATOM_TYPE = Type.getType(EAtom.class);
+	private static final Type STRING_TYPE = Type.getType(String.class);
+
+	@Override
+	public org.objectweb.asm.Type emit_const(MethodVisitor fa) {
+
+		Type type = EATOM_TYPE;
+
+		fa.visitLdcInsn(value);
+		fa.visitMethodInsn(Opcodes.INVOKESTATIC, type.getInternalName(),
+				"intern", "(" + STRING_TYPE.getDescriptor() + ")"
+						+ type.getDescriptor());
+
+		return type;
+	}
+
+	/**
+	 * @param other
+	 * @return
+	 */
+	public int compareTo(EAtom other) {
+		if (this == other) return 0;
+		return value.compareTo(other.value);
+	}
+	
+	/* (non-Javadoc)
+	 * @see erjang.EObject#equalsExactly(erjang.EObject)
+	 */
+	@Override
+	public boolean equalsExactly(EObject rhs) {
+		return rhs == this;
+	}
+
+	/**
+	 * @param buf
+	 * @return
+	 */
+	public static EAtom intern(byte[] buf) {
+		char[] data = new char[buf.length];
+		for (int i = 0; i < data.length; i++) {
+			data[i] = (char) (buf[i] & 0xff);
+		}
+		String str = new String(data);
+		return intern(str);
+	}
+
+	public static EAtom read(EInputStream ei) throws IOException {
+		return ei.read_atom();
+	}
+
+	@Override
+	public void encode(EOutputStream eos) {
+		eos.write_atom(this.value);
+	}
+}
+src/main/java/erjang/EProc.java
+public final class EProc extends ETask<EInternalPID> {
+	
+	static Logger log = Logger.getLogger("erjang.proc");
+
+    /*==================== Constants =============================*/
+
+    public static final EObject TAIL_MARKER = null;
+	
+	public static final EAtom am_trap_exit = EAtom.intern("trap_exit");
+	public static final EAtom am_sensitive = EAtom.intern("sensitive");
+	public static final EAtom am_messages = EAtom.intern("messages");
+	public static final EAtom am_message_queue_len = EAtom.intern("message_queue_len");
+	public static final EAtom am_dictionary = EAtom.intern("dictionary");
+	public static final EAtom am_group_leader = EAtom.intern("group_leader");
+	public static final EAtom am_links = EAtom.intern("links");
+	public static final EAtom am_heap_size = EAtom.intern("heap_size");
+	public static final EAtom am_stack_size = EAtom.intern("stack_size");
+	public static final EAtom am_reductions = EAtom.intern("reductions");
+	public static final EAtom am_initial_call = EAtom.intern("initial_call");
+	public static final EAtom am_current_function = EAtom.intern("current_function");
+	public static final EAtom am_priority = EAtom.intern("priority");
+	public static final EAtom am_memory = EAtom.intern("memory");
+	public static final EAtom am_monitor_nodes = EAtom.intern("monitor_nodes");
+	public static final EAtom am_registered_name = EAtom.intern("registered_name");
+	public static final EAtom am_error_handler = EAtom.intern("error_handler");
+	public static final EAtom am_undefined_function = EAtom.intern("undefined_function");
+
+	public static final EAtom am_max = EAtom.intern("max");
+	public static final EAtom am_normal = EAtom.intern("normal");
+	public static final EAtom am_low = EAtom.intern("low");
+	public static final EAtom am_high = EAtom.intern("high");
+
+	static final EObject am_kill = EAtom.intern("kill");
+	static final EObject am_killed = EAtom.intern("killed");
+
+	private static final EObject am_status = EAtom.intern("status");
+	private static final EObject am_waiting = EAtom.intern("waiting");
+	private static final EObject am_running = EAtom.intern("running");
+	private static final EObject am_runnable = EAtom.intern("runnable");
+
+	private static final EAtom am_error_logger = EAtom.intern("error_logger");
+	private static final EAtom am_info_report = EAtom.intern("info_report");
+
+	private static final EObject am_noproc = EAtom.intern("noproc");
+
+    private static final EAtom[] priorities = new EAtom[] {
+            am_max,
+            am_high,
+            am_normal,
+            am_low
+    };
+
+    private static final ExitHook[] NO_HOOKS = new ExitHook[0];
+
+
+    /*==================== Global state ====================================*/
+    public static ConcurrentHashMap<Integer,EProc> all_tasks
+            = new ConcurrentHashMap<Integer,EProc> ();
+
+    /*==================== Process state ====================================*/
+    /*========= Immutable state =========================*/
+    private final EInternalPID self;
+
+    // TODO: Make final (and set in constructor rather than in setTarget)
+    private EAtom spawn_mod;
+    private EAtom spawn_fun;
+    private int spawn_args;
+
+    /*========= Mutable Erlang-dictated state ===========*/
+    private EPID group_leader;
+    public ErlangException last_exception; // TODO: Make private
+    private final Map<EObject, EObject> pdict = new HashMap<EObject, EObject>();
+    private EAtom trap_exit = ERT.FALSE;
+    private EAtom sensitive = ERT.FALSE;
+    private EAtom error_handler = am_error_handler;
+
+    private int priority = 2;
+
+    /*========= Mutable implementation-related state ====*/
+
+    // TODO - make private. (Only accessed from ERT.) Add accessors/operations.
+    // Message receive group:
+    /** Message box index - used for selective receive */
+    public int midx = 0;
+    public long timeout_start;
+    public boolean in_receive;
+
+    /** Used for implementing tail calls. */
+    public EFun tail;
+    public EObject arg0, arg1, arg2, arg3, arg4, arg5,
+    arg6, arg7, arg8, arg9, arg10, arg11,
+    arg12, arg13, arg14, arg15, arg16, arg17;
+
+	// For interpreter use:
+	public EObject[] stack = new EObject[10];
+	public int sp = 0;
+    public EObject[] regs;
+    public EDouble[] fregs = new EDouble[16];
+
+    public EModuleManager.FunctionInfo undefined_function
+            = EModuleManager.get_module_info(error_handler).
+            get_function_info(new FunID(error_handler, am_undefined_function, 3));
+
+    /** For process clean-up. Protected by exit-action mutator lock. */
+    private final List<ExitHook> exit_hooks = new ArrayList<ExitHook>();
+    ERT.TraceFlags trace_flags;
+
+
+    /*==================== Construction =============================*/
+
+	public EProc(EPID group_leader, EAtom m, EAtom f, Object[] a) {
+		self = new EInternalPID(this);
+
+		// if no group leader is given, we're our own group leader
+		this.group_leader = group_leader == null ? self : group_leader;
+		
+		setTarget(m, f, a);
+		
+		all_tasks.put(key(), this);
+	}
+
+	/**
+	 * @param m
+	 * @param f
+	 * @param array
+	 */
+	public EProc(EPID group_leader, EAtom m, EAtom f, ESeq a) {
+		self = new EInternalPID(this);
+
+		// if no group leader is given, we're our own group leader
+		this.group_leader = group_leader == null ? self : group_leader;
+		
+		setTarget(m, f, a);
+		
+		all_tasks.put(key(), this);
+	}
+	
+	protected void setTarget(EAtom m, EAtom f, Object[] args) {
+		// wrap any non-EObject argument in JavaObject
+		EObject[] eargs = new EObject[args.length];
+		for (int i = 0; i < args.length; i++) {
+			Object arg = args[i];
+			if (arg instanceof EObject) {
+				EObject earg = (EObject) arg;
+				eargs[i] = earg;
+			}
+			else {
+				// wrap in JavaObject
+				eargs[i] = JavaObject.box(this, arg);
+			}
+		}
+		setTarget(m, f, ESeq.fromArray(eargs));
+	}
+	
+	protected void setTarget(EAtom m, EAtom f, ESeq a) {
+		this.spawn_mod = m;
+		this.spawn_fun = f;
+		this.spawn_args = a.length();
+		
+		int arity = spawn_args;
+		EFun target = EModuleManager.resolve(new FunID(m,f,arity));
+		
+		if (target == null) {
+			throw new ErlangUndefined(m, f, new ESmall(arity));
+		}
+		
+		this.tail = target;
+		a = a.reverse();
+		switch (arity) {
+		default:
+			throw new NotImplemented();
+		case 7: 
+			this.arg6 = a.head(); a = a.tail();
+		case 6: 
+			this.arg5 = a.head(); a = a.tail();
+		case 5: 
+			this.arg4 = a.head(); a = a.tail();
+		case 4: 
+			this.arg3 = a.head(); a = a.tail();
+		case 3: 
+			this.arg2 = a.head(); a = a.tail();
+		case 2: 
+			this.arg1 = a.head(); a = a.tail();
+		case 1: 
+			this.arg0 = a.head(); a = a.tail();
+		case 0:
+		}
+	}
+
+    /*==================== Public interface - runtime ===============*/
+    public EInternalPID self_handle() {
+        return self;
+    }
+
+    public ErlangException getLastException() {
+        return last_exception;
+    }
+
+    /*==================== Public interface - Erlang operations =====*/
+
+    /**
+     * @return
+     */
+    public EPID group_leader() {
+        return group_leader;
+    }
+
+    /**
+     * Only called from ELocalPID
+     *
+     * @param group_leader
+     */
+    void set_group_leader(EPID group_leader) {
+        this.group_leader = group_leader;
+    }
+
+    /*--------- Process dictionary --------------------------*/
+    public EObject put(EObject key, EObject value) {
+        EObject res = pdict.put(key, value);
+        if (res == null)
+            return ERT.am_undefined;
+        return res;
+    }
+
+    public EObject get(EObject key) {
+        EObject res = pdict.get(key);
+        return (res == null) ? ERT.am_undefined : res;
+    }
+
+    /**
+     * @return list of the process dictionary
+     */
+    public ESeq get() {
+        ESeq res = ERT.NIL;
+        for (Map.Entry<EObject, EObject> ent : pdict.entrySet()) {
+            res = res.cons(ETuple.make(ent.getKey(), ent.getValue()));
+        }
+        return res;
+    }
+
+    /**
+     * @param key
+     * @return
+     */
+    public EObject erase(EObject key) {
+        EObject res = pdict.remove(key);
+        if (res == null)
+            res = ERT.am_undefined;
+        return res;
+    }
+
+    /**
+     * @return
+     */
+    public EObject erase() {
+        EObject res = get();
+        pdict.clear();
+        return res;
+    }
+
+    /*--------- Process flags --------------------------*/
+    /**
+     * @param testAtom
+     * @param a2
+     * @return
+     * @throws Pausable
+     */
+    public EObject process_flag(EAtom flag, EObject value) {
+
+        if (flag == am_trap_exit) {
+            EAtom old = this.trap_exit;
+            trap_exit = value.testBoolean();
+            return ERT.box(old==ERT.TRUE);
+        }
+
+        if (flag == am_priority) {
+            EAtom old = priorities[getPriority()];
+            for (int i = 0; i < priorities.length; i++) {
+                if (value == priorities[i]) {
+                    setPriority(i);
+                    return old;
+                }
+            }
+            throw ERT.badarg(flag, value);
+        }
+
+        if (flag == am_error_handler) {
+            EAtom val;
+            if ((val = value.testAtom()) != null) {
+                EAtom old = this.error_handler;
+                this.error_handler = val;
+
+                FunID uf = new FunID(error_handler, am_undefined_function, 3);
+                undefined_function = EModuleManager.get_module_info(error_handler).get_function_info(uf);
+
+                return old;
+            } else {
+                throw ERT.badarg(flag,  value);
+            }
+        }
+
+        if (flag == am_monitor_nodes) {
+            if (!value.isBoolean()) throw ERT.badarg(flag, value);
+            boolean activate = value==ERT.TRUE;
+            Boolean old = EAbstractNode.monitor_nodes(self_handle(), activate, ERT.NIL);
+            if (old == null) throw ERT.badarg(flag, value);
+            return ERT.box(old.booleanValue());
+        }
+
+        if (flag == am_trap_exit) {
+            EAtom old = this.trap_exit;
+            trap_exit = value.testBoolean();
+            return ERT.box(old==ERT.TRUE);
+        }
+
+        if (flag == am_sensitive) {
+            EAtom old = this.sensitive;
+            sensitive = value.testBoolean();
+            return ERT.box(old==ERT.TRUE);
+        }
+
+        ETuple2 tup;
+        if ((tup = ETuple2.cast(flag)) != null && tup.elem1==am_monitor_nodes) {
+            ESeq opts = tup.elem2.testSeq();
+            if (opts == null) throw ERT.badarg(flag, value);
+
+            if (!value.isBoolean()) throw ERT.badarg(flag, value);
+            boolean activate = value.testBoolean()==ERT.TRUE;
+
+            Boolean old = EAbstractNode.monitor_nodes(self_handle(), activate, opts);
+            if (old == null) throw ERT.badarg(flag, value);
+            return ERT.box(old.booleanValue());
+        }
+
+        throw new NotImplemented("process_flag flag="+flag+", value="+value);
+    }
+
+    private int getPriority() {
+        return this.priority;
+    }
+
+    private void setPriority(int i) {
+        this.priority  = i;
+    }
+
+
+    /*--------- Process info --------------------------*/
+
+    public EObject process_info() {
+
+        ESeq res = ERT.NIL;
+
+        res = res.cons(process_info(am_trap_exit));
+        res = res.cons(process_info(am_messages));
+        res = res.cons(process_info(am_message_queue_len));
+        res = res.cons(process_info(am_dictionary));
+        res = res.cons(process_info(am_group_leader));
+        res = res.cons(process_info(am_links));
+        res = res.cons(process_info(am_heap_size));
+        res = res.cons(process_info(am_initial_call));
+        res = res.cons(process_info(am_reductions));
+
+        EObject reg_name = self_handle().name;
+        if (reg_name != ERT.am_undefined)
+            res = res.cons(new ETuple2(am_registered_name, reg_name));
+
+        if (res == ERT.NIL) return ERT.am_undefined;
+        return res;
+    }
+
+    /**
+     * @param spec
+     * @return
+     */
+    public EObject process_info(EObject spec) {
+        if (spec == am_registered_name) {
+            return self_handle().name == ERT.am_undefined
+                    ? ERT.NIL
+                    : new ETuple2(am_registered_name, self_handle().name);
+        } else if (spec == am_trap_exit) {
+            return new ETuple2(am_trap_exit, trap_exit);
+        } else if (spec == am_message_queue_len) {
+            return new ETuple2(am_message_queue_len,
+                    new ESmall(mbox.size()));
+        } else if (spec == am_messages) {
+            ESeq messages = EList.make((Object[])mbox.messages());
+            return new ETuple2(am_messages, messages);
+        } else if (spec == am_dictionary) {
+            return new ETuple2(am_dictionary, get());
+        } else if (spec == am_group_leader) {
+            return new ETuple2(am_group_leader, group_leader);
+        } else if (spec == am_links) {
+            ESeq links = links();
+            return new ETuple2(am_links, links);
+        } else if (spec == am_status) {
+            if (this.running) {
+                return new ETuple2(am_status, am_running);
+            } else if (this.pauseReason != null) {
+                return new ETuple2(am_status, am_waiting);
+            } else {
+                return new ETuple2(am_status, am_runnable);
+            }
+        } else if (spec == am_heap_size) {
+            return new ETuple2(am_heap_size,
+                    ERT.box(Runtime.getRuntime().totalMemory()
+                            - Runtime.getRuntime().freeMemory()));
+        } else if (spec == am_stack_size) {
+            // TODO: Maybe use HotSpotDiagnosticMXBean ThreadStackSize property?
+            return new ETuple2(am_stack_size,
+                    ERT.box(0));
+
+        } else if (spec == am_reductions) {
+            return new ETuple2(am_reductions, ERT.box(this.get_reductions()));
+
+        } else if (spec == am_initial_call) {
+            return new ETuple2(am_initial_call,
+                    ETuple.make(spawn_mod, spawn_fun, ERT.box(spawn_args)));
+
+        } else if (spec == am_current_function) {
+            /** TODO: fix this so we return something meaningful... */
+            return new ETuple2(am_current_function,
+                    ETuple.make(spawn_mod, spawn_fun, ERT.box(spawn_args)));
+
+        } else if (spec == am_memory) {
+            return new ETuple2(am_memory, ERT.box(50000));
+
+        } else if (spec == am_error_handler) {
+            return new ETuple2(am_error_handler, am_error_handler);
+
+        } else if (spec == am_priority) {
+            return new ETuple2(am_priority, am_normal);
+
+        } else {
+            log.warning("NotImplemented: process_info("+spec+")");
+            throw new NotImplemented("process_info("+spec+")");
+        }
+    }
+
+    /*==================== Internals ================================*/
+
+    private int key() {
+		int key = (self.serial() << 15) | (self.id() & 0x7fff);
+		return key;
+	}
+
+
+    /*--------- Process lifecycle --------------------------*/
+
+    public boolean is_alive_dirtyread() {
+        int pstate = get_state_dirtyread();
+        return pstate == STATE.INIT.ordinal() || pstate == STATE.RUNNING.ordinal();
+    }
+
+
+    protected void link_failure(EHandle h) throws Pausable {
+		if (trap_exit == ERT.TRUE || h.testLocalHandle()==null) {
+			send_exit(h, am_noproc, false);
+		} else {
+			throw new ErlangError(am_noproc);
+		}
+	}
+
+	@Override
+	protected void do_proc_termination(EObject result) throws Pausable {
+        // Precondition: pstate is DONE, exit-action mutator count is zero.
+		final ExitHook[] hooks;
+        if (exit_hooks == null || exit_hooks.isEmpty()) {
+            hooks = NO_HOOKS;
+        } else {
+            hooks = exit_hooks.toArray(new ExitHook[exit_hooks.size()]);
+        }
+
+		for (int i = 0; i < hooks.length; i++) {
+			hooks[i].on_exit(self);
+		}
+		
+		super.do_proc_termination(result);
+
+		self.done();
+		
+		all_tasks.remove(this.key());
+		
+		
+	}
+	
+	protected void process_incoming_exit(EHandle from, EObject reason, boolean is_erlang_exit2) throws Pausable
+	{
+        int pstate = get_state_dirtyread();
+        if (exit_reason != null || pstate == STATE.DONE.ordinal()) {
+            if (log.isLoggable(Level.FINE)) {
+				log.fine("Ignoring incoming exit reason="+reason+", as we're already exiting reason="+exit_reason);
+			}
+            return;
+		}
+		
+		if (log.isLoggable(Level.FINE)) {
+			log.log(Level.FINE, "incoming exit to "+this+" from "+from+" reason="+reason+"; is_exit2="+is_erlang_exit2);
+		}
+		
+		if (is_erlang_exit2) {
+            EObject exit_reason_to_set;
+			if (reason == am_kill) {
+				exit_reason_to_set = am_killed;
+			} else if (trap_exit == ERT.TRUE) {
+				// we're trapping exits, so we in stead send an {'EXIT', from,
+				// reason} to self
+				ETuple msg = ETuple.make(ERT.am_EXIT, from, reason);
+				// System.err.println("kill message to self: "+msg);
+				
+				mbox.put(msg);
+				return;
+				
+			} else {
+				exit_reason_to_set = reason;
+			}
+
+			this.exit_reason = exit_reason_to_set;
+			this.killer = new Throwable("stack of process calling exit");
+			this.resume();
+			return;
+		}
+		
+		if (from == self_handle()) {
+			return;
+			
+		} 
+
+		if (trap_exit == ERT.TRUE) {
+			// we're trapping exits, so we in stead send an {'EXIT', from,
+			// reason} to self
+			ETuple msg = ETuple.make(ERT.am_EXIT, from, reason);
+			// System.err.println("kill message to self: "+msg);
+			
+			mbox.put(msg);
+			
+		} else if (reason == am_kill) {
+			this.exit_reason = am_killed;
+			this.killer = new Throwable();
+			this.resume();
+
+		} else if (reason != am_normal) {
+			// System.err.println("kill signal: " +reason + " from "+from);
+			// try to kill this thread
+			this.exit_reason = reason;
+			this.killer = new Throwable();
+			this.resume();
+		}
+	}
+
+
+	@Override
+	public void execute() throws Pausable {
+		Throwable[] death = new Throwable[1];
+		EObject result = null;
+		try {
+
+			execute0(death, result);
+
+		} catch (ErlangHalt e) {
+                        return;
+
+		} catch (ThreadDeath e) {
+			throw e;
+			
+		} catch (Throwable e) {
+			System.err.println("uncaught top-level exception");
+			e.printStackTrace(System.err);
+		}
+	}
+
+	private void execute0(Throwable[] death, EObject result) throws ErlangHalt,
+			ThreadDeath, Pausable {
+		try {
+			result = execute1();
+
+		} catch (NotImplemented e) {
+			log.log(Level.SEVERE, "[fail] exiting "+self_handle(), e);
+			result = e.reason();
+			death[0] = e;
+			
+		} catch (ErlangException e) {
+			log.log(Level.FINE, "[erl] exiting "+self_handle(), e);
+			last_exception = e;
+			result = e.reason();
+			death[0] = e;
+
+		} catch (ErlangExitSignal e) {
+			log.log(Level.FINE, "[signal] exiting "+self_handle(), e);
+			result = e.reason();
+			death[0] = e;
+			
+		} catch (ErlangHalt e) {
+			throw e;
+
+		} catch (Throwable e) {
+
+			log.log(Level.SEVERE, "[java] exiting "+self_handle()+" with: ", e);
+
+			ESeq erl_trace = ErlangError.decodeTrace(e.getStackTrace());
+			ETuple java_ex = ETuple.make(am_java_exception, EString
+					.fromString(ERT.describe_exception(e)));
+
+			result = ETuple.make(java_ex, erl_trace);
+			death[0] = e;
+
+		} finally {
+            set_state_to_done_and_wait_for_stability();
+		}
+		
+		if (result != am_normal && monitors.isEmpty() && has_no_links() && !(death[0] instanceof ErlangExitSignal)) {
+				
+				EFun fun = EModuleManager.resolve(new FunID(am_error_logger, am_info_report, 1));
+				
+				String msg = "Process " +self_handle()+ " exited abnormally without links/monitors\n"
+					+ "exit reason was: " + result + "\n"
+					+ (death[0] == null ? "" : ERT.describe_exception(death[0]));
+				
+				try {
+					fun.invoke(this, new EObject[] { EString.fromString(msg) });
+				} catch (ErlangHalt e) {
+					throw e;
+				} catch (ThreadDeath e) {
+					throw e;
+				} catch (Throwable e) {
+					System.err.println(msg);
+					e.printStackTrace();
+					// ignore //
+				}
+
+		}
+
+	//	System.err.println("task "+this+" exited with "+result);
+		
+		do_proc_termination(result);
+	}
+
+	private EObject execute1() throws Pausable {
+		EObject result;
+		this.check_exit();
+
+        set_state(STATE.RUNNING);
+
+	hibernate_loop:
+		while (true) {
+			try {
+				while (this.tail.go(this) == TAIL_MARKER) {
+					/* skip */
+				}
+				break hibernate_loop;
+			} catch (ErjangHibernateException e) {
+				// noop, live = true //
+			}
+
+			mbox_wait();
+		}
+
+		result = am_normal;
+		return result;
+	}
+
+    public boolean add_exit_hook(ExitHook hook) {
+        int ps = exit_action_mutator_lock();
+        try {
+            if (ps == STATE.DONE.ordinal()) return false; // Too late.
+            exit_hooks.add(hook);
+            return true;
+        } finally {
+            exit_action_mutator_unlock();
+        }
+    }
+
+    public boolean remove_exit_hook(ExitHook hook) {
+        int ps = exit_action_mutator_lock();
+        try {
+            if (ps == STATE.DONE.ordinal()) return false; // Too late.
+            exit_hooks.remove(hook);
+            return true;
+        } finally {
+            exit_action_mutator_unlock();
+        }
+    }
+
+
+    /*--------- Convenience --------------------------------*/
+
+    /* (non-Javadoc)
+      * @see kilim.Task#toString()
+      */
+	@Override
+	public String toString() {
+		return self.toString() + super.toString() +
+			"::" + spawn_mod + ":" + spawn_fun + "/" + spawn_args;
+	}
+
+
+    /*==================== Globals - public interface ===============*/
+
+	public static ESeq processes() {
+		ESeq res = ERT.NIL;
+		for (EProc proc : all_tasks.values()) {
+			if (proc.is_alive_dirtyread()) {
+				res = res.cons(proc.self_handle());
+			}
+		}
+		return res;
+	}
+	
+	public static int process_count() {
+		int count = 0;
+		for (EProc proc : all_tasks.values()) {
+			if (proc.is_alive_dirtyread()) {
+				count += 1;
+			}
+		}
+		return count;
+	}
+
+
+	public static EInternalPID find(int id, int serial) {
+		int key = (serial << 15) | (id & 0x7fff);
+		EProc task = all_tasks.get(key);
+		if (task != null) return task.self_handle();
+		return null;
+	}
+
+
+
+    /*==================== Globals - internal ===============*/
+
+    static {
+		if (ErjangConfig.getBoolean("erjang.dump_on_exit"))
+		Runtime.getRuntime().addShutdownHook(new Thread() {
+			@Override
+			public void run() {
+				log.warning("===== LIVE TASKS UPON EXIT");
+				for (EProc task : all_tasks.values()) {
+					
+					log.warning("==" + task);
+					log.warning(task.fiber.toString());
+				}
+				log.warning("=====");				
+			}
+		});
+	}
+
+    public ERT.TraceFlags get_trace_flags() {
+        if (trace_flags == null)
+            return ERT.global_trace_flags;
+        return trace_flags;
+    }
+
+    public ERT.TraceFlags get_own_trace_flags() {
+        if (trace_flags == null)
+            trace_flags = ERT.global_trace_flags.clone();
+        return trace_flags;
+    }
+
+}
+src/main/java/erjang/EObject.java
+public abstract class EObject {
+	public static final ErlangOrderComparator ERLANG_ORDERING =
+		new ErlangOrderComparator();
+
+	public ECons cons(EObject h)
+	{
+		ESmall sm;
+		if ((sm=h.testSmall()) != null && ((sm.value&0xff)==sm.value)) {
+			return new EBinList((byte) sm.value, this);
+		} else {
+			return new EPair(h, this);
+		}
+	}
+	
+	public JavaObject testJavaObject() {
+		return null;
+	}
+
+	public ERef testReference() {
+		return null;
+	}
+	
+
+	public EString testString()	{
+		return null;
+	}
+	
+	public EBigString testBigString()	{
+		return null;
+	}
+	
+	public EFun testFunction() {
+		return null;
+	}
+	
+	public EFun testFunction2(int nargs) {
+		return null;
+	}
+	
+	public EAtom testAtom() {
+		return null;
+	}
+
+  public EMap testMap() {
+    return null;
+  }
+
+	public ECons testNonEmptyList() {
+		return null;
+	}
+	
+	public ETuple testTuple() {
+		return null;
+	}
+
+	public ESeq testSeq() {
+		return null;
+	}
+
+	public EPID testPID() {
+		return null;
+	}
+
+	public int asInt() {
+		throw new RuntimeException("cannot convert " + this + " to int");
+	}
+
+	public ENumber testNumber() {
+		return null;
+	}
+
+	public ECons testCons() {
+		return null;
+	}
+
+	public EInteger testInteger() {
+		return null;
+	}
+
+	public ENil testNil() {
+		return null;
+	}
+	
+	public boolean isNil() { return testNil() != null; }
+	public boolean isBoolean() { return this==ERT.TRUE || this==ERT.FALSE; }
+
+	public EAtom testBoolean() {
+		return null;
+	}
+
+	public EBinary testBinary() {
+		return null;
+	}
+
+
+	/**
+	 * @return this if this object is an instance of EPort, otherwise null
+	 */
+	public EPort testPort() {
+		return null;
+	}
+
+	/**
+	 * @return this if this object is an instance of ESmall, otherwise null
+	 */
+	public ESmall testSmall() {
+		return null;
+	}
+	
+	public EBig testBig() {
+		return null;
+	}
+	
+
+	/**
+	 * @return
+	 */
+	public EDouble testFloat() {
+		return null;
+	}
+	
+	public void visitIOList(EIOListVisitor out) throws ErlangError {
+		throw ERT.badarg();
+	}
+	
+	public boolean collectIOList(List<ByteBuffer> out) {
+		return false;
+	}
+
+	/**
+	 * @param rest TODO
+	 * @return TODO
+	 * @throws CharCollector.CollectingException when encountering
+	 * something that can't be decoded as characters using the given
+	 * CharCollector.  Exception contains the undecoded part of the input.
+	 * @throws IOException when out.output throws IOException.
+	 * @throws InvalidElementException when the input contains an object
+	 * which is neither a list, an integer or a binary (without extra
+	 * bits), or the input contains an integer in non-head position.
+	 */
+	public ESeq collectCharList(CharCollector out, ESeq rest)
+		throws CharCollector.CollectingException,
+		CharCollector.InvalidElementException,
+		IOException
+	{
+		throw new CharCollector.InvalidElementException();
+	}
+	
+	public Type emit_const(MethodVisitor mv) {
+		throw new NotImplemented("emit_const for "+this.getClass().getName());
+	}
+
+	//
+	// 
+	//
+	
+	@BIF(name="-")
+	public ENumber negate() { throw ERT.badarith(this); }
+
+	@BIF(name="+")
+	public ENumber add(EObject rhs) { return add(rhs, false); }
+
+	@BIF(name="+")
+	public ENumber add(ESmall rhs) { return add(rhs.value, false); }
+
+	@BIF(name="+", type=BIF.Type.GUARD)
+	public final ENumber add$g(ESmall rhs) { return add(rhs.value, true); }
+
+	public ENumber add(EObject rhs, boolean guard) { if (guard) return null; throw ERT.badarith(this, rhs); }
+	public ENumber add(int lhs, boolean guard) { if (guard) return null; throw ERT.badarith(lhs, this); }
+	public ENumber add(double lhs, boolean guard) { if (guard) return null; throw ERT.badarith(lhs, this); }
+	public ENumber add(BigInteger lhs, boolean guard) { if (guard) return null; throw ERT.badarith(lhs, this); }
+
+	@BIF(name="-")
+	public ENumber subtract(EObject rhs) { return subtract(rhs, false); }
+	public ENumber subtract(ESmall rhs) { return subtract(rhs, false); }
+	public ENumber subtract(EObject rhs, boolean guard) { if (guard) return null; throw ERT.badarith(this, rhs); }
+	public ENumber subtract(int rhs) { throw ERT.badarith(this, rhs); }
+	ENumber r_subtract(int lhs, boolean guard) { if (guard) return null; throw ERT.badarith(lhs, this); }
+	ENumber r_subtract(double lhs, boolean guard) { if (guard) return null; throw ERT.badarith(lhs, this); }
+	ENumber r_subtract(BigInteger lhs, boolean guard) { if (guard) return null; throw ERT.badarith(lhs, this); }
+	
+	@BIF(name="div")
+	public EInteger idiv(EObject rhs) { throw ERT.badarith(this, rhs); }
+	public EInteger idiv(int rhs) { throw ERT.badarith(this, rhs); }
+	EInteger r_idiv(int lhs) { throw ERT.badarith(lhs, this); }
+	EInteger r_idiv(BigInteger lhs) { throw ERT.badarith(lhs, this); }
+
+	@BIF(name="rem")
+	public EInteger irem(EObject rhs) { throw ERT.badarith(this, rhs); }
+	EInteger r_irem(int lhs) { throw ERT.badarith(lhs, this); }
+	EInteger r_irem(BigInteger lhs) { throw ERT.badarith(lhs, this); }
+
+	@BIF(name="/")
+	public EDouble divide(EObject rhs) { throw ERT.badarith(this, rhs); }
+	EDouble r_divide(int lhs) { throw ERT.badarith(lhs, this); }
+	EDouble r_divide(double lhs) { throw ERT.badarith(lhs, this); }
+	EDouble r_divide(BigInteger lhs) { throw ERT.badarith(lhs, this); }
+
+	@BIF(name="*")
+	public ENumber multiply(EObject rhs) { throw ERT.badarith(this, rhs); }
+	public ENumber r_multiply(int lhs) { throw ERT.badarith(new ESmall(lhs), this); }
+	public EDouble r_multiply(double lhs) { throw ERT.badarith(new EDouble(lhs), this); }
+	public ENumber r_multiply(BigInteger lhs) { throw ERT.badarith(new EBig(lhs), this); }
+
+	@BIF(name="bsr")
+	public EInteger bsr(EObject rhs) { throw ERT.badarith(this, rhs); }
+	EInteger r_bsr(int lhs) { throw ERT.badarith(lhs, this); }
+	EInteger r_bsr(BigInteger lhs) { throw ERT.badarith(lhs, this); }
+
+	@BIF(name="bsl")
+	public EInteger bsl(EObject rhs) { throw ERT.badarith(this, rhs); }
+	EInteger r_bsl(int lhs) { throw ERT.badarith(lhs, this); }
+	EInteger r_bsl(BigInteger lhs) { throw ERT.badarith(lhs, this); }
+	
+	@BIF(name="band")
+	public EInteger band(EObject rhs) { throw ERT.badarith(this, rhs); }
+	public EInteger band(int lhs) { throw ERT.badarith(lhs, this); }
+	public EInteger band(BigInteger lhs) { throw ERT.badarith(lhs, this); }
+
+	@BIF(name="bor")
+	public EInteger bor(EObject rhs) { throw ERT.badarith(this, rhs); }
+	public EInteger bor(int lhs) { throw ERT.badarith(lhs, this); }
+	public EInteger bor(BigInteger lhs) { throw ERT.badarith(lhs, this); }
+
+	@BIF(name="bxor")
+	public EInteger bxor(EObject rhs) { throw ERT.badarith(this, rhs); }
+	@BIF(name="bxor")
+	public EInteger bxor(ESmall rhs) { return bxor(rhs.value); }
+
+	public EInteger bxor(int lhs) { throw ERT.badarith(lhs, this); }
+	public EInteger bxor(BigInteger lhs) { throw ERT.badarith(lhs, this); }
+
+	@BIF(name="bnot")
+	public EInteger bnot() { throw ERT.badarith(this); }
+
+	// extra convenience
+	
+	public EDouble divide(double rhs) { throw ERT.badarith(this,rhs); }
+	public EInteger irem(int rhs) { throw ERT.badarith(this,rhs); }
+
+	@Override
+	public abstract int hashCode();
+
+	@Override
+	public boolean equals(Object other) {
+		if (other == this) return true;
+		if (other instanceof EObject) {
+			return equalsExactly((EObject) other);
+		} else {
+			return false;
+		}
+	}
+	
+	public boolean equals(EObject other) {
+		if (other == this) return true;
+		return equalsExactly(other);
+	}
+
+	public final int erlangCompareTo(EObject rhs) {
+		if (rhs == this) return 0;
+		int cmp1 = cmp_order();
+		int cmp2 = rhs.cmp_order();
+		if ( cmp1 == cmp2 ) {
+			return compare_same(rhs);
+		} else if (cmp1 < cmp2) {
+			return -1;
+		} else {
+			return 1;
+		}
+	}
+
+	/** Compare two objects that have same cmp_order */
+	int compare_same(EObject rhs) { throw new Error("cannot compare"); }
+	
+	int r_compare_same(ESmall lhs) { throw new NotImplemented(); }
+	int r_compare_same(EBig lhs) { throw new NotImplemented(); }
+	int r_compare_same(EDouble lhs) { throw new NotImplemented(); }
+	int r_compare_same(EInternalPID lhs) { throw new NotImplemented(); }
+	
+	/** Erlang "equals exactly", also called "matches" (=:= operator).
+	 *  Is overridden by some subclasses, inclusing composites.
+	 */
+	public boolean equalsExactly(EObject rhs) {
+		return erlangCompareTo(rhs) == 0;
+	}
+
+	/** Erlang "compares same" (== operator). */
+	public final boolean erlangEquals(EObject rhs) {
+		return erlangCompareTo(rhs) == 0;
+	}
+
+	boolean r_equals_exactly(ESmall lhs) { return false; }
+	boolean r_equals_exactly(EBig lhs) { return false; }
+	boolean r_equals_exactly(EDouble lhs) { return false; }
+	
+	
+	/** used as compare-order for "non-erlang terms", such as 
+	 *  compiled ets queries and the tail marker */
+	public static final int CMP_ORDER_ERJANG_INTERNAL = -1;
+	public static final int CMP_ORDER_NUMBER = 0;
+	public static final int CMP_ORDER_ATOM = 1;
+	public static final int CMP_ORDER_REFERENCE = 2;
+	public static final int CMP_ORDER_FUN = 3;
+	public static final int CMP_ORDER_PORT = 4;
+	public static final int CMP_ORDER_PID = 5;
+	public static final int CMP_ORDER_TUPLE = 6;
+	public static final int CMP_ORDER_MAP = 7;
+	public static final int CMP_ORDER_LIST = 8;
+	public static final int CMP_ORDER_BITSTRING = 9;
+	
+	/** 
+	 * 	number[0] < atom[1] < reference[2] < fun[3] < port[4] < pid[5] < tuple[6] < list[7] < bit string[8]
+	 * @return
+	 */
+	int cmp_order() { throw new Error("cannot compare"); }
+
+
+	@BIF
+	public EAtom is_function(EObject arity) {
+		return ERT.FALSE;
+	}
+
+    @BIF
+    public EAtom is_map() {
+        return ERT.FALSE;
+    }
+    
+    @BIF(type=BIF.Type.GUARD, name="is_map")
+    public EAtom is_map_g() {
+        return null;
+    }    
+
+	/**
+	 * @param o2
+	 * @return
+	 */
+	public EAtom ge(EObject o2) {
+		return ERT.box ( this.erlangCompareTo(o2) >= 0 );
+	}
+
+
+	/**
+	 * @return
+	 */
+	public EBitString testBitString() {
+		return null;
+	}
+
+	/**
+	 * @return non-null if this is an internal port
+	 */
+	public EInternalPort testInternalPort() {
+		return null;
+	}
+
+	/**
+	 * @return
+	 */
+	public EPortControl testPortControl() {
+		return null;
+	}
+
+	/**
+	 * @return
+	 */
+	public EHandle testHandle() {
+		return null;
+	}
+
+	/**
+	 * @return
+	 */
+	public EInternalPID testInternalPID() {
+		return null;
+	}
+
+	/**
+	 * @return true if this term matches the given matcher
+	 */
+	public boolean match(ETermPattern matcher, EMatchContext r) {
+		return false;
+	}
+
+	/**
+	 * @param out
+	 * @return
+	 */
+	public ETermPattern compileMatch(Set<Integer> out) {
+		// this should continue to be "not implemented".  
+		// subclasses should provide an implementation.
+		throw ERT.badarg(this);
+	}
+
+	public EBinMatchState testBinMatchState() {
+		return null;
+	}
+
+	public void encode(EOutputStream eos) {
+		throw new NotImplemented("Encode for "+getClass().getName());
+	}
+
+	final public boolean is_eq(EObject other) {
+		return erlangEquals(other);
+	}
+	
+	final public boolean is_eq_exact(EObject other) {
+		return equalsExactly(other);
+	}
+	
+	final public boolean is_ne(EObject other) {
+		return !erlangEquals(other);
+	}
+	
+	final public boolean is_ne_exact(EObject other) {
+		return !equalsExactly(other);
+	}
+	
+	final public boolean is_lt(EObject other) {
+		return this.erlangCompareTo(other) < 0;
+	}
+	
+	final public boolean is_ge(EObject other) {
+		return this.erlangCompareTo(other) >= 0;
+	}
+	
+	/**
+	 * @param c1
+	 * @return
+	 */
+	public EObject prepend(ESeq list) {
+		
+		// first, rlist=lists:reverse(list)
+		ESeq rlist = ERT.NIL;
+		while (!list.isNil()) {
+			rlist = rlist.cons(list.head());
+			list = list.tail();
+		}
+
+		// then, prepend rlist on this
+		EObject r = this;
+		while(!rlist.isNil()) {
+			r = r.cons(rlist.head());
+			rlist = rlist.tail();
+		} 
+		
+		return r;
+	}
+
+	public ENumber inc() { return ESmall.ONE.add(this); }
+	public ENumber dec() { return ESmall.MINUS_ONE.add(this); }	
+	public boolean is_zero() { return false; }
+
+
+	public static abstract class ValueComparator implements Comparator<EObject> {
+		public abstract int compare(EObject a, EObject b);
+	}
+
+	/** Comparator which doesn't distibguish between integers and floats.
+	 * Note: this comparator imposes orderings that are inconsistent with equals.
+	 */
+	private static class ErlangOrderComparator extends ValueComparator {
+		public int compare(EObject a, EObject b) {
+			return a.erlangCompareTo(b);
+		}
+	}
+}

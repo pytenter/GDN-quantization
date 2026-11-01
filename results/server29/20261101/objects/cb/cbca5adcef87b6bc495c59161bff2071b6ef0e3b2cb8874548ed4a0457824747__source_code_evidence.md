@@ -1,0 +1,1 @@
+源码身份见 source_manifest.json 和 analysis/PARENT_AND_MODEL_CONTENT_VERIFICATION.json。新 worker 30f1ea742854271345d389b4ccd6a47b1313955c1afd5155e3e6d8ff5c861545 保持冻结。原 compare 数学未改变；失败来自 AST 依赖注入和启动拦截。CPU 原因审计不初始化 CUDA。

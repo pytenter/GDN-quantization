@@ -1,0 +1,783 @@
+src/main/java/com/github/felixgail/gplaymusic/model/requests/IncrementPlaycountRequest.java
+public class IncrementPlaycountRequest implements Serializable {
+
+  @Expose
+  @SerializedName("track_stats")
+  private List<Inner> trackStats;
+
+  public IncrementPlaycountRequest(int playCount, @NotNull Track track) {
+    this.trackStats = Collections.singletonList(new Inner(playCount, track));
+  }
+
+  private class Inner {
+
+    @Expose
+    private String id;
+    @Expose
+    @SerializedName("incremental_plays")
+    private int plays;
+    @Expose
+    @SerializedName("last_play_time_millis")
+    private String lastPlayedMillis;
+    @Expose
+    private int type;
+    @Expose
+    @SerializedName("track_events")
+    private List<Event> events;
+
+    Inner(int playCount, @NotNull Track track) {
+      long timeStampMillis = System.currentTimeMillis();
+
+      this.id = track.getID();
+      this.plays = playCount;
+      this.lastPlayedMillis = String.valueOf(timeStampMillis);
+      this.type = track.getID().startsWith("T") ? 2 : 1;
+
+      events = new LinkedList<>();
+      String timestampMicros = String.valueOf(timeStampMillis * 1000);
+      for (int i = 0; i < playCount; i++) {
+        events.add(new Event(timestampMicros));
+      }
+    }
+  }
+
+  private class Event {
+
+    @Expose
+    @SerializedName("context_type")
+    private int contextType = 1;
+    @Expose
+    @SerializedName("event_timestamp_micros")
+    private String timestamp;
+    @Expose
+    @SerializedName("event_type")
+    private int eventType = 2;
+
+    Event(String timestampMicros) {
+      this.timestamp = timestampMicros;
+    }
+  }
+}
+src/main/java/com/github/felixgail/gplaymusic/model/enums/ResultType.java
+public enum ResultType implements Serializable {
+  @SerializedName("1")
+  TRACK(1, "track", Track.class),
+  @SerializedName("2")
+  ARTIST(2, "artist", Artist.class),
+  @SerializedName("3")
+  ALBUM(3, "album", Album.class),
+  @SerializedName("4")
+  PLAYLIST(4, "playlist", Playlist.class),
+  @SerializedName("6")
+  STATION(6, "station", Station.class),
+  @SerializedName("7")
+  SITUATION(7, "situation", Situation.class),
+  @SerializedName("8")
+  VIDEO(8, "youtube_video", Video.class),
+  @SerializedName("9")
+  PODCAST_SERIES(9, "podcast", PodcastSeries.class); //Not tested, needs US vpn
+
+  private final int value;
+  private final String name;
+  private final Type type;
+
+  ResultType(final int value, final String name, final Type type) {
+    this.value = value;
+    this.name = name;
+    this.type = type;
+  }
+
+  public int getValue() {
+    return value;
+  }
+
+  public Type getType() {
+    return type;
+  }
+
+  public String getName() {
+    return name;
+  }
+}
+src/main/java/com/github/felixgail/gplaymusic/model/enums/SubscriptionType.java
+public enum SubscriptionType implements Serializable {
+  @SerializedName("aa")
+  ALL_ACCESS("aa"),
+  @SerializedName("fr")
+  FREE("fr");
+
+  private String value;
+
+  SubscriptionType(String v) {
+    this.value = v;
+  }
+
+  public String getValue() {
+    return this.value;
+  }
+}
+src/main/java/com/github/felixgail/gplaymusic/api/GPlayMusic.java
+public final class GPlayMusic {
+
+  private GPlayService service;
+  private Config config;
+  private RequestInterceptor interceptor;
+  private GenreApi genreApi;
+  private PlaylistApi playlistApi;
+  private PlaylistEntryApi playlistEntryApi;
+  private StationApi stationApi;
+  private TrackApi trackApi;
+
+  private GPlayMusic(GPlayService service, RequestInterceptor interceptor) {
+    this.service = service;
+    this.interceptor = interceptor;
+    this.genreApi = new GenreApi(this);
+    this.playlistEntryApi = new PlaylistEntryApi(this);
+    this.playlistApi = new PlaylistApi(this, playlistEntryApi);
+    this.stationApi = new StationApi(this);
+    this.trackApi = new TrackApi(this);
+  }
+
+  public Config getConfig() {
+    return config;
+  }
+
+  private void setConfig(Config config) {
+    this.config = config;
+  }
+
+  public Album getAlbum(String albumID, boolean includeTracks) throws IOException {
+    return getService().getAlbum(albumID, includeTracks).execute().body();
+  }
+
+  /**
+   * Fetches for an artist by {@code artistID}.
+   *
+   * @param artistID {@link Artist#getArtistId()} of the artist searched for.
+   * @param includeAlbums whether albums of the artist shall be included in the response.
+   * @param numTopTracks response includes up to provided number of most heard songs in response
+   * @param numRelArtist response includes up to provided number of similar artist in response
+   * @return An executable call which returns an artist on execution.
+   */
+  public Artist getArtist(String artistID, boolean includeAlbums, int numTopTracks,
+      int numRelArtist)
+      throws IOException {
+    return getService().getArtist(artistID, includeAlbums, numTopTracks, numRelArtist)
+        .execute().body();
+  }
+
+  /**
+   * This method will return the service used to make calls to google play, and therefore allows for
+   * low level and asynchronous calls. Be sure to check the response for error codes.
+   *
+   * @return {@link GPlayService} instance used by the current API.
+   */
+  public GPlayService getService() {
+    return this.service;
+  }
+
+  /**
+   * Queries Google Play Music for content. Content can be every combination of {@link SearchTypes}
+   * enum.
+   *
+   * @param query Query String
+   * @param maxResults Limits the results. Keep in mind that higher numbers increase loading time.
+   * @param types Content types that should be queried for
+   * @return A SearchResponse instance holding all content returned
+   * @throws IOException Throws an IOException on severe failures (no internet connection...) or a
+   * {@link NetworkException} on request failures.
+   */
+  public SearchResponse search(String query, int maxResults, SearchTypes types)
+      throws IOException {
+    return getService().search(query, maxResults, types).execute().body();
+  }
+
+  /**
+   * Provides convenience by wrapping the {@link #search(String, int, SearchTypes)} method and
+   * setting the maxResults parameter to 50.
+   */
+  public SearchResponse search(String query, SearchTypes types)
+      throws IOException {
+    return search(query, 50, types);
+  }
+
+  /**
+   * Fetches a list of all devices connected with the current google play account.
+   *
+   * @return A DeviceList instance containing all devices connected to the current Google Play
+   * account.
+   * @throws IOException Throws an IOException on severe failures (no internet connection...) or a
+   * {@link NetworkException} on request failures.
+   */
+  public ListResult<DeviceInfo> getRegisteredDevices()
+      throws IOException {
+    return getService().getDevices().execute().body();
+  }
+
+  /**
+   * Returns a list of promoted {@link Track}s. Which tracks are in the returned list is determined
+   * by google
+   *
+   * @throws IOException on severe failures (no internet connection...) or a {@link
+   * NetworkException} on request failures.
+   */
+  public List<Track> getPromotedTracks()
+      throws IOException {
+    return getService().getPromotedTracks().execute().body().toList();
+    //TODO: set api
+  }
+
+  public List<PodcastSeries> listPodcastSeries(Genre genre)
+      throws IOException {
+    return service.listBrowsePodcastSeries(genre.getId()).execute().body().toList();
+  }
+
+  /**
+   * Returns a selection of {@link ListenNowItem}s consisting of {@link ListenNowStation} and {@link
+   * com.github.felixgail.gplaymusic.model.listennow.ListenNowAlbum}.
+   */
+  public List<ListenNowItem> listListenNowItems() throws IOException {
+    return service.listListenNowItems().execute().body().getListenNowItems();
+  }
+
+  /**
+   * Returns the current {@link ListenNowStation} for your timezone.
+   */
+  public ListenNowSituation getListenNowSituation() throws IOException {
+    return service.getListenNowSituation(new TimeZoneOffset()).execute().body();
+  }
+
+  /**
+   * Returns the current {@link ListenNowStation} with a set offset.
+   *
+   * @param offsetInSeconds the offset in seconds to UTC.
+   */
+  public ListenNowSituation getListenNowSituation(int offsetInSeconds) throws IOException {
+    return service.getListenNowSituation(new TimeZoneOffset(String.valueOf(offsetInSeconds)))
+        .execute().body();
+  }
+
+  public GenreApi getGenreApi() {
+    return genreApi;
+  }
+
+  public PlaylistApi getPlaylistApi() {
+    return playlistApi;
+  }
+
+  public PlaylistEntryApi getPlaylistEntryApi() {
+    return playlistEntryApi;
+  }
+
+  public StationApi getStationApi() {
+    return stationApi;
+  }
+
+  public TrackApi getTrackApi() {
+    return trackApi;
+  }
+
+  /**
+   * Changes the token used to authenticate the client.
+   *
+   * @param token a new valid token to access the google service
+   */
+  public void changeToken(@NotNull AuthToken token) {
+    interceptor.setToken(token);
+  }
+
+  /**
+   * Use this class to create a {@link GPlayMusic} instance.
+   */
+  public final static class Builder {
+
+    private OkHttpClient.Builder httpClientBuilder;
+    private AuthToken authToken;
+    private Locale locale = Locale.US;
+    private String androidID;
+    private ErrorInterceptor.InterceptorBehaviour
+        interceptorBehaviour = ErrorInterceptor.InterceptorBehaviour.THROW_EXCEPTION;
+    private boolean debug = false;
+
+    /**
+     * Used while building the {@link GPlayMusic} instance. If no {@link OkHttpClient.Builder} is
+     * provided via {@link #setHttpClientBuilder(OkHttpClient.Builder)} the instance returned by
+     * this method will be used for building.
+     *
+     * @return Returns the default {@link OkHttpClient.Builder} instance
+     */
+    public static OkHttpClient.Builder getDefaultHttpBuilder() {
+      ConnectionSpec spec = new ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
+          .tlsVersions(TlsVersion.TLS_1_2)
+          .cipherSuites(
+              CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+              CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+              CipherSuite.TLS_DHE_RSA_WITH_AES_128_GCM_SHA256)
+          .build();
+      return new OkHttpClient.Builder()
+          .connectionSpecs(Collections.singletonList(spec));
+    }
+
+    public boolean isDebug() {
+      return debug;
+    }
+
+    /**
+     * If set to <em>true</em>, will log every request and response made by the Client.<br> <b> Be
+     * careful as this can easily leak personal information. Be sure to always check the output.
+     * </b>
+     */
+    public GPlayMusic.Builder setDebug(boolean debug) {
+      this.debug = debug;
+      return this;
+    }
+
+    /**
+     * Set a custom {@link OkHttpClient.Builder} to build the {@link GPlayMusic} instance with. If
+     * left untouched the Builder will use the default instance accessible through {@link
+     * #getDefaultHttpBuilder()}.
+     *
+     * @return This {@link Builder} instance.
+     */
+    public Builder setHttpClientBuilder(OkHttpClient.Builder builder) {
+      this.httpClientBuilder = builder;
+      return this;
+    }
+
+    /**
+     * Set an {@link AuthToken} to access the Google Play Service. This method has to be called
+     * before building the {@link GPlayMusic} instance.
+     *
+     * @param token An {@link AuthToken} either saved from a prior session or created through the
+     * {@link TokenProvider#provideToken(String, String, String)} method.
+     * @return This {@link Builder} instance.
+     */
+    public Builder setAuthToken(AuthToken token) {
+      this.authToken = token;
+      return this;
+    }
+
+    /**
+     * Set a local to use during calls to the Google Play Service. Defaults to {@link Locale#US}.
+     *
+     * @return This {@link Builder} instance.
+     */
+    public Builder setLocale(Locale locale) {
+      this.locale = locale;
+      return this;
+    }
+
+    /**
+     * Set a Behaviour for the {@link ErrorInterceptor} appended to the {@link
+     * OkHttpClient.Builder}. Throws Exceptions on default. May cause instability when set to {@link
+     * com.github.felixgail.gplaymusic.util.interceptor.ErrorInterceptor.InterceptorBehaviour#LOG}.
+     *
+     * @return This {@link Builder} instance.
+     */
+    public Builder setInterceptorBehaviour(
+        ErrorInterceptor.InterceptorBehaviour interceptorBehaviour) {
+      this.interceptorBehaviour = interceptorBehaviour;
+      return this;
+    }
+
+    /**
+     * Set an AndroidID used for stream calls to the Google Play Service. In general the IMEI used
+     * for logging in should be sufficient. If logged in with a MAC use {@link
+     * GPlayMusic#getRegisteredDevices()} for a list of connected devices or leave empty. On empty
+     * the {@link #build()}-method will use search online for a suitable device.
+     *
+     * @return This {@link Builder} instance.
+     */
+    public Builder setAndroidID(String androidID) {
+      this.androidID = androidID;
+      return this;
+    }
+
+    /**
+     * Builds a new {@link GPlayMusic} instance with the customizations set to this builder. Make
+     * sure to call {@link #setAuthToken(AuthToken)} before building with this method.
+     *
+     * @return Returns a new {@link GPlayMusic} instance
+     */
+    public GPlayMusic build() {
+      try {
+        if (this.authToken == null) {
+          throw new InitializationException(Language.get("api.init.EmptyToken"));
+        }
+
+        if (this.httpClientBuilder == null) {
+          this.httpClientBuilder = getDefaultHttpBuilder();
+        }
+
+        RequestInterceptor parameterInterceptor = new RequestInterceptor(authToken);
+
+        this.httpClientBuilder
+            .addInterceptor(parameterInterceptor)
+            .addInterceptor(new ErrorInterceptor(this.interceptorBehaviour))
+            .followRedirects(false);
+        if (this.debug) {
+          this.httpClientBuilder.addInterceptor(new LoggingInterceptor());
+        }
+
+        OkHttpClient httpClient = this.httpClientBuilder.build();
+
+        ModelPostProcessor postProcessor = new ModelPostProcessor();
+        GsonBuilder builder = new GsonFireBuilder()
+            .registerPostProcessor(Model.class, postProcessor)
+            .createGsonBuilder()
+            .registerTypeAdapter(Result.class, new ResultDeserializer())
+            .registerTypeAdapter(ListenNowStation.class, new ListenNowStationDeserializer());
+
+        Retrofit retrofit = new Retrofit.Builder()
+            .baseUrl(HttpUrl.parse("https://mclients.googleapis.com/"))
+            .addConverterFactory(GsonConverterFactory.create(builder.create()))
+            .client(httpClient)
+            .build();
+
+        GPlayMusic gPlay = new GPlayMusic(retrofit.create(GPlayService.class),
+            parameterInterceptor);
+        postProcessor.setApi(gPlay);
+        retrofit2.Response<Config> configResponse =
+                gPlay.getService().config(this.locale).execute();
+        if (!configResponse.isSuccessful()) {
+          throw new InitializationException(Language.get("network.GenericError"),
+              NetworkException.parse(configResponse.raw()));
+        }
+        Config config = configResponse.body();
+        if (config == null) {
+          throw new InitializationException(Language.get("api.init.EmptyConfig"));
+        }
+        config.setLocale(locale);
+        Language.setLocale(locale);
+        gPlay.setConfig(config);
+
+        parameterInterceptor.addParameter("dv", "0")
+            .addParameter("hl", locale.toString())
+            .addParameter("tier", config.getSubscription().getValue());
+
+        if (androidID == null) {
+          Optional<DeviceInfo> optional =
+              gPlay.getRegisteredDevices().toList().stream()
+                  .filter(deviceInfo -> (deviceInfo.getType().equals("ANDROID")))
+                  .findFirst();
+          if (optional.isPresent()) {
+            config.setAndroidID(optional.get().getId());
+          } else {
+            throw new InitializationException(Language.get("api.init.NoAndroidId"));
+          }
+        } else {
+          config.setAndroidID(androidID);
+        }
+        return gPlay;
+      } catch (IOException e) {
+        throw new InitializationException(e);
+      }
+    }
+
+  }
+}
+src/main/java/com/github/felixgail/gplaymusic/exceptions/NetworkException.java
+public class NetworkException extends IOException implements Serializable {
+
+  private final static Gson gson = new Gson();
+  @Expose
+  @SerializedName("error")
+  private ErrorHelper helper = new ErrorHelper();
+
+  private Response response;
+
+  public NetworkException(int code, String message) {
+    helper = new ErrorHelper();
+    helper.setCode(code);
+    helper.setMessage(message);
+  }
+
+  public static NetworkException parse(Response response) {
+    try {
+      return gson.fromJson(response.body().charStream(), NetworkException.class);
+    } catch (JsonSyntaxException e) {
+      return new NetworkException(response.code(), response.message());
+    }
+  }
+
+  public int getCode() {
+    return helper.getCode();
+  }
+
+  @Override
+  public String getMessage() {
+    return helper.getMessage();
+  }
+
+
+  public Response getResponse() {
+    return response;
+  }
+
+  public NetworkException setResponse(Response response) {
+    this.response = response;
+    return this;
+  }
+
+  private String getRequestInformation() {
+
+    if (response != null) {
+      return NetworkPrettyPrinter.getRequestPrint(response.request());
+    }
+    return "";
+  }
+
+  @Override
+  public String toString() {
+    return String.format("%s:\nError Code: %d \nMessage: %s \n\n%s\n\n%s\n\n%s\n",
+        Language.get("network.GenericError"), getCode(), getMessage(), getRequestInformation(),
+        NetworkPrettyPrinter.getResponsePrint(response), super.toString());
+  }
+
+  private class ErrorHelper implements Serializable {
+
+    @Expose
+    private int code;
+    @Expose
+    private String message;
+
+    public int getCode() {
+      return code;
+    }
+
+    public void setCode(int code) {
+      this.code = code;
+    }
+
+    public String getMessage() {
+      return message;
+    }
+
+    public void setMessage(String message) {
+      this.message = message;
+    }
+  }
+}
+src/main/java/com/github/felixgail/gplaymusic/model/enums/StreamQuality.java
+public enum StreamQuality implements Serializable {
+  @SerializedName("lo")
+  LOW("lo"),
+  @SerializedName("med")
+  MEDIUM("med"),
+  @SerializedName("hi")
+  HIGH("hi");
+
+  private String value;
+
+  StreamQuality(String value) {
+    this.value = value;
+  }
+
+  @Override
+  public String toString() {
+    return value;
+  }
+}
+src/main/java/com/github/felixgail/gplaymusic/util/language/Language.java
+public class Language {
+
+  private final static Locale defaultLocale = Locale.US;
+  private final static Properties defaultLang;
+
+  private static Locale currentLocale;
+  private static Properties currentLang;
+
+  static {
+    currentLocale = defaultLocale;
+    try {
+      Properties lang = getNewLanguage(defaultLocale);
+      currentLang = lang;
+    } catch (IOException | NullPointerException e) {
+      Logger.getGlobal().warning(String.format("Default language file (%s) not found.",
+          defaultLocale.toString()));
+      currentLang = new Properties();
+    }
+    defaultLang = currentLang;
+  }
+
+  private static Properties getNewLanguage(Locale locale) throws IOException {
+    Properties lang = new Properties();
+    InputStream in = Language.class
+        .getClassLoader()
+        .getResourceAsStream("lang/" + locale.toString());
+    InputStreamReader reader = new InputStreamReader(in, Charset.forName("UTF-8"));
+    lang.load(reader);
+    in.close();
+    return lang;
+  }
+
+  public static void setLocale(Locale locale) {
+    if (!locale.equals(currentLocale)) {
+      if (locale.equals(defaultLocale)) {
+        currentLocale = defaultLocale;
+        currentLang = defaultLang;
+      } else {
+        try {
+          currentLang = getNewLanguage(locale);
+          currentLocale = locale;
+        } catch (IOException | NullPointerException e) {
+          Logger.getGlobal().warning(
+              String.format(Language.get("language.FileNotFound"),
+                  locale.toString()));
+        }
+      }
+    }
+  }
+
+  public static void setDefault() {
+    currentLocale = defaultLocale;
+    currentLang = defaultLang;
+  }
+
+  public static String get(String key) {
+    if (currentLang.containsKey(key)) {
+      return currentLang.getProperty(key);
+    }
+    Logger.getGlobal().warning(
+        String.format(Language.get("language.KeyNotFoundCurrent"),
+            currentLocale.toString(), key));
+    if (defaultLang.containsKey(key)) {
+      return defaultLang.getProperty(key);
+    }
+    Logger.getGlobal().warning(
+        String.format(Language.get("language.KeyNotFoundDefault"),
+            defaultLocale.toString(), key));
+    return String.format("{%s}", key);
+  }
+}
+src/main/java/com/github/felixgail/gplaymusic/model/snippets/ArtRef.java
+public class ArtRef {
+
+  @Expose
+  private String url;
+  @Expose
+  private String aspectRatio;
+  @Expose
+  private Autogen autogen;
+  @Expose
+  private ColorStyles colorStyles;
+
+  public Optional<ColorStyles> getColorStyles() {
+    return Optional.ofNullable(colorStyles);
+  }
+
+  public String getUrl() {
+    return url;
+  }
+
+  public Optional<String> getAspectRatio() {
+    return Optional.ofNullable(aspectRatio);
+  }
+
+  public Optional<Autogen> isAutogen() {
+    return Optional.ofNullable(autogen);
+  }
+
+  @JsonAdapter(AutogenEnumDeserializer.class)
+  public enum Autogen {
+    TRUE,
+    FALSE
+  }
+
+}
+src/main/java/com/github/felixgail/gplaymusic/model/enums/Provider.java
+public enum Provider {
+  STREAM("mplay"),
+  STATION("wplay"),
+  PODCAST("fplay");
+
+  private String value;
+
+  Provider(String v) {
+    this.value = v;
+  }
+
+  @Override
+  public String toString() {
+    return this.value;
+  }
+}
+src/main/java/com/github/felixgail/gplaymusic/model/responses/Result.java
+public interface Result {
+
+  ResultType getResultType();
+}
+src/main/java/com/github/felixgail/gplaymusic/api/TrackApi.java
+public class TrackApi implements SubApi {
+
+  private GPlayMusic mainApi;
+  private LibraryTrackCache libraryTrackCache;
+
+  TrackApi(GPlayMusic api) {
+    this.mainApi = api;
+    this.libraryTrackCache = new LibraryTrackCache(api);
+  }
+
+  /**
+   * Provides convenience by wrapping the {@link GPlayMusic#search(String, int, SearchTypes)} method
+   * and limiting the content types to Tracks only.
+   *
+   * @return Returns a list of tracks returned by the google play service.
+   */
+  public List<Track> search(String query, int maxResults) throws IOException {
+    return mainApi.search(query, maxResults, new SearchTypes(ResultType.TRACK))
+        .getTracks();
+  }
+
+  public Track getTrack(String trackID) throws IOException {
+    Track track;
+    if (trackID.startsWith("T")) {
+      track = mainApi.getService().fetchTrack(trackID).execute().body();
+    } else {
+      track = libraryTrackCache.find(trackID).orElseThrow(() ->
+          new IllegalArgumentException(String.format("No track with id '%s' found.", trackID)));
+    }
+    if (track == null || track.getID() == null) {
+      throw new IOException(String.format("'%s' did not return a valid track", trackID));
+    }
+    return track;
+  }
+
+  public List<Track> getLibraryTracks() throws IOException {
+    return libraryTrackCache.getAll();
+  }
+
+  /**
+   * Filters cache and returns tracks with 'Thumbs up' mark
+   * @return List of tracks liked by user
+   * @throws IOException if GMusic request fails
+   */
+  public List<Track> getThumbsUpTracks() throws IOException {
+    return libraryTrackCache.getAll().stream()
+            .filter(t -> t.getRating().isPresent() && Integer.valueOf(t.getRating().get()) > 1)
+            .collect(Collectors.toList());
+  }
+
+  /**
+   * Library tracks can only be fetched as whole. To shorten wait times, collected songs are cached.
+   * Please consider updating the cache (asynchronously) when using the library over a long period
+   * of time, or when new songs could be added to the library during runtime. <br> If outside access
+   * to the library is expected during runtime, disabling caching via {@link #useCache(boolean)}
+   * should also be considered.
+   */
+  public void updateCache() throws IOException {
+    libraryTrackCache.update();
+  }
+
+  /**
+   * Enables/Disables caching of library tracks.
+   */
+  public void useCache(boolean useCache) {
+    libraryTrackCache.setUseCache(useCache);
+  }
+
+  @Override
+  public GPlayMusic getMainApi() {
+    return mainApi;
+  }
+}

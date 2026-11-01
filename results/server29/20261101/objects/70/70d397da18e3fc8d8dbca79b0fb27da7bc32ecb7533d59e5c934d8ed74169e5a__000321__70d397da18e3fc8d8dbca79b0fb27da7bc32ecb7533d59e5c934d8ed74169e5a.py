@@ -1,0 +1,1 @@
+lambda _cls, nid, shortname, longname, oid: _tuple_new(_cls, (nid, shortname, longname, oid))

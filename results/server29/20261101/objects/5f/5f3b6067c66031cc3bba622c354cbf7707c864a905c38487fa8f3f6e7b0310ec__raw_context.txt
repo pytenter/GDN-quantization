@@ -1,0 +1,3175 @@
+weixinmp/src/main/java/cjc/weixinmp/merchant/bean/ProductRequest.java
+public static enum ProductStatus {
+    /** 0-全部 */
+    ALL(0),
+    /** 1-上架 */
+    ONLINE(1),
+    /** 2-下架 */
+    OFFLINE(2);
+    int status;
+
+    ProductStatus(int status) {
+        this.status = status;
+    }
+
+    public int getStatus() {
+        return status;
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/MerchantStockService.java
+public class MerchantStockService {
+
+    /** 微信公众平台API控制器实例 */
+    private final AbstractWeixinmpController controller;
+
+    protected MerchantStockService(AbstractWeixinmpController controller) {
+        this.controller = controller;
+    }
+
+    /**
+     * 增加库存
+     * 
+     * @param stockRequest 使用{@link StockBuilder#build(cjc.weixinmp.ModelBuilder.RequriedType)}方法构造
+     * @throws WeixinException 如果发生错误
+     */
+    public void addStock(StockRequest stockRequest) throws WeixinException {
+        String url = controller.getProperty("merchant_stock_add_url", null, false);
+        try {
+            // 发送请求
+            GlobalError error = controller.postWithJson(url, stockRequest, ProductRequest.Response.class, "addStock");
+            controller.logInfo("增加库存结果：" + error);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_addStockError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 减少库存
+     * 
+     * @param stockRequest 使用{@link StockBuilder#build(cjc.weixinmp.ModelBuilder.RequriedType)}方法构造
+     * @throws WeixinException 如果发生错误
+     */
+    public void reduceStock(StockRequest stockRequest) throws WeixinException {
+        String url = controller.getProperty("merchant_stock_reduce_url", null, false);
+        try {
+            // 发送请求
+            GlobalError error = controller.postWithJson(url, stockRequest, ProductRequest.Response.class, "reduceStock");
+            controller.logInfo("减少库存结果：" + error);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_reduceStockError", e.getMessage(), e);
+        }
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/bean/ExpressTemplate.java
+public static class DeliveryTemplate implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 邮费模板ID(仅在查询时返回) */
+    @SerializedName("Id")
+    public String id;
+
+    /** 邮费模板名称 */
+    @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+    @SerializedName("Name")
+    public String name;
+
+    /** 支付方式(0-买家承担运费, 1-卖家承担运费) */
+    @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+    @SerializedName("Assumer")
+    public Integer assumer;
+
+    /** 计费单位(0-按件计费, 1-按重量计费, 2-按体 积计费，目前只支持按件计费，默认为0) */
+    @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+    @SerializedName("Valuation")
+    public Integer valuation;
+
+    /** 具体运费计算 */
+    @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+    @SerializedName("TopFee")
+    public List<TopFee> topFee;
+
+    @Override
+    public String toString() {
+        return "DeliveryTemplate [name=" + name + ", assumer=" + assumer + ", valuation=" + valuation + ", topFee=" + topFee + "]";
+    }
+
+    /**
+     * 具体运费计算
+     */
+    public static class TopFee implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        /** 快递类型 ID(参见增加商品/快递列表) */
+        @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+        @SerializedName("Type")
+        public Integer type;
+
+        /** 默认邮费计算方法 */
+        @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+        @SerializedName("Normal")
+        public Normal normal;
+
+        /** 指定地区邮费计算方法 */
+        @SerializedName("Custom")
+        public List<Custom> list;
+
+        @Override
+        public String toString() {
+            return "TopFee [type=" + type + ", normal=" + normal + ", list=" + list + "]";
+        }
+
+        /**
+         * 默认邮费计算方法
+         */
+        public static class Normal implements Serializable {
+
+            private static final long serialVersionUID = 1L;
+
+            /** 起始计费数量(比如计费单位是按件, 填 2 代表起始计费为 2 件) */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("StartStandards")
+            public Integer startStandards;
+
+            /** 起始计费金额(单位: 分） */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("StartFees")
+            public Integer startFees;
+
+            /** 递增计费数量 */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("AddStandards")
+            public Integer addStandards;
+
+            /** 递增计费金额(单位 : 分) */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("AddFees")
+            public Integer addFees;
+
+            @Override
+            public String toString() {
+                return "Normal [startStandards=" + startStandards + ", startFees=" + startFees + ", addStandards=" + addStandards + ", addFees=" + addFees + "]";
+            }
+
+        }
+
+        /**
+         * 指定地区邮费计算方法
+         */
+        public static class Custom implements Serializable {
+
+            private static final long serialVersionUID = 1L;
+
+            /** 起始计费数量 */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("StartStandards")
+            public Integer startStandards;
+
+            /** 起始计费金额(单位: 分） */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("StartFees")
+            public Integer startFees;
+
+            /** 递增计费数量 */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("AddStandards")
+            public Integer addStandards;
+
+            /** 递增计费金额(单位 : 分) */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("AddFees")
+            public Integer addFees;
+
+            /** 指定国家(详见《地区列表》说明) */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("DestCountry")
+            public String destCountry;
+
+            /** 指定省份(详见《地区列表》说明) */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("DestProvince")
+            public String destProvince;
+
+            /** 指定城市(详见《地区列表》说明) */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("DestCity")
+            public String destCity;
+
+            @Override
+            public String toString() {
+                return "Custom [startStandards=" + startStandards + ", startFees=" + startFees + ", addStandards=" + addStandards + ", addFees=" + addFees + ", destCountry=" + destCountry + ", destProvince=" + destProvince + ", destCity=" + destCity + "]";
+            }
+
+        }
+
+    }
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/bean/ProductRequest.java
+public static class Category implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 子分类ID */
+    @SerializedName("id")
+    public String id;
+
+    /** 子分类名称 */
+    @SerializedName("name")
+    public String name;
+
+    /** 子分类（不是API标准字段） */
+    @Expose(deserialize = false)
+    public List<Category> subCategoryList;
+
+    @Override
+    public String toString() {
+        return "Category [id=" + id + ", name=" + name + "]";
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/MerchantOrderService.java
+public static enum OrderStatus {
+
+    /** 全部状态 */
+    All(0),
+
+    /** 待发货 */
+    Wait_For_Shipped(2),
+
+    /** 运输中（已发货） */
+    Shipped(3),
+
+    /** 已完成 */
+    Completed(5),
+
+    /** 维权中 */
+    Rights(8);
+
+    int id;
+
+    OrderStatus(int id) {
+        this.id = id;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/bean/OrderRequest.java
+public class OrderRequest implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 订单ID */
+    @SerializedName("order_id")
+    public String orderId;
+
+    /** 订单状态(不带该字段-全部状态, 2-待发货, 3-已发货, 5-已完成, 8-维权中, ) */
+    @SerializedName("status")
+    public Integer status;
+
+    /** 订单创建时间起始时间( 不带该字段则不按照时间做筛选) */
+    @SerializedName("begintime")
+    public Integer begintime;
+
+    /** 订单创建时间终止时间( 不带该字段则不按照时间做筛选) */
+    @SerializedName("endtime")
+    public Integer endtime;
+
+    /**
+     * <pre>
+     *  物流公司 ID
+     *  
+     *  (参考《物流公司 ID》)：
+     *  邮政 EMS Fsearch_code
+     *  申通快递  002shentong
+     *  中通速递  066zhongtong
+     *  圆通速递  056yuantong
+     *  天天快递  042tiantian
+     *  顺丰速运  003shunfeng
+     *  韵达快运  059Yunda
+     *  宅急送  064zhaijisong
+     *  汇通快运  020huitong
+     *  易迅快递  zj001yixun
+     * </pre>
+     */
+    @SerializedName("delivery_company")
+    public String deliveryCompany;
+
+    /** 运单 ID */
+    @SerializedName("delivery_track_no ")
+    public String deliveryTrackNo;
+
+    /**
+     * 服务器响应
+     */
+    public static class Response extends GlobalError {
+
+        private static final long serialVersionUID = 1L;
+
+        /** 单个订单详情 */
+        @SerializedName("order")
+        public Order order;
+
+        /** 所有订单集合(字段说明详见根据订单 ID 获取订单详情) */
+        @SerializedName("order_list")
+        public List<Order> orderList = new ArrayList<Order>();
+
+        /** 订单状态(不带该字段- 全部状态, 2- 待发货, 3-已发货, 5-已完成, 8-维权中, ) */
+        @SerializedName("status")
+        public Integer status;
+
+        /***
+         * 订单详情
+         */
+        public static class Order extends GlobalError {
+
+            private static final long serialVersionUID = 1L;
+
+            /** 订单 ID */
+            @SerializedName("order_id")
+            public String ordeId;
+
+            /** 订单状态 */
+            @SerializedName("order_status")
+            public Integer orderStatus;
+
+            /** 订单总价格(单位 : 分) */
+            @SerializedName("order_total_price")
+            public Integer orderTotalPrice;
+
+            /** 订单创建时间 */
+            @SerializedName("order_create_time")
+            public Integer orderCreateTime;
+
+            /** 订单运费价格(单位 : 分) */
+            @SerializedName("order_express_price")
+            public Integer orderExpressPrice;
+
+            /** 买家微信 OPENID */
+            @SerializedName("buyer_openid")
+            public String buyerOpenid;
+
+            /** 买家微信昵称 */
+            @SerializedName("buyer_nick")
+            public String buyerNick;
+
+            /** 收货人姓名 */
+            @SerializedName("receiver_name")
+            public String receiverName;
+
+            /** 收货地址省份 */
+            @SerializedName("receiver_province")
+            public String receiverProvince;
+
+            /** 收货地址城市 */
+            @SerializedName("receiver_city")
+            public String receiverCity;
+
+            /** 收货详细地址 */
+            @SerializedName("receiver_address")
+            public String receiverAddress;
+
+            /** 收货人移动电话 */
+            @SerializedName("receiver_mobile")
+            public String receiverMobile;
+
+            /** 收货人固定电话 */
+            @SerializedName("receiver_phone")
+            public String receiverPhone;
+
+            /** 商品 ID */
+            @SerializedName("product_id")
+            public String productId;
+
+            /** 商品名称 */
+            @SerializedName("product_name")
+            public String productName;
+
+            /** 商品价格(单位 : 分) */
+            @SerializedName("product_price")
+            public Integer productPrice;
+
+            /** 商品 SKU */
+            @SerializedName("product_sku")
+            public String productSku;
+
+            /** 商品个数 */
+            @SerializedName("product_count")
+            public Integer productCount;
+
+            /** 商品图片 */
+            @SerializedName("product_img")
+            public String productImg;
+
+            /** 运单 ID */
+            @SerializedName("delivery_id")
+            public String deliveryId;
+
+            /** 物流公司编码 */
+            @SerializedName("delivery_company")
+            public String deliveryCompany;
+
+            /** 交易 ID */
+            @SerializedName("trans_id")
+            public String transId;
+
+        }
+
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/builder/ShelfBuilder.java
+public class ShelfBuilder extends DataBuilder<ShelfRequest> {
+
+    private Shelf1Builder shelf1Builder;
+
+    private Shelf2Builder shelf2Builder;
+
+    private Shelf3Builder shelf3Builder;
+
+    private Shelf4Builder shelf4Builder;
+
+    private Shelf5Builder shelf5Builder;
+
+    /** 设置 货架控件ID，查询和更新时使用 */
+    public void setId(int shelfId) {
+        p.shelfId = shelfId;
+    }
+
+    /** 设置 货架控件名称 */
+    public void setName(String shelfName) {
+        p.shelfName = shelfName;
+    }
+
+    /**
+     * 设置 货架控件招牌图片
+     * 
+     * @param shelfBanner 货架控件招牌图片Url(图片需调用图片上传接口获得图片Url填写至此，否则添加货架控件失败，建议尺寸为640*120，仅货架控件1-4有banner，货架控件5没有banner)
+     */
+    public void setBanner(String shelfBanner) {
+        p.shelfBanner = shelfBanner;
+    }
+
+    /**
+     * 返回货架控件1构造器<br>
+     * 注意：货架控件1、2、3、4不能与货架控件5联合使用
+     * 
+     * @return 支持链式操作
+     * @see #getShelf5Builder()
+     */
+    public Shelf1Builder getShelf1Builder() {
+        if (shelf5Builder != null) {
+            throw new RuntimeException("货架控件1、2、3、4不能与货架控件5联合使用");
+        }
+        if (shelf1Builder == null) {
+            shelf1Builder = new Shelf1Builder();
+            shelf1Builder.m.eid = 1;
+            getShelfData().moduleInfoList.add(shelf1Builder.m);
+        }
+        return shelf1Builder;
+    }
+
+    /**
+     * 返回货架控件2构造器<br>
+     * 注意：货架控件1、2、3、4不能与货架控件5联合使用
+     * 
+     * @return 支持链式操作
+     * @see #getShelf5Builder()
+     */
+    public Shelf2Builder getShelf2Builder() {
+        if (shelf5Builder != null) {
+            throw new RuntimeException("货架控件1、2、3、4不能与货架控件5联合使用");
+        }
+        if (shelf2Builder == null) {
+            shelf2Builder = new Shelf2Builder();
+            shelf2Builder.m.eid = 2; // 固定值
+            getShelfData().moduleInfoList.add(shelf2Builder.m);
+        }
+        return shelf2Builder;
+    }
+
+    /**
+     * 返回货架控件3构造器<br>
+     * 注意：货架控件1、2、3、4不能与货架控件5联合使用
+     * 
+     * @return 支持链式操作
+     * @see #getShelf5Builder()
+     */
+    public Shelf3Builder getShelf3Builder() {
+        if (shelf5Builder != null) {
+            throw new RuntimeException("货架控件1、2、3、4不能与货架控件5联合使用");
+        }
+        if (shelf3Builder == null) {
+            shelf3Builder = new Shelf3Builder();
+            shelf3Builder.m.eid = 3; // 固定值
+            getShelfData().moduleInfoList.add(shelf3Builder.m);
+        }
+        return shelf3Builder;
+    }
+
+    /**
+     * 返回货架控件4构造器<br>
+     * 注意：货架控件1、2、3、4不能与货架控件5联合使用
+     * 
+     * @return 支持链式操作
+     * @see #getShelf5Builder()
+     */
+    public Shelf4Builder getShelf4Builder() {
+        if (shelf5Builder != null) {
+            throw new RuntimeException("货架控件1、2、3、4不能与货架控件5联合使用");
+        }
+        if (shelf4Builder == null) {
+            shelf4Builder = new Shelf4Builder();
+            shelf4Builder.m.eid = 4; // 固定值
+            getShelfData().moduleInfoList.add(shelf4Builder.m);
+        }
+        return shelf4Builder;
+    }
+
+    /**
+     * 返回货架控件5构造器<br>
+     * 注意：货架控件1、2、3、4不能与货架控件5联合使用
+     * 
+     * @return 支持链式操作
+     * @see #getShelf1Builder()
+     * @see #getShelf2Builder()
+     * @see #getShelf3Builder()
+     * @see #getShelf4Builder()
+     */
+    public Shelf5Builder getShelf5Builder() {
+        if (shelf1Builder != null//
+                || shelf2Builder != null//
+                || shelf3Builder != null//
+                || shelf4Builder != null) {
+            throw new RuntimeException("货架控件5不能与货架控件1、2、3、4联合使用");
+        }
+        if (shelf5Builder == null) {
+            shelf5Builder = new Shelf5Builder();
+            shelf5Builder.m.eid = 5; // 固定值
+            getShelfData().moduleInfoList.add(shelf5Builder.m);
+        }
+        return shelf5Builder;
+    }
+
+    private ShelfData getShelfData() {
+        if (p.shelfData == null) {
+            p.shelfData = new ShelfData();
+            p.shelfData.moduleInfoList = new ArrayList<>();
+        }
+        return p.shelfData;
+    }
+
+    /**
+     * <pre>
+     * 货架控件1构造器
+     * 
+     * 货架控件1是由一个分组组成，展示该分组指定数量的商品列表，
+     * 可与货架控件2、货架控件3、货架控件4联合使用。
+     * </pre>
+     */
+    public static class Shelf1Builder {
+
+        final ModuleInfo m;
+
+        Shelf1Builder() {
+            m = new ModuleInfo();
+            m.groupInfo = new GroupInfo();
+            m.groupInfo.filter = new Filter();
+        }
+
+        /**
+         * 设置 该货架控件展示商品个数
+         * 
+         * @param count 该货架控件展示商品个数
+         */
+        public Shelf1Builder setCount(int count) {
+            m.groupInfo.filter.count = count;
+            return this;
+        }
+
+        /**
+         * 分组ID
+         * 
+         * @param groupId 分组ID
+         */
+        public Shelf1Builder setGroupId(int groupId) {
+            m.groupInfo.groupId = groupId;
+            return this;
+        }
+
+    }
+
+    /**
+     * 货架控件2构造器<br>
+     * 货架控件2是由多个分组组成（最多有4个分组），展示指定分组的名称，可与货架控件1、货架控件3、货架控件4联合使用。
+     */
+    public static class Shelf2Builder {
+
+        final ModuleInfo m;
+
+        Shelf2Builder() {
+            m = new ModuleInfo();
+            m.groupInfos = new GroupInfos();
+            m.groupInfos.groups = new ArrayList<>();
+        }
+
+        /**
+         * 增加一个分组
+         * 
+         * @param groupId 分组ID
+         */
+        public Shelf2Builder addGroupId(int groupId) {
+            if (m.groupInfos.groups.size() >= 4) {
+                throw new RuntimeException("货架控件2最多可以添加4个分组");
+            }
+            Group g = new Group();
+            g.groupId = groupId;
+            m.groupInfos.groups.add(g);
+            return this;
+        }
+
+    }
+
+    /**
+     * 货架控件3构造器<br>
+     * 货架控件3是由一个分组组成，展示指定分组的分组图片，可与货架控件1、货架控件2、货架控件4联合使用。
+     */
+    public static class Shelf3Builder {
+
+        final ModuleInfo m;
+
+        Shelf3Builder() {
+            m = new ModuleInfo();
+            m.groupInfo = new GroupInfo();
+        }
+
+        /**
+         * 设置分组ID
+         * 
+         * @param groupId 分组ID
+         */
+        public Shelf3Builder setGroupId(int groupId) {
+            m.groupInfo.groupId = groupId;
+            return this;
+        }
+
+        /**
+         * 设置分组照片
+         * 
+         * @param img 分组照片(图片需调用图片上传接口获得图片Url填写至此，否则添加货架控件失败，建议分辨率600*208)
+         * @return
+         */
+        public Shelf3Builder setImg(String img) {
+            m.groupInfo.img = img;
+            return this;
+        }
+
+    }
+
+    /**
+     * 货架控件4构造器<br>
+     * 货架控件4是由多个分组组成（最多3个分组），展示指定分组的分组图片，可与货架控件1、货架控件2、货架控件4联合使用。
+     */
+    public static class Shelf4Builder {
+
+        final ModuleInfo m;
+
+        Shelf4Builder() {
+            m = new ModuleInfo();
+            m.groupInfos = new GroupInfos();
+            m.groupInfos.groups = new ArrayList<>();
+        }
+
+        /**
+         * 增加一个分组，最多可以增加3个分组
+         * 
+         * @param groupId 分组ID
+         * @param img 分组照片(图片需调用图片上传接口获得图片Url填写至此，否则添加货架控件失败，3个分组建议分辨率分别为: 350*350, 244*172, 244*172)
+         * @return
+         */
+        public Shelf4Builder addGroupId(int groupId, String img) {
+            if (m.groupInfos.groups.size() >= 3) {
+                throw new RuntimeException("货架控件4最多只能增加3个分组");
+            }
+            Group g = new Group();
+            g.groupId = groupId;
+            g.img = img;
+            m.groupInfos.groups.add(g);
+            return this;
+        }
+
+    }
+
+    /**
+     * 货架控件5构造器<br>
+     * 货架控件5是由多个分组组成，展示指定分组的名称，不可与其他货架控件联合使用。
+     */
+    public static class Shelf5Builder {
+
+        final ModuleInfo m;
+
+        Shelf5Builder() {
+            m = new ModuleInfo();
+            m.groupInfos = new GroupInfos();
+            m.groupInfos.groups = new ArrayList<>();
+        }
+
+        /**
+         * 设置背景图片（这个在API手册中没有描述，但在数据样例中有出现）
+         * 
+         * @param backgroundImg 图片地址，要求同其他一样
+         * @return
+         */
+        public Shelf5Builder setBackground(String backgroundImg) {
+            m.groupInfos.imgBackground = backgroundImg;
+            return this;
+        }
+
+        /**
+         * 增加一个分组
+         * 
+         * @param groupId 分组ID
+         */
+        public Shelf5Builder addGroupId(int groupId) {
+            Group g = new Group();
+            g.groupId = groupId;
+            m.groupInfos.groups.add(g);
+            return this;
+        }
+
+        /**
+         * 增加一个分组
+         * 
+         * @param groupId 分组ID
+         * @param img 分组照片(图片需调用图片上传接口获得图片Url填写至此，否则添加货架控件失败，建议分辨率640*1008)
+         * @return
+         */
+        public Shelf5Builder addGroupId(int groupId, String img) {
+            Group g = new Group();
+            g.groupId = groupId;
+            g.img = img;
+            m.groupInfos.groups.add(g);
+            return this;
+        }
+
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/bean/ShelfRequest.java
+public class ShelfRequest implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 货架ID */
+    @Requried({ RequriedType.QUERY, RequriedType.UPDATE })
+    @SerializedName("shelf_id")
+    public Integer shelfId;
+
+    /** 货架名称 */
+    @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+    @SerializedName("shelf_name")
+    public String shelfName;
+
+    /**
+     * 货架招牌图片 Url(图片需调用图片上传接口 获得图片 Url 填写至此，否则添加货架失败， 建议尺寸为 640*120，仅控件 1-4 有 banner， 控件 5 没有 banner)
+     */
+    @SerializedName("shelf_banner")
+    @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+    public String shelfBanner;
+
+    /**
+     * 货架信息(数据说明详见《货架控件说明》) 【XXX 增加、修改数据时使用shelfData】<br>
+     * 
+     * @see #shelfInfo
+     */
+    @SerializedName("shelf_data")
+    @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+    public ShelfData shelfData;
+
+    /**
+     * 货架信息(数据说明详见《货架控件说明》) 【XXX 获取数据时使用shelfInfo】<br>
+     * 
+     * @see #shelfData
+     */
+    @SerializedName("shelf_info")
+    public ShelfData shelfInfo;
+
+    /**
+     * 货架信息(数据说明详见《货架控件说明》)
+     */
+    public static class ShelfData implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        /** 模块集合 */
+        @SerializedName("module_infos")
+        @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+        public List<ModuleInfo> moduleInfoList;
+
+        /**
+         * 模块信息
+         */
+        public static class ModuleInfo implements Serializable {
+
+            private static final long serialVersionUID = 1L;
+
+            /** 控件ID（目前有1-5个控件） */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("eid")
+            public Integer eid;
+
+            /** 分组信息 */
+            @SerializedName("group_info")
+            public GroupInfo groupInfo;
+
+            /** 分组数组 */
+            @SerializedName("group_infos")
+            public GroupInfos groupInfos;
+
+            /**
+             * 单个分组信息
+             */
+            public static class GroupInfo implements Serializable {
+
+                private static final long serialVersionUID = 1L;
+
+                /** filter（不知道怎么理解） */
+                @SerializedName("filter")
+                public Filter filter;
+
+                /** 分组ID */
+                @SerializedName("group_id")
+                public Integer groupId;
+
+                /** 分组照片( 图片需调用图片上传接口获得图 片 Url 填写至此，否则添加货架失败，建议 分辨率 600*208) */
+                @SerializedName("img")
+                public String img;
+
+                /**
+                 * 貌似过滤参数之类的东东
+                 */
+                public static class Filter implements Serializable {
+
+                    private static final long serialVersionUID = 1L;
+
+                    /** 该控件展示商品个数 */
+                    @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                    @SerializedName("count")
+                    public Integer count;
+
+                }
+            }
+
+            /**
+             * 多个分组的数组
+             */
+            public static class GroupInfos implements Serializable {
+
+                private static final long serialVersionUID = 1L;
+
+                /** 分组集合 */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                public List<Group> groups;
+
+                /** 分组照片( 图片需调用图片上传接口获得图 片 Url 填写至此，否则添加货架失败，建议 分辨率 640*1008) */
+                @SerializedName("img_background")
+                public String imgBackground;
+
+                /**
+                 * 分组
+                 */
+                public static class Group implements Serializable {
+
+                    private static final long serialVersionUID = 1L;
+
+                    /** 分组ID */
+                    @SerializedName("group_id")
+                    public Integer groupId;
+
+                    /** 分组照片( 图片需调用图片上传接口获得图 片 Url 填写至此，否则添加货架失败，建议 分辨率 600*208) */
+                    @SerializedName("img")
+                    public String img;
+
+                }
+
+            }
+
+        }
+    }
+
+    /**
+     * 服务器响应
+     */
+    public static class Response extends GlobalError {
+
+        private static final long serialVersionUID = 1L;
+
+        /** 货架ID */
+        @SerializedName("shelf_id")
+        public Integer shelfId;
+
+        /** 货架名称 */
+        @SerializedName("shelf_name")
+        public String shelfName;
+
+        /**
+         * 货架招牌图片 Url(图片需调用图片上传接口 获得图片 Url 填写至此，否则添加货架失败， 建议尺寸为 640*120，仅控件 1-4 有 banner， 控件 5 没有 banner)
+         */
+        @SerializedName("shelf_banner")
+        public String shelfBanner;
+
+        /**
+         * 货架信息(数据说明详见《货架控件说明》)
+         */
+        @SerializedName("shelf_info")
+        public ShelfData shelfInfo;
+
+        /** 货架集合 */
+        @SerializedName("shelves")
+        public List<ShelfRequest> shelveList;
+
+    }
+}
+weixinmp-demo/src/main/java/cjc/weixinmp/test/builder/ShelfBuilderTest.java
+public class ShelfBuilderTest {
+
+    public static ShelfBuilder build() {
+        ShelfBuilder p = new ShelfBuilder();
+        p.setId(111);
+        p.setName("测试货架");
+        p.setBanner("http://xxxxxxxxxxxxxxxxx");
+//        p.getShelf1Builder().setCount(2).setGroupId(222);
+//        p.getShelf2Builder().addGroupId(1111).addGroupId(222);
+//        p.getShelf3Builder().setGroupId(11).setImg("http://xxxxxxxxxxx");
+//        p.getShelf4Builder().addGroupId(1, "http://xxx");
+        p.getShelf5Builder().setBackground("http:////");
+        return p;
+    }
+
+    public static void main(String[] args) {
+        build();
+    }
+}
+weixinmp/src/main/java/cjc/weixinmp/MerchantProductService.java
+public class MerchantProductService {
+
+    /** 分类根节点ID */
+    public static final String ROOT_CATEGORY_ID = "1";
+
+    /** 微信公众平台API控制器实例 */
+    private final AbstractWeixinmpController controller;
+
+    protected MerchantProductService(AbstractWeixinmpController controller) {
+        this.controller = controller;
+    }
+
+    /**
+     * 增加商品
+     * 
+     * @param product 通过ProductBuilder生成的Product
+     * @return 这个商品的ID
+     * @throws WeixinException 如果调用接口失败
+     */
+    public String addProduct(Product product) throws WeixinException {
+        String url = controller.getProperty("merchant_product_create_url", null, false);
+        try {
+            GlobalError result = controller.postWithJson(url, product, ProductRequest.Response.class, "addProduct");
+            controller.logInfo("创建新商品操作结果：" + result);
+            ProductRequest.Response r = (ProductRequest.Response) result;
+            return r.productId;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_createProductError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 删除商品
+     * 
+     * @param productId 商品ID
+     * @throws WeixinException 如果调用接口失败
+     */
+    public void deleteProduct(String productId) throws WeixinException {
+        String url = controller.getProperty("merchant_product_del_url", null, false);
+        try {
+            ProductBuilder pb = new ProductBuilder();
+            pb.setId(productId);
+            Product product = pb.build(RequriedType.DELETE);
+            GlobalError result = controller.postWithJson(url, product, GlobalError.class, "deleteProduct");
+            controller.logInfo("删除商品操作结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_deleteProductError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 更新商品
+     * 
+     * @param product 通过ProductBuilder生成的Product<br>
+     *            1. product_id表示要更新的商品的ID，其他字段说明请参考增加商品接口。<br>
+     *            2. 从未上架的商品所有信息均可修改，否则商品的名称(name)、商品分类(category)、商品属性(property)这三个字段不可修改。
+     * @throws WeixinException 如果调用接口失败
+     */
+    public void updateProduct(Product product) throws WeixinException {
+        String url = controller.getProperty("merchant_product_update_url", null, false);
+        try {
+            GlobalError result = controller.postWithJson(url, product, GlobalError.class, "updateProduct");
+            controller.logInfo("更新新商品操作结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_updateProductError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 根据商品ID查询一个商品
+     * 
+     * @param productId 商品ID，例如：pDF3iYwktviE3BzU3BKiSWWi9Nkw
+     * @return 商品详情
+     * @throws WeixinException
+     */
+    public Product getProduct(String productId) throws WeixinException {
+        String url = controller.getProperty("merchant_product_get_url", null, false);
+        try {
+            ProductRequest request = new ProductRequest();
+            request.productId = productId;
+            GlobalError result = controller.postWithJson(url, request, ProductRequest.Response.class, "getProduct");
+            controller.logInfo("查询商品操作结果：" + result);
+            ProductRequest.Response response = (ProductRequest.Response) result;
+            return response.product;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getProductError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取指定状态的所有商品
+     * @param status 商品上下架标识
+     * @return 返回符合条件的商品集合
+     * @throws WeixinException 如果发生错误
+     */
+    public List<Product> getProductByStatus(ProductStatus status) throws WeixinException {
+        String url = controller.getProperty("merchant_product_getbystatus_url", null, false);
+        try {
+            ProductRequest request = new ProductRequest();
+            request.status = status.getStatus();
+            GlobalError result = controller.postWithJson(url, request, ProductRequest.Response.class, "getProductByStatus");
+            controller.logInfo("获取指定状态的所有商品操作结果：" + result);
+            ProductRequest.Response response = (ProductRequest.Response) result;
+            return response.productList;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getProductByStatusError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 商品上下架
+     * @param productId 商品ID
+     * @param status 商品上下架标识
+     * @throws WeixinException
+     */
+    public void updateProductStatus(String productId, ProductStatus status) throws WeixinException {
+        String url = controller.getProperty("merchant_product_modproductstatus_url", null, false);
+        try {
+            ProductRequest request = new ProductRequest();
+            request.productId = productId;
+            request.status = status.getStatus();
+            GlobalError result = controller.postWithJson(url, request, ProductRequest.Response.class, "updateProductStatus");
+            controller.logInfo("商品上下架操作结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_updateProductStatusError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取指定分类的所有子分类
+     * 
+     * @param categoryId 分类ID，NULL表示根节点分类（ID为1）
+     * @return 返回子分类的集合，对象包含有效字段有：errcode, errmsg, categoryList
+     * @throws WeixinException 如果发生未处理的错误
+     */
+    public List<ProductRequest.Response.Category> getSubCategory(String categoryId) throws WeixinException {
+        String url = controller.getProperty("merchant_category_getsub_url", null, false);
+        try {
+            // 默认根目录ID
+            if (categoryId == null) {
+                categoryId = ROOT_CATEGORY_ID;
+            }
+            // 准备请求
+            ProductRequest req = new ProductRequest();
+            req.cateId = categoryId;
+            // 发送请求
+            GlobalError error = controller.postWithJson(url, req, ProductRequest.Response.class, "getSubCategory");
+            controller.logInfo("获取指定分类的子分类结果：" + error);
+            // 返回
+            ProductRequest.Response r = (ProductRequest.Response) error;
+            return r.categoryList;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_GetSubCategoryError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取指定子分类的所有SKU
+     * @param categoryId 商品子分类ID，NULL表示根节点分类（ID为1）
+     * @return 返回这个子分类的所有SKU集合
+     * @throws WeixinException
+     */
+    public List<SkuTable> getSkuByCategory(String categoryId) throws WeixinException {
+        String url = controller.getProperty("merchant_category_getsku_url", null, false);
+        try {
+            // 默认根目录ID
+            if (categoryId == null) {
+                categoryId = ROOT_CATEGORY_ID;
+            }
+            // 准备请求
+            ProductRequest req = new ProductRequest();
+            req.cateId = categoryId;
+            // 发送请求
+            GlobalError error = controller.postWithJson(url, req, ProductRequest.Response.class, "getSkuByCategory");
+            controller.logInfo("获取指定子分类的所有SKU结果：" + error);
+            // 返回
+            ProductRequest.Response r = (ProductRequest.Response) error;
+            return r.skuList;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getSkuByCategoryError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取指定分类的所有属性
+     * @param categoryId 商品子分类ID，NULL表示根节点分类（ID为1）
+     * @return
+     * @throws WeixinException
+     */
+    public List<Properties> getPropertyByCategory(String categoryId) throws WeixinException {
+        String url = controller.getProperty("merchant_category_getproperty_url", null, false);
+        try {
+            // 默认根目录ID
+            if (categoryId == null) {
+                categoryId = ROOT_CATEGORY_ID;
+            }
+            // 准备请求
+            ProductRequest req = new ProductRequest();
+            req.cateId = categoryId;
+            // 发送请求
+            GlobalError error = controller.postWithJson(url, req, ProductRequest.Response.class, "getPropertyByCategory");
+            controller.logInfo("获取指定分类的所有属性结果：" + error);
+            // 返回
+            ProductRequest.Response r = (ProductRequest.Response) error;
+            return r.propertiesList;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getPropertyByCategoryError", e.getMessage(), e);
+        }
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/DataBuilder.java
+public static enum RequriedType {
+    /** 不作任何验证，适合非增删改查的操作使用，但需要自行验证 */
+    NONE,
+    /** 新增时不允许为NULL */
+    ADD,
+    /** 更新操作时不允许为NULL */
+    UPDATE,
+    /** 查询操作时不允许为NULL */
+    QUERY,
+    /** 删除操作时不允许为NULL */
+    DELETE;
+}
+weixinmp/src/main/java/cjc/weixinmp/MerchantShelfService.java
+public class MerchantShelfService {
+
+    /** 微信公众平台API控制器实例 */
+    private final AbstractWeixinmpController controller;
+
+    protected MerchantShelfService(AbstractWeixinmpController controller) {
+        this.controller = controller;
+    }
+
+    /**
+     * 增加货架
+     * 
+     * @param shelf 货架信息，由{@link ShelfBuilder}构造
+     * @return 新货架的ID
+     * @throws WeixinException
+     */
+    public int addShelf(ShelfRequest shelf) throws WeixinException {
+        String url = controller.getProperty("merchant_shelf_add_url", null, false);
+        try {
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, shelf, ShelfRequest.Response.class, "addShelf");
+            controller.logInfo("增加货架结果：" + result);
+            // 返回
+            ShelfRequest.Response response = (ShelfRequest.Response) result;
+            return response.shelfId;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_addShelfError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 删除货架
+     * 
+     * @param shelfId 货架ID
+     * @throws WeixinException
+     */
+    public void deleteShelf(int shelfId) throws WeixinException {
+        String url = controller.getProperty("merchant_shelf_del_url", null, false);
+        try {
+            ShelfRequest shelf = new ShelfRequest();
+            shelf.shelfId = shelfId;
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, shelf, ShelfRequest.Response.class, "deleteShelf");
+            controller.logInfo("删除货架结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_deleteShelfError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 修改货架
+     * 
+     * @param shelf 货架信息，由{@link ShelfBuilder}构造
+     * @throws WeixinException
+     */
+    public void updateShelf(ShelfRequest shelf) throws WeixinException {
+        String url = controller.getProperty("merchant_shelf_mod_url", null, false);
+        try {
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, shelf, ShelfRequest.Response.class, "updateShelf");
+            controller.logInfo("修改货架结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_updateShelfError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取所有货架
+     * 
+     * @return
+     * @throws WeixinException
+     */
+    public List<ShelfRequest> getAllShelf() throws WeixinException {
+        String url = controller.getProperty("merchant_shelf_getall_url", null, false);
+        try {
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, null, ShelfRequest.Response.class, "getAllShelf");
+            controller.logInfo("删除货架结果：" + result);
+            ShelfRequest.Response response = (ShelfRequest.Response) result;
+            return response.shelveList;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getAllShelfError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 根据货架ID获取货架信息
+     * 
+     * @param shelfId 货架ID
+     * @return
+     * @throws WeixinException
+     */
+    public ShelfRequest getSelfById(int shelfId) throws WeixinException {
+        String url = controller.getProperty("merchant_shelf_getbyid_url", null, false);
+        try {
+            ShelfRequest shelf = new ShelfRequest();
+            shelf.shelfId = shelfId;
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, shelf, ShelfRequest.Response.class, "getSelfById");
+            controller.logInfo("删除货架结果：" + result);
+            ShelfRequest.Response response = (ShelfRequest.Response) result;
+            ShelfRequest shelf2 = new ShelfRequest();
+            shelf2.shelfId = response.shelfId;
+            shelf2.shelfBanner = response.shelfBanner;
+            shelf2.shelfName = response.shelfName;
+            shelf2.shelfInfo = response.shelfInfo;
+            return shelf2;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getSelfByIdError", e.getMessage(), e);
+        }
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/builder/StockBuilder.java
+public class StockBuilder extends DataBuilder<StockRequest> {
+
+    /**
+     * 设置商品ID
+     * 
+     * @param productId 商品ID
+     */
+    public void setProductId(String productId) {
+        p.productId = productId;
+    }
+
+    /**
+     * 设置增加或减少的库存数量
+     * 
+     * @param quantity 正整数
+     */
+    public void setQuantity(int quantity) {
+        p.quantity = quantity;
+    }
+
+    /**
+     * 设置sku字符窜信息<br>
+     * 注意：使用这个方法将会覆盖addSkuInfo方法传入的值
+     * 
+     * @param skuInfo sku信息,格式"id1:vid1;id2:vid2",如商品为统一规格，则此处赋值为空字符串即可
+     * @ses {@link #addSkuInfo(int, int)}
+     */
+    public void setSkuInfo(String skuInfo) {
+        p.skuInfo = skuInfo;
+    }
+
+    /**
+     * 追加一个SKU信息<br>
+     * 注意：使用setSkuInfo方法会覆盖这个方法传入的值
+     * 
+     * @param pid 属性ID
+     * @param vid 值ID
+     * @see #setSkuInfo(String)
+     */
+    public void addSkuInfo(int pid, int vid) {
+        if (p.skuInfo == null) {
+            p.skuInfo += pid + ":" + vid;
+        } else {
+            p.skuInfo += ";" + pid + ":" + vid;
+        }
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/bean/ProductRequest.java
+public static class SkuTable implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** SKU ID */
+    @SerializedName("id")
+    public String id;
+
+    /** SKU名称 */
+    @SerializedName("name")
+    public String name;
+
+    /** SKU集合 */
+    @SerializedName("value_list")
+    public List<SkuValue> valueList;
+
+    @Override
+    public String toString() {
+        return "SkuTable [id=" + id + ", name=" + name + ", valueList=" + valueList + "]";
+    }
+
+    /**
+     * SkuValue
+     */
+    public static class SkuValue implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        /** Value Id */
+        @SerializedName("id")
+        public String id;
+
+        /** Value名称 */
+        @SerializedName("name")
+        public String name;
+
+        @Override
+        public String toString() {
+            return "SkuValue [id=" + id + ", name=" + name + "]";
+        }
+
+    }
+}
+weixinmp/src/main/java/cjc/weixinmp/MerchantGroupService.java
+public class MerchantGroupService {
+
+    /** 微信公众平台API控制器实例 */
+    private final AbstractWeixinmpController controller;
+
+    protected MerchantGroupService(AbstractWeixinmpController controller) {
+        this.controller = controller;
+    }
+
+    /**
+     * 增加分组
+     * 
+     * @param productGroup
+     * @return
+     * @throws WeixinException
+     */
+    public Integer addGroup(ProductGroup productGroup) throws WeixinException {
+        String url = controller.getProperty("merchant_group_add_url", null, false);
+        try {
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, productGroup, ProductGroup.Response.class, "addGroup");
+            controller.logInfo("增加分组结果：" + result);
+            ProductGroup.Response response = (ProductGroup.Response) result;
+            return response.groupId;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_addGroupError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 删除分组
+     * 
+     * @param groupId
+     * @throws WeixinException
+     */
+    public void deleteGroup(int groupId) throws WeixinException {
+        String url = controller.getProperty("merchant_group_del_url", null, false);
+        try {
+            ProductGroup req = new ProductGroup();
+            req.groupId = groupId;
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, req, ProductGroup.Response.class, "deleteGroup");
+            controller.logInfo("删除分组结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_deleteGroupError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 修改分组属性
+     * 
+     * @param groupId 分组ID
+     * @param groupName 分组名称
+     * @throws WeixinException 如果发生错误
+     */
+    public void updateGroupProperty(int groupId, String groupName) throws WeixinException {
+        String url = controller.getProperty("merchant_group_propertymod_url", null, false);
+        try {
+            ProductGroup.GroupDetail req = new ProductGroup.GroupDetail();
+            req.groupId = groupId;
+            req.groupName = groupName;
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, req, ProductGroup.Response.class, "updateGroupProperty");
+            controller.logInfo("修改分组名称结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_updateGroupPropertyError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 批量新增或修改指定分组的商品
+     * 
+     * @param productGroup 请通过{@link ProductGroupBuilder#addModAction()}方法添加修改动作
+     * @throws WeixinException
+     */
+    public void updateGroupProduct(ProductGroup productGroup) throws WeixinException {
+        String url = controller.getProperty("merchant_group_productymod_url", null, false);
+        try {
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, productGroup, ProductGroup.Response.class, "updateGroupProduct");
+            controller.logInfo("批量新增或修改指定分组的商品结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_updateGroupProductError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取所有分组
+     * 
+     * @throws WeixinException
+     * @return 返回分组集合
+     */
+    public List<GroupDetail> getAllGroup() throws WeixinException {
+        String url = controller.getProperty("merchant_group_getall_url", null, false);
+        try {
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, null, ProductGroup.Response.class, "getAllGroup");
+            controller.logInfo("获取所有分组结果：" + result);
+            // 返回
+            ProductGroup.Response response = (ProductGroup.Response) result;
+            return response.groupDetailList;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getAllGroupProductError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 返回指定ID的分组信息
+     * 
+     * @param groupId 分组ID
+     * @return
+     * @throws WeixinException
+     */
+    public GroupDetail getGroupById(int groupId) throws WeixinException {
+        String url = controller.getProperty("merchant_group_getbyid_url", null, false);
+        try {
+            ProductGroup req = new ProductGroup();
+            req.groupId = groupId;
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, req, ProductGroup.Response.class, "getGroupById");
+            controller.logInfo("返回指定ID的分组信息结果：" + result);
+            // 返回
+            ProductGroup.Response response = (ProductGroup.Response) result;
+            return response.groupDetail;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getGroupByIdProductError", e.getMessage(), e);
+        }
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/MerchantOrderService.java
+public class MerchantOrderService {
+
+    /** 微信公众平台API控制器实例 */
+    private final AbstractWeixinmpController controller;
+
+    protected MerchantOrderService(AbstractWeixinmpController controller) {
+        this.controller = controller;
+    }
+
+    /**
+     * 根据订单ID获取订单详情
+     * 
+     * @param orderId
+     * @return
+     * @throws WeixinException
+     */
+    public OrderRequest.Response.Order getOrderById(String orderId) throws WeixinException {
+        String url = controller.getProperty("merchant_order_getbyid_url", null, false);
+        try {
+            OrderRequest req = new OrderRequest();
+            req.orderId = orderId;
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, req, OrderRequest.Response.class, "getOrderById");
+            controller.logInfo("根据订单ID获取订单详情结果：" + result);
+            OrderRequest.Response response = (OrderRequest.Response) result;
+            return response.order;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getOrderByIdError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 根据订单状态/创建时间获取订单详情
+     * 
+     * @param status 订单状态(不带该字段-全部状态, 2-待发货, 3-已发货, 5-已完成, 8-维权中, )
+     * @param beginTime 订单创建时间起始时间(不带该字段则不按照时间做筛选)
+     * @param endTime 订单创建时间终止时间(不带该字段则不按照时间做筛选)
+     * @return 订单集合
+     * @throws WeixinException
+     */
+    public List<OrderRequest.Response.Order> getOrderByFilter(OrderStatus status, Date beginTime, Date endTime) throws WeixinException {
+        String url = controller.getProperty("merchant_order_getbyfilter_url", null, false);
+        try {
+            OrderRequest req = new OrderRequest();
+            if (status == null || status == OrderStatus.All) {
+                req.status = null;
+            } else {
+                req.status = status.getId();
+            }
+            if (beginTime != null) {
+                req.begintime = (int) (beginTime.getTime() / 1000);
+            }
+            if (endTime != null) {
+                req.endtime = (int) (endTime.getTime() / 1000);
+            }
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, req, OrderRequest.Response.class, "getOrderByFilter");
+            controller.logInfo("根据订单状态/创建时间获取订单详情结果：" + result);
+            OrderRequest.Response response = (OrderRequest.Response) result;
+            return response.orderList;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getOrderByFilterError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 设置订单发货信息
+     * 
+     * @param orderId 订单号
+     * @param deliveryCompany 快递公司ID，参考如下：<br>
+     * 
+     *            <pre>
+     *             物流公司 ID
+     *             邮政EMS   Fsearch_code
+     *             申通快递    002shentong
+     *             中通速递    066zhongtong
+     *             圆通速递    056yuantong
+     *             天天快递    042tiantian
+     *             顺丰速运    003shunfeng
+     *             韵达快运    059Yunda
+     *             宅急送 064zhaijisong
+     *             汇通快运    020huitong
+     *             易迅快递    zj001yixun
+     * </pre>
+     * @param deliveryTrackNo 运单号（快递单号）
+     * @throws WeixinException
+     */
+    public void setOrderDelivery(String orderId, String deliveryCompany, String deliveryTrackNo) throws WeixinException {
+        String url = controller.getProperty("merchant_order_setdelivery_url", null, false);
+        try {
+            OrderRequest req = new OrderRequest();
+            req.orderId = orderId;
+            req.deliveryCompany = deliveryCompany;
+            req.deliveryTrackNo = deliveryTrackNo;
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, req, OrderRequest.Response.class, "setOrderDelivery");
+            controller.logInfo("设置订单发货信息结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_setOrderDeliveryError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 关闭订单
+     * 
+     * @param orderId 订单号
+     * @throws WeixinException
+     */
+    public void closeOrder(String orderId) throws WeixinException {
+        String url = controller.getProperty("merchant_order_close_url", null, false);
+        try {
+            OrderRequest req = new OrderRequest();
+            req.orderId = orderId;
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, req, OrderRequest.Response.class, "closeOrder");
+            controller.logInfo("关闭订单结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_closeOrderError", e.getMessage(), e);
+        }
+    }
+
+    public static enum OrderStatus {
+
+        /** 全部状态 */
+        All(0),
+
+        /** 待发货 */
+        Wait_For_Shipped(2),
+
+        /** 运输中（已发货） */
+        Shipped(3),
+
+        /** 已完成 */
+        Completed(5),
+
+        /** 维权中 */
+        Rights(8);
+
+        int id;
+
+        OrderStatus(int id) {
+            this.id = id;
+        }
+
+        public int getId() {
+            return id;
+        }
+
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/builder/ProductGroupBuilder.java
+public class ProductGroupBuilder extends DataBuilder<ProductGroup> {
+
+    GroupDetailBuilder groupDetailBuilder;
+
+    /**
+     * 设置分组ID
+     * 
+     * @param groupId
+     */
+    public void setGroupId(int groupId) {
+        p.groupId = groupId;
+    }
+
+    private List<ModAction> getModActionList() {
+        if (p.ModActionList == null) {
+            p.ModActionList = new ArrayList<>();
+        }
+        return p.ModActionList;
+    }
+
+    /**
+     * 增加一个修改动作
+     * 
+     * @return
+     */
+    public ModActionBuilder addModAction() {
+        ModActionBuilder builder = new ModActionBuilder();
+        getModActionList().add(builder.modAction);
+        return builder;
+    }
+
+    /**
+     * 返回分组详情构造器
+     * 
+     * @return 支持链式操作
+     */
+    public GroupDetailBuilder getGroupDetailBuilder() {
+        if (groupDetailBuilder == null) {
+            groupDetailBuilder = new GroupDetailBuilder().p(this);
+            p.groupDetail = groupDetailBuilder.groupDetail;
+        }
+        return groupDetailBuilder;
+    }
+
+    /**
+     * 分组详情数据构造器
+     */
+    public static class GroupDetailBuilder extends SubBuilder<ProductGroupBuilder, GroupDetailBuilder> {
+
+        final GroupDetail groupDetail = new GroupDetail();
+
+        /**
+         * 设置分组ID
+         * 
+         * @param groupId 分组ID
+         * @return
+         */
+        public GroupDetailBuilder setGroupId(Integer groupId) {
+            groupDetail.groupId = groupId;
+            return this;
+        }
+
+        /**
+         * 设置分组名称
+         * 
+         * @param groupName 分组名称
+         * @return
+         */
+        public GroupDetailBuilder setGroupName(String groupName) {
+            groupDetail.groupName = groupName;
+            return this;
+        }
+
+        /**
+         * 增加一个产品ID
+         * 
+         * @param productId 产品ID，例如：pDF3iY9cEWyMimNlKbik_NYJTzYU
+         * @return
+         */
+        public GroupDetailBuilder addProductId(String productId) {
+            if (groupDetail.productIdList == null) {
+                groupDetail.productIdList = new ArrayList<>();
+            }
+            groupDetail.productIdList.add(productId);
+            return this;
+        }
+
+    }
+
+    /**
+     * 修改动作
+     */
+    public static class ModActionBuilder extends SubBuilder<ProductGroupBuilder, GroupDetailBuilder> {
+
+        final ModAction modAction = new ModAction();
+
+        /**
+         * 增加一个商品，与removeProduct二选一
+         * 
+         * @param productId 商品ID
+         */
+        public void addProduct(String productId) {
+            modAction.modAction = 1;
+            modAction.productId = productId;
+        }
+
+        /**
+         * 删除一个商品，与addProduct二选一
+         * 
+         * @param productId 商品ID
+         */
+        public void removeProduct(String productId) {
+            modAction.modAction = 0;
+            modAction.productId = productId;
+        }
+
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/bean/Product.java
+public class Product implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 商品ID（修改产品信息时必须提供） */
+    @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+    @SerializedName("product_id")
+    public String productId;
+
+    /** 基本属性 */
+    @SerializedName("product_base")
+    public BaseAttr baseAttr;
+
+    /** sku 信息列表(可为多个)，每个 sku 信息串即为一个确定的商品，比如白色的37码的鞋子 */
+    @SerializedName("sku_list")
+    public List<Sku> skuList;
+
+    /** 商品其他属性 */
+    @SerializedName("attrext")
+    public ExtAttr extattr;
+
+    /** 运费信息 */
+    @SerializedName("delivery_info")
+    public DeliverInfo deliveryInfo;
+
+    /** 商品状态(0-全部, 1-上架, 2-下架) */
+    @SerializedName("status")
+    public Integer status;
+
+    @Override
+    public String toString() {
+        return "Product [productId=" + productId + ", baseAttr=" + baseAttr + ", skuList=" + skuList + ", extattr=" + extattr + ", deliveryInfo=" + deliveryInfo + ", status=" + status + "]";
+    }
+
+    /**
+     * 基本属性
+     */
+    public static class BaseAttr implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        /** 【必选】商品名称 */
+        @Requried({ RequriedType.ADD })
+        @SerializedName("name")
+        public String name;
+
+        /** 【必选】商品分类 id，商品分类列表请通过《获取指定分类的所有子分类》获取 */
+        @Requried({ RequriedType.ADD })
+        @SerializedName("category_id")
+        public List<String> categoryIdList;
+
+        /** 【必选】商品主图(图片需调用图片上传接口获得图片 Url 填写至此，否则无法添加商品。图片分辨率推荐尺寸为 640×600) */
+        @Requried({ RequriedType.ADD })
+        @SerializedName("main_img")
+        public String mainImg;
+
+        /** 【必选】商品图片列表(图片需调用图片上传接口获得图片 Url 填写至此，否则无法添加商品。图片分辨率推荐尺寸为640×600) */
+        @Requried({ RequriedType.ADD })
+        @SerializedName("imgs")
+        public List<String> imgList;
+
+        /** 【必选】商品详情列表，显示在客户端的商品详情页内 */
+        @Requried({ RequriedType.ADD })
+        @SerializedName("detail")
+        public List<Detail> detailList;
+
+        /** 商品属性列表，属性列表请通过《获取指定分类的所有属性》获取 */
+        @SerializedName("property")
+        public List<Property> propertyList;
+
+        /** 商品 sku 定义，SKU 列表请通过《获取指定子分类的所有 SKU》获取 */
+        @SerializedName("sku_info")
+        public List<SkuInfo> skuInfoList;
+
+        /** 用户商品限购数量 */
+        @SerializedName("buy_limit")
+        public Integer buyLimit;
+
+        @Override
+        public String toString() {
+            return "BaseAttr [name=" + name + ", categoryIdList=" + categoryIdList + ", mainImg=" + mainImg + ", imgList=" + imgList + ", detailList=" + detailList + ", propertyList=" + propertyList + ", skuInfoList=" + skuInfoList + ", buyLimit=" + buyLimit + "]";
+        }
+
+        /**
+         * 商品详情列表，显示在客户端的商品详情页内
+         */
+        public static class Detail implements Serializable {
+
+            private static final long serialVersionUID = 1L;
+
+            /** 文字描述 */
+            @SerializedName("text")
+            public String text;
+
+            /** 图片(图片需调用图片上传接口获得图片 Url 填写至此，否则无法添加商品) */
+            @SerializedName("img")
+            public String img;
+
+            @Override
+            public String toString() {
+                return "Detail [text=" + text + ", img=" + img + "]";
+            }
+
+        }
+
+        /**
+         * 商品属性列表，属性列表请通过《获取指定分类的所有属性》获取
+         */
+        public static class Property implements Serializable {
+
+            private static final long serialVersionUID = 1L;
+
+            /** 属性 id */
+            @SerializedName("id")
+            public String id;
+
+            /** 属性值 id */
+            @SerializedName("vid")
+            public String vid;
+
+            @Override
+            public String toString() {
+                return "Property [id=" + id + ", vid=" + vid + "]";
+            }
+
+        }
+
+        /**
+         * 商品 sku 定义，SKU 列表请通过《获取指定子分类的所有 SKU》获取
+         */
+        public static class SkuInfo implements Serializable {
+
+            private static final long serialVersionUID = 1L;
+
+            /** sku 属性(SKU 列表中 id, 支持自定义 SKU，格式为 "$xxx"，xxx 即为显示在客户端中的字符串) */
+            @SerializedName("id")
+            public String id;
+
+            /** sku 值(SKU 列表中 vid, 如需自定义 SKU，格式为 "$xxx"，xxx 即为显示在客户端中的字符串) */
+            @SerializedName("vid")
+            public List<String> vidList;
+
+            @Override
+            public String toString() {
+                return "SkuInfo [id=" + id + ", vidList=" + vidList + "]";
+            }
+
+        }
+
+    }
+
+    /**
+     * sku 信息列表(可为多个)，每个 sku 信息串即为一个确定的商品，比如白色的37码的鞋子
+     */
+    public static class Sku implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * sku 信息, 参照上述 sku_table 的定义; <br>
+         * 格式 : "id1:vid1;id2:vid2" <br>
+         * 规则 : id_info 的组合个数必须与 sku_table 个数一致<br>
+         * (若商品无 sku 信息, 即商品为统一规格，则此处赋值为空字符串即可)<br>
+         */
+        @SerializedName("sku_id")
+        public String skuId;
+
+        /** sku 原价(单位 : 分) */
+        @SerializedName("ori_price")
+        public Integer oriPrice;
+
+        /** sku 微信价(单位 : 分, 微信价必须比原价小, 否则添加商品失败) */
+        @SerializedName("price")
+        public Integer price;
+
+        /** sku iconurl(图片需调用图片上传接口获得图片 Url) */
+        @SerializedName("icon_url")
+        public String iconUrl;
+
+        /** sku 库存 */
+        @SerializedName("quantity")
+        public Integer quantity;
+
+        /** 商家商品编码 */
+        @SerializedName("product_code")
+        public String productCode;
+
+        @Override
+        public String toString() {
+            return "Sku [skuId=" + skuId + ", oriPrice=" + oriPrice + ", price=" + price + ", iconUrl=" + iconUrl + ", quantity=" + quantity + ", productCode=" + productCode + "]";
+        }
+
+    }
+
+    /**
+     * 商品其他属性
+     */
+    public static class ExtAttr implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        /** 是否包邮(0-否, 1-是), 如果包邮 delivery_info 字段可省略 */
+        @SerializedName("isPostFree")
+        public Integer isPostFree;
+
+        /** 是否提供发票(0-否, 1-是) */
+        @SerializedName("isHasReceipt")
+        public Integer isHasReceipt;
+
+        /** 是否保修(0-否, 1-是) */
+        @SerializedName("isUnderGuaranty")
+        public Integer isUnderGuaranty;
+
+        /** 是否支持退换货(0-否, 1-是) */
+        @SerializedName("isSupportReplace")
+        public Integer isSupportReplace;
+
+        /** 商品所在地地址 */
+        @SerializedName("location")
+        public Location location;
+
+        @Override
+        public String toString() {
+            return "ExtAttr [isPostFree=" + isPostFree + ", isHasReceipt=" + isHasReceipt + ", isUnderGuaranty=" + isUnderGuaranty + ", isSupportReplace=" + isSupportReplace + ", location=" + location + "]";
+        }
+
+        /**
+         * 商品所在地地址
+         */
+        public static class Location implements Serializable {
+
+            private static final long serialVersionUID = 1L;
+
+            /** 国家(详见《地区列表》说明) */
+            @SerializedName("country")
+            public String country;
+
+            /** 省份(详见《地区列表》说明) */
+            @SerializedName("province")
+            public String province;
+
+            /** 城市(详见《地区列表》说明) */
+            @SerializedName("city")
+            public String city;
+
+            /** 地址 */
+            @SerializedName("address")
+            public String address;
+
+            @Override
+            public String toString() {
+                return "Location [country=" + country + ", province=" + province + ", city=" + city + ", address=" + address + "]";
+            }
+
+        }
+
+    }
+
+    /**
+     * 运费信息
+     */
+    public static class DeliverInfo implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * 运费类型(0-使用下面 express 字段的默认模板, 1-使用 template_id 代表的邮费模板, 详见邮费模板相关 API)
+         */
+        @Requried({ RequriedType.ADD })
+        @SerializedName("delivery_type")
+        public Integer deliveryType;
+
+        /** 邮费模板 ID */
+        @SerializedName("template_id")
+        public Integer templateId;
+
+        /** 快递列表 */
+        @SerializedName("express")
+        public List<Express> expressList;
+
+        @Override
+        public String toString() {
+            return "DeliverInfo [deliveryType=" + deliveryType + ", templateId=" + templateId + ", expressList=" + expressList + "]";
+        }
+
+        /**
+         * 快递
+         */
+        public static class Express implements Serializable {
+
+            private static final long serialVersionUID = 1L;
+
+            /** 快递 ID（参考ExpressType） */
+            @SerializedName("id")
+            public Integer id;
+
+            /** 运费(单位 : 分) */
+            @SerializedName("price")
+            public Integer price;
+
+            @Override
+            public String toString() {
+                return "Express [id=" + id + ", price=" + price + "]";
+            }
+
+        }
+
+    }
+
+    /**
+     * 快递类型
+     */
+    public static enum ExpressType {
+
+        /** 平邮 */
+        Surface(10000027),
+
+        /** 快递 */
+        Express(10000028),
+
+        /** EMS */
+        EMS(10000029);
+
+        Integer id;
+
+        ExpressType(Integer id) {
+            this.id = id;
+        }
+
+        public Integer getId() {
+            return id;
+        }
+
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/MerchantExpressService.java
+public class MerchantExpressService {
+
+    /** 微信公众平台API控制器实例 */
+    private final AbstractWeixinmpController controller;
+
+    protected MerchantExpressService(AbstractWeixinmpController controller) {
+        this.controller = controller;
+    }
+
+    /**
+     * 增加一个邮费模板
+     * 
+     * @param deliveryTemplate 模板信息
+     * @return 返回新模板的ID
+     * @throws WeixinException 如果发生错误
+     */
+    public int addExpress(DeliveryTemplate deliveryTemplate) throws WeixinException {
+        String url = controller.getProperty("merchant_express_add_url", null, false);
+        try {
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, deliveryTemplate, ExpressRequest.Response.class, "addExpress");
+            controller.logInfo("增加一个邮费模板结果：" + result);
+            ExpressRequest.Response response = (ExpressRequest.Response) result;
+            return response.templateId;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_addExpressError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 删除指定ID的邮费模板
+     * 
+     * @param templateId 邮费模板ID
+     * @throws WeixinException 如果发生错误
+     */
+    public void deleteExpress(int templateId) throws WeixinException {
+        String url = controller.getProperty("merchant_express_del_url", null, false);
+        try {
+            ExpressRequest req = new ExpressRequest();
+            req.templateId = templateId;
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, req, ExpressRequest.Response.class, "deleteExpress");
+            controller.logInfo("删除指定ID的邮费模板结果：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_deleteExpressError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 更新一个邮费模板
+     * 
+     * @param expressTemplate 包含templateId的邮费模板
+     * @throws WeixinException
+     */
+    public void updateExpress(ExpressTemplate expressTemplate) throws WeixinException {
+        String url = controller.getProperty("merchant_express_update_url", null, false);
+        try {
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, expressTemplate.deliveryTemplate, ExpressRequest.Response.class, "updateExpress");
+            controller.logInfo("更新一个邮费模板：" + result);
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_updateExpressError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取指定ID的邮费模板
+     * 
+     * @param templateId 模板ID
+     * @return
+     * @throws WeixinException 如果发生错误
+     */
+    public DeliveryTemplate getExpressById(int templateId) throws WeixinException {
+        String url = controller.getProperty("merchant_express_getbyid_url", null, false);
+        try {
+            ExpressRequest req = new ExpressRequest();
+            req.templateId = templateId;
+            // 发送请求
+            GlobalError result = controller.postWithJson(url, req, ExpressRequest.Response.class, "getExpressById");
+            controller.logInfo("获取指定ID的邮费模板结果：" + result);
+            ExpressRequest.Response response = (ExpressRequest.Response) result;
+            return response.templateInfo;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getExpressByIdError", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取所有邮费模板
+     * 
+     * @return
+     * @throws WeixinException
+     */
+    public List<DeliveryTemplate> getAllExpress() throws WeixinException {
+        String url = controller.getProperty("merchant_express_getall_url", null, false);
+        try {
+            GlobalError result = controller.postWithJson(url, null, ExpressRequest.Response.class, "getAllExpress");
+            controller.logInfo("获取所有邮费模板结果：" + result);
+            ExpressRequest.Response response = (ExpressRequest.Response) result;
+            return response.templateList;
+        } catch (WeixinException e) {
+            controller.logError(e.getMessage());
+            if (e.isNeedLog()) {
+                controller.saveToFile(e.getLogFilename(), e.getLogContent());
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new WeixinException(CommonUtils.getNextId() + "_getAllExpressError", e.getMessage(), e);
+        }
+    }
+
+}
+weixinmp-demo/src/main/java/cjc/weixinmp/test/builder/ExpressTemplateBuilderTest.java
+public class ExpressTemplateBuilderTest {
+
+    public static ExpressTemplateBuilder build() {
+        ExpressTemplateBuilder p = new ExpressTemplateBuilder();
+        p.setId(123456);
+        p.setName("xxxx");
+        p.setAssumer(Assumer.Buyers);
+        p.setValuation(Valuation.Item);
+        TopFeeBuilder t = p.addTopFee();
+        t.setType(ExpressType.EMS);
+        t.getNormalBuilder().setStartStandards(1).setStartFees(2).setAddStandards(3).setAddFees(4);
+        t.addCustomer().setStartStandards(1).setStartFees(2).setAddStandards(3).setAddFees(4).setDestCountry("aa").setDestProvince("bb").setDestCity("cc");
+        t.addCustomer().setStartStandards(1).setStartFees(2).setAddStandards(3).setAddFees(4).setDestCountry("aa").setDestProvince("bb").setDestCity("cc");
+        return p;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(new Gson().toJson(build()));
+    }
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/bean/ExpressTemplate.java
+public class ExpressTemplate implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 邮费模板ID */
+    @Requried({ RequriedType.UPDATE })
+    @SerializedName("template_id")
+    public Integer templateId;
+
+    /** 邮费模板信息 */
+    @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+    @SerializedName("delivery_template")
+    public DeliveryTemplate deliveryTemplate;
+
+    @Override
+    public String toString() {
+        return "ExpressTemplate [templateId=" + templateId + ", deliveryTemplate=" + deliveryTemplate + "]";
+    }
+
+    /**
+     * 邮费模板信息<br>
+     * 提示：构建这个对象请使用方便快捷的{@link ExpressTemplateBuilder#build(RequriedType)}.deliveryTemplate数据构造器
+     */
+    public static class DeliveryTemplate implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        /** 邮费模板ID(仅在查询时返回) */
+        @SerializedName("Id")
+        public String id;
+
+        /** 邮费模板名称 */
+        @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+        @SerializedName("Name")
+        public String name;
+
+        /** 支付方式(0-买家承担运费, 1-卖家承担运费) */
+        @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+        @SerializedName("Assumer")
+        public Integer assumer;
+
+        /** 计费单位(0-按件计费, 1-按重量计费, 2-按体 积计费，目前只支持按件计费，默认为0) */
+        @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+        @SerializedName("Valuation")
+        public Integer valuation;
+
+        /** 具体运费计算 */
+        @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+        @SerializedName("TopFee")
+        public List<TopFee> topFee;
+
+        @Override
+        public String toString() {
+            return "DeliveryTemplate [name=" + name + ", assumer=" + assumer + ", valuation=" + valuation + ", topFee=" + topFee + "]";
+        }
+
+        /**
+         * 具体运费计算
+         */
+        public static class TopFee implements Serializable {
+
+            private static final long serialVersionUID = 1L;
+
+            /** 快递类型 ID(参见增加商品/快递列表) */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("Type")
+            public Integer type;
+
+            /** 默认邮费计算方法 */
+            @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+            @SerializedName("Normal")
+            public Normal normal;
+
+            /** 指定地区邮费计算方法 */
+            @SerializedName("Custom")
+            public List<Custom> list;
+
+            @Override
+            public String toString() {
+                return "TopFee [type=" + type + ", normal=" + normal + ", list=" + list + "]";
+            }
+
+            /**
+             * 默认邮费计算方法
+             */
+            public static class Normal implements Serializable {
+
+                private static final long serialVersionUID = 1L;
+
+                /** 起始计费数量(比如计费单位是按件, 填 2 代表起始计费为 2 件) */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("StartStandards")
+                public Integer startStandards;
+
+                /** 起始计费金额(单位: 分） */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("StartFees")
+                public Integer startFees;
+
+                /** 递增计费数量 */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("AddStandards")
+                public Integer addStandards;
+
+                /** 递增计费金额(单位 : 分) */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("AddFees")
+                public Integer addFees;
+
+                @Override
+                public String toString() {
+                    return "Normal [startStandards=" + startStandards + ", startFees=" + startFees + ", addStandards=" + addStandards + ", addFees=" + addFees + "]";
+                }
+
+            }
+
+            /**
+             * 指定地区邮费计算方法
+             */
+            public static class Custom implements Serializable {
+
+                private static final long serialVersionUID = 1L;
+
+                /** 起始计费数量 */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("StartStandards")
+                public Integer startStandards;
+
+                /** 起始计费金额(单位: 分） */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("StartFees")
+                public Integer startFees;
+
+                /** 递增计费数量 */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("AddStandards")
+                public Integer addStandards;
+
+                /** 递增计费金额(单位 : 分) */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("AddFees")
+                public Integer addFees;
+
+                /** 指定国家(详见《地区列表》说明) */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("DestCountry")
+                public String destCountry;
+
+                /** 指定省份(详见《地区列表》说明) */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("DestProvince")
+                public String destProvince;
+
+                /** 指定城市(详见《地区列表》说明) */
+                @Requried({ RequriedType.ADD, RequriedType.UPDATE })
+                @SerializedName("DestCity")
+                public String destCity;
+
+                @Override
+                public String toString() {
+                    return "Custom [startStandards=" + startStandards + ", startFees=" + startFees + ", addStandards=" + addStandards + ", addFees=" + addFees + ", destCountry=" + destCountry + ", destProvince=" + destProvince + ", destCity=" + destCity + "]";
+                }
+
+            }
+
+        }
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/builder/ProductBuilder.java
+public class ProductBuilder extends DataBuilder<Product> {
+
+    private BaseAttrBuilder baseAttrBuilder;
+
+    private ExtAttrBuilder extAttrBuilder;
+
+    private DeliverBuilder deliverBuilder;
+
+    private LocationBuilder locationBuilder;
+
+    /**
+     * 设置商品ID
+     * 
+     * @param productId 商品ID
+     */
+    public void setId(String productId) {
+        p.productId = productId;
+    }
+
+    /**
+     * 设置商品状态
+     * 
+     * @param status 商品状态
+     */
+    public void setStatus(Status status) {
+        p.status = status.state;
+    }
+
+    /**
+     * 返回支持链式操作的 基本属性 构造器
+     * 
+     * @return
+     */
+    public BaseAttrBuilder getBaseAttrBuilder() {
+        if (baseAttrBuilder == null) {
+            baseAttrBuilder = new BaseAttrBuilder().p(this);
+        }
+        return baseAttrBuilder;
+    }
+
+    /**
+     * 返回支持链式操作的 扩展属性 构造器
+     * 
+     * @return
+     */
+    public ExtAttrBuilder getExtAttrBuilder() {
+        if (extAttrBuilder == null) {
+            extAttrBuilder = new ExtAttrBuilder().p(this);
+        }
+        return extAttrBuilder;
+    }
+
+    /**
+     * 返回支持链式操作的 运费属性 构造器
+     * 
+     * @return
+     */
+    public DeliverBuilder getDeliverBuilder() {
+        if (deliverBuilder == null) {
+            deliverBuilder = new DeliverBuilder().p(this);
+        }
+        return deliverBuilder;
+    }
+
+    /**
+     * 返回支持链式操作的 商品所在地信息 构造器
+     */
+    public LocationBuilder getLocationBuilder() {
+        if (locationBuilder == null) {
+            locationBuilder = new LocationBuilder();
+            getAttrext().location = locationBuilder.location;
+        }
+        return locationBuilder;
+    }
+
+    /**
+     * 新增一个SKU（最小商品单元）
+     * 
+     * @return 返回的是一个支持链式操作的SKU构造器
+     */
+    public SkuBuilder addSku() {
+        SkuBuilder sku = new SkuBuilder();
+        getSkuList().add(sku.sku);
+        return sku;
+    }
+
+    // //////////////////////////////////////////////
+
+    private BaseAttr getBaseAttr() {
+        if (p.baseAttr == null) {
+            p.baseAttr = new BaseAttr();
+        }
+        return p.baseAttr;
+    }
+
+    private List<Sku> getSkuList() {
+        if (p.skuList == null) {
+            p.skuList = new ArrayList<Sku>();
+        }
+        return p.skuList;
+    }
+
+    private ExtAttr getAttrext() {
+        if (p.extattr == null) {
+            p.extattr = new ExtAttr();
+        }
+        return p.extattr;
+    }
+
+    private DeliverInfo getDeliverInfo() {
+        if (p.deliveryInfo == null) {
+            p.deliveryInfo = new DeliverInfo();
+        }
+        return p.deliveryInfo;
+    }
+
+    private List<String> getCategoryIdList() {
+        if (getBaseAttr().categoryIdList == null) {
+            getBaseAttr().categoryIdList = new ArrayList<String>();
+        }
+        return getBaseAttr().categoryIdList;
+    }
+
+    private List<Property> getPropertyList() {
+        if (getBaseAttr().propertyList == null) {
+            getBaseAttr().propertyList = new ArrayList<Property>();
+        }
+        return getBaseAttr().propertyList;
+    }
+
+    private List<SkuInfo> getSkuInfoList() {
+        if (getBaseAttr().skuInfoList == null) {
+            getBaseAttr().skuInfoList = new ArrayList<SkuInfo>();
+        }
+        return getBaseAttr().skuInfoList;
+    }
+
+    private List<String> getImgList() {
+        if (getBaseAttr().imgList == null) {
+            getBaseAttr().imgList = new ArrayList<String>();
+        }
+        return getBaseAttr().imgList;
+    }
+
+    private List<Detail> getDetailList() {
+        if (getBaseAttr().detailList == null) {
+            getBaseAttr().detailList = new ArrayList<Detail>();
+        }
+        return getBaseAttr().detailList;
+    }
+
+    // //////////////////////////////////////////////
+
+    /**
+     * 商品状态枚举
+     */
+    public static enum Status {
+
+        /** 全部 */
+        ALL(0),
+
+        /** 上架 */
+        ONLINE(1),
+
+        /** 下架 */
+        OFFLINE(2);
+        int state;
+
+        Status(int state) {
+            this.state = state;
+        }
+
+    }
+
+    /**
+     * 基本属性构造器
+     */
+    public static class BaseAttrBuilder extends SubBuilder<ProductBuilder, BaseAttrBuilder> {
+
+        /**
+         * 设置商品名称
+         * 
+         * @param productName 商品名称
+         */
+        public BaseAttrBuilder setName(String productName) {
+            p.getBaseAttr().name = productName;
+            return this;
+        }
+
+        /**
+         * 设置商品分类（已存在的分类）
+         * 
+         * @param categoryId 商品分类ID
+         * @see MerchantProductService#getSkuByCategory()
+         * @see MerchantProductService#getSubCategory(String, boolean)
+         */
+        public BaseAttrBuilder setCategoryId(String categoryId) {
+            p.getCategoryIdList().clear();
+            p.getCategoryIdList().add(categoryId);
+            return this;
+        }
+
+        /**
+         * 设置商品分类集合（已存在的分类）
+         * 
+         * @param categoryIds 商品分类ID集合
+         * @see MerchantProductService#getSkuByCategory()
+         * @see MerchantProductService#getSubCategory(String, boolean)
+         */
+        public BaseAttrBuilder setCategoryIdList(List<String> categoryIdList) {
+            p.getCategoryIdList().clear();
+            p.getCategoryIdList().addAll(categoryIdList);
+            return this;
+        }
+
+        /**
+         * 设置商品限购数量
+         * 
+         * @param limit 用户商品限购数量
+         */
+        public BaseAttrBuilder setBuyLimit(int limit) {
+            p.getBaseAttr().buyLimit = limit;
+            return this;
+        }
+
+        /**
+         * 设置主图URL
+         * 
+         * @param mainImg 商品主图(图片需调用图片上传接口获得图片Url填写至此，否则无法添加商品。图片分辨率推荐尺寸为640×600)
+         */
+        public BaseAttrBuilder setMainImg(String mainImg) {
+            p.getBaseAttr().mainImg = mainImg;
+            return this;
+        }
+
+        /**
+         * 添加一张商品图片
+         * 
+         * @param img 商品图片列表(图片需调用图片上传接口获得图片Url填写至此，否则无法添加商品。图片分辨率推荐尺寸为640×600)
+         */
+        public BaseAttrBuilder addImg(String img) {
+            p.getImgList().add(img);
+            return this;
+        }
+
+        /**
+         * 添加一个属性
+         * 
+         * @param prop 字符窜格式：id:vid，例如：12345:000903
+         */
+        public BaseAttrBuilder addProperty(String prop) {
+            String[] ps = prop.split(":");
+            Property property = new Property();
+            property.id = ps[0];
+            property.vid = ps[1];
+            p.getPropertyList().add(property);
+            return this;
+        }
+
+        /**
+         * 增加一个商品详情，显示在客户端的商品详情页内
+         * 
+         * @param text 文字描述
+         * @param img 图片(图片需调用图片上传接口获得图片Url填写至此，否则无法添加商品)
+         */
+        public BaseAttrBuilder addDeatil(String text, String img) {
+            Detail d = new Detail();
+            d.text = text;
+            d.img = img;
+            p.getDetailList().add(d);
+            return this;
+        }
+
+        /**
+         * 添加一个SKU
+         * 
+         * @param id sku属性(SKU列表中id, 支持自定义SKU，格式为"$xxx"，xxx即为显示在客户端中的字符串)
+         * @param vidList sku值的集合，(SKU列表中vid, 如需自定义SKU，格式为"$xxx"，xxx即为显示在客户端中的字符串)
+         */
+        public BaseAttrBuilder addSku(String id, List<String> vidList) {
+            SkuInfo sku = new SkuInfo();
+            sku.id = id;
+            sku.vidList = vidList;
+            p.getSkuInfoList().add(sku);
+            return this;
+        }
+
+        /**
+         * 添加一个SKU定义（不同于SKU单元(一个确定的商品)）
+         * 
+         * @param id sku属性(SKU列表中id, 支持自定义SKU，格式为"$xxx"，xxx即为显示在客户端中的字符串)
+         * @param vids sku值的集合，(SKU列表中vid, 如需自定义SKU，格式为"$xxx"，xxx即为显示在客户端中的字符串)
+         */
+        public BaseAttrBuilder addSkuInfo(String id, String[] vids) {
+            SkuInfo sku = new SkuInfo();
+            sku.id = id;
+            sku.vidList = new ArrayList<String>();
+            for (String vid : vids) {
+                sku.vidList.add(vid);
+            }
+            p.getSkuInfoList().add(sku);
+            return this;
+        }
+
+    }
+
+    /**
+     * SKU构造器
+     */
+    public static class SkuBuilder {
+
+        final Sku sku = new Sku();
+
+        /**
+         * 设置SKU信息
+         * 
+         * @param skuId sku信息, 参照上述sku_table的定义; 格式 : "id1:vid1;id2:vid2" 规则 : id_info的组合个数必须与sku_table个数一致(若商品无sku信息, 即商品为统一规格，则此处赋值为空字符串即可)
+         * @return 返回当前对象以支持链式操作
+         */
+        public SkuBuilder setSkuId(String skuId) {
+            sku.skuId = skuId;
+            return this;
+        }
+
+        /**
+         * 设置SKU原价
+         * 
+         * @param oriPrice sku原价(单位 : 分)
+         * @return 返回当前对象以支持链式操作
+         */
+        public SkuBuilder setOriPrice(Integer oriPrice) {
+            sku.oriPrice = oriPrice;
+            return this;
+        }
+
+        /**
+         * 设置微信价
+         * 
+         * @param price sku微信价(单位 : 分, 微信价必须比原价小, 否则添加商品失败)
+         * @return 返回当前对象以支持链式操作
+         */
+        public SkuBuilder setPrice(Integer price) {
+            sku.price = price;
+            return this;
+        }
+
+        /**
+         * 设置商品图标（超小图）
+         * 
+         * @param iconUrl sku iconurl(图片需调用图片上传接口获得图片Url)
+         * @return 返回当前对象以支持链式操作
+         */
+        public SkuBuilder setIconUrl(String iconUrl) {
+            sku.iconUrl = iconUrl;
+            return this;
+        }
+
+        /**
+         * 设置sku库存
+         * 
+         * @param quantity sku库存
+         * @return 返回当前对象以支持链式操作
+         */
+        public SkuBuilder setQuantity(Integer quantity) {
+            sku.quantity = quantity;
+            return this;
+        }
+
+        /**
+         * 设置商家商品编码
+         * 
+         * @param productCode 商家商品编码
+         * @return 返回当前对象以支持链式操作
+         */
+        public SkuBuilder setProductCode(String productCode) {
+            sku.productCode = productCode;
+            return this;
+        }
+
+    }
+
+    /**
+     * 扩展属性构造器
+     */
+    public static class ExtAttrBuilder extends SubBuilder<ProductBuilder, ExtAttrBuilder> {
+
+        /**
+         * 设置是否包邮
+         * 
+         * @param isPostFree 是否包邮(0-否, 1-是), 如果包邮delivery_info字段可省略
+         */
+        public ExtAttrBuilder setPostFree(boolean isPostFree) {
+            p.getAttrext().isPostFree = isPostFree ? 1 : 0;
+            return this;
+        }
+
+        /**
+         * 设置是否提供发票
+         * 
+         * @param isHasReceipt 是否提供发票(0-否, 1-是)
+         */
+        public ExtAttrBuilder setHasReceipt(boolean isHasReceipt) {
+            p.getAttrext().isHasReceipt = isHasReceipt ? 1 : 0;
+            return this;
+        }
+
+        /**
+         * 设置是否支持保修
+         * 
+         * @param isUnderGuaranty 是否保修(0-否, 1-是)
+         */
+        public ExtAttrBuilder setUnderGuaranty(boolean isUnderGuaranty) {
+            p.getAttrext().isUnderGuaranty = isUnderGuaranty ? 1 : 0;
+            return this;
+        }
+
+        /**
+         * 设置是否支持退换货
+         * 
+         * @param isSupportReplace 是否支持退换货(0-否, 1-是)
+         */
+        public ExtAttrBuilder setSupportReplace(boolean isSupportReplace) {
+            p.getAttrext().isSupportReplace = isSupportReplace ? 1 : 0;
+            return this;
+        }
+
+    }
+
+    /**
+     * 商品所在地信息构造器
+     */
+    public static class LocationBuilder {
+
+        Location location = new Location();
+
+        public LocationBuilder setCountry(String country) {
+            location.country = country;
+            return this;
+        }
+
+        public LocationBuilder setProvince(String province) {
+            location.province = province;
+            return this;
+        }
+
+        public LocationBuilder setCity(String city) {
+            location.city = city;
+            return this;
+        }
+
+        public LocationBuilder setAddress(String address) {
+            location.address = address;
+            return this;
+        }
+
+    }
+
+    /**
+     * 运费性构造器
+     */
+    public static class DeliverBuilder extends SubBuilder<ProductBuilder, DeliverBuilder> {
+
+        /**
+         * 设置使用邮费模板<br>
+         * 注意：此方法与addDeliverExpress(ExpressType type, int price)互相覆盖
+         * 
+         * @param templateId 邮费模板ID
+         */
+        public DeliverBuilder setDeliverTemplateId(int templateId) {
+            p.getDeliverInfo().deliveryType = 0;
+            p.getDeliverInfo().templateId = templateId;
+            p.getDeliverInfo().expressList = null;
+            return this;
+        }
+
+        /**
+         * 增加一个快递方式 <br>
+         * 注意：此方法与setDeliverTemplateId(int templateId)互相覆盖
+         * 
+         * @param type
+         * @param price
+         */
+        public DeliverBuilder addDeliverExpress(ExpressType type, int price) {
+            p.getDeliverInfo().deliveryType = 1;
+            p.getDeliverInfo().templateId = null;
+            if (p.getDeliverInfo().expressList == null) {
+                p.getDeliverInfo().expressList = new ArrayList<Express>();
+            }
+            Express e = new Express();
+            e.id = type.getId();
+            e.price = price;
+            p.getDeliverInfo().expressList.add(e);
+            return this;
+        }
+    }
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/bean/ProductGroup.java
+public static class GroupDetail implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 分组ID */
+    @SerializedName("group_id")
+    public Integer groupId;
+
+    /** 分组名称 */
+    @Requried({ RequriedType.ADD })
+    @SerializedName("group_name")
+    public String groupName;
+
+    /** 商品 ID 集合 */
+    @Requried({ RequriedType.ADD })
+    @SerializedName("product_list")
+    public List<String> productIdList;
+
+}
+weixinmp/src/main/java/cjc/weixinmp/merchant/bean/ProductRequest.java
+public static class Properties implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 属性 ID */
+    @SerializedName("id")
+    public String id;
+
+    /** 属性名称 */
+    @SerializedName("name")
+    public String name;
+
+    /** 属性值集合 */
+    @SerializedName("property_list")
+    public List<Property> propertyList;
+
+    @Override
+    public String toString() {
+        return "Properties [id=" + id + ", name=" + name + ", propertyList=" + propertyList + "]";
+    }
+
+    /**
+     * 属性值
+     */
+    public static class Property implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        /** 属性值 Id */
+        @SerializedName("id")
+        public String id;
+
+        /** 属性值名称 */
+        @SerializedName("name")
+        public String name;
+
+        @Override
+        public String toString() {
+            return "Property [id=" + id + ", name=" + name + "]";
+        }
+
+    }
+}

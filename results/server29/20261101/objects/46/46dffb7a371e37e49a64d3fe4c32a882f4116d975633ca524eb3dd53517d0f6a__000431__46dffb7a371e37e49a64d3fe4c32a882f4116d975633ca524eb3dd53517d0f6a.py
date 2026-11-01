@@ -1,0 +1,1 @@
+lambda _cls, compile_id, attempt: _tuple_new(_cls, (compile_id, attempt))

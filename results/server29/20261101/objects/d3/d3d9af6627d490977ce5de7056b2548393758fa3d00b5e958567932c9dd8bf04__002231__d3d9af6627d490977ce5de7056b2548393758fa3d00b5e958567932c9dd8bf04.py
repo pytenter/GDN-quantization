@@ -1,0 +1,1 @@
+lambda _cls, argtypes, target, scheduler, scheduler_flags, cuda_device: _tuple_new(_cls, (argtypes, target, scheduler, scheduler_flags, cuda_device))

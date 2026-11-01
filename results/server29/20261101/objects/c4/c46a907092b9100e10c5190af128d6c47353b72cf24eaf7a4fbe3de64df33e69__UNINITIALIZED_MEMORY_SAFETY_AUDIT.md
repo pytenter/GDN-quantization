@@ -1,0 +1,3 @@
+沿用原CPU安全审计，完整源码证据见parent_cpu/UNINITIALIZED_MEMORY_SAFETY_AUDIT.md及相关目录。历史新增847 kernel/token中724属fill类，但未证明全部由同一开关引起或可安全移除。generic resize增长、可选FLA/Flash masked tile及跨stream全写后读仍有覆盖缺口，维持FILL_OPT_SAFETY_UNPROVEN。
+
+本轮deterministic=True、fill=True始终保留，未启动fill-off独立GPU假设。一次候选输出相同或不同均不构成未初始化读取安全证明。本轮数值差异不能据此归因为fill或证明关闭fill安全。

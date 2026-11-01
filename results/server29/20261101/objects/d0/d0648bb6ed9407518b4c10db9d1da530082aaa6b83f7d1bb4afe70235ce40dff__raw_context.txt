@@ -1,0 +1,900 @@
+montreal_forced_aligner/alignment/multiprocessing.py
+class AlignFunction(KaldiFunction):
+    """
+    Multiprocessing function for alignment.
+
+    See Also
+    --------
+    :meth:`.AlignMixin.align_utterances`
+        Main function that calls this function in parallel
+    :meth:`.AlignMixin.align_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`align-equal-compiled`
+        Relevant Kaldi binary
+    :kaldi_src:`gmm-boost-silence`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: AlignArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.fst_scp_paths = args.fst_scp_paths
+        self.feature_strings = args.feature_strings
+        self.model_path = args.model_path
+        self.ali_paths = args.ali_paths
+        self.align_options = args.align_options
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                feature_string = self.feature_strings[dict_name]
+                fst_path = self.fst_scp_paths[dict_name]
+                ali_path = self.ali_paths[dict_name]
+                com = [
+                    thirdparty_binary("gmm-align-compiled"),
+                    f"--transition-scale={self.align_options['transition_scale']}",
+                    f"--acoustic-scale={self.align_options['acoustic_scale']}",
+                    f"--self-loop-scale={self.align_options['self_loop_scale']}",
+                    f"--beam={self.align_options['beam']}",
+                    f"--retry-beam={self.align_options['retry_beam']}",
+                    "--careful=false",
+                    "-",
+                    f"scp:{fst_path}",
+                    feature_string,
+                    f"ark:{ali_path}",
+                    "ark,t:-",
+                ]
+
+                boost_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-boost-silence"),
+                        f"--boost={self.align_options['boost_silence']}",
+                        self.align_options["optional_silence_csl"],
+                        self.model_path,
+                        "-",
+                    ],
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+                align_proc = subprocess.Popen(
+                    com,
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    encoding="utf8",
+                    stdin=boost_proc.stdout,
+                    env=os.environ,
+                )
+                for line in align_proc.stdout:
+                    line = line.strip()
+                    utterance, log_likelihood = line.split()
+                    yield utterance, float(log_likelihood)
+montreal_forced_aligner/dictionary/mixins.py
+class DictionaryMixin:
+    """
+    Abstract class for MFA classes that use acoustic models
+
+    Parameters
+    ----------
+    oov_code : str
+        What to label words not in the dictionary, defaults to ``'<unk>'``
+    position_dependent_phones : bool
+        Specifies whether phones should be represented as dependent on their
+        position in the word (beginning, middle or end), defaults to True
+    num_silence_states : int
+        Number of states to use for silence phones, defaults to 5
+    num_non_silence_states : int
+        Number of states to use for non-silence phones, defaults to 3
+    shared_silence_phones : bool
+        Specify whether to share states across all silence phones, defaults
+        to True
+    silence_probability : float
+        Probability of optional silences following words, defaults to 0.5
+    punctuation: str, optional
+        Punctuation to use when parsing text
+    clitic_markers: str, optional
+        Clitic markers to use when parsing text
+    compound_markers: str, optional
+        Compound markers to use when parsing text
+    brackets: list[tuple[str, str], optional
+        Character tuples to treat as full brackets around words
+    clitic_set: set[str]
+        Set of clitic words
+    disambiguation_symbols: set[str]
+        Set of disambiguation symbols
+    max_disambiguation_symbol: int
+        Maximum number of disambiguation symbols required, defaults to 0
+    """
+
+    positions: List[str] = ["_B", "_E", "_I", "_S"]
+
+    def __init__(
+        self,
+        oov_word: str = "<unk>",
+        silence_word: str = "<sil>",
+        noise_word: str = "<noise>",
+        optional_silence_phone: str = "sil",
+        oov_phone: str = "spn",
+        other_noise_phone: str = "noi",
+        position_dependent_phones: bool = True,
+        num_silence_states: int = 5,
+        num_noise_states: int = 5,
+        num_non_silence_states: int = 3,
+        shared_silence_phones: bool = False,
+        ignore_case: bool = True,
+        silence_probability: float = 0.5,
+        punctuation: List[str] = None,
+        clitic_markers: List[str] = None,
+        compound_markers: List[str] = None,
+        brackets: List[Tuple[str, str]] = None,
+        non_silence_phones: Set[str] = None,
+        disambiguation_symbols: Set[str] = None,
+        clitic_set: Set[str] = None,
+        max_disambiguation_symbol: int = 0,
+        phone_set_type: typing.Union[str, PhoneSetType] = "UNKNOWN",
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.punctuation = DEFAULT_PUNCTUATION
+        self.clitic_markers = DEFAULT_CLITIC_MARKERS
+        self.compound_markers = DEFAULT_COMPOUND_MARKERS
+        self.brackets = DEFAULT_BRACKETS
+        if punctuation is not None:
+            self.punctuation = punctuation
+        if clitic_markers is not None:
+            self.clitic_markers = clitic_markers
+        if compound_markers is not None:
+            self.compound_markers = compound_markers
+        if brackets is not None:
+            self.brackets = brackets
+
+        self.num_silence_states = num_silence_states
+        self.num_noise_states = num_noise_states
+        self.num_non_silence_states = num_non_silence_states
+        self.shared_silence_phones = shared_silence_phones
+        self.silence_probability = silence_probability
+        self.ignore_case = ignore_case
+        self.oov_word = oov_word
+        self.silence_word = silence_word
+        self.noise_word = noise_word
+        self.position_dependent_phones = position_dependent_phones
+        self.optional_silence_phone = optional_silence_phone
+        self.oov_phone = oov_phone
+        self.oovs_found = Counter()
+        self.other_noise_phone = other_noise_phone
+        if non_silence_phones is None:
+            non_silence_phones = set()
+        self.non_silence_phones = non_silence_phones
+        self.excluded_phones = set()
+        self.excluded_pronunciation_count = 0
+        self.max_disambiguation_symbol = max_disambiguation_symbol
+        if disambiguation_symbols is None:
+            disambiguation_symbols = set()
+        self.disambiguation_symbols = disambiguation_symbols
+        if clitic_set is None:
+            clitic_set = set()
+        self.clitic_set = clitic_set
+        if not isinstance(phone_set_type, PhoneSetType):
+            phone_set_type = PhoneSetType[phone_set_type]
+        self.phone_set_type = phone_set_type
+
+    @property
+    def base_phones(self) -> Dict[str, Set[str]]:
+        base_phones = {}
+        for p in self.non_silence_phones:
+            b = self.phone_set_type.get_base_phone(p)
+            if b not in base_phones:
+                base_phones[b] = set()
+            base_phones[b].add(p)
+
+        return base_phones
+
+    @property
+    def split_regex(self) -> re.Pattern:
+        """Pattern for splitting arbitrary text"""
+        markers = self.compound_markers
+        if "-" in markers:
+            markers = ["-"] + [x for x in self.compound_markers if x != "-"]
+        return re.compile(rf'[{"".join(markers)} ]')
+
+    @property
+    def extra_questions_mapping(self) -> Dict[str, List[str]]:
+        """Mapping of extra questions for the given phone set type"""
+        mapping = {}
+        mapping["silence_question"] = []
+        for p in sorted(self.silence_phones):
+            mapping["silence_question"].append(p)
+            if self.position_dependent_phones:
+                mapping["silence_question"].extend([p + x for x in self.positions])
+        for k, v in self.phone_set_type.extra_questions.items():
+            if k not in mapping:
+                mapping[k] = []
+            if self.phone_set_type is PhoneSetType.ARPA:
+                if self.position_dependent_phones:
+                    for x in sorted(v):
+                        mapping[k].extend([x + pos for pos in self.positions])
+                else:
+                    mapping[k] = sorted(v)
+            elif self.phone_set_type == PhoneSetType.IPA:
+                filtered_v = set()
+                for x in self.non_silence_phones:
+                    base_phone = self.phone_set_type.get_base_phone(x)
+                    if base_phone in v:
+                        filtered_v.add(x)
+                if len(filtered_v) < 2:
+                    del mapping[k]
+                    continue
+                if self.position_dependent_phones:
+                    for x in sorted(filtered_v):
+                        mapping[k].extend([x + pos for pos in self.positions])
+                else:
+                    mapping[k] = sorted(filtered_v)
+            elif self.phone_set_type is PhoneSetType.PINYIN:
+                filtered_v = set()
+                for x in self.non_silence_phones:
+                    base_phone = self.phone_set_type.get_base_phone(x)
+                    if base_phone in v or x in v:
+                        filtered_v.add(x)
+                    elif x in v:
+                        filtered_v.add(x)
+                if len(filtered_v) < 2:
+                    del mapping[k]
+                    continue
+                if self.position_dependent_phones:
+                    for x in sorted(filtered_v):
+                        mapping[k].extend([x + pos for pos in self.positions])
+                else:
+                    mapping[k] = sorted(filtered_v)
+        if self.position_dependent_phones:
+            phones = sorted(self.non_silence_phones)
+            for pos in self.positions:
+                mapping[f"non_silence{pos}"] = [x + pos for x in phones]
+            silence_phones = sorted(self.silence_phones)
+            for pos in [""] + self.positions:
+                mapping[f"silence{pos}"] = [x + pos for x in silence_phones]
+        return mapping
+
+    @property
+    def dictionary_options(self) -> MetaDict:
+        """Dictionary options"""
+        return {
+            "punctuation": self.punctuation,
+            "clitic_markers": self.clitic_markers,
+            "clitic_set": self.clitic_set,
+            "compound_markers": self.compound_markers,
+            "brackets": self.brackets,
+            "num_silence_states": self.num_silence_states,
+            "num_non_silence_states": self.num_non_silence_states,
+            "shared_silence_phones": self.shared_silence_phones,
+            "silence_probability": self.silence_probability,
+            "oov_word": self.oov_word,
+            "silence_word": self.silence_word,
+            "position_dependent_phones": self.position_dependent_phones,
+            "optional_silence_phone": self.optional_silence_phone,
+            "oov_phone": self.oov_phone,
+            "other_noise_phone": self.other_noise_phone,
+            "non_silence_phones": self.non_silence_phones,
+            "max_disambiguation_symbol": self.max_disambiguation_symbol,
+            "disambiguation_symbols": self.disambiguation_symbols,
+            "phone_set_type": str(self.phone_set_type),
+        }
+
+    @property
+    def silence_phones(self):
+        """Silence phones"""
+        return {
+            self.optional_silence_phone,
+            self.oov_phone,
+            self.other_noise_phone,
+        }
+
+    @property
+    def context_independent_csl(self):
+        """Context independent colon-separated list"""
+        return ":".join(str(self.phone_mapping[x]) for x in self.silence_phones)
+
+    @property
+    def specials_set(self):
+        """Special words, like the ``oov_word`` ``silence_word``, ``<eps>``, ``<s>``, and ``</s>``"""
+        return {self.oov_word, self.silence_word, self.noise_word, "<eps>", "<s>", "</s>"}
+
+    @property
+    def phone_mapping(self) -> Dict[str, int]:
+        """Mapping of phones to integer IDs"""
+        phone_mapping = {}
+        i = 0
+        phone_mapping["<eps>"] = i
+        for p in self.kaldi_silence_phones:
+            i += 1
+            phone_mapping[p] = i
+        for p in self.kaldi_non_silence_phones:
+            i += 1
+            phone_mapping[p] = i
+        i = max(phone_mapping.values())
+        for x in range(self.max_disambiguation_symbol + 2):
+            p = f"#{x}"
+            self.disambiguation_symbols.add(p)
+            i += 1
+            phone_mapping[p] = i
+        return phone_mapping
+
+    @property
+    def reversed_phone_mapping(self) -> ReversedMappingType:
+        """
+        A mapping of integer ids to phones
+        """
+        mapping = {}
+        for k, v in self.phone_mapping.items():
+            mapping[v] = k
+        return mapping
+
+    @property
+    def positional_silence_phones(self) -> List[str]:
+        """
+        List of silence phones with positions
+        """
+        silence_phones = []
+        for p in sorted(self.silence_phones):
+            silence_phones.append(p)
+            for pos in self.positions:
+                silence_phones.append(p + pos)
+        return silence_phones
+
+    def _generate_positional_list(self, phones: Set[str]) -> List[str]:
+        """
+        Helper function to generate positional list for phones along with any base phones for the phone set
+
+        Parameters
+        ----------
+        phones: set[str]
+            Set of phones
+
+        Returns
+        -------
+        list[str]
+            List of positional phones, sorted by base phone
+        """
+        positional_phones = []
+        for p in sorted(phones):
+            if p not in self.non_silence_phones:
+                continue
+            base_phone = self.phone_set_type.get_base_phone(p)
+            for pos in self.positions:
+                pos_p = base_phone + pos
+                if pos_p not in positional_phones:
+                    positional_phones.append(pos_p)
+            for pos in self.positions:
+                pos_p = p + pos
+                if pos_p not in positional_phones:
+                    positional_phones.append(pos_p)
+        return positional_phones
+
+    def _generate_non_positional_list(self, phones: Set[str]) -> List[str]:
+        """
+        Helper function to generate non-positional list for phones with any base phones for the phone set
+
+        Parameters
+        ----------
+        phones: set[str]
+            Set of phones
+
+        Returns
+        -------
+        list[str]
+            List of non-positional phones, sorted by base phone
+        """
+        base_phones = set()
+        for p in phones:
+            base_phone = self.phone_set_type.get_base_phone(p)
+            base_phones.add(base_phone)
+
+        return sorted(phones | base_phones)
+
+    def _generate_phone_list(self, phones: Set[str]) -> List[str]:
+        """
+        Helper function to generate phone list
+
+        Parameters
+        ----------
+        phones: set[str]
+            Set of phones
+
+        Returns
+        -------
+        list[str]
+            List of positional or non-positional phones, sorted by base phone
+        """
+        if self.position_dependent_phones:
+            return self._generate_positional_list(phones)
+        return self._generate_non_positional_list(phones)
+
+    @property
+    def positional_non_silence_phones(self) -> List[str]:
+        """
+        List of non-silence phones with positions
+        """
+        return self._generate_positional_list(self.non_silence_phones)
+
+    @property
+    def kaldi_non_silence_phones(self):
+        """Non silence phones in Kaldi format"""
+        if self.position_dependent_phones:
+            return self.positional_non_silence_phones
+        return self._generate_non_positional_list(self.non_silence_phones)
+
+    @property
+    def kaldi_phones_for_topo(self):
+        """Mappings of phones for generating topo file"""
+        mapping = {}
+        for p in sorted(self.non_silence_phones):
+            base_phone = self.phone_set_type.get_base_phone(p)
+            query_set = {p, base_phone}
+            if any(x in self.phone_set_type.extra_short_phones for x in query_set):
+                num_states = 1  # One state for extra short sounds
+            elif any(x in self.phone_set_type.diphthong_phones for x in query_set):
+                num_states = 5  # 5 states for diphthongs (onset of first target, steady state,
+                # transition to next target, steady state, offset of second target)
+            elif any(x in self.phone_set_type.triphthong_phones for x in query_set):
+                num_states = 6  # 5 states for diphthongs (onset of first target, steady state,
+                # transition to next target, steady state, offset of second target)
+            elif any(x in self.phone_set_type.affricate_phones for x in query_set):
+                num_states = 4  # 4 states for affricates (closure, burst, onset of frication, offset of frication)
+            elif any(x in self.phone_set_type.stop_phones for x in query_set):
+                num_states = 2  # Two states for stops (closure, burst), extra states added below for aspirated, ejectives
+            else:
+                num_states = self.num_non_silence_states
+            if self.phone_set_type is PhoneSetType.IPA:
+                if re.match(r"^.*[ʱʼʰʲʷⁿˠ][ː]?$", p):
+                    num_states += 1
+                if re.match(r"^.*̚$", p) and p not in self.phone_set_type.extra_short_phones:
+                    num_states -= 1
+            elif self.phone_set_type is PhoneSetType.PINYIN:
+                if p in {"c", "ch", "q"}:
+                    num_states += 1
+            if num_states not in mapping:
+                mapping[num_states] = []
+            mapping[num_states].extend(
+                [x for x in self._generate_phone_list({p}) if x not in mapping[num_states]]
+            )
+        if self.phone_set_type is PhoneSetType.ARPA:
+            mapping[1] = [x for x in mapping[1] if "0" in x]
+        return mapping
+
+    @property
+    def kaldi_grouped_phones(self) -> Dict[str, List[str]]:
+        """Non silence phones in Kaldi format"""
+        groups = {}
+        for p in sorted(self.non_silence_phones):
+
+            base_phone = self.phone_set_type.get_base_phone(p)
+            if base_phone not in groups:
+                if self.position_dependent_phones:
+                    groups[base_phone] = [base_phone + pos for pos in self.positions]
+                else:
+                    groups[base_phone] = [base_phone]
+            if self.position_dependent_phones:
+                groups[base_phone].extend(
+                    [p + pos for pos in self.positions if p + pos not in groups[base_phone]]
+                )
+            else:
+                if p not in groups[base_phone]:
+                    groups[base_phone].append(p)
+        return groups
+
+    @property
+    def kaldi_silence_phones(self):
+        """Silence phones in Kaldi format"""
+        if self.position_dependent_phones:
+            return self.positional_silence_phones
+        return sorted(self.silence_phones)
+
+    def save_oovs_found(self, directory: str) -> None:
+        """
+        Save all out of vocabulary items to a file in the specified directory
+
+        Parameters
+        ----------
+        directory : str
+            Path to directory to save ``oovs_found.txt``
+        """
+        with open(os.path.join(directory, "oovs_found.txt"), "w", encoding="utf8") as f, open(
+            os.path.join(directory, "oov_counts.txt"), "w", encoding="utf8"
+        ) as cf:
+            for oov in sorted(self.oovs_found.keys(), key=lambda x: (-self.oovs_found[x], x)):
+                f.write(oov + "\n")
+                cf.write(f"{oov}\t{self.oovs_found[oov]}\n")
+
+    @property
+    def optional_silence_csl(self) -> str:
+        """
+        Phone ID of the optional silence phone
+        """
+        return str(self.phone_mapping[self.optional_silence_phone])
+
+    @property
+    def silence_csl(self) -> str:
+        """
+        A colon-separated string of silence phone ids
+        """
+        return ":".join(map(str, (self.phone_mapping[x] for x in self.kaldi_silence_phones)))
+
+    @property
+    def non_silence_csl(self) -> str:
+        """
+        A colon-separated string of non-silence phone ids
+        """
+        return ":".join(map(str, (self.phone_mapping[x] for x in self.kaldi_non_silence_phones)))
+
+    @property
+    def phones(self) -> set:
+        """
+        The set of all phones (silence and non-silence)
+        """
+        return self.silence_phones | self.non_silence_phones
+
+    def check_bracketed(self, word: str) -> bool:
+        """
+        Checks whether a given string is surrounded by brackets.
+
+        Parameters
+        ----------
+        word : str
+            Text to check for final brackets
+
+        Returns
+        -------
+        bool
+            True if the word is fully bracketed, false otherwise
+        """
+        for b in self.brackets:
+            if re.match(rf"^{re.escape(b[0])}.*{re.escape(b[1])}$", word):
+                return True
+        return False
+
+    def construct_sanitize_function(self) -> SanitizeFunction:
+        """
+        Construct a :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction` to use in multiprocessing jobs
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`
+            Function for sanitizing text
+        """
+        f = SanitizeFunction(
+            self.punctuation, self.clitic_markers, self.compound_markers, self.brackets
+        )
+
+        return f
+
+    def sanitize(self, item: str) -> str:
+        """
+        Sanitize an item according to punctuation and clitic markers
+
+        Parameters
+        ----------
+        item: str
+            Word to sanitize
+
+        Returns
+        -------
+        str
+            Sanitized form
+        """
+        return self.construct_sanitize_function()(item)
+montreal_forced_aligner/alignment/multiprocessing.py
+class CompileTrainGraphsFunction(KaldiFunction):
+    """
+    Multiprocessing function to compile training graphs
+
+    See Also
+    --------
+    :meth:`.AlignMixin.compile_train_graphs`
+        Main function that calls this function in parallel
+    :meth:`.AlignMixin.compile_train_graphs_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`compile-train-graphs`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsArguments`
+        Arguments for the function
+    """
+
+    progress_pattern = re.compile(
+        r"^LOG.*succeeded for (?P<succeeded>\d+) graphs, failed for (?P<failed>\d+)"
+    )
+
+    def __init__(self, args: CompileTrainGraphsArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.tree_path = args.tree_path
+        self.model_path = args.model_path
+        self.text_int_paths = args.text_int_paths
+        self.disambig_path = args.disambig_path
+        self.lexicon_fst_paths = args.lexicon_fst_paths
+        self.fst_scp_paths = args.fst_scp_paths
+
+    def run(self):
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                fst_scp_path = self.fst_scp_paths[dict_name]
+                fst_ark_path = fst_scp_path.replace(".scp", ".ark")
+                text_path = self.text_int_paths[dict_name]
+                proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("compile-train-graphs"),
+                        f"--read-disambig-syms={self.disambig_path}",
+                        self.tree_path,
+                        self.model_path,
+                        self.lexicon_fst_paths[dict_name],
+                        f"ark:{text_path}",
+                        f"ark,scp:{fst_ark_path},{fst_scp_path}",
+                    ],
+                    stderr=subprocess.PIPE,
+                    encoding="utf8",
+                    env=os.environ,
+                )
+                for line in proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        yield int(m.group("succeeded")), int(m.group("failed"))
+montreal_forced_aligner/alignment/multiprocessing.py
+class AlignArguments(NamedTuple):
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`"""
+
+    log_path: str
+    dictionaries: List[str]
+    fst_scp_paths: Dict[str, str]
+    feature_strings: Dict[str, str]
+    model_path: str
+    ali_paths: Dict[str, str]
+    align_options: MetaDict
+montreal_forced_aligner/alignment/multiprocessing.py
+class CompileTrainGraphsArguments(NamedTuple):
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsFunction`"""
+
+    log_path: str
+    dictionaries: List[str]
+    tree_path: str
+    model_path: str
+    text_int_paths: Dict[str, str]
+    disambig_path: str
+    lexicon_fst_paths: Dict[str, str]
+    fst_scp_paths: Dict[str, str]
+montreal_forced_aligner/utils.py
+def run_mp(
+    function: Callable,
+    argument_list: List[Tuple[Any, ...]],
+    log_directory: str,
+    return_info: bool = False,
+) -> Optional[Dict[int, Any]]:
+    """
+    Apply a function for each job in parallel
+
+    Parameters
+    ----------
+    function: Callable
+        Multiprocessing function to apply
+    argument_list: list
+        List of arguments for each job
+    log_directory: str
+        Directory that all log information from the processes goes to
+    return_info: dict, optional
+        If the function returns information, supply the return dict to populate
+    """
+    from .config import BLAS_THREADS
+
+    os.environ["OPENBLAS_NUM_THREADS"] = f"{BLAS_THREADS}"
+    os.environ["MKL_NUM_THREADS"] = f"{BLAS_THREADS}"
+    stopped = Stopped()
+    manager = mp.Manager()
+    job_queue = manager.Queue()
+    return_dict = manager.dict()
+    info = None
+    if return_info:
+        info = manager.dict()
+    for a in argument_list:
+        job_queue.put(a)
+    procs = []
+    for i in range(len(argument_list)):
+        p = ProcessWorker(i, job_queue, function, return_dict, stopped, info)
+        procs.append(p)
+        p.start()
+
+    for p in procs:
+        p.join()
+    if "error" in return_dict:
+        _, exc = return_dict["error"]
+        raise exc
+
+    parse_logs(log_directory)
+    if return_info:
+        return info
+montreal_forced_aligner/alignment/multiprocessing.py
+class CompileInformationArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_information_func`"""
+
+    align_log_paths: str
+montreal_forced_aligner/utils.py
+class Stopped(object):
+    """
+    Multiprocessing class for detecting whether processes should stop processing and exit ASAP
+
+    Attributes
+    ----------
+    val: :func:`~multiprocessing.Value`
+        0 if not stopped, 1 if stopped
+    lock: :class:`~multiprocessing.Lock`
+        Lock for process safety
+    _source: multiprocessing.Value
+        1 if it was a Ctrl+C event that stopped it, 0 otherwise
+    """
+
+    def __init__(self, initval: Union[bool, int] = False):
+        self.val = mp.Value("i", initval)
+        self.lock = mp.Lock()
+        self._source = mp.Value("i", 0)
+
+    def stop(self) -> None:
+        """Signal that work should stop asap"""
+        with self.lock:
+            self.val.value = True
+
+    def stop_check(self) -> int:
+        """Check whether a process should stop"""
+        with self.lock:
+            return self.val.value
+
+    def set_sigint_source(self) -> None:
+        """Set the source as a ctrl+c"""
+        with self.lock:
+            self._source.value = True
+
+    def source(self) -> int:
+        """Get the source value"""
+        with self.lock:
+            return self._source.value
+montreal_forced_aligner/utils.py
+def run_non_mp(
+    function: Callable,
+    argument_list: List[Tuple[Any, ...]],
+    log_directory: str,
+    return_info: bool = False,
+) -> Optional[Dict[Any, Any]]:
+    """
+    Similar to :func:`run_mp`, but no additional processes are used and the jobs are evaluated in sequential order
+
+    Parameters
+    ----------
+    function: Callable
+        Multiprocessing function to evaluate
+    argument_list: list
+        List of arguments to process
+    log_directory: str
+        Directory that all log information from the processes goes to
+    return_info: dict, optional
+        If the function returns information, supply the return dict to populate
+
+    Returns
+    -------
+    dict, optional
+        If the function returns information, returns the dictionary it was supplied with
+    """
+    if return_info:
+        info = {}
+        for i, args in enumerate(argument_list):
+            info[i] = function(*args)
+        parse_logs(log_directory)
+        return info
+
+    for args in argument_list:
+        function(*args)
+    parse_logs(log_directory)
+montreal_forced_aligner/alignment/multiprocessing.py
+def compile_information_func(align_log_path: str) -> Dict[str, Union[List[str], float, int]]:
+    """
+    Multiprocessing function for compiling information about alignment
+
+    See Also
+    --------
+    :meth:`.AlignMixin.compile_information`
+        Main function that calls this function in parallel
+
+    Parameters
+    ----------
+    align_log_path: str
+        Log path for alignment
+
+    Returns
+    -------
+    dict[str, Union[list[str], float, int]]
+        Information about log-likelihood and number of unaligned files
+    """
+    average_logdet_pattern = re.compile(
+        r"Overall average logdet is (?P<logdet>[-.,\d]+) over (?P<frames>[.\d+e]+) frames"
+    )
+    log_like_pattern = re.compile(
+        r"^LOG .* Overall log-likelihood per frame is (?P<log_like>[-0-9.]+) over (?P<frames>\d+) frames.*$"
+    )
+
+    decode_error_pattern = re.compile(
+        r"^WARNING .* Did not successfully decode file (?P<utt>.*?), .*$"
+    )
+
+    data = {"unaligned": [], "too_short": [], "log_like": 0, "total_frames": 0}
+    with open(align_log_path, "r", encoding="utf8") as f:
+        for line in f:
+            decode_error_match = re.match(decode_error_pattern, line)
+            if decode_error_match:
+                data["unaligned"].append(decode_error_match.group("utt"))
+                continue
+            log_like_match = re.match(log_like_pattern, line)
+            if log_like_match:
+                log_like = log_like_match.group("log_like")
+                frames = log_like_match.group("frames")
+                data["log_like"] = float(log_like)
+                data["total_frames"] = int(frames)
+            m = re.search(average_logdet_pattern, line)
+            if m:
+                logdet = float(m.group("logdet"))
+                frames = float(m.group("frames"))
+                data["logdet"] = logdet
+                data["logdet_frames"] = frames
+    return data
+montreal_forced_aligner/utils.py
+class KaldiProcessWorker(mp.Process):
+    """
+    Multiprocessing function work
+
+    Parameters
+    ----------
+    job_name: int
+        Integer number of job
+    job_q: :class:`~multiprocessing.Queue`
+        Job queue to pull arguments from
+    function: KaldiFunction
+        Multiprocessing function to call on arguments from job_q
+    return_dict: dict
+        Dictionary for collecting errors
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+        Stop check
+    return_info: dict[int, Any], optional
+        Optional dictionary to fill if the function should return information to main thread
+    """
+
+    def __init__(
+        self,
+        job_name: int,
+        return_q: mp.Queue,
+        function: KaldiFunction,
+        error_dict: dict,
+        stopped: Stopped,
+    ):
+        mp.Process.__init__(self)
+        self.job_name = job_name
+        self.function = function
+        self.return_q = return_q
+        self.error_dict = error_dict
+        self.stopped = stopped
+        self.finished = Stopped()
+
+    def run(self) -> None:
+        """
+        Run through the arguments in the queue apply the function to them
+        """
+        try:
+            for result in self.function.run():
+                self.return_q.put(result)
+        except Exception:
+            self.stopped.stop()
+            self.error_dict[self.job_name] = Exception(traceback.format_exception(*sys.exc_info()))
+        finally:
+            self.finished.stop()

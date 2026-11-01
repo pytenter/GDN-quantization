@@ -1,0 +1,437 @@
+# Qwen3.5-9B：STEPQuant vs Hadamard+Dual-M AIME26 正式评测
+
+你现在是我的 Qwen/GDN recurrent-state quantization 科研执行 Agent。
+
+本任务暂时停止新旋转训练，优先回答一个真正的端到端科学问题：
+
+**在同一个Qwen3.5-9B模型、同一套AIME26两seed采样协议下，完整STEPQuant@6与Hadamard+Dual-M的数学推理准确率分别是多少？**
+
+不要使用Future-KL推测AIME表现，必须真实运行完整生成和Frozen V4评分。
+
+## 0. 任务身份
+
+```text
+TASK_ID =
+QWEN_GDN_AIME26_STEPQUANT6_VS_H_DUALM_2SEED_V1
+
+MODEL = Qwen3.5-9B
+GPU = 4 x RTX3090_24GB
+
+QUESTIONS = 30
+SEEDS = [1, 2]
+SAMPLES_PER_METHOD = 60
+TOTAL_GENERATIONS = 120
+
+MAX_NEW_TOKENS = 81920
+NO_SGLANG = YES
+NO_NEW_TRAINING = YES
+NO_AIME_BASED_CALIBRATION = YES
+
+GPU_EXECUTION_AUTHORIZED = YES
+NO_AUTOMATIC_ADDITIONAL_EXPERIMENTS = YES
+```
+
+使用四张真实可用3090，分别执行单GPU worker。固定各卡UUID，不擅自更换为4090、A800或其他GPU。
+
+所有新任务文件写入独立目录，不修改历史正式实验。
+
+## 1. 必须先核验历史正式协议
+
+优先复用：
+
+`experiments/qwen_gdn/aime26/81920/run_qwen_aime26_formal.py`
+
+及原冻结AIME26数据、采样、评分和任务分片代码。
+
+恢复实际可信运行版本，核验源码SHA、模型权重、tokenizer、数据与Frozen V4评分器。
+
+冻结采样配置：
+
+```text
+enable_thinking = true
+temperature = 1.0
+top_p = 0.95
+top_k = 20
+min_p = 0.0
+
+presence_penalty = 1.5
+repetition_penalty = 1.0
+
+do_sample = true
+max_new_tokens = 81920
+seeds = [1, 2]
+```
+
+EOS、stop tokens、chat template、top-k tie处理及最终答案提取规则均继承历史可信实现。
+
+每道题和每个seed使用单独的随机数发生器，保证两种方法使用相同的初始随机种子。
+
+不得使用greedy decode替代正式采样。
+
+不得修改prompt或加入有利于任一方法的system instruction。
+
+若当前服务器可信版本与上述配置存在差异，优先查明原冻结协议，不能静默混用。
+
+## 2. Method A：完整STEPQuant@6
+
+官方参考：
+
+https://github.com/Dreamer-Toby/STEPQuant
+
+固定官方源码commit、校准代码和量化算法定义。
+
+STEPQuant@6是论文完整的名义6-bit方法，包括：
+
+- Temporal lifetime-aware precision allocation
+- Mixed precision map
+- FP16 pivot protection
+- Key-row-aware weighted dual-axis fitting
+- Value-column scale fitting
+- Persistent quantized-state writeback
+
+这是外部论文基线，不符合我们自己方法的全INT8限制；必须独立标识其真实bit配置与metadata成本。
+
+禁止将all8、w=1、pivots=0的Dual-M消融冒称为完整STEPQuant。
+
+官方论文主要使用Qwen3.8-27B，本任务必须重新确认其在Qwen3.5-9B上的兼容性。
+
+只复用官方STEPQuant的数学与Codec算法，运行时尽量接入本项目已有的可信Qwen HF/manual forward。
+
+禁止因为官方使用SGLang，就静默将本项目切换成SGLang推理。
+
+不得直接使用官方HF参考路径中仅支持greedy的生成函数执行正式评测。必须使用冻结的两seed随机采样器。
+
+若需要大规模重写GDN recurrence kernel才能实现完整STEPQuant，应STOP并报告，不允许无限移植。
+
+### STEPQuant校准
+
+在AIME26之外使用合法校准数据。
+
+优先复用官方论文对应的WikiText校准协议、row impact、lifetime、pivot与bit allocation规则。
+
+必须记录：
+- Calibration数据与token SHA
+- 官方代码commit
+- Calibration配置
+- Gamma与impact定义
+- Lifetime horizon
+- Precision map
+- Pivot mask
+- 每层每head位宽
+- Scale dtype
+- 完整Plan SHA
+
+不能直接复用Qwen3.8-27B的precision map。
+
+不能使用AIME26题目、答案或正式生成结果做校准或选择超参数。
+
+如果无法得到真正符合官方定义的Qwen3.5-9B STEPQuant@6 Plan：
+
+`STEPQUANT_PLAN_QUALIFICATION = FAIL`
+
+停止正式生成，不能以另一个简化Codec替代。
+
+## 3. Method B：Hadamard + Dual-M
+
+复用以下已资格科学资产：
+
+`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1`
+
+以及
+
+`QWEN_GDN_C6R_DUAL_M_INTERACTION_REUSE_5DOC_V1`
+
+本条件固定：
+
+```text
+ROTATION = HADAMARD_H128
+BITWIDTH = INT8
+IMPACT_WEIGHT = 1
+PIVOTS = 0
+
+ROW_SCALE = FP16
+COLUMN_SCALE = FP16
+
+CODEC = ORIGINAL_QUALIFIED_DUAL_M
+```
+
+完整保留原column LS、final re-encode、scale floor、clipping和rounding定义。
+
+不得使用C6R、C7或新训练的旋转。
+
+不得增加Dual-W、mixed bits、NoScaleInflation或其他干预。
+
+必须验证Key-side Hadamard坐标、GDN读写路径与此前合格的H+Dual-M实现一致。
+
+不得因为AIME结果不理想而修改Codec。
+
+## 4. 同一运行时与真实persistent QDQ
+
+两种方法必须使用：
+
+- 相同Qwen模型权重
+- 相同tokenizer
+- 相同BF16权重dtype
+- 相同非量化模型层
+- 相同prompt
+- 相同随机采样器
+- 相同EOS和长度规则
+- 相同评分器
+
+只允许各方法定义本身带来的rotation、codec、bit allocation和pivot差异。
+
+必须核验两组在原生GDN计算路径上的接入边界。
+
+不能让STEPQuant使用一种不同的未量化GDN递归数学实现，却把所得差异全部归因于量化器。
+
+特别检查prefill完成后的首个量化状态及后续每token写回时序。
+
+每一次量化状态更新后，下一token必须使用该方法真实保存的状态表示。
+
+不得让任何方法通过未量化的persistent FP32 state跳过量化误差反馈。
+
+对于STEPQuant，允许官方定义中的FP16 pivot；对于Hadamard+Dual-M，禁止高精度pivot或补偿缓冲。
+
+如果两种方法使用不同物理state表示，必须分别报告实际存储语义。
+
+不能把FP32 tensor承载QDQ值称作physical packed INT8。
+
+## 5. 正式GPU执行前的最小资格
+
+先完成CPU源码与Plan身份审计。
+
+再在非AIME的固定canary上检查：
+
+1. 官方STEPQuant codec reference parity。
+2. H+Dual-M原冻结reference parity。
+3. 完整GDN数学接入。
+4. 每token真实QDQ/writeback。
+5. 下一kernel消费正确状态。
+6. FP16 scales和pivot安全。
+7. 128-token fresh-process数值资格。
+8. 真实sampling seed是否生效。
+9. 最长81920生成配置是否允许。
+10. RTX3090显存与运行时资源安全。
+11. 生成结束后可独立使用Frozen V4评分。
+12. 四GPU的模型、源码、Plan和环境身份。
+
+尤其要避免以下错误：
+
+- 以greedy输出冒充seed1/seed2采样。
+- STEPQuant只在prefill量化一次。
+- 中途偷偷恢复FP recurrent state。
+- H+Dual-M不执行实际旋转。
+- STEPQuant校准Plan与9B模型不匹配。
+- 只运行短上下文就推断81920 token一定可运行。
+
+首先测真实生成吞吐、内存增长和长上下文KV cache开销。
+
+根据测量结果给出四GPU的保守时间及资源预测。
+
+如果原冻结长度无法满足数值或资源安全：
+
+`RESOURCE_OR_RUNTIME_STOP`
+
+不得静默减少MAX_NEW_TOKENS、改变sampling或启用SGLang绕过失败。
+
+本任务采用最短工程资格，不进行无限first-divergence修补。
+
+## 6. 四GPU正式分工
+
+固定30道AIME26原始题目。
+
+对每题执行seed1、seed2。
+
+得到60个固定的`(problem_id,seed)`配对单元。
+
+在四GPU之间确定性分配，每张GPU负责15个配对单元。
+
+同一配对单元的STEPQuant@6与H+Dual-M必须安排到相同物理GPU，保证设备比较公平。
+
+每张GPU完成：
+
+```text
+15 (problem,seed) pairs
+x 2 methods
+= 30 generations
+```
+
+四GPU共120条生成。
+
+每张GPU单进程加载一份Qwen3.5-9B，不使用TP=4替代四个独立worker。
+
+不同方法运行前必须重建独立cache，并清除前一请求的recurrent state、sampling state和临时hook。
+
+不能因为前一道题或另一方法的输出不同而改变下一道题的seed和输入。
+
+优先使用稳定的离线执行方式，不依赖SSH stdout持续连接。
+
+每完成一条合法生成，原子保存token IDs、response、身份及运行记录。
+
+Resume只能继承完整、可核验的正式结果；部分生成不能被标记为完成。
+
+不得自动重复采样某题直到正确。
+
+## 7. 正式生成必须保存的内容
+
+每条样本保存：
+
+```text
+task_id
+problem_id
+seed
+method
+physical_gpu_uuid
+
+model_sha
+tokenizer_sha
+protocol_sha
+codec_or_plan_sha
+
+prompt_token_sha
+generated_token_ids
+generated_text
+
+generated_token_count
+finish_reason
+runtime_error
+
+sampling_config
+top_k_audit
+q_d_q_writeback_audit
+
+wall_time
+peak_cuda_allocated
+peak_cuda_reserved
+```
+
+另外记录每种方法的实际state位宽、FP16 pivot数量、scale metadata和物理驻留资格。
+
+达到81920长度上限的有效生成，按冻结评分规则处理，不能私自剔除。
+
+如果生成任务因为OOM、kernel错误、模型异常退出而未完成，则保持`INCOMPLETE`，不能把技术失败自动当作答错，也不能从分母中悄悄删除。
+
+不按答案对输出进行后处理或人工修正。
+
+## 8. Frozen V4评分
+
+所有120条完整生成后进行独立评分。
+
+必须调用历史Frozen V4的正式答案提取与评分逻辑，包括原有的最终主张、暂定结论、撤回及重述处理规则。
+
+不得仅根据最后一个数字或`\boxed{}`字符串另写一套简单评分器。
+
+对每种方法输出：
+
+```text
+seed1_correct / 30
+seed2_correct / 30
+total_correct / 60
+accuracy_percent
+```
+
+同时输出：
+- 每题两个seed的正确性
+- 两方法配对胜负
+- 正确性分歧数量
+- 平均/中位/p95生成长度
+- EOS与长度截断数量
+- 无法提取答案数量
+- 数值及运行失败数量
+- 单GPU及总GPU消耗
+
+主要指标：
+
+`Accuracy_STEPQuant6 - Accuracy_H_DualM`
+
+使用相同60个配对单元计算差异。
+
+若报告统计不确定性，优先以30道题为cluster、保留各题两个seed联合重采样，避免把同一道题的两个seed简单当作完全独立的60个题目。
+
+可以报告描述性区间，但不要将N=60包装成60个独立数学问题。
+
+## 9. 历史结果的比较纪律
+
+历史Qwen冻结AIME结果：
+
+```text
+FP = 52/60
+H+C128 = 41/60
+C6R = 40/60
+C7 = 33/60
+Native INT8 = 18/60
+```
+
+这些数值仅供历史参考。
+
+只有确认模型、数据、seed、采样器、prompt、量化时序及评分合同完全兼容时，才能将历史条件标为同一正式对照协议。
+
+不得因为新结果超过历史FP或者历史Hadamard，就立即声称严格复现比较已经成立。
+
+如果需要新增FP或H+C128同协议基线，必须另行列出资源成本；本任务不得自动扩大至额外60或120条生成。
+
+## 10. 最终交付与STOP
+
+至少生成：
+
+```text
+PREREGISTRATION.json
+FROZEN_AIME26_IDENTITY.json
+OFFICIAL_STEPQUANT_SOURCE_AUDIT.md
+STEPQUANT6_CALIBRATION_PLAN.json
+
+H_DUAL_M_IDENTITY.json
+CODEC_PARITY_REPORT.json
+GPU_QUALIFICATION.json
+GPU_RESOURCE_LEDGER.json
+
+GENERATION_RESULTS.jsonl
+PER_PROBLEM_RESULTS.csv
+PER_SEED_RESULTS.csv
+ACCURACY_SUMMARY.json
+
+SAMPLING_AUDIT.json
+PERSISTENT_QDQ_AUDIT.json
+FINAL_SCIENTIFIC_REPORT.md
+
+FIRST_FAILURE.json (if applicable)
+SOURCE_MANIFEST.json
+SHA256_MANIFEST.json
+```
+
+不得用未执行的生成补齐CSV。
+
+最终必须明确回答：
+
+1. STEPQuant@6是否在Qwen3.5-9B上得到合法移植？
+2. Hadamard+Dual-M是否复现原数学与QDQ规则？
+3. 四张3090实际运行了多少完整生成？
+4. STEPQuant@6的AIME26正确率是多少？
+5. Hadamard+Dual-M的AIME26正确率是多少？
+6. 两seed分别正确多少题？
+7. 哪些题两方法的结果不同？
+8. 两方法的生成长度及截断情况如何？
+9. 是否存在scale、pivot、clipping或数值风险？
+10. 两方法的实际state存储位宽和成本有何区别？
+11. 结果支持哪一个方法，以及证据的局限？
+12. 当前实验对下一步codec-aware rotation训练有什么启示？
+
+只有两种方法均完成60条合法生成，才能报告完整60样本准确率。
+
+最终状态：
+
+```text
+COMPLETE_AND_STOP
+```
+
+或者在前置资格/执行失败时：
+
+```text
+FAIL_CLOSED_STOP
+```
+
+所有GPU资源必须释放并核验。
+
+本任务不训练新旋转，不运行A800，不追加AIME seeds，不自动执行其他benchmark，不自动git push。
+
+**唯一科学目标：得到Qwen3.5-9B上完整STEPQuant@6与Hadamard+Dual-M在AIME26的真实、可追溯、可比较的两seed正确率。**

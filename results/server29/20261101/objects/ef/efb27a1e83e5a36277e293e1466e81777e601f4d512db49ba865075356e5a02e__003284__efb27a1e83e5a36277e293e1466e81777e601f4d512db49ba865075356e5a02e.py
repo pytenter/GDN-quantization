@@ -1,0 +1,10 @@
+def __create_fn__(_type_architectures, _type_cuda_version, _type_instantiation_level, _type_kernel_filter_file, _type_selected_kernel_list, _type_interface_dir, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_architectures, _dflt_cuda_version, _dflt_instantiation_level, _dflt_kernel_filter_file, _dflt_selected_kernel_list, _dflt_interface_dir, _return_type):
+ def __init__(self,architectures:_type_architectures=_dflt_architectures,cuda_version:_type_cuda_version=_dflt_cuda_version,instantiation_level:_type_instantiation_level=_dflt_instantiation_level,kernel_filter_file:_type_kernel_filter_file=_dflt_kernel_filter_file,selected_kernel_list:_type_selected_kernel_list=_dflt_selected_kernel_list,interface_dir:_type_interface_dir=_dflt_interface_dir)->_return_type:
+  self.architectures=architectures
+  self.cuda_version=cuda_version
+  self.instantiation_level=instantiation_level
+  self.kernel_filter_file=kernel_filter_file
+  self.selected_kernel_list=selected_kernel_list
+  self.interface_dir=interface_dir
+  self.__post_init__()
+ return __init__

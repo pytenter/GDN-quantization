@@ -1,0 +1,41 @@
+{
+  "status": "FROZEN_CPU_ONLY_QUALIFICATION_PLAN",
+  "TASK_ID": "QWEN_GDN_DUALM_AWARE_ROTATION_TRAINING_READINESS_V1",
+  "scope": "Local original-operator and helper qualification; not full9B training or scientific rotation training",
+  "seed": 20261017,
+  "Torch_threads": 1,
+  "CUDA_VISIBLE_DEVICES": "",
+  "CUDA_initialization": "FORBIDDEN",
+  "source_provenance": "FROZEN_C6R_PROVENANCE.json: TRAINING_PROVENANCE_GATE PASS",
+  "A": "Unmodified authoritative legacy qwen_c128_ste forward and gradient",
+  "D": "Frozen DualM encode/decode exact forward; Python identity STE; scales/LS/FP16/clamp detached",
+  "actual_fixture": "Original C6R+DualM stored coordinates, historical Doc5; NOT clean FP teacher; qualification only, excluded from all new data splits",
+  "forward_tests": [
+    "actual full32head state",
+    "zero",
+    "constant",
+    "tiny",
+    "seeded random",
+    "noncontiguous",
+    "sparse outlier",
+    "original rounding ties/clamp",
+    "FP16 scale floor/ceiling/half ties",
+    "expected NaN/Inf rejections"
+  ],
+  "backward_tests": [
+    "D identity cotangent bytes",
+    "A exact legacy bytes and gradients",
+    "original smooth Cayley finite difference .002+.01abs tolerance",
+    "original K-axis recovery relL2<=1e-4",
+    "all24 theta coverage with three-token diagnostic sequence and unchanged original loss helpers",
+    "paired A/D inputs and diagnostic teacher targets exact",
+    "single representative layer/head H64, three Adam lr.001 weight_decay0 clip1 optimizer micro updates",
+    "legal optimizer-boundary complete rotation/Adam/RNG checkpoint after2updates then third-step replay exact"
+  ],
+  "orthogonality_threshold": 0.0001,
+  "checkpoint": "Shared source/training_state_io.py; MICRO_QUALIFICATION_ONLY, tokens_per_update64, captures_per_update1; no research export",
+  "GPU_execution": false,
+  "fail_policy": "First unexpected exception saved FIRST_CPU_FAILURE.json; no automatic CPU retry; no GPU repair loop",
+  "fullmodel_functional_loss": "NOT_TESTED; original norm-before-gate+out_proj hook and captured_losses AST on diagnostic inputs/seeded unit weights only",
+  "permissions": "CPU preparation only for this run; localGPU separately controlled by root; no A800, no32K/AIME"
+}

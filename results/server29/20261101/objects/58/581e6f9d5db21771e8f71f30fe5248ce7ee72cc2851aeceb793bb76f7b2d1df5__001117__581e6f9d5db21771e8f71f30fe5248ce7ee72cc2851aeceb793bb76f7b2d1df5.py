@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self.num_warps,self.num_ctas,self.num_stages,self.num_buffers_warp_spec,self.num_consumer_groups,self.reg_dec_producer,self.reg_inc_consumer,self.maxnreg,self.cluster_dims,self.ptx_version,self.enable_fp_fusion,self.launch_cooperative_grid,self.supported_fp8_dtypes,self.deprecated_fp8_dtypes,self.default_dot_input_precision,self.allowed_dot_input_precisions,self.max_num_imprecise_acc_default,self.extern_libs,self.debug,self.backend_name,self.sanitize_overflow,self.arch,)==(other.num_warps,other.num_ctas,other.num_stages,other.num_buffers_warp_spec,other.num_consumer_groups,other.reg_dec_producer,other.reg_inc_consumer,other.maxnreg,other.cluster_dims,other.ptx_version,other.enable_fp_fusion,other.launch_cooperative_grid,other.supported_fp8_dtypes,other.deprecated_fp8_dtypes,other.default_dot_input_precision,other.allowed_dot_input_precisions,other.max_num_imprecise_acc_default,other.extern_libs,other.debug,other.backend_name,other.sanitize_overflow,other.arch,)
+  return NotImplemented
+ return __eq__

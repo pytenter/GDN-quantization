@@ -1,0 +1,1463 @@
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/expand/explanation/PrefixMatchExplanation.java
+public class PrefixMatchExplanation extends MatchExplanation {
+	private final String prefix;
+	private final String normalizedPrefix;
+	private String[] subpaths;
+	private String[] subpathLabels;
+	private int moreSubpaths = 0;
+	
+	public PrefixMatchExplanation(String fieldName, String prefix, String normalizedPrefix) {
+		super(fieldName);
+		this.prefix = prefix;
+		this.normalizedPrefix = normalizedPrefix;
+	}
+	
+	public PrefixMatchExplanation(AlvisIRPrefixQueryNode prefixQueryNode, String normalizedPrefix) {
+		this(prefixQueryNode.getField(), prefixQueryNode.getPrefix(), normalizedPrefix);
+	}
+
+	@Override
+	public AlvisIRQueryNode getQueryNode() {
+		return new AlvisIRPrefixQueryNode(getFieldName(), normalizedPrefix);
+	}
+
+	@Override
+	protected PayloadDecoder getPayloadDecoder() {
+		return new MatchExplanationPayloadDecoder();
+	}
+
+	public String getPrefix() {
+		return prefix;
+	}
+
+	public String getNormalizedPrefix() {
+		return normalizedPrefix;
+	}
+
+	public boolean hasSubpaths() {
+		return subpaths != null && subpathLabels != null;
+	}
+	
+	public String[] getSubpaths() {
+		return subpaths;
+	}
+
+	public String[] getSubpathLabels() {
+		return subpathLabels;
+	}
+
+	public boolean hasMoreSubpaths() {
+		return moreSubpaths > 0;
+	}
+	
+	public int getMoreSubpaths() {
+		return moreSubpaths;
+	}
+
+	public void setSubpaths(String[] subpaths, String[] labels) {
+		if (subpaths.length != labels.length) {
+			throw new IllegalArgumentException();
+		}
+		this.subpaths = subpaths;
+		this.subpathLabels = labels;
+	}
+
+	public void setMoreSubpaths(int moreSubpaths) {
+		this.moreSubpaths = moreSubpaths;
+	}
+
+	@Override
+	public String toString() {
+		return "PrefixMatchExplanation(" + prefix + ")";
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + moreSubpaths;
+		result = prime * result + ((normalizedPrefix == null) ? 0 : normalizedPrefix.hashCode());
+		result = prime * result + ((prefix == null) ? 0 : prefix.hashCode());
+		result = prime * result + Arrays.hashCode(subpathLabels);
+		result = prime * result + Arrays.hashCode(subpaths);
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		PrefixMatchExplanation other = (PrefixMatchExplanation) obj;
+		if (moreSubpaths != other.moreSubpaths)
+			return false;
+		if (normalizedPrefix == null) {
+			if (other.normalizedPrefix != null)
+				return false;
+		}
+		else if (!normalizedPrefix.equals(other.normalizedPrefix))
+			return false;
+		if (prefix == null) {
+			if (other.prefix != null)
+				return false;
+		}
+		else if (!prefix.equals(other.prefix))
+			return false;
+		if (!Arrays.equals(subpathLabels, other.subpathLabels))
+			return false;
+		if (!Arrays.equals(subpaths, other.subpaths))
+			return false;
+		return true;
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRRelationQueryNode.java
+public class AlvisIRRelationQueryNode implements AlvisIRQueryNode {
+	private final String field;
+	private final String relation;
+	private final AlvisIRQueryNode left;
+	private final AlvisIRQueryNode right;
+	
+	public AlvisIRRelationQueryNode(String field, String relation, AlvisIRQueryNode left, AlvisIRQueryNode right) {
+		super();
+		this.field = field;
+		this.relation = relation;
+		this.left = left;
+		this.right = right;
+	}
+
+	@Override
+	public <R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X {
+		return visitor.visit(this, param);
+	}
+
+	public String getField() {
+		return field;
+	}
+
+	public String getRelation() {
+		return relation;
+	}
+
+	public AlvisIRQueryNode getLeft() {
+		return left;
+	}
+
+	public AlvisIRQueryNode getRight() {
+		return right;
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRNearQueryNode.java
+public class AlvisIRNearQueryNode implements AlvisIRQueryNode {
+	private final String field;
+	private final int slop;
+	private final AlvisIRQueryNode left;
+	private final AlvisIRQueryNode right;
+
+	/**
+	 * Creates a proximity query node.
+	 * @param field field name
+	 * @param slop proximity slop
+	 * @param left left query node
+	 * @param right right query node
+	 */
+	public AlvisIRNearQueryNode(String field, int slop, AlvisIRQueryNode left, AlvisIRQueryNode right) {
+		super();
+		this.field = field;
+		this.slop = slop;
+		this.left = left;
+		this.right = right;
+	}
+
+	/**
+	 * Returns the field name of this query node.
+	 * @return
+	 */
+	public String getField() {
+		return field;
+	}
+
+	/**
+	 * Returns the proximity slop.
+	 * @return
+	 */
+	public int getSlop() {
+		return slop;
+	}
+	
+	/**
+	 * Returns the left query node.
+	 * @return
+	 */
+	public AlvisIRQueryNode getLeft() {
+		return left;
+	}
+
+	/**
+	 * Returns the right query node.
+	 * @return
+	 */
+	public AlvisIRQueryNode getRight() {
+		return right;
+	}
+
+	@Override
+	public <R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X {
+		return visitor.visit(this, param);
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/expand/explanation/AnyMatchExplanation.java
+public class AnyMatchExplanation extends MatchExplanation {
+	public AnyMatchExplanation(String fieldName) {
+		super(fieldName);
+	}
+
+	@Override
+	protected PayloadDecoder getPayloadDecoder() {
+		return new MatchExplanationPayloadDecoder();
+	}
+
+	@Override
+	public AlvisIRQueryNode getQueryNode() {
+		return AlvisIRAnyQueryNode.INSTANCE;
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/expand/explanation/MatchExplanation.java
+public abstract class MatchExplanation {
+	/**
+	 * Element containing explanations for this match.
+	 */
+	private final String fieldName;
+	private String type;
+	private String label;
+	private String[] synonyms;
+	private int moreSynonyms = 0;
+	private int productivity = 0;
+
+	/**
+	 * Creates a match explanation.
+	 * @param doc documents to which belong explanation bits.
+	 * @param fieldName name of the field for this match.
+	 */
+	protected MatchExplanation(String fieldName) {
+		super();
+		this.fieldName = fieldName;
+	}
+	
+	public SpanQuery getSpanQuery(int tokenPositionGap, String fieldName) {
+		return AlvisIRQueryNodeSpanQueryConverter.convert(tokenPositionGap, fieldName, getQueryNode());
+	}
+
+	protected abstract PayloadDecoder getPayloadDecoder();
+	
+	/**
+	 * Creates highlights objects in the specified document snippets.
+	 * @param tokenPositionGap
+	 * @param reader index containing the target documents.
+	 * @param docSnippets document snippets.
+	 * @throws IOException
+	 */
+	public void createHighlights(AlvisIRIndex index, FieldOptions fieldOptions, DocumentSnippet[] docSnippets) throws IOException {
+		PayloadDecoder decoder = getPayloadDecoder();
+		for (String f : fieldOptions.getFields(fieldName)) {
+			SpanQuery query = getSpanQuery(index.getGlobalAttributes().getTokenPositionGap(), f);
+			IndexReader reader = index.getIndexReader();
+			SpanQuery rewritten = (SpanQuery) query.rewrite(reader);
+			Spans spans = rewritten.getSpans(reader);
+			decoder.setFieldName(f);
+			decoder.decode(docSnippets, spans);
+		}
+	}
+	
+	/**
+	 * A payload decoder that creates highlights.
+	 * @author rbossy
+	 *
+	 */
+	protected final class MatchExplanationPayloadDecoder extends PayloadDecoder {
+		private Highlight highlight;
+		
+		protected MatchExplanationPayloadDecoder() {
+			super();
+		}
+
+		@Override
+		protected void handleMatch() {
+		}
+
+		@Override
+		protected void handleToken(int id, int fieldInstance) {
+			highlight = new Highlight(id, MatchExplanation.this);
+			FieldSnippet fieldSnippet = getDocSnippet().ensureSnippet(getFieldName(), fieldInstance);
+			fieldSnippet.addHighlight(highlight);
+		}
+
+		@Override
+		protected void handleFragment(int fieldInstance, int start, int end) {
+			Fragment fragment = new SimpleFragment(start, end);
+			highlight.addFragment(fragment);
+		}
+
+		@Override
+		protected void handleArgument(int role, int argId) {
+			highlight.addArgument(role, argId);
+		}
+
+		@Override
+		protected void handleProperty(int key, String value) {
+			highlight.addProperty(key, value);
+		}
+	}
+
+	protected final class MergedHighlightMatchExplanationPayloadDecoder extends PayloadDecoder {
+		private Highlight highlight;
+		private SimpleMutableFragment fragment;
+		private int fieldInstance = -1;
+		
+		protected MergedHighlightMatchExplanationPayloadDecoder() {
+			super();
+		}
+
+		@Override
+		protected void handleMatch() {
+			fieldInstance = -1;
+		}
+
+		@Override
+		protected void handleToken(int id, int fieldInstance) {
+			if (fieldInstance != this.fieldInstance) {
+				this.fieldInstance = fieldInstance;
+				highlight = new Highlight(MatchExplanation.this);
+				fragment = new SimpleMutableFragment(Integer.MAX_VALUE, 0);
+				highlight.addFragment(fragment);
+				FieldSnippet fieldSnippet = getDocSnippet().ensureSnippet(getFieldName(), fieldInstance);
+				fieldSnippet.addHighlight(highlight);
+			}
+		}
+
+		@Override
+		protected void handleFragment(int fieldInstance, int start, int end) {
+			if (start < fragment.getStart()) {
+				fragment.setStart(start);
+			}
+			if (end > fragment.getEnd()) {
+				fragment.setEnd(end);
+			}
+		}
+
+		@Override
+		protected void handleArgument(int role, int argId) {
+			highlight.addArgument(role, argId);
+		}
+
+		@Override
+		protected void handleProperty(int key, String value) {
+			highlight.addProperty(key, value);
+		}
+	}
+	
+	public abstract AlvisIRQueryNode getQueryNode();
+
+	public String getFieldName() {
+		return fieldName;
+	}
+
+	public boolean hasType() {
+		return type != null;
+	}
+	
+	public String getType() {
+		return type;
+	}
+
+	public void setType(String type) {
+		this.type = type;
+	}
+	
+	public boolean hasLabel() {
+		return label != null;
+	}
+
+	public String getLabel() {
+		return label;
+	}
+	
+	public boolean hasSynonyms() {
+		return synonyms != null;
+	}
+
+	public String[] getSynonyms() {
+		return synonyms;
+	}
+	
+	public boolean hasMoreSynonyms() {
+		return moreSynonyms > 0;
+	}
+
+	public int getMoreSynonyms() {
+		return moreSynonyms;
+	}
+
+	public void setLabel(String label) {
+		this.label = label;
+	}
+
+	public void setSynonyms(String[] synonyms) {
+		this.synonyms = synonyms;
+	}
+
+	public void setMoreSynonyms(int moreSynonyms) {
+		this.moreSynonyms = moreSynonyms;
+	}
+
+	public int getProductivity() {
+		return productivity;
+	}
+
+	public int computeProductivity(AlvisIRIndex index, SearchConfig searchConfig) throws IOException {
+		Query query = AlvisIRQueryNodeQueryConverter.convert(index.getGlobalAttributes().getTokenPositionGap(), searchConfig, getQueryNode());
+		TotalHitCountCollector collector = new TotalHitCountCollector();
+		index.getIndexSearcher().search(query, collector);
+		productivity = collector.getTotalHits();
+		return productivity;
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRQueryNodeVisitor.java
+public interface AlvisIRQueryNodeVisitor<R,P,X extends Exception> {
+	R visit(AlvisIRTermQueryNode termQueryNode, P param) throws X;
+	R visit(AlvisIRPhraseQueryNode phraseQueryNode, P param) throws X;
+	R visit(AlvisIRPrefixQueryNode prefixQueryNode, P param) throws X;
+	R visit(AlvisIRAndQueryNode andQueryNode, P param) throws X;
+	R visit(AlvisIROrQueryNode orQueryNode, P param) throws X;
+	R visit(AlvisIRNearQueryNode nearQueryNode, P param) throws X;
+	R visit(AlvisIRRelationQueryNode relationQueryNode, P param) throws X;
+	R visit(AlvisIRNoExpansionQueryNode noExpansionQueryNode, P param) throws X;
+	R visit(AlvisIRAnyQueryNode anyQueryNode, P param) throws X;
+	R visit(AlvisIRTermListQueryNode termListQueryNode, P param) throws X;
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/expand/explanation/PhraseMatchExplanation.java
+public class PhraseMatchExplanation extends MatchExplanation {
+	private final int slop;
+	private final String[] texts;
+	private final String[] normalizedTexts;
+	
+	/**
+	 * Creates a phrase match explanation.
+	 * @param doc document to which belong explanation bits.
+	 * @param fieldName field of the phrase query.
+	 * @param texts texts of the phrase query.
+	 * @param slop slop of the phrase query, this is the user slop.
+	 */
+	public PhraseMatchExplanation(String fieldName, String[] texts, int slop, String[] normalizedTexts) {
+		super(fieldName);
+		this.slop = slop;
+		this.texts = texts;
+		this.normalizedTexts = normalizedTexts;
+	}
+	
+	public PhraseMatchExplanation(String fieldName, List<String> texts, int slop, String[] normalizedTexts) {
+		this(fieldName, texts.toArray(new String[texts.size()]), slop, normalizedTexts);
+	}
+	
+	public PhraseMatchExplanation(AlvisIRPhraseQueryNode phraseQueryNode, String[] normalizedTexts) {
+		this(phraseQueryNode.getField(), phraseQueryNode.getTexts(), phraseQueryNode.getSlop(), normalizedTexts);
+	}
+
+	@Override
+	public AlvisIRQueryNode getQueryNode() {
+		AlvisIRPhraseQueryNode result = new AlvisIRPhraseQueryNode(getFieldName(), slop);
+		for (String text : normalizedTexts) {
+			result.addText(text);
+		}
+		return result;
+	}
+
+	@Override
+	protected PayloadDecoder getPayloadDecoder() {
+		if (slop <= 1) {
+			return new MergedHighlightMatchExplanationPayloadDecoder();
+		}
+		return new MatchExplanationPayloadDecoder();
+	}
+
+	public int getSlop() {
+		return slop;
+	}
+
+	public String[] getTexts() {
+		return texts;
+	}
+
+	public String[] getNormalizedTexts() {
+		return normalizedTexts;
+	}
+
+	@Override
+	public String toString() {
+		return "PhraseMatchExplanation[" + slop + "](" + Arrays.deepToString(texts) + ")";
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + Arrays.hashCode(normalizedTexts);
+		result = prime * result + slop;
+		result = prime * result + Arrays.hashCode(texts);
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		PhraseMatchExplanation other = (PhraseMatchExplanation) obj;
+		if (!Arrays.equals(normalizedTexts, other.normalizedTexts))
+			return false;
+		if (slop != other.slop)
+			return false;
+		if (!Arrays.equals(texts, other.texts))
+			return false;
+		return true;
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRNoExpansionQueryNode.java
+public class AlvisIRNoExpansionQueryNode implements AlvisIRQueryNode {
+	private final AlvisIRQueryNode queryNode;
+
+	public AlvisIRNoExpansionQueryNode(AlvisIRQueryNode queryNode) {
+		super();
+		this.queryNode = queryNode;
+	}
+
+	public AlvisIRQueryNode getQueryNode() {
+		return queryNode;
+	}
+
+	@Override
+	public <R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X {
+		return visitor.visit(this, param);
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/index/NormalizationOptions.java
+public abstract class NormalizationOptions {
+	/**
+	 * Returns a stream of normalized tokens.
+	 * @param source raw token stream
+	 * @return a stream of normalized tokens
+	 */
+	public abstract TokenStream getTokenStream(TokenStream source);
+	
+	private static final class SingleTokenStream extends TokenStream {
+		private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
+		private final String synonym;
+		private boolean available = true;
+
+		private SingleTokenStream(String synonym) {
+			super();
+			this.synonym = synonym;
+		}
+
+		@Override
+		public boolean incrementToken() {
+			if (available) {
+				clearAttributes();
+				termAtt.setLength(0);
+				termAtt.append(synonym);
+				available = false;
+				return true;
+			}
+			return false;
+		}
+
+		@Override
+		public void close() {
+		}
+	}
+	
+	/**
+	 * Normalizes the specified text.
+	 * @param text token to normalize
+	 * @return a stream containing a single normalized token
+	 */
+	public final TokenStream getTokenStream(String text) {
+		TokenStream source = new SingleTokenStream(text);
+		return getTokenStream(source);
+	}
+	
+	/**
+	 * Normalizes the specified tokens.
+	 * @param texts tokens to normalize
+	 * @return a stream containing one token for each element of the specified token collection
+	 */
+	public final TokenStream getTokenStream(Collection<String> texts) {
+		TokenStream source = new IteratorTokenStream(texts);
+		return getTokenStream(source);
+	}
+	
+	/**
+	 * Normalizes the specified text.
+	 * @param text token to normalize
+	 * @return the normalized text
+	 */
+	public final String normalize(String text) {
+		try {
+			TokenStream tokenStream = getTokenStream(text);
+			tokenStream.incrementToken();
+			CharTermAttribute attr = tokenStream.getAttribute(CharTermAttribute.class);
+			String result = attr.toString();
+//			System.err.println("result = " + result);
+			return result;
+		}
+		catch (IOException e) {
+			// incrementToken() should not throw IOException
+			throw new RuntimeException();
+		}
+	}
+	
+	private static final class IteratorTokenStream extends TokenStream {
+		private final CharTermAttribute attrTermForm = addAttribute(CharTermAttribute.class);
+		private final Iterator<String> iterator;
+		
+		private IteratorTokenStream(Iterator<String> iterator) {
+			super();
+			this.iterator = iterator;
+		}
+		
+		private IteratorTokenStream(Collection<String> strings) {
+			this(strings.iterator());
+		}
+		
+		private IteratorTokenStream(String... strings) {
+			this(Arrays.asList(strings));
+		}
+
+		@Override
+		public boolean incrementToken() throws IOException {
+			if (iterator.hasNext()) {
+				String token = iterator.next();
+				attrTermForm.setLength(0);
+				attrTermForm.append(token);
+				return true;
+			}
+			return false;
+		}
+	}
+	
+	/**
+	 * Normalize the specified texts.
+	 * @param texts tokens to normalize
+	 * @return the normalized tokens
+	 */
+	public final String[] normalize(String[] texts) {
+		try {
+			TokenStream source = new IteratorTokenStream(texts);
+			TokenStream tokenStream = getTokenStream(source);
+			String[] result = new String[texts.length];
+			for (int i = 0; i < texts.length; ++i) {
+				boolean increment = tokenStream.incrementToken();
+				assert increment;
+				CharTermAttribute attr = tokenStream.getAttribute(CharTermAttribute.class);
+				result[i] = attr.toString();
+			}
+			return result;
+		}
+		catch (IOException e) {
+			// incrementToken() should not throw IOException
+			throw new RuntimeException();			
+		}
+	}
+	
+	/**
+	 * Normalize the specified texts.
+	 * @param texts tokens to normalize
+	 * @return the normalized tokens
+	 */
+	public final List<String> normalize(Collection<String> texts) {
+		try {
+			TokenStream source = new IteratorTokenStream(texts);
+			TokenStream tokenStream = getTokenStream(source);
+			List<String> result = new ArrayList<String>(texts.size());
+			while (tokenStream.incrementToken()) {
+				CharTermAttribute attr = tokenStream.getAttribute(CharTermAttribute.class);
+				result.add(attr.toString());
+			}
+			assert result.size() == texts.size();
+			return result;
+		}
+		catch (IOException e) {
+			// incrementToken() should not throw IOException
+			throw new RuntimeException();			
+		}
+	}
+
+	/**
+	 * Instance that does not normalize, passes tokens as is.
+	 */
+	public static final NormalizationOptions NONE = new NormalizationOptions() {
+		@Override
+		public TokenStream getTokenStream(TokenStream source) {
+			return source;
+		}
+	};
+	
+	/**
+	 * For multiple normalization filters.
+	 * @author rbossy
+	 *
+	 */
+	public static abstract class TokenFilterFactory extends NormalizationOptions {
+		private final NormalizationOptions next;
+
+		protected TokenFilterFactory(NormalizationOptions next) {
+			super();
+			this.next = next;
+		}
+
+		@Override
+		public TokenStream getTokenStream(TokenStream source) {
+			TokenStream next = this.next.getTokenStream(source);
+			return createTokenFilter(next);
+		}
+		
+		protected abstract TokenFilter createTokenFilter(TokenStream source);
+	}
+	
+	private static final Version VERSION = Version.LUCENE_36;
+
+	/**
+	 * Case-folding normalization.
+	 * @author rbossy
+	 *
+	 */
+	public static final class CaseFolding extends TokenFilterFactory {
+		public CaseFolding(NormalizationOptions next) {
+			super(next);
+		}
+
+		@Override
+		protected TokenFilter createTokenFilter(TokenStream source) {
+			return new LowerCaseFilter(VERSION, source);
+		}
+	}
+	
+	/**
+	 * ASCII-folding normalization.
+	 * @author rbossy
+	 *
+	 */
+	public static final class ASCIIFolding extends TokenFilterFactory {
+		public ASCIIFolding(NormalizationOptions next) {
+			super(next);
+		}
+
+		@Override
+		protected TokenFilter createTokenFilter(TokenStream source) {
+			return new ASCIIFoldingFilter(source);
+		}
+	}
+	
+	/**
+	 * Stemming.
+	 * @author rbossy
+	 *
+	 */
+	public static final class Stemming extends TokenFilterFactory {
+		private final SnowballProgram stemmer;
+
+		public Stemming(NormalizationOptions next, SnowballProgram stemmer) {
+			super(next);
+			this.stemmer = stemmer;
+		}
+
+		@Override
+		protected TokenFilter createTokenFilter(TokenStream source) {
+			return new SnowballFilter(source, stemmer);
+		}
+	}
+	
+	// EnglishPossessiveFilter, ElisionFilter, 
+
+	/**
+	 * Converts the specified string as a normalization filter.
+	 * @param norm normalization name
+	 * @param next other normalization
+	 * @return
+	 */
+	public static NormalizationOptions getFilter(String norm, NormalizationOptions next) {
+		NormalizationOptions result = next;
+		switch (norm) {
+			case "case":
+			case "lowercase":
+			case "lower":
+			case "case-folding":
+				result = new CaseFolding(result);
+				break;
+			case "ascii":
+			case "ascii-folding":
+				result = new ASCIIFolding(result);
+				break;
+			case "english":
+			case "english-stemming":
+				result = new Stemming(result, new EnglishStemmer());
+				break;
+			case "french":
+			case "french-stemming":
+				result = new Stemming(result, new FrenchStemmer());
+				break;
+			default:
+				return null;
+		}
+		return result;
+	}
+
+	/**
+	 * Default normalization: ASCII folding, case folding and english stemmer.
+	 */
+	public static final NormalizationOptions DEFAULT = new Stemming(new ASCIIFolding(new CaseFolding(NONE)), new EnglishStemmer());
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRAnyQueryNode.java
+public enum AlvisIRAnyQueryNode implements AlvisIRQueryNode {
+	INSTANCE;
+
+	@Override
+	public <R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X {
+		return visitor.visit(this, param);
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/expand/explanation/CompositeExpansionExplanation.java
+public class CompositeExpansionExplanation extends MatchExplanation {
+	private final List<MatchExplanation> explanations;
+
+	public CompositeExpansionExplanation(String fieldName, List<MatchExplanation> explanations) {
+		super(fieldName);
+		this.explanations = explanations;
+	}
+	
+	@Override
+	public AlvisIRQueryNode getQueryNode() {
+		AlvisIROrQueryNode result = new AlvisIROrQueryNode();
+		for (MatchExplanation ex : explanations) {
+			result.addClause(ex.getQueryNode());
+		}
+		return result;
+	}
+
+	public List<MatchExplanation> getexplanations() {
+		return Collections.unmodifiableList(explanations);
+	}
+
+	@Override
+	protected PayloadDecoder getPayloadDecoder() {
+		return new MatchExplanationPayloadDecoder();
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder("CompositeExpansionExplanation(");
+		boolean notFirst = false;
+		for (MatchExplanation e : explanations) {
+			if (notFirst)
+				sb.append(", ");
+			else
+				notFirst = true;
+			sb.append(e);
+		}
+		return sb.toString();
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((explanations == null) ? 0 : explanations.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		CompositeExpansionExplanation other = (CompositeExpansionExplanation) obj;
+		if (explanations == null) {
+			if (other.explanations != null)
+				return false;
+		}
+		else if (!explanations.equals(other.explanations))
+			return false;
+		return true;
+	}
+
+	@Override
+	public int computeProductivity(AlvisIRIndex index, SearchConfig searchConfig) throws IOException {
+		for (MatchExplanation expl : explanations) {
+			expl.computeProductivity(index, searchConfig);
+		}
+		return super.computeProductivity(index, searchConfig);
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRTermQueryNode.java
+public class AlvisIRTermQueryNode implements AlvisIRQueryNode {
+	private final String field;
+	private final String text;
+	
+	/**
+	 * Creates a term query node.
+	 * @param field field name
+	 * @param text term text
+	 */
+	public AlvisIRTermQueryNode(String field, String text) {
+		super();
+		this.field = field;
+		this.text = text;
+	}
+
+	/**
+	 * Returns the field name.
+	 * @return
+	 */
+	public String getField() {
+		return field;
+	}
+
+	/**
+	 * Returns the term text.
+	 * @return
+	 */
+	public String getText() {
+		return text;
+	}
+
+	@Override
+	public <R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X {
+		return visitor.visit(this, param);
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRAndQueryNode.java
+public class AlvisIRAndQueryNode implements AlvisIRQueryNode {
+	private final List<Clause> clauses = new ArrayList<Clause>();
+	
+	/**
+	 * Creates a new conjunction query node.
+	 */
+	public AlvisIRAndQueryNode() {
+		super();
+	}
+
+	@Override
+	public <R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X {
+		return visitor.visit(this, param);
+	}
+	
+	/**
+	 * Returns all clauses.
+	 * @return all clauses (unmodifiable).
+	 */
+	public List<Clause> getClauses() {
+		return Collections.unmodifiableList(clauses);
+	}
+	
+	/**
+	 * Adds a new clause.
+	 * @param op operator
+	 * @param qn query node
+	 */
+	public void addClause(Operator op, AlvisIRQueryNode qn) {
+		clauses.add(new Clause(op, qn));
+	}
+
+	/**
+	 * Conjunction operator.
+	 * @author rbossy
+	 *
+	 */
+	public static enum Operator {
+		/** Regular AND */
+		AND,
+		
+		/** AND NOT */
+		BUT;
+	}
+	
+	/**
+	 * Conjunction clause.
+	 * @author rbossy
+	 *
+	 */
+	public static final class Clause {
+		private final Operator operator;
+		private final AlvisIRQueryNode queryNode;
+		
+		private Clause(Operator operator, AlvisIRQueryNode queryNode) {
+			super();
+			this.operator = operator;
+			this.queryNode = queryNode;
+		}
+
+		/**
+		 * Returns this clause operator.
+		 * @return
+		 */
+		public Operator getOperator() {
+			return operator;
+		}
+
+		/**
+		 * Returns this clause query node.
+		 * @return
+		 */
+		public AlvisIRQueryNode getQueryNode() {
+			return queryNode;
+		}
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/FieldOptions.java
+public interface FieldOptions {
+	/**
+	 * Returns the indexed fields to which the specified alias refers.
+	 * Throws RuntimeException if the specified field name is neither an alias, nor an indexed field.
+	 * @param fieldName
+	 * @return
+	 */
+	public String[] getFields(String fieldName);
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRTermListQueryNode.java
+public class AlvisIRTermListQueryNode implements AlvisIRQueryNode {
+	private final AlvisIRAndQueryNode.Operator operator;
+	private final String field;
+	private final List<String> texts = new ArrayList<String>();
+	
+	/**
+	 * Creates a phrase query node with the specified field and slop.
+	 * @param field field name
+	 * @param slop phrase slop.
+	 */
+	public AlvisIRTermListQueryNode(AlvisIRAndQueryNode.Operator operator, String field) {
+		super();
+		this.operator = operator;
+		this.field = field;
+	}
+
+	public AlvisIRAndQueryNode.Operator getOperator() {
+		return operator;
+	}
+
+	/**
+	 * Returns the field name.
+	 * @return
+	 */
+	public String getField() {
+		return field;
+	}
+
+	/**
+	 * Returns the texts of terms in the phrase.
+	 * @return
+	 */
+	public List<String> getTexts() {
+		return Collections.unmodifiableList(texts);
+	}
+	
+	/**
+	 * Appends a term text to this phrase query node.
+	 * @param text
+	 */
+	public void addText(String text) {
+		texts.add(text);
+	}
+	
+	public AlvisIRAndQueryNode toAndQueryNode() {
+		AlvisIRAndQueryNode result = new AlvisIRAndQueryNode();
+		for (String t : texts) {
+			result.addClause(operator, new AlvisIRTermQueryNode(field, t));
+		}
+		return result;
+	}
+
+	@Override
+	public <R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X {
+		return visitor.visit(this, param);
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIROrQueryNode.java
+public class AlvisIROrQueryNode implements AlvisIRQueryNode {
+	private final List<AlvisIRQueryNode> clauses = new ArrayList<AlvisIRQueryNode>();
+	
+	/**
+	 * Creates a disjunction query node.
+	 */
+	public AlvisIROrQueryNode() {
+		super();
+	}
+
+	/**
+	 * Returns all clauses.
+	 * @return
+	 */
+	public List<AlvisIRQueryNode> getClauses() {
+		return Collections.unmodifiableList(clauses);
+	}
+
+	/**
+	 * Adds a clause.
+	 * @param qn
+	 */
+	public void addClause(AlvisIRQueryNode qn) {
+		clauses.add(qn);
+	}
+	
+	@Override
+	public <R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X {
+		return visitor.visit(this, param);
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRPrefixQueryNode.java
+public class AlvisIRPrefixQueryNode implements AlvisIRQueryNode {
+	private final String field;
+	private final String prefix;
+	
+	/**
+	 * Creates a prefix query node.
+	 * @param field field name
+	 * @param prefix term prefix
+	 */
+	public AlvisIRPrefixQueryNode(String field, String prefix) {
+		super();
+		this.field = field;
+		this.prefix = prefix;
+	}
+
+	/**
+	 * Returns the field name.
+	 * @return
+	 */
+	public String getField() {
+		return field;
+	}
+
+	/**
+	 * Returns the term prefix.
+	 * @return
+	 */
+	public String getPrefix() {
+		return prefix;
+	}
+
+	@Override
+	public <R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X {
+		return visitor.visit(this, param);
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/expand/explanation/RelationMatchExplanation.java
+public class RelationMatchExplanation extends MatchExplanation {
+	private final String relation;
+	private final String normalizedRelation;
+	private final AlvisIRQueryNode left;
+	private final AlvisIRQueryNode right;
+	private final List<MatchExplanation> leftExplanations;
+	private final List<MatchExplanation> rightExplanations;
+	
+	public RelationMatchExplanation(String fieldName, String relation, String normalizedRelation, List<MatchExplanation> leftExplanations, AlvisIRQueryNode left, List<MatchExplanation> rightExplanations, AlvisIRQueryNode right) {
+		super(fieldName);
+		this.relation = relation;
+		this.normalizedRelation = normalizedRelation;
+		this.left = left;
+		this.right = right;
+		this.leftExplanations = leftExplanations;
+		this.rightExplanations = rightExplanations;
+	}
+
+	@Override
+	protected PayloadDecoder getPayloadDecoder() {
+		return new MatchExplanationPayloadDecoder();
+	}
+
+	@Override
+	public AlvisIRQueryNode getQueryNode() {
+		return new AlvisIRRelationQueryNode(getFieldName(), relation, left, right);
+	}
+
+	@Override
+	public String toString() {
+		return "RelationMatchExplanation[" + relation + "](" + left + ", " + right + ")";
+	}
+
+	public String getRelation() {
+		return relation;
+	}
+
+	public String getNormalizedRelation() {
+		return normalizedRelation;
+	}
+
+	public AlvisIRQueryNode getLeft() {
+		return left;
+	}
+
+	public AlvisIRQueryNode getRight() {
+		return right;
+	}
+
+	public List<MatchExplanation> getLeftExplanations() {
+		return Collections.unmodifiableList(leftExplanations);
+	}
+
+	public List<MatchExplanation> getRightExplanations() {
+		return Collections.unmodifiableList(rightExplanations);
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((left == null) ? 0 : left.hashCode());
+		result = prime * result + ((relation == null) ? 0 : relation.hashCode());
+		result = prime * result + ((right == null) ? 0 : right.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		RelationMatchExplanation other = (RelationMatchExplanation) obj;
+		if (left == null) {
+			if (other.left != null)
+				return false;
+		}
+		else if (!left.equals(other.left))
+			return false;
+		if (relation == null) {
+			if (other.relation != null)
+				return false;
+		}
+		else if (!relation.equals(other.relation))
+			return false;
+		if (right == null) {
+			if (other.right != null)
+				return false;
+		}
+		else if (!right.equals(other.right))
+			return false;
+		return true;
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRPhraseQueryNode.java
+public class AlvisIRPhraseQueryNode implements AlvisIRQueryNode {
+	private final String field;
+	private final int slop;
+	private final List<String> texts = new ArrayList<String>();
+	
+	/**
+	 * Creates a phrase query node with the specified field and slop.
+	 * @param field field name
+	 * @param slop phrase slop.
+	 */
+	public AlvisIRPhraseQueryNode(String field, int slop) {
+		super();
+		this.field = field;
+		this.slop = slop;
+	}
+
+	/**
+	 * Returns the field name.
+	 * @return
+	 */
+	public String getField() {
+		return field;
+	}
+
+	/**
+	 * Returns the term slop.
+	 * @return
+	 */
+	public int getSlop() {
+		return slop;
+	}
+
+	/**
+	 * Returns the texts of terms in the phrase.
+	 * @return
+	 */
+	public List<String> getTexts() {
+		return Collections.unmodifiableList(texts);
+	}
+	
+	/**
+	 * Appends a term text to this phrase query node.
+	 * @param text
+	 */
+	public void addText(String text) {
+		texts.add(text);
+	}
+
+	@Override
+	public <R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X {
+		return visitor.visit(this, param);
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/expand/explanation/TermMatchExplanation.java
+public class TermMatchExplanation extends MatchExplanation {
+	private final String text;
+	private final String normalizedText;
+	
+	public TermMatchExplanation(String fieldName, String text, String normalizedText) {
+		super(fieldName);
+		this.text = text;
+		this.normalizedText = normalizedText;
+	}
+	
+	public TermMatchExplanation(Term term, String normalizedText) {
+		this(term.field(), term.text(), normalizedText);
+	}
+
+	public TermMatchExplanation(TermQuery query, String normalizedText) {
+		this(query.getTerm(), normalizedText);
+	}
+
+	public TermMatchExplanation(SpanTermQuery query, String normalizedText) {
+		this(query.getTerm(), normalizedText);
+	}
+
+	public TermMatchExplanation(AlvisIRTermQueryNode qn, String normalizedText) {
+		this(qn.getField(), qn.getText(), normalizedText);
+	}
+
+	@Override
+	public AlvisIRQueryNode getQueryNode() {
+		return new AlvisIRTermQueryNode(getFieldName(), normalizedText);
+	}
+
+	@Override
+	protected PayloadDecoder getPayloadDecoder() {
+		return new MatchExplanationPayloadDecoder();
+	}
+
+	public String getText() {
+		return text;
+	}
+
+	public String getNormalizedText() {
+		return normalizedText;
+	}
+
+	@Override
+	public String toString() {
+		return "TermMatchExplanation(" + text + ")";
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((normalizedText == null) ? 0 : normalizedText.hashCode());
+		result = prime * result + ((text == null) ? 0 : text.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		TermMatchExplanation other = (TermMatchExplanation) obj;
+		if (normalizedText == null) {
+			if (other.normalizedText != null)
+				return false;
+		}
+		else if (!normalizedText.equals(other.normalizedText))
+			return false;
+		if (text == null) {
+			if (other.text != null)
+				return false;
+		}
+		else if (!text.equals(other.text))
+			return false;
+		return true;
+	}
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/query/AlvisIRQueryNode.java
+public interface AlvisIRQueryNode {
+	<R,P,X extends Exception> R accept(AlvisIRQueryNodeVisitor<R,P,X> visitor, P param) throws X;
+}
+alvisir-core/src/main/java/fr/inra/maiage/bibliome/alvisir/core/expand/explanation/NearMatchExplanation.java
+public class NearMatchExplanation extends MatchExplanation {
+	private final int slop;
+	private final AlvisIRQueryNode left;
+	private final AlvisIRQueryNode right;
+
+	public NearMatchExplanation(String fieldName, int slop, AlvisIRQueryNode left, AlvisIRQueryNode right) {
+		super(fieldName);
+		this.slop = slop;
+		this.left = left;
+		this.right = right;
+	}
+
+	@Override
+	public AlvisIRQueryNode getQueryNode() {
+		return new AlvisIRNearQueryNode(getFieldName(), slop, left, right);
+	}
+
+	@Override
+	protected PayloadDecoder getPayloadDecoder() {
+		return new MergedHighlightMatchExplanationPayloadDecoder();
+	}
+
+	@Override
+	public String toString() {
+		return "NearMatchExplanation[" + slop + "](" + left + ", " + right + ")";
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((left == null) ? 0 : left.hashCode());
+		result = prime * result + ((right == null) ? 0 : right.hashCode());
+		result = prime * result + slop;
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		NearMatchExplanation other = (NearMatchExplanation) obj;
+		if (left == null) {
+			if (other.left != null)
+				return false;
+		}
+		else if (!left.equals(other.left))
+			return false;
+		if (right == null) {
+			if (other.right != null)
+				return false;
+		}
+		else if (!right.equals(other.right))
+			return false;
+		if (slop != other.slop)
+			return false;
+		return true;
+	}
+}

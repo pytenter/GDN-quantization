@@ -1,0 +1,1 @@
+lambda _cls, expr, sloc, size_oblivious: _tuple_new(_cls, (expr, sloc, size_oblivious))

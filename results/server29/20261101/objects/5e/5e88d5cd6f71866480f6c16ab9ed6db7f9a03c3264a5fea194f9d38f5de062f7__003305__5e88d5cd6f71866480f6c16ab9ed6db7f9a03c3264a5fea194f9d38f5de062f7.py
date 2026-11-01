@@ -1,0 +1,1 @@
+lambda _cls, op, kBatch: _tuple_new(_cls, (op, kBatch))

@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(count_per_thread_contiguous={self.count_per_thread_contiguous!r}, count_per_thread_broadcast={self.count_per_thread_broadcast!r}, count_per_thread_non_contiguous={self.count_per_thread_non_contiguous!r}, bytes_per_thread_contiguous={self.bytes_per_thread_contiguous!r}, bytes_per_thread_broadcast={self.bytes_per_thread_broadcast!r}, bytes_per_thread_non_contiguous={self.bytes_per_thread_non_contiguous!r}, bytes_contiguous_or_broadcast={self.bytes_contiguous_or_broadcast!r}, bytes_non_contiguous={self.bytes_non_contiguous!r})"
+ return __repr__

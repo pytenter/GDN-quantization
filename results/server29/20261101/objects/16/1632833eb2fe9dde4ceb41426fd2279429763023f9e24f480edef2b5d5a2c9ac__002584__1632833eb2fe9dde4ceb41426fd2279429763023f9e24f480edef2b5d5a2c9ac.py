@@ -1,0 +1,1 @@
+def foo(iterable, start=0): pass

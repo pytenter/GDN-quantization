@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(id={self.id!r}, author={self.author!r}, sha={self.sha!r}, created_at={self.created_at!r}, last_modified={self.last_modified!r}, private={self.private!r}, gated={self.gated!r}, disabled={self.disabled!r}, host={self.host!r}, subdomain={self.subdomain!r}, likes={self.likes!r}, sdk={self.sdk!r}, tags={self.tags!r}, siblings={self.siblings!r}, trending_score={self.trending_score!r}, card_data={self.card_data!r}, runtime={self.runtime!r}, models={self.models!r}, datasets={self.datasets!r}, xet_enabled={self.xet_enabled!r})"
+ return __repr__

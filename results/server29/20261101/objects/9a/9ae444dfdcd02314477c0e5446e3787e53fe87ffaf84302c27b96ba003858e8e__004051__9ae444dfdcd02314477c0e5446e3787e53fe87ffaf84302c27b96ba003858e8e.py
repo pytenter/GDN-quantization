@@ -1,0 +1,35 @@
+def __create_fn__(_type_compute_environment, _type_distributed_type, _type_mixed_precision, _type_use_cpu, _type_debug, _type_num_processes, _type_machine_rank, _type_num_machines, _type_gpu_ids, _type_main_process_ip, _type_main_process_port, _type_rdzv_backend, _type_same_network, _type_main_training_function, _type_enable_cpu_affinity, _type_fp8_config, _type_deepspeed_config, _type_fsdp_config, _type_parallelism_config, _type_megatron_lm_config, _type_mpirun_config, _type_downcast_bf16, _type_tpu_name, _type_tpu_zone, _type_tpu_use_cluster, _type_tpu_use_sudo, _type_command_file, _type_commands, _type_tpu_vm, _type_tpu_env, _type_dynamo_config, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_num_processes, _dflt_machine_rank, _dflt_num_machines, _dflt_gpu_ids, _dflt_main_process_ip, _dflt_main_process_port, _dflt_rdzv_backend, _dflt_same_network, _dflt_main_training_function, _dflt_enable_cpu_affinity, _dflt_fp8_config, _dflt_deepspeed_config, _dflt_fsdp_config, _dflt_parallelism_config, _dflt_megatron_lm_config, _dflt_mpirun_config, _dflt_downcast_bf16, _dflt_tpu_name, _dflt_tpu_zone, _dflt_tpu_use_cluster, _dflt_tpu_use_sudo, _dflt_command_file, _dflt_commands, _dflt_tpu_vm, _dflt_tpu_env, _dflt_dynamo_config, _return_type):
+ def __init__(self,compute_environment:_type_compute_environment,distributed_type:_type_distributed_type,mixed_precision:_type_mixed_precision,use_cpu:_type_use_cpu,debug:_type_debug,num_processes:_type_num_processes=_dflt_num_processes,machine_rank:_type_machine_rank=_dflt_machine_rank,num_machines:_type_num_machines=_dflt_num_machines,gpu_ids:_type_gpu_ids=_dflt_gpu_ids,main_process_ip:_type_main_process_ip=_dflt_main_process_ip,main_process_port:_type_main_process_port=_dflt_main_process_port,rdzv_backend:_type_rdzv_backend=_dflt_rdzv_backend,same_network:_type_same_network=_dflt_same_network,main_training_function:_type_main_training_function=_dflt_main_training_function,enable_cpu_affinity:_type_enable_cpu_affinity=_dflt_enable_cpu_affinity,fp8_config:_type_fp8_config=_dflt_fp8_config,deepspeed_config:_type_deepspeed_config=_dflt_deepspeed_config,fsdp_config:_type_fsdp_config=_dflt_fsdp_config,parallelism_config:_type_parallelism_config=_dflt_parallelism_config,megatron_lm_config:_type_megatron_lm_config=_dflt_megatron_lm_config,mpirun_config:_type_mpirun_config=_dflt_mpirun_config,downcast_bf16:_type_downcast_bf16=_dflt_downcast_bf16,tpu_name:_type_tpu_name=_dflt_tpu_name,tpu_zone:_type_tpu_zone=_dflt_tpu_zone,tpu_use_cluster:_type_tpu_use_cluster=_dflt_tpu_use_cluster,tpu_use_sudo:_type_tpu_use_sudo=_dflt_tpu_use_sudo,command_file:_type_command_file=_dflt_command_file,commands:_type_commands=_dflt_commands,tpu_vm:_type_tpu_vm=_dflt_tpu_vm,tpu_env:_type_tpu_env=_dflt_tpu_env,dynamo_config:_type_dynamo_config=_dflt_dynamo_config)->_return_type:
+  self.compute_environment=compute_environment
+  self.distributed_type=distributed_type
+  self.mixed_precision=mixed_precision
+  self.use_cpu=use_cpu
+  self.debug=debug
+  self.num_processes=num_processes
+  self.machine_rank=machine_rank
+  self.num_machines=num_machines
+  self.gpu_ids=gpu_ids
+  self.main_process_ip=main_process_ip
+  self.main_process_port=main_process_port
+  self.rdzv_backend=rdzv_backend
+  self.same_network=same_network
+  self.main_training_function=main_training_function
+  self.enable_cpu_affinity=enable_cpu_affinity
+  self.fp8_config=fp8_config
+  self.deepspeed_config=deepspeed_config
+  self.fsdp_config=fsdp_config
+  self.parallelism_config=parallelism_config
+  self.megatron_lm_config=megatron_lm_config
+  self.mpirun_config=mpirun_config
+  self.downcast_bf16=downcast_bf16
+  self.tpu_name=tpu_name
+  self.tpu_zone=tpu_zone
+  self.tpu_use_cluster=tpu_use_cluster
+  self.tpu_use_sudo=tpu_use_sudo
+  self.command_file=command_file
+  self.commands=commands
+  self.tpu_vm=tpu_vm
+  self.tpu_env=tpu_env
+  self.dynamo_config=dynamo_config
+  self.__post_init__()
+ return __init__

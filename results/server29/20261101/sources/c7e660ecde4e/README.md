@@ -1,0 +1,50 @@
+# qwen-gdn-formal-equivalent-mechanism-v2
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/worktrees/qwen-gdn-formal-equivalent-mechanism-v2`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`results/aime26/81920/ling_kda/frozen_v4_per_sample.csv`](../../../../aime26/81920/ling_kda/frozen_v4_per_sample.csv)
+- [`results/aime26/81920/qwen_gdn/frozen_v4_per_sample.csv`](../../../../aime26/81920/qwen_gdn/frozen_v4_per_sample.csv)
+- [`experiments/QWEN_GDN_C5_C6_EVIDENCE_GUIDED_DIAGNOSIS_V1/FINAL_REPORT.md`](../../objects/dd/ddc29cc590995b1015c2aa2a0fe2e3f67adf447123681ae515863b34582eecdd__FINAL_REPORT.md)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/FINAL_REPORT.md`](../../objects/f2/f2de05516bb77dc904879ad161abb1562eb46f22675cad883116b5c3597cf894__FINAL_REPORT.md)
+- [`experiments/QWEN_GDN_SHARED_OBJECTIVE_PARETO_AND_DEV_SCREEN_V1/FINAL_REPORT.md`](../../objects/bb/bbf1470d2af93ebb32e83bce8cb54de434426ea4e959adc2ab1a9eab11a77d27__FINAL_REPORT.md)
+- [`experiments/qwen_gdn/QWEN_GDN_STRICT_COMMON_FP_STATE_FANOUT_V1/reports/FINAL_REPORT.md`](../../objects/a8/a83edd1ff31bb1fde856dacac09c1e92f8498d13d2bfc104f6534f572f81a281__FINAL_REPORT.md)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/protocol/canonical_endpoint.json`](../../objects/a7/a7731db781bc6415b9d75c51f2fb94036ff2c9a1332495dbb6ce196c1ad810de__canonical_endpoint.json)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/scripts/canonical3090_endpoint.py`](../../objects/6e/6e4c68b3c60c9e9cdfc9a1319d2d9edf9bc9f8da3b414190d103d39d46fdcd18__canonical3090_endpoint.py)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/protocol/canonical_endpoint_freeze.json`](../../objects/03/03a6a4baa42ff24b096242943a0d2709ded9cf60f33221e0d5beda2744c57dfb__canonical_endpoint_freeze.json)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/protocol/canonical_endpoint_amended.json`](../../objects/d1/d1551c7b9246f219b34897eff8cce6eb7addb99aa040ea8ef48d19db5da977bc__canonical_endpoint_amended.json)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/scripts/amended_canonical3090_endpoint.py`](../../objects/c7/c7fc641cce8909bf9c5789ae99a1fe911af1c86e95bca938f16b7cbf23c0a37b__amended_canonical3090_endpoint.py)
+- [`experiments/QWEN_GDN_C5_C6_EVIDENCE_GUIDED_DIAGNOSIS_V1/training_provenance/reports/FINAL_REPORT.md`](../../objects/d4/d43c53b63208a1b87a37904a1ad5e678c1eb984da1614822feb6abca0c0824c9__FINAL_REPORT.md)
+- [`experiments/qwen_gdn/QWEN_GDN_FORMAL_EQUIVALENT_MECHANISM_CLOSURE_V2/reports/STAGE_A_FINAL_REPORT.md`](../../objects/1c/1c51e415db425e345c952f857888e90f795ca0c3e778d615e0225ab2fc352849__STAGE_A_FINAL_REPORT.md)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/protocol/canonical_endpoint_amended_freeze.json`](../../objects/2b/2b7407ec207742cd5476a668b8c622d45946fa00bccb6c8b278c7a6b66184397__canonical_endpoint_amended_freeze.json)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/protocol/PROTOCOL_AMENDMENT_C5R_AUXILIARY_ENDPOINT_V1.md`](../../objects/bd/bd52cbc783269d51467dda5268c76369c92e7316f1b3bcdb5327ceac56a6beee__PROTOCOL_AMENDMENT_C5R_AUXILIARY_ENDPOINT_V1.md)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/protocol/PROTOCOL_AMENDMENT_C5R_AUXILIARY_ENDPOINT_V1.json`](../../objects/3c/3c2191f4f27a0357149fa1821fb160466f276f08f801443d8d6fe1e18c7966c5__PROTOCOL_AMENDMENT_C5R_AUXILIARY_ENDPOINT_V1.json)
+- [`README.md`](../../objects/d2/d2298740842ddf11e956300abf1136229d4de842cd9e38d90015bc380cbb18aa__README.md)
+- [`docs/PROTOCOL.md`](../../objects/33/33c46cd7dc8084cc7268b9f915e96d2e29ead4ea2e8c25feffb8a22cc32f055f__PROTOCOL.md)
+- [`docs/EVIDENCE_MAP.md`](../../../../../docs/EVIDENCE_MAP.md)
+- [`docs/RESULT_SUMMARY.md`](../../objects/5b/5b8a670f5c7c8ea0eec3dc39c1374206ffbd56b0c37f54bb452c6d3d775e84cd__RESULT_SUMMARY.md)
+- [`docs/REPRODUCIBILITY.md`](../../../../../docs/REPRODUCIBILITY.md)
+- [`docs/RESEARCH_STATUS.md`](../../objects/af/afbd06abbc3c1af2f2c579a6faafb53305699631465af45fafa9a35407696bb5__RESEARCH_STATUS.md)
+- [`docs/SCORER_PROTOCOL.md`](../../objects/23/238b7ee361609762b3a50a00b79643a854e33b30c6fe8faf0468958dd75e57e1__SCORER_PROTOCOL.md)
+- [`docs/EXPERIMENT_INDEX.md`](../../objects/e6/e6bbb3d5fb403a9e2fd976c40f28754db3f65fb6ab8dc8a8f58a023a53da10e8__EXPERIMENT_INDEX.md)
+- [`docs/MODEL_PROVENANCE.md`](../../../../../docs/MODEL_PROVENANCE.md)
+- [`docs/server_inventory/new4090.md`](../../../../../docs/server_inventory/new4090.md)
+- [`docs/CANONICAL_PROMPT_MANIFEST.md`](../../../../../docs/CANONICAL_PROMPT_MANIFEST.md)
+- [`docs/server_inventory/ling4090.md`](../../objects/41/41db578cb337f59b17b8dc358fd6289068141bfee4a0e0bd0db144615237a408__ling4090.md)
+- [`docs/server_inventory/qwen3090.md`](../../../../../docs/server_inventory/qwen3090.md)
+- [`docs/server_inventory/SERVER_MAP.md`](../../objects/bd/bdc899f25f3177644477019786f0bdcd88f69b9a869f8986e893600f1fa7eb0d__SERVER_MAP.md)
+- [`tests/shared/test_aime26_scorer_v4.py`](../../../../../tests/shared/test_aime26_scorer_v4.py)
+- [`results/aime26/81920/ling_kda/README.md`](../../../../aime26/81920/ling_kda/README.md)
+- [`docs/server_inventory/new4090_environment.md`](../../../../../docs/server_inventory/new4090_environment.md)
+- [`experiments/shared/scoring/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`reports/audits/new4090_consolidation_report.md`](../../../../../reports/audits/new4090_consolidation_report.md)
+- [`results/aime26/256k/ling_kda/fp_state/STATUS.md`](../../../../aime26/256k/ling_kda/fp_state/STATUS.md)
+- [`results/aime26/256k/ling_kda/int8_r128/STATUS.md`](../../../../aime26/256k/ling_kda/int8_r128/STATUS.md)
+- [`reports/audits/FINAL_THREE_SERVER_CONSOLIDATION.md`](../../../../../reports/audits/FINAL_THREE_SERVER_CONSOLIDATION.md)
+- [`experiments/qwen_gdn/rotation/key_hadamard/README.md`](../../../../../experiments/qwen_gdn/rotation/key_hadamard/README.md)
+- [`results/aime26/81920/ling_kda/frozen_v4_summary.json`](../../../../aime26/81920/ling_kda/frozen_v4_summary.json)

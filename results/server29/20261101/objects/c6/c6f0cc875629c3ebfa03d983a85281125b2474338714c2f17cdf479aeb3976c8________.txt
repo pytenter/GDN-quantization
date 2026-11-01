@@ -1,0 +1,406 @@
+
+你现在是 Ling/KDA persistent recurrent-state INT8 quantization 项目的高级科研工程 Agent。
+
+任务名称：
+LING_KDA_P1_L7_PROSPECTIVE_4DOC_QUALIFIED_COMPLETION
+
+目标：
+在不修改原科学预注册、P1/L7评分方法、模型、量化器和统计合同的前提下，尽可能高效地完成原已冻结的四文档 P1-vs-L7 32K 前瞻实验。
+
+请先规划、核验，再执行。不要只生成一个待执行的计划；资源和所有门禁合格时可以继续完成原已冻结的正式实验。任何不可合格的条件必须 fail-closed，不要强行追求 COMPLETE。
+
+==================================================
+一、必须先理解的历史事实
+==================================================
+
+原实验：
+LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1
+
+execution_01：历史 FAIL_CLOSED_STOP，必须保留。
+execution_02：历史 FAIL_CLOSED_STOP，必须保留。
+
+原预注册 SHA：
+54d6d24fbc3142a692ef1a6c04a5617cf6b0abe6702a662722f34fc1b6141722
+
+正式四文档 Freeze SHA：
+a5c227d15918a249f8ae2059539c15f94668cb2afddf3aecd8a9f7e13851354b
+
+Freeze 时间：
+2026-10-14 10:44:26 北京时间
+
+execution_02 源码 commit：
+dfcbb7e8497a585f8ef94c0eec6d4146ade860b0
+
+工作树：
+/data/zypan/worktrees/ling-kda-prospective-engineering-recovery
+
+执行目录：
+/data/zypan/experiment_runs/LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1/
+
+原 execution_02 已完成：
+1. 64/64 short-horizon rotation scores。
+2. 四篇合格文档共同 Freeze。
+3. 8/12条件完整数值资格PASS。
+4. 第9条件parent PASS、fresh64 NOT_RUN。
+5. 第四篇3条件全部NOT_RUN。
+6. 9个checkpoint已保存并完成SHA核验。
+7. 正式32K FP 0/4，student 0/8。
+8. 没有新的Future-KL或P1/L7胜负。
+
+固定四篇及旋转：
+
+pg19-test-41603:
+P1=H_to_L7_a50
+L7=H
+
+pg19-test-2544:
+P1=H_to_L6_a50
+L7=H_to_L7_a50
+
+pg19-test-7987:
+P1=H_to_L7_a50
+L7=H_to_L7R_a25
+
+pg19-test-26183:
+P1=H_to_L6_a50
+L7=H_to_L7R_a25
+
+严禁修改以上选择。
+
+==================================================
+二、科学不变量
+==================================================
+
+1. 模型Ling-3.0-tiny/KDA，INT8-R128。
+2. 每个token真实persistent INT8 QDQ/writeback。
+3. 下一token必须消费上次QDQ写回状态。
+4. 不允许FP16/FP32 persistent buffer绕开量化。
+5. 使用原BT16_W8量化器、scale arithmetic、rotation、engine和numerical contract。
+6. 不修改P1公式、L7公式、短程选择规则。
+7. 不修改32K teacher-forcing和FP reference合同。
+8. 不改变384 KL评分位置、完整词表和reducer。
+9. 不修改原始freeze与预注册。
+10. 不启动任何新rotation训练、STE/Cayley训练、AIME或free-generation。
+11. 不把FP32 tensor承载QDQ状态描述为physical resident INT8。
+12. 不用非确定性或不合格runtime拼接轨迹。
+13. 不把synthetic tests当成科学资格。
+14. 原execution_01和execution_02永久只读。
+
+==================================================
+三、Phase 0：只读审计与恢复准备
+==================================================
+
+先读取：
+- 原成功manifest
+- execution_01最终manifest和SHA
+- execution_02最终manifest和SHA
+- FROZEN_4DOC_SELECTION.json
+- SELECTION_FREEZE_RECEIPT.json
+- PARTIAL_LONG_HORIZON_QUALIFICATION.json
+- CHECKPOINT_MANIFEST.json
+- RESOURCE_REPORT.json
+- SOURCE_DIFF.patch
+- NUMERICAL_SOURCE_COMPATIBILITY_AUDIT.json
+- CPU_DELIVERY_CORRECTION.json
+
+检查：
+A. 原预注册和freeze的字节身份。
+B. 四篇文档的token SHA。
+C. 所有64条短程评分身份。
+D. 9个已有checkpoint的实际存在性及SHA。
+E. 8个完整资格PASS及第9个parent PASS的证据。
+F. 原数值helper、quantizer、forward、reducer的源码身份。
+G. worktree是否干净。
+H. 已存在controller的锁、幂等恢复、原子写入与失败处理。
+
+继续使用原合格engine，优先复用已经通过的24项CPU synthetic测试结果，并对恢复路径必要的测试进行快速复验。
+
+如果关键资产缺失、SHA错误、源码不匹配或不能证明资格身份：
+立即STOP，不重建或猜测资产。
+
+新执行必须有独立身份，优先采用execution_03（仅当该路径不存在或可安全新建时）。不得覆盖任何旧执行。
+
+==================================================
+四、Phase 1：先解决GPU资源准入
+==================================================
+
+历史执行在GPU6 RTX3090 24GB上运行。
+
+execution_02末次失败事实：
+- 第12采样点1% utilization。
+- 15MiB显存。
+- P8。
+- 无可见compute进程。
+- SMI和直接NVML一致。
+- 第13采样点恢复0%。
+- 未满足冻结的连续3个合格空闲样本。
+- 根因UNKNOWN。
+
+不要把这个现象直接判断为：
+GPU损坏、他人占用、NVML误报、OOM或数值失败。
+
+首先进行有界、非破坏性、只读的资源诊断：
+
+1. GPU index/UUID准确绑定。
+2. nvidia-smi与直接NVML采样。
+3. 已授权范围内的compute/graphics进程查询。
+4. 驱动与CUDA runtime一致性。
+5. 显存、GPU利用率、P-state和时间戳。
+6. 进程归属、资源调度或设备使用权证据。
+7. 对不一致或不可归因信号给出明确分类。
+8. 不混淆telemetry窗口稳定性失败与SMI/NVML相互矛盾。
+
+避免无限轮询。
+
+可以做最多3轮有界的只读预检观察；这不允许修改随后每个worker必须满足的原正式admission规则。
+
+每个worker启动前仍需原冻结的正式准入门禁。
+
+禁止：
+- 删除GPU利用率检查。
+- 自动把1%改成合格。
+- 放宽原60秒窗口或连续样本条件。
+- 杀死其他用户进程。
+- GPU reset。
+- 无限等待或无限重试。
+- 将进程不可见解释为资源一定空闲。
+
+如果GPU6无法获得稳定、可信的使用资格：
+不要启动下一GPU worker。
+
+可以只读调查其他实际可访问、具有使用授权的RTX3090，生成候选迁移及资格成本报告。
+未经额外授权不得自动切换。
+
+如果确需切换设备，不能因为GPU型号一致就认定数值等价，必须在新独立执行身份下重新证明所有受影响的fresh-process、numerical、resume和bitwise资格，不能沿用原GPU的PASS标签。
+
+如果资源仍然不合格：
+封存RESOURCE_UNRESOLVED_STOP并退出GPU阶段。
+
+==================================================
+五、Phase 2：只补齐尚缺的资格
+==================================================
+
+必须先证明旧checkpoint和资格记录合法复用。
+
+不要重新运行已完成的8个完整PASS条件。
+不要重新运行第9条件的parent，除非其资产身份无法验证；身份无法验证时应先STOP并报告，而不是静默重算。
+
+剩余资格：
+
+A. pg19-test-7987 × H_to_L7R_a25
+   - parent已PASS
+   - 补fresh8192→8256的64-token资格
+
+B. pg19-test-26183 × FP
+   - parent0→8256
+   - fresh8192→8256
+
+C. pg19-test-26183 × H_to_L6_a50
+   - parent0→8256
+   - fresh8192→8256
+
+D. pg19-test-26183 × H_to_L7R_a25
+   - parent0→8256
+   - fresh8192→8256
+
+因此，若原资产身份全部有效且仍在原合格硬件上执行，新增资格worker预计为7个。
+
+逐条件验证：
+- exact logits
+- cache/state
+- audit counters
+- checkpoint SHA
+- fresh-process exact parity
+- observer ON/OFF parity
+- persistent QDQ/writeback
+- next-kernel consumption
+- 数值有限性
+- 原resume合同
+
+沿用原始合格的比较方式及精确性阈值，不自行发明新容差。
+
+每完成一个条件就原子保存结果、checkpoint、SHA和资源账本。
+
+不要把parent PASS等同于完整资格PASS。
+
+如果任一条件FAIL：
+立即fail-closed，保留成功资产，后续标NOT_RUN，不进入正式32K。
+
+正式执行资格必须达到12/12完整PASS。
+
+==================================================
+六、Phase 3：正式32K前资源预估
+==================================================
+
+只有12/12完整PASS后，才进入此阶段。
+
+读取真实测量记录，估计：
+- 每条FP/student的GPU时间。
+- 12条轨迹的预计总运行成本。
+- 最大实际显存需求。
+- checkpoint与full-vocabulary logits的磁盘需求。
+- 空间余量。
+- 中断后可恢复的原子保存边界。
+
+估计必须注明实际测量依据和不确定性。
+
+不要人为增加4/16 GPUh或85%显存的硬限制。
+
+但是如果物理显存、存储空间、实际资源使用权或原resume能力不足：
+必须STOP，不应先运行昂贵科学任务再发现无法交付。
+
+==================================================
+七、Phase 4：正式四文档32K实验
+==================================================
+
+前提：
+所有正式资格、资源和数值门禁PASS。
+
+严格按照原预注册与已冻结顺序运行四篇文档。
+
+每篇：
+1条完整FP reference
+1条P1推荐旋转student
+1条原L7推荐旋转student
+
+总计：
+4 FP
+8 student
+12 full-model trajectories
+
+所有轨迹：
+- 32768 tokens
+- 原teacher-forcing合同
+- 每token真实QDQ/writeback
+- 原INT8-R128
+- 原旋转与量化器
+- 不修改输入和score位置
+- 不改模型和tokenizer
+
+评分：
+V=157184 full vocabulary
+FP32 KL(FP||student)
+
+t=8192+64k
+k=0,...,383
+末评分位置32704
+
+确保消费ids[t]后的logits预测ids[t+1]。
+必须包含全部384个合法评分位置。
+
+使用原冻结reducer，核验原sum/384合同。
+不要擅自修改原数值求和方式。
+
+既有0→8256资格checkpoint不能自动冒充完整正式科学轨迹。
+
+如果复用checkpoint，必须证明：
+- 属于同一完整科学轨迹的合法前缀。
+- 真实历史完全一致。
+- 原评分位置无缺失。
+- 后续状态/缓存/metadata恢复完全合格。
+- 满足原正式runner的resume合同。
+
+如果不满足，使用原合格正式runner从合法起点运行，不得拼接不合格片段。
+
+每篇独立完整封存：
+FP payload
+P1 student结果
+L7 student结果
+384位置KL
+状态与量化审计
+身份/SHA
+资源记录
+
+允许在符合原resume和原子提交规则的前提下继续中断的合法任务。
+禁止重复计数或以部分轨迹冒充完整科学样本。
+
+不能因为某篇P1输赢，就改变后续文档执行策略。
+
+==================================================
+八、Phase 5：完成后科学分析
+==================================================
+
+定义：
+
+K_P1(d)=该文档P1推荐rotation的平均Future-KL
+K_L7(d)=该文档原L7推荐rotation的平均Future-KL
+
+Delta(d)=K_P1(d)-K_L7(d)
+
+Delta<0：P1胜
+Delta>0：L7胜
+
+平局按照原冻结数值判定合同处理。
+
+每篇文档为一个独立统计单位。
+
+输出：
+1. 四篇分别的K_P1。
+2. 四篇分别的K_L7。
+3. 四篇分别的Delta。
+4. P1胜、L7胜、平局数。
+5. 384位置finite与聚合校验。
+6. 原预注册允许的统计结果。
+7. 计算总GPUh、allocated/reserved/NVML峰值。
+8. 所有artifact与SHA身份。
+
+不得把384个位置作为384个独立样本。
+
+即便4/4 P1胜，在无平局、独立及p0=0.5条件下，单侧exact sign-test p=0.0625，不能宣称常规5%显著性确认。
+
+原2文档MIXED永久保留。
+不可未经预注册把原2文档与新4文档拼接为确认性n=6。
+
+不计算未经冻结的E_future、Hidden KL或新观测代理并冒充本次Primary。
+
+==================================================
+九、终态与交付
+==================================================
+
+无论成功或停止，必须形成完整交付。
+
+需要：
+- 最终科学/工程报告
+- 原预注册及四文档freeze核验结果
+- 每条件资格矩阵
+- checkpoint绑定及SHA
+- GPU admission时间序列
+- 资源与执行账本
+- 源码commit和数值兼容审计
+- SHA256 manifest
+- 所有实际成功单元及NOT_RUN明细
+
+只有实际完成完整32K，才能生成有效的Primary KL值。
+NOT_RUN绝不能填0。
+不能输出空壳的科学成功CSV。
+
+如果停止：
+记录首个失败门禁、准确原因、已保留checkpoint、实际工作量、未执行阶段、是否需要新的授权。
+
+报告必须区分：
+ENGINEERING_COMPLETE
+NUMERICAL_QUALIFICATION_COMPLETE
+FORMAL_SCIENCE_COMPLETE
+
+这三种状态不得混用。
+
+成功后立即停止。
+不得自行启动新的P1 Loss、L8/L9、optimizer、AIME或Qwen实验。
+
+==================================================
+十、最后向我报告
+==================================================
+
+用中文提供：
+
+A. 原资产审计与SHA结果。
+B. GPU稳定性和可归属证据。
+C. 资格究竟完成多少/12。
+D. FP完成多少/4，student完成多少/8。
+E. 如果完成，四篇P1-vs-L7 KL/Delta与胜负。
+F. 所有GPUh、峰值显存、checkpoint和文件交付路径。
+G. 如果STOP，明确第一个blocker及哪些资产可安全复用。
+H. 下一步科学建议，但不自行执行新科学实验。
+
+最终目标：
+在严格保留原协议和历史证据的前提下，以最少必要重算取得可审计的四文档长期功能验证结果。

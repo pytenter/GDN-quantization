@@ -1,0 +1,1 @@
+lambda _cls, nonlocals, globals, builtins, unbound: _tuple_new(_cls, (nonlocals, globals, builtins, unbound))

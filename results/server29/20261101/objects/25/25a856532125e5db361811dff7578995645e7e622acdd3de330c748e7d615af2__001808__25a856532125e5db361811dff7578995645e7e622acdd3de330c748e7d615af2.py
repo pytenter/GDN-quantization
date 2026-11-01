@@ -1,0 +1,1 @@
+lambda _cls, param_names, param_shapes, param_strides, param_contiguities, param_numels, param_offsets: _tuple_new(_cls, (param_names, param_shapes, param_strides, param_contiguities, param_numels, param_offsets))

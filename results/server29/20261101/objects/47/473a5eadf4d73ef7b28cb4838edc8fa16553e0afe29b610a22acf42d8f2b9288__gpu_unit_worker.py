@@ -1,0 +1,58 @@
+"""One authorized single-UUID unit/sample; one fresh process, no retry/continuation."""
+import argparse,os,sys,time,json,traceback,hashlib
+from pathlib import Path
+ap=argparse.ArgumentParser();ap.add_argument('--root',type=Path,required=True);ap.add_argument('--unit',required=True);ap.add_argument('--formal',action='store_true');a=ap.parse_args();R=a.root.resolve();sys.path.insert(0,str(R/'src'))
+import execution_control as C
+permit=R/'GPU_PERMIT.json';C.authorize(R,permit)
+plan=C.read(R/('FORMAL_JOB_MANIFEST.json' if a.formal else 'GPU_EXECUTION_PLAN.json'))
+unit=next(x for x in plan['jobs' if a.formal else 'qualification_units'] if x['id']==a.unit);gpu=unit['gpu'];target=R/('formal' if a.formal else 'execution')/a.unit
+d=C.read(target/'DISPATCH.json')
+C.require(d['unit']==a.unit and d['permit_sha256']==C.sha(permit) and os.getppid()==d['controller_identity']['pid'] and C.same_process(d['controller_identity']),'Actual worker parent/dispatch differs')
+C.require(gpu==C.SELECTED_GPU and os.environ.get('CUDA_VISIBLE_DEVICES')==C.UUIDS[gpu],'Unauthorized GPU visibility')
+if a.formal:
+    auth=C.read(R/'AUTHORIZATION_FORMAL.json');C.require(auth['source_freeze_sha256']==C.sha(R/'SOURCE_FREEZE.json') and auth['qualification_sha256']==C.sha(R/'ONE_GPU_RUNTIME_QUALIFICATION.json'),'Formal qualification identity changed')
+C.atomic_new(target/'STARTED.json',dict(identity=C.process_identity(os.getpid()),monotonic=time.monotonic()));C.progress(target,'VERIFY_MODEL_AND_DRIVER')
+engine=None;reference=None
+try:
+    C.model_guard(R);C.storage_guard(R);C.atomic_new(target/'DRIVER_IDENTITY.json',C.driver_identity(R,gpu))
+    if unit.get('kind')=='codec_math':
+        import torch
+        C.require(torch.__version__=='2.5.1+cu121' and torch.version.cuda=='12.1','GPU Codec CUDA/torch identity differs')
+        torch.backends.cuda.matmul.allow_tf32=False
+        C.require(torch.cuda.device_count()==1 and torch.cuda.get_device_capability(0)==(8,6) and '3090' in torch.cuda.get_device_name(0),'Codec visible device/capability differs');scratch=torch.empty(1,device='cuda:0');v=C.library_check(R,gpu);C.atomic_new(target/'PREFLIGHT_LIBRARY.json',v);C.require(v['status']=='PASS','Codec preflight library closure failed')
+        from codec_qualification import qualify
+        result=qualify(target,'cuda:0');environment=dict(torch=torch.__version__,cuda=torch.version.cuda,device_name=torch.cuda.get_device_name(0),cuda_visible_devices=os.environ['CUDA_VISIBLE_DEVICES'])
+    else:
+        from runtime_engine import Engine,ByteReference
+        engine=Engine(R,gpu,target);environment=engine.environment
+        v=C.library_check(R,gpu);C.atomic_new(target/'PREFLIGHT_LIBRARY.json',v);C.require(v['status']=='PASS','Pre-forward library closure failed')
+        if a.formal or unit['kind']=='nonAIME_free_generation_fresh':
+            if a.formal:
+                row=next(x for x in C.read(R/'AIME26_DATASET_FREEZE.json')['records'] if x['problem_id']==unit['problem_id']);messages,ids=engine.f.render_input(engine.tokenizer,row['problem']);ids=ids[0].tolist();C.require(ids==row['input_ids'] and engine.f.ids_sha256(ids)==unit['input_ids_sha256'],'Actual prompt re-render changed');cap=81920
+            else:
+                row=C.read(R/'protocol/FREE_CANARY_INPUT.json');messages,ids=engine.f.render_input(engine.tokenizer,row['problem']);ids=ids[0].tolist();C.require(ids==row['input_ids'],'Actual nonAIME prompt changed');cap=64;reference=ByteReference(R,target,unit)
+            result=engine.generate(unit['condition'],ids,cap,unit,reference);result['max_new_tokens']=cap;result['prompt_messages_sha256']=C.objsha(messages);result['chat_prompt_sha256']=hashlib.sha256(engine.tokenizer.apply_chat_template(messages,tokenize=False,add_generation_prompt=True,enable_thinking=True).encode()).hexdigest()
+            if not a.formal and unit['repeat']==1:
+                old=C.read(R/'execution'/unit['reference_unit']/'RESULT.json')['result']
+                for key in ['generated_token_ids','input_ids_sha256','initial_generator_sha256','final_generator_sha256','finish_reason']:
+                    C.require(old[key]==result[key],'Fresh sampler/RNG sequence differs:'+key)
+        elif unit['kind']=='real_model_memory_pressure':result=engine.pressure()
+        else:
+            ids=C.read(R/'inherited/group32/inherited/historical_port_payload/candidate/benchmark_replay/fixtures/doc1_tokens.json');ids=ids if isinstance(ids,list) else ids.get('input_ids',ids.get('tokens'));C.require(len(ids)==32768,'Frozen nonAIME replay changed')
+            if unit['kind']!='nonAIME_persistent_long':reference=ByteReference(R,target,unit)
+            result=engine.teacher(unit,ids,reference)
+        result.update(peak_allocated_bytes=engine.torch.cuda.max_memory_allocated(),peak_reserved_bytes=engine.torch.cuda.max_memory_reserved())
+    C.model_guard(R);v=C.library_check(R,gpu);C.atomic_new(target/'POSTFLIGHT_LIBRARY.json',v);C.require(v['status']=='PASS','Postflight library closure failed')
+    record=dict(status='PASS',experiment_id=C.TASK,sample_id=a.unit,unit=a.unit,result=result,identity=C.process_identity(os.getpid()),gpu=gpu,gpu_uuid=C.UUIDS[gpu],permit_sha256=C.sha(permit),source_freeze_sha256=C.sha(R/'SOURCE_FREEZE.json'),codec_source_sha256=C.sha(R/'src/int4_codec.py'),runtime_source_sha256=C.sha(R/'src/runtime_engine.py'),model_identity_sha256=C.sha(R/'analysis/MODEL_TOKENIZER_FRESH_SHA.json'),environment=environment)
+    record['payload_sha256']=C.objsha(record);C.atomic_new(target/'RESULT.json',record)
+    if reference is not None:reference.cleanup_success()
+    C.progress(target,'UNIT_PASS')
+except BaseException as exc:
+    if engine is not None:
+        tokens=getattr(engine,'active_tokens',[]);C.atomic_new(target/'PARTIAL_TOKENS.json',dict(generated_token_ids=tokens,count=len(tokens),technical_failure=True,score_eligible=False))
+        cache=getattr(engine,'last_cache',None)
+        if cache is not None:
+            try:engine.diagnostic('CURRENT_STATE_FIRST_FAILURE.json',{str(i):engine.get_state(cache,i) for i in engine.layers})
+            except BaseException as de:C.atomic_new(target/'DIAGNOSTIC_FAILURE.json',dict(error=repr(de)))
+    C.atomic_new(target/'FIRST_FAILURE.json',dict(status='FAIL_CLOSED_STOP',error=repr(exc),traceback=traceback.format_exc(),unit=a.unit,identity=C.process_identity(os.getpid())))
+    raise

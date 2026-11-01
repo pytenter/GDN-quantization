@@ -1,0 +1,50 @@
+# consolidation
+
+原始相对目录：`consolidation`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`GDN-quantization-new4090-20260921/README.md`](../../objects/05/058e738f797aeea85dcfff57083f41e55ec78da9de37454fff19c27024cf9a82__README.md)
+- [`GDN-quantization-new4090-20260921/docs/PROTOCOL.md`](../../objects/65/653457c1e423e5ecd2a41355760c87b795ef97593bb48b174b6d077fe0d6b884__PROTOCOL.md)
+- [`GDN-quantization-new4090-20260921/docs/EVIDENCE_MAP.md`](../../../../../docs/EVIDENCE_MAP.md)
+- [`GDN-quantization-new4090-20260921/docs/RESULT_SUMMARY.md`](../../objects/5b/5b8a670f5c7c8ea0eec3dc39c1374206ffbd56b0c37f54bb452c6d3d775e84cd__RESULT_SUMMARY.md)
+- [`GDN-quantization-new4090-20260921/docs/REPRODUCIBILITY.md`](../../../../../docs/REPRODUCIBILITY.md)
+- [`GDN-quantization-new4090-20260921/docs/RESEARCH_STATUS.md`](../../objects/ed/ed282bf3b4fc3280e733c47e25675e6b52883eb7494c290387979a8335566f30__RESEARCH_STATUS.md)
+- [`GDN-quantization-new4090-20260921/docs/EXPERIMENT_INDEX.md`](../../objects/a1/a12127b04a0ff4ffaf8b603330ada08ab74de2c3b518cf459e1abcdbb7e728ec__EXPERIMENT_INDEX.md)
+- [`GDN-quantization-new4090-20260921/docs/server_inventory/new4090.md`](../../../../../docs/server_inventory/new4090.md)
+- [`GDN-quantization-new4090-20260921/docs/CANONICAL_PROMPT_MANIFEST.md`](../../../../../docs/CANONICAL_PROMPT_MANIFEST.md)
+- [`GDN-quantization-new4090-20260921/docs/server_inventory/MODEL_PROVENANCE.md`](../../../../../docs/MODEL_PROVENANCE.md)
+- [`GDN-quantization-new4090-20260921/docs/server_inventory/new4090_environment.md`](../../../../../docs/server_inventory/new4090_environment.md)
+- [`GDN-quantization-new4090-20260921/reports/audits/new4090_consolidation_report.md`](../../../../../reports/audits/new4090_consolidation_report.md)
+- [`GDN-quantization-new4090-20260921/reports/orientation/gdn_int8_row_e2e_completion_v1.md`](../../../../../reports/orientation/gdn_int8_row_e2e_completion_v1.md)
+- [`GDN-quantization-new4090-20260921/runs/ling_kda_decay_scalarization_causal_v1/report.md`](../../../../mechanism/ling_kda/ling_kda_decay_scalarization_causal_v1/report.md)
+- [`GDN-quantization-new4090-20260921/reports/orientation/gdn_int8_axis_geometry_rescue_v1.md`](../../../../../reports/orientation/gdn_int8_axis_geometry_rescue_v1.md)
+- [`GDN-quantization-new4090-20260921/runs/ling_kda_commutator_functional_causal_v1/report.md`](../../../../mechanism/ling_kda/ling_kda_commutator_functional_causal_v1/report.md)
+- [`GDN-quantization-new4090-20260921/runs/ling_kda_commutator_functional_causal_v1/final_summary.json`](../../../../mechanism/ling_kda/ling_kda_commutator_functional_causal_v1/final_summary.json)
+- [`GDN-quantization-new4090-20260921/runs/ling_kda_persistent_error_decomposition_causal_v1/report.md`](../../../../mechanism/ling_kda/ling_kda_persistent_error_decomposition_causal_v1/report.md)
+- [`GDN-quantization-new4090-20260921/reports/propagation/gdn_int8_readout_aware_propagation_audit_v1.md`](../../../../../reports/propagation/gdn_int8_readout_aware_propagation_audit_v1.md)
+- [`GDN-quantization-new4090-20260921/tests/test_kda_rotation_prefill_writeback_final_localization_v1.py`](../../../../../tests/ling_kda/rotation/test_kda_rotation_prefill_writeback_final_localization_v1.py)
+- [`GDN-quantization-new4090-20260921/reports/propagation/gdn_int8_single_pulse_residual_propagation_v1.md`](../../../../../reports/propagation/gdn_int8_single_pulse_residual_propagation_v1.md)
+- [`GDN-quantization-new4090-20260921/reports/effective_update/gdn_int8_effective_update_metric_audit_v1.md`](../../../../../reports/effective_update/gdn_int8_effective_update_metric_audit_v1.md)
+- [`GDN-quantization-new4090-20260921/reports/orientation/gdn_int8_orientation_state_change_mechanism_v1.md`](../../../../../reports/orientation/gdn_int8_orientation_state_change_mechanism_v1.md)
+- [`GDN-quantization-new4090-20260921/runs/ling_kda_decay_scalarization_causal_v1/final_classification.json`](../../../../mechanism/ling_kda/ling_kda_decay_scalarization_causal_v1/final_classification.json)
+- [`GDN-quantization-new4090-20260921/reports/propagation/gdn_int8_residual_direction_sensitivity_panel_v1.md`](../../../../../reports/propagation/gdn_int8_residual_direction_sensitivity_panel_v1.md)
+- [`GDN-quantization-new4090-20260921/results/kda_rotation_prefill_full_path_first_divergence_v1/summary.json`](../../../../mechanism/ling_kda/kda_rotation_prefill_full_path_first_divergence_v1/summary.json)
+- [`GDN-quantization-new4090-20260921/results/kda_rotation_prefill_kernel_equivariance_causal_v1/summary.json`](../../../../mechanism/ling_kda/kda_rotation_prefill_kernel_equivariance_causal_v1/summary.json)
+- [`GDN-quantization-new4090-20260921/results/kda_rotation_prefill_writeback_final_localization_v1/summary.json`](../../../../mechanism/ling_kda/kda_rotation_prefill_writeback_final_localization_v1/summary.json)
+- [`GDN-quantization-new4090-20260921/results/kda_rotation_prefill_full_path_first_divergence_v1/formal_summary.md`](../../../../mechanism/ling_kda/kda_rotation_prefill_full_path_first_divergence_v1/formal_summary.md)
+- [`GDN-quantization-new4090-20260921/results/kda_rotation_prefill_kernel_equivariance_causal_v1/formal_summary.md`](../../../../mechanism/ling_kda/kda_rotation_prefill_kernel_equivariance_causal_v1/formal_summary.md)
+- [`GDN-quantization-new4090-20260921/results/kda_value_hadamard_postfix_scientific_rebaseline_v1/formal_summary.md`](../../../../../reports/rotation/ling_value_hadamard_postfix_rebaseline_v1.md)
+- [`GDN-quantization-new4090-20260921/results/kda_rotation_prefill_writeback_final_localization_v1/formal_summary.md`](../../../../mechanism/ling_kda/kda_rotation_prefill_writeback_final_localization_v1/formal_summary.md)
+- [`GDN-quantization-new4090-20260921/results/kda_rotation_prefill_full_path_first_divergence_v1/actual_layer_path.md`](../../../../mechanism/ling_kda/kda_rotation_prefill_full_path_first_divergence_v1/actual_layer_path.md)
+- [`GDN-quantization-new4090-20260921/results/kda_value_hadamard_postfix_scientific_rebaseline_v1/formal_summary.json`](../../../../rotation/ling_value_hadamard/postfix_rebaseline_v1/formal_summary.json)
+- [`GDN-quantization-new4090-20260921/results/kda_value_hadamard_postfix_scientific_rebaseline_v1/pytest_summary.json`](../../../../rotation/ling_value_hadamard/postfix_rebaseline_v1/pytest_summary.json)
+- [`GDN-quantization-new4090-20260921/experiments/rotation/run_kda_rotation_prefill_writeback_final_localization_v1.py`](../../../../../experiments/ling_kda/rotation/value_hadamard/run_kda_rotation_prefill_writeback_final_localization_v1.py)
+- [`GDN-quantization-new4090-20260921/reports/causal_intervention/gdn_int8_residual_geometry_causal_intervention_v1.md`](../../../../../reports/causal_intervention/gdn_int8_residual_geometry_causal_intervention_v1.md)
+- [`GDN-quantization-new4090-20260921/reports/causal_intervention/gdn_int8_residual_strength_causal_intervention_v1.md`](../../../../../reports/causal_intervention/gdn_int8_residual_strength_causal_intervention_v1.md)
+- [`GDN-quantization-new4090-20260921/reports/effective_update/gdn_int8_effective_update_small_prompt_validation_v1.md`](../../../../../reports/effective_update/gdn_int8_effective_update_small_prompt_validation_v1.md)
+- [`GDN-quantization-new4090-20260921/results/kda_rotation_prefill_full_path_first_divergence_v1/forensic_summary.json`](../../../../mechanism/ling_kda/kda_rotation_prefill_full_path_first_divergence_v1/forensic_summary.json)

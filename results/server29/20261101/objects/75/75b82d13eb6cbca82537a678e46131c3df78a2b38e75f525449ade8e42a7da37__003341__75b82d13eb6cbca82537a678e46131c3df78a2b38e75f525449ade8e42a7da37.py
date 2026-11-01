@@ -1,0 +1,1 @@
+lambda _cls, lineno, type, value: _tuple_new(_cls, (lineno, type, value))

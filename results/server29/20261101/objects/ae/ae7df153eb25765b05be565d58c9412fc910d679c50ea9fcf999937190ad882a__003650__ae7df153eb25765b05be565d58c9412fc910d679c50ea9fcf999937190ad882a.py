@@ -1,0 +1,1 @@
+lambda _cls, scheme, auth, host, port, path, query, fragment: _tuple_new(_cls, (scheme, auth, host, port, path, query, fragment))

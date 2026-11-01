@@ -1,0 +1,1 @@
+lambda _cls, rss, vms, shared, text, lib, data, dirty, uss, pss, swap: _tuple_new(_cls, (rss, vms, shared, text, lib, data, dirty, uss, pss, swap))

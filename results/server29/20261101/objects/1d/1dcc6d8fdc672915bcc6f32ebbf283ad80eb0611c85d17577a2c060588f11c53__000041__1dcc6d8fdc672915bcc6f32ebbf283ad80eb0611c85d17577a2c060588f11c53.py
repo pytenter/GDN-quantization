@@ -1,0 +1,1 @@
+lambda _cls, creator_fn, extended_api: _tuple_new(_cls, (creator_fn, extended_api))

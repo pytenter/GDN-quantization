@@ -1,0 +1,1 @@
+lambda _cls, weights, name, metadata: _tuple_new(_cls, (weights, name, metadata))

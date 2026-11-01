@@ -1,0 +1,7 @@
+def __create_fn__(_type_keep_arg_mask, _type_add_dupe_map, _type_old_input_metadata, _type_needs_post_compile, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_keep_arg_mask, _dflt_add_dupe_map, _dflt_old_input_metadata, _dflt_needs_post_compile, _return_type):
+ def __init__(self,keep_arg_mask:_type_keep_arg_mask=_HAS_DEFAULT_FACTORY,add_dupe_map:_type_add_dupe_map=_HAS_DEFAULT_FACTORY,old_input_metadata:_type_old_input_metadata=_HAS_DEFAULT_FACTORY,needs_post_compile:_type_needs_post_compile=_dflt_needs_post_compile)->_return_type:
+  self.keep_arg_mask=_dflt_keep_arg_mask() if keep_arg_mask is _HAS_DEFAULT_FACTORY else keep_arg_mask
+  self.add_dupe_map=_dflt_add_dupe_map() if add_dupe_map is _HAS_DEFAULT_FACTORY else add_dupe_map
+  self.old_input_metadata=_dflt_old_input_metadata() if old_input_metadata is _HAS_DEFAULT_FACTORY else old_input_metadata
+  self.needs_post_compile=needs_post_compile
+ return __init__

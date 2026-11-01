@@ -1,0 +1,14 @@
+# LING_KDA_P1_L7_FULL_PERSISTENT_PROSPECTIVE_V2
+
+原始相对目录：`experiment_runs/LING_KDA_P1_L7_FULL_PERSISTENT_PROSPECTIVE_V2`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`finalize_stop_v2.py`](../../objects/b8/b8d6749d17e24f0145e49cce9907678ad7ba61cd393856599368a95133a50ee9__finalize_stop_v2.py)
+- [`FINAL_STOP_REPORT.md`](../../objects/04/04924bf0628082d5d79300cd9ef1fde4fb284e5c2351fe70cb687124b7c749e3__FINAL_STOP_REPORT.md)
+- [`FINAL_PRESERVATION_AND_RELEASE_AUDIT.json`](../../objects/ca/ca575a01dc6ac9fb2dd89c6580c316228404178b96d51587f73b2147e54ab002__FINAL_PRESERVATION_AND_RELEASE_AUDIT.json)
+- [`FINAL_PRESERVATION_AND_RELEASE_AUDIT.sha256.json`](../../objects/4f/4fe9a69a16cb5178c34f108bada4efa0477470bb6715d7e5f39a56ae299fc96c__FINAL_PRESERVATION_AND_RELEASE_AUDIT.sha256.json)

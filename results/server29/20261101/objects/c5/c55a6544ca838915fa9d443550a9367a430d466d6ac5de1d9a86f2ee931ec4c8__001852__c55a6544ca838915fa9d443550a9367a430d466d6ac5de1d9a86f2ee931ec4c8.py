@@ -1,0 +1,1 @@
+lambda _cls, unflat_param_names, is_fsdp_managed: _tuple_new(_cls, (unflat_param_names, is_fsdp_managed))

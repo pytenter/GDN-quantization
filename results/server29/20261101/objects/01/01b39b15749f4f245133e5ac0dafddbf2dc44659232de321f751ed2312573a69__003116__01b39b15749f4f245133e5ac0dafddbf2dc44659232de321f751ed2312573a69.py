@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(node_name_to_qconfig={self.node_name_to_qconfig!r}, node_name_to_scope={self.node_name_to_scope!r}, prepare_custom_config={self.prepare_custom_config!r}, equalization_node_name_to_qconfig={self.equalization_node_name_to_qconfig!r}, qconfig_mapping={self.qconfig_mapping!r}, is_qat={self.is_qat!r}, observed_node_names={self.observed_node_names!r}, is_observed_standalone_module={self.is_observed_standalone_module!r}, standalone_module_input_quantized_idxs={self.standalone_module_input_quantized_idxs!r}, standalone_module_output_quantized_idxs={self.standalone_module_output_quantized_idxs!r})"
+ return __repr__

@@ -1,0 +1,1852 @@
+app/src/main/java/com/phantom/onetapvideodownload/ThemeManager.java
+public class ThemeManager {
+    public static void applyTheme(AppCompatActivity activity) {
+        activity.setTheme(ThemeManager.getTheme(activity));
+        Toolbar toolbar = activity.findViewById(R.id.toolbar);
+        toolbar.setBackgroundColor(ThemeManager.getPrimaryColor(activity));
+        toolbar.setPopupTheme(getPopupMenuTheme(activity));
+        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            activity.getWindow().setStatusBarColor(ThemeManager.getPrimaryDarkColor(activity));
+            activity.getWindow().setNavigationBarColor(ThemeManager.getNavigationBarColor(activity));
+        }
+    }
+
+    public static void onThemeChanged(Activity activity) {
+        activity.finish();
+        final Intent intent = activity.getIntent();
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        activity.startActivity(intent);
+    }
+
+    private static int getTheme(Context context) {
+        if (CheckPreferences.getDarkThemeEnabled(context)) {
+            return R.style.AppTheme_Dark;
+        } else {
+            return R.style.AppTheme;
+        }
+    }
+
+    private static int getPopupMenuTheme(Context context) {
+        if (CheckPreferences.getDarkThemeEnabled(context)) {
+            return R.style.AppTheme_ThemeOverlay_AppCompat_Dark;
+        } else {
+            return R.style.AppTheme_ThemeOverlay_AppCompat_Light;
+        }
+    }
+
+    public static int getBackgroundColor(Context context) {
+        if (CheckPreferences.getDarkThemeEnabled(context)) {
+            return ContextCompat.getColor(context, R.color.dark_background);
+        } else {
+            return ContextCompat.getColor(context, R.color.white);
+        }
+    }
+
+    public static int getPrimaryColor(Context context) {
+        if (CheckPreferences.getDarkThemeEnabled(context)) {
+            return ContextCompat.getColor(context, R.color.dark_background);
+        } else {
+            return ContextCompat.getColor(context, R.color.primary);
+        }
+    }
+
+    public static int getLightBackgroundColor(Context context) {
+        if (CheckPreferences.getDarkThemeEnabled(context)) {
+            return ContextCompat.getColor(context, R.color.dark_ligher_background);
+        } else {
+            return ContextCompat.getColor(context, R.color.grey);
+        }
+    }
+
+    private static int getPrimaryDarkColor(Context context) {
+        if (CheckPreferences.getDarkThemeEnabled(context)) {
+            return ContextCompat.getColor(context, R.color.dark_background);
+        } else {
+            return ContextCompat.getColor(context, R.color.dark_primary);
+        }
+    }
+
+    private static int getNavigationBarColor(Context context) {
+        if (CheckPreferences.getDarkThemeEnabled(context)) {
+            return ContextCompat.getColor(context, R.color.black);
+        } else {
+            return ContextCompat.getColor(context, R.color.primary);
+        }
+    }
+
+    public static int getHeadingTextColor(Context context) {
+        if (CheckPreferences.getDarkThemeEnabled(context)) {
+            return ContextCompat.getColor(context, R.color.heading_white);
+        } else {
+            return ContextCompat.getColor(context, R.color.heading_black);
+        }
+    }
+
+    public static int getTextColor(Context context) {
+        if (CheckPreferences.getDarkThemeEnabled(context)) {
+            return ContextCompat.getColor(context, R.color.white);
+        } else {
+            return ContextCompat.getColor(context, R.color.black);
+        }
+    }
+}
+app/src/main/java/com/phantom/utils/XposedChecker.java
+public class XposedChecker {
+    public static void showXposedNotFound(final Activity context) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle(context.getResources().getString(R.string.xposed_not_found_title));
+        builder.setMessage(context.getResources().getString(R.string.xposed_not_found_description));
+
+        builder.setPositiveButton("Continue", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+            }
+        });
+
+        builder.setNeutralButton("Read More", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                String url = "http://repo.xposed.info/module/de.robv.android.xposed.installer";
+                Intent viewIntent = new Intent(Intent.ACTION_VIEW);
+                viewIntent.setData(Uri.parse(url));
+                context.startActivity(viewIntent);
+            }
+        });
+
+        builder.setNegativeButton("Exit", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                exit(context, dialog);
+            }
+        });
+
+        builder.setOnCancelListener(new DialogInterface.OnCancelListener() {
+            @Override
+            public void onCancel(DialogInterface dialog) {
+                exit(context, dialog);
+            }
+        });
+
+        AlertDialog alert = builder.create();
+        alert.setCanceledOnTouchOutside(false);
+        alert.show();
+    }
+
+    public static void showModuleNotEnalbed(final Activity context) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle(context.getResources().getString(R.string.module_not_enabled_title));
+        builder.setMessage(context.getResources().getString(R.string.module_not_enabled_description));
+
+        builder.setNegativeButton("Exit", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                exit(context, dialog);
+            }
+        });
+
+        builder.setPositiveButton("Continue", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+            }
+        });
+
+        builder.setOnCancelListener(new DialogInterface.OnCancelListener() {
+            @Override
+            public void onCancel(DialogInterface dialog) {
+                exit(context, dialog);
+            }
+        });
+
+        AlertDialog alert = builder.create();
+        alert.setCanceledOnTouchOutside(false);
+        alert.show();
+    }
+
+    private static void exit(Activity context, DialogInterface dialog) {
+        dialog.dismiss();
+        context.finish();
+    }
+
+    public static boolean isXposedInstalled(Context context) {
+        String packageName = "de.robv.android.xposed.installer";
+        return Global.isPackageInstalled(context, packageName);
+    }
+
+}
+app/src/main/java/com/phantom/onetapvideodownload/downloader/ProxyDownloadManager.java
+public class ProxyDownloadManager extends IntentService {
+    private static final String TAG = "ProxyDownloadManager";
+    private static final String ACTION_INSERT_DOWNLOAD = "com.phantom.onetapvideodownload.downloader.action.insert_download";
+    private static final String ACTION_START_DOWNLOAD = "com.phantom.onetapvideodownload.downloader.action.start_download";
+
+    private static final String EXTRA_VIDEO_ID = "com.phantom.onetapvideodownload.downloader.extra.video_id";
+    private static final String EXTRA_FILENAME = "com.phantom.onetapvideodownload.downloader.extra.filename";
+    private static final String EXTRA_VIDEO_ITAG = "com.phantom.onetapvideodownload.downloader.extra.video_itag";
+    private static final String EXTRA_DOWNLOAD_LOCATION = "com.phantom.onetapvideodownload.downloader.extra.video_download_location";
+
+    public ProxyDownloadManager() {
+        super("ProxyDownloadManager");
+    }
+
+    public static void startActionYoutubeDownload(Context context, long videoId, String filename,
+                                                  String downloadLocation, int itag) {
+        Intent intent = getActionYoutubeDownload(context, videoId, filename, downloadLocation, itag);
+        context.startService(intent);
+    }
+
+    public static Intent getActionYoutubeDownload(Context context, long videoId, String filename,
+                                                  String downloadLocation, int itag) {
+        Intent intent = new Intent(context, ProxyDownloadManager.class);
+        intent.setAction(ACTION_START_DOWNLOAD);
+        intent.putExtra(EXTRA_VIDEO_ID, videoId);
+        intent.putExtra(EXTRA_FILENAME, filename);
+        intent.putExtra(EXTRA_DOWNLOAD_LOCATION, downloadLocation);
+        intent.putExtra(EXTRA_VIDEO_ITAG, itag);
+        return intent;
+    }
+
+    public static void startActionBrowserDownload(Context context, long videoId, String filename,
+                                                  String downloadLocation) {
+        Intent intent = getActionBrowserDownload(context, videoId, filename, downloadLocation);
+        context.startService(intent);
+    }
+
+    public static Intent getActionBrowserDownload(Context context, long videoId, String filename,
+                                                  String downloadLocation) {
+        Intent intent = new Intent(context, ProxyDownloadManager.class);
+        intent.setAction(ACTION_START_DOWNLOAD);
+        intent.putExtra(EXTRA_VIDEO_ID, videoId);
+        intent.putExtra(EXTRA_FILENAME, filename);
+        intent.putExtra(EXTRA_DOWNLOAD_LOCATION, downloadLocation);
+        return intent;
+    }
+
+    public static void startActionYoutubeInserted(Context context, long videoId, String filename,
+                                                  String downloadLocation, int itag) {
+        Intent intent = new Intent(context, ProxyDownloadManager.class);
+        intent.setAction(ACTION_INSERT_DOWNLOAD);
+        intent.putExtra(EXTRA_VIDEO_ID, videoId);
+        intent.putExtra(EXTRA_FILENAME, filename);
+        intent.putExtra(EXTRA_DOWNLOAD_LOCATION, downloadLocation);
+        intent.putExtra(EXTRA_VIDEO_ITAG, itag);
+        context.startService(intent);
+    }
+
+    public static void startActionBrowserInserted(Context context, long videoId, String filename,
+                                                  String downloadLocation) {
+        Intent intent = new Intent(context, ProxyDownloadManager.class);
+        intent.setAction(ACTION_INSERT_DOWNLOAD);
+        intent.putExtra(EXTRA_VIDEO_ID, videoId);
+        intent.putExtra(EXTRA_FILENAME, filename);
+        intent.putExtra(EXTRA_DOWNLOAD_LOCATION, downloadLocation);
+        context.startService(intent);
+    }
+
+    @Override
+    protected void onHandleIntent(Intent intent) {
+        if (intent != null) {
+            final String action = intent.getAction();
+            if (ACTION_INSERT_DOWNLOAD.equals(action) || ACTION_START_DOWNLOAD.equals(action)) {
+                long videoId = intent.getLongExtra(EXTRA_VIDEO_ID, -1);
+                int itag = intent.getIntExtra(EXTRA_VIDEO_ITAG, -1);
+                String downloadLocation = intent.getStringExtra(EXTRA_DOWNLOAD_LOCATION);
+                String filename = intent.getStringExtra(EXTRA_FILENAME);
+                long downloadId;
+                if (itag == -1) {
+                    downloadId = insertBrowserVideo(videoId, filename, downloadLocation);
+                } else {
+                    downloadId = insertYoutubeVideo(videoId, filename, downloadLocation, itag);
+                }
+
+                if (downloadId == -1) {
+                    return;
+                }
+
+                if (ACTION_INSERT_DOWNLOAD.equals(action)) {
+                    Intent downloadManagerService = DownloadManager.getActionVideoInserted(downloadId);
+                    startService(downloadManagerService);
+                } else if (ACTION_START_DOWNLOAD.equals(action)) {
+                    Intent downloadManagerService = DownloadManager.getActionVideoDownload(downloadId);
+                    startService(downloadManagerService);
+                }
+            }
+        }
+    }
+
+    private long insertBrowserVideo(long videoId, String filename, String downloadLocation) {
+        VideoDatabase videoDatabase = VideoDatabase.getDatabase(this);
+        Video video = videoDatabase.getVideo(videoId);
+        if(video == null) {
+            Log.e(TAG, "Video not found in database. Video ID: " + videoId);
+            return -1;
+        }
+
+        String nonDuplicateFilename = Global.suggestName(downloadLocation, filename);
+        File downloadFile = new File(downloadLocation, nonDuplicateFilename);
+        BrowserDownloadInfo browserDownloadInfo = new BrowserDownloadInfo(this,
+                filename,
+                video.getUrl(),
+                downloadFile.getAbsolutePath());
+
+        browserDownloadInfo.setPackageName(video.getPackageName());
+        DownloadDatabase downloadDatabase = DownloadDatabase.getDatabase(this);
+        return downloadDatabase.addDownload(browserDownloadInfo);
+    }
+
+    private long insertYoutubeVideo(long videoId, String filename, String downloadLocation, int itag) {
+        VideoDatabase videoDatabase = VideoDatabase.getDatabase(this);
+        YoutubeVideo video = (YoutubeVideo)videoDatabase.getVideo(videoId);
+        if(video == null) {
+            Log.e(TAG, "Video not found in database. Video ID: " + videoId);
+            return -1;
+        }
+
+        filename += '.' + YoutubeVideo.getExtensionForItag(itag);
+
+        String nonDuplicateFilename = Global.suggestName(downloadLocation, filename);
+        File downloadFile = new File(downloadLocation, nonDuplicateFilename);
+        YoutubeDownloadInfo youtubeDownloadInfo = new YoutubeDownloadInfo(this,
+                filename,
+                video.getVideoUrl(itag),
+                downloadFile.getAbsolutePath(),
+                video.getParam(),
+                itag);
+
+        youtubeDownloadInfo.setPackageName(video.getPackageName());
+        DownloadDatabase downloadDatabase = DownloadDatabase.getDatabase(this);
+        return downloadDatabase.addDownload(youtubeDownloadInfo);
+    }
+}
+app/src/main/java/com/phantom/onetapvideodownload/MainApplication.java
+public class MainApplication extends Application {
+    private static boolean activityVisible;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+
+        JobManager.create(this).addJobCreator(new HookFetchJobCreator());
+        int noOfJobRequests = JobManager.instance().getAllJobRequestsForTag(HookFetchJob.TAG).size();
+
+        // No of Job Requests for HookFetchJob would be greater than 1 for older version of
+        // application because of rescheduling of job again and again, causing large no. of wakelocks
+        if (noOfJobRequests > 1) {
+            JobManager.instance().cancelAllForTag(HookFetchJob.TAG);
+            noOfJobRequests = 0;
+        }
+
+        if (noOfJobRequests == 0) {
+            HookFetchJob.scheduleJob();
+        }
+    }
+
+    public static boolean isActivityVisible() {
+        return activityVisible;
+    }
+
+    public static void activityResumed() {
+        activityVisible = true;
+    }
+
+    public static void activityPaused() {
+        activityVisible = false;
+    }
+}
+app/src/main/java/com/phantom/onetapvideodownload/ApplicationLogMaintainer.java
+public class ApplicationLogMaintainer extends BroadcastReceiver {
+    public static final String TAG = "ApplicationLog";
+    public static final String PACKAGE_NAME = "com.phantom.onetapvideodownload";
+    public static final String CLASS_NAME = PACKAGE_NAME + ".ApplicationLogMaintainer";
+    public static final String EXTRA_MESSAGE = PACKAGE_NAME + ".extra.message";
+    public static final Integer MAX_LOG_FILE_SIZE = 500000;
+    public static final String LOG_DIRECTORY_NAME = ".OneTapVideoDownload";
+    public static final String LOG_FILE_NAME = "Logs.txt";
+
+    public ApplicationLogMaintainer() {
+    }
+
+    public static void sendBroadcast(Context context, String message) {
+        Intent intent = new Intent(context, ApplicationLogMaintainer.class);
+        intent.setClassName(PACKAGE_NAME, CLASS_NAME);
+        intent.putExtra(EXTRA_MESSAGE, message);
+        context.sendBroadcast(intent);
+    }
+
+    public static String getLogFilePath() {
+        return new File(Environment.getExternalStorageDirectory(), LOG_DIRECTORY_NAME + '/' + LOG_FILE_NAME).getPath();
+    }
+
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        if (intent == null) {
+            return;
+        }
+
+        String logMessage = intent.getStringExtra(EXTRA_MESSAGE);
+        if (logMessage.toLowerCase().contains("initialized")) {
+            try {
+                File logFile = new File(getLogFilePath());
+                Long fileSize = Global.getDirectorySize(logFile);
+                if (fileSize > MAX_LOG_FILE_SIZE) {
+                    writeToLog(logMessage, false);
+                    try {
+                        PackageInfo packageInfo = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+                        writeToLog("OneTapVideoDownload Version " + packageInfo.versionName);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Exception in onReceive", e);
+                    }
+                } else {
+                    writeToLog("---------------------------");
+                    writeToLog(logMessage);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Exception in onReceive", e);
+            }
+        } else {
+            writeToLog(logMessage);
+        }
+    }
+
+    void writeToLog(String message) {
+        writeToLog(message, true);
+    }
+
+    void writeToLog(String message, boolean appendMode) {
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US);
+            String time = sdf.format(new Date());
+
+            message = time + " - " + message;
+
+            File logFile = new File(getLogFilePath());
+            if (!logFile.getParentFile().exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                logFile.getParentFile().mkdirs();
+            }
+
+            BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(logFile, appendMode));
+            bufferedWriter.newLine();
+            bufferedWriter.append(message);
+            bufferedWriter.close();
+        } catch (IOException e) {
+            Log.e(TAG, "Exception in writeToLog", e);
+        }
+    }
+}
+app/src/main/java/com/phantom/onetapvideodownload/Video/YoutubeVideo.java
+public class YoutubeVideo implements Video {
+    private String mTitle, mParam, mPackageName;
+    private long mDatabaseId = -1;
+    public static List<Pair<Integer, String>> itagQualityMapping = new ArrayList<>();
+    public static List<Pair<Integer, String>> itagExtensionMapping = new ArrayList<>();
+
+    static {
+        itagQualityMapping.add(Pair.create(22, "MP4 - 720p"));
+        itagQualityMapping.add(Pair.create(18, "MP4 - 360p"));
+        itagQualityMapping.add(Pair.create(43, "WebM - 360p"));
+        itagQualityMapping.add(Pair.create(36, "3GP - 240p"));
+        itagQualityMapping.add(Pair.create(5, "FLV - 240p"));
+        itagQualityMapping.add(Pair.create(17, "3GP - 144p"));
+        itagQualityMapping.add(Pair.create(141, "M4A - 256 kbit/s (Audio)"));
+        itagQualityMapping.add(Pair.create(140, "M4A - 128 kbit/s (Audio)"));
+        itagQualityMapping.add(Pair.create(251, "WebM - 160 kbit/s"));
+        itagQualityMapping.add(Pair.create(171, "WebM - 128 kbit/s"));
+        itagQualityMapping.add(Pair.create(250, "WebM - 64 kbit/s"));
+        itagQualityMapping.add(Pair.create(249, "WebM - 48 kbit/s"));
+
+
+        itagExtensionMapping.add(Pair.create(22, "mp4"));
+        itagExtensionMapping.add(Pair.create(18, "mp4"));
+        itagExtensionMapping.add(Pair.create(43, "webm"));
+        itagExtensionMapping.add(Pair.create(36, "3gp"));
+        itagExtensionMapping.add(Pair.create(5, "flv"));
+        itagExtensionMapping.add(Pair.create(17, "3gp"));
+        itagExtensionMapping.add(Pair.create(141, "m4a"));
+        itagExtensionMapping.add(Pair.create(140, "m4a"));
+        itagExtensionMapping.add(Pair.create(251, "webm"));
+        itagExtensionMapping.add(Pair.create(171, "webm"));
+        itagExtensionMapping.add(Pair.create(250, "webm"));
+        itagExtensionMapping.add(Pair.create(249, "webm"));
+    }
+
+    public class Format {
+        public int itag;
+        public String url;
+        public boolean dashAudio;
+    }
+
+    private SparseArrayCompat<Format> mFormatList = new SparseArrayCompat<>();
+
+    public YoutubeVideo(String title, String param) {
+        mTitle = title;
+        mParam = param;
+    }
+
+    public void addFormat(String videoUrl, int itag) {
+        Format format = new Format();
+        format.url = videoUrl;
+        format.itag = itag;
+        format.dashAudio = false;
+        for (Pair p : itagQualityMapping) {
+            if ((int)p.first == itag && p.second.toString().contains("kbit")) {
+                format.dashAudio = true;
+            }
+        }
+        mFormatList.put(itag, format);
+    }
+
+    @Override
+    public String getTitle() {
+        return mTitle;
+    }
+
+    @Override
+    public String getUrl() {
+        return getBestVideoFormat().url;
+    }
+
+    @Override
+    public long getDatabaseId() {
+        return mDatabaseId;
+    }
+
+    @Override
+    public void setDatabaseId(long databaseId) {
+        mDatabaseId = databaseId;
+    }
+
+    public String getParam() {
+        return mParam;
+    }
+
+    public static String getFormatDescription(Integer itag) {
+        for (Pair<Integer, String> p : itagQualityMapping) {
+            if (p.first.equals(itag)) {
+                return p.second;
+            }
+        }
+
+        return "";
+    }
+
+    public static Integer getItagForDescription(String description) {
+        for (Pair<Integer, String> p : itagQualityMapping) {
+            if (p.second.equals(description)) {
+                return p.first;
+            }
+        }
+
+        return -1;
+    }
+
+    public String getVideoUrl(int itag) {
+        Format format = mFormatList.get(itag);
+        if (format == null) {
+            return "";
+        }
+
+        return format.url;
+    }
+
+    public boolean isResourceAvailable() {
+        return mFormatList.size() <= 0 && Global.isResourceAvailable(mFormatList.get(0).url);
+    }
+
+    public Format getBestVideoFormat() {
+        for (Pair<Integer, String> p : itagQualityMapping) {
+            if (p.second.contains("kbit")) {
+                continue;
+            }
+
+            Format format = mFormatList.get(p.first);
+            if (format != null) {
+                return format;
+            }
+        }
+        return null;
+    }
+
+    public Format getBestAudioFormat() {
+        for (Pair<Integer, String> p : itagQualityMapping) {
+            if (!p.second.contains("kbit")) {
+                continue;
+            }
+
+            Format format = mFormatList.get(p.first);
+            if (format != null) {
+                return format;
+            }
+        }
+        return null;
+    }
+
+    public ArrayList<Format> getAllFormats() {
+        ArrayList<Format> formats = new ArrayList<>();
+        for (Pair<Integer, String> p : itagQualityMapping) {
+            Format format = mFormatList.get(p.first);
+            if (format != null) {
+                formats.add(format);
+            }
+        }
+        return formats;
+    }
+
+    public static String getExtensionForItag(Integer itag) {
+        for (Pair<Integer, String> p : itagExtensionMapping) {
+            if (p.first.equals(itag)) {
+                return p.second;
+            }
+        }
+
+        return "";
+    }
+
+    @Override
+    public List<DownloadOptionItem> getOptions(final Context context, final DownloadOptionAdapter downloadOptionAdapter) {
+        List<DownloadOptionItem> options = new ArrayList<>();
+        options.add(new DownloadOptionItem(DownloadOptionIds.Filename,
+                R.drawable.file,
+                R.string.filename,
+                Global.getValidatedFilename(getTitle()),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        final DownloadOptionItem filenameOptionItem = downloadOptionAdapter.getOptionItem(DownloadOptionIds.Filename);
+                                new MaterialDialog.Builder(context)
+                                .title(R.string.enter_filename)
+                                .inputType(InputType.TYPE_CLASS_TEXT)
+                                .input("", filenameOptionItem.getOptionValue(), new MaterialDialog.InputCallback() {
+                                    @Override
+                                    public void onInput(MaterialDialog dialog, CharSequence input) {
+                                        filenameOptionItem.setOptionValue(Global.getValidatedFilename(input.toString()));
+                                        downloadOptionAdapter.setOptionItem(filenameOptionItem);
+                                    }
+                                }).show();
+                    }
+                }
+        ));
+
+        options.add(new DownloadOptionItem(DownloadOptionIds.Format,
+                R.drawable.quality,
+                R.string.video_quality,
+                getFormatDescription(getBestVideoFormat().itag),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        ArrayList<Format> formatArrayList = getAllFormats();
+                        List<String> displayStrings = new ArrayList<>();
+                        for(Format f : formatArrayList) {
+                            int itag = f.itag;
+                            String formatDescription = getFormatDescription(itag);
+                            if (formatDescription.isEmpty()) {
+                                continue;
+                            }
+
+                            displayStrings.add(formatDescription);
+                        }
+
+                        new MaterialDialog.Builder(context)
+                                .title(R.string.video_quality)
+                                .items(displayStrings)
+                                .itemsCallback(new MaterialDialog.ListCallback() {
+                                    @Override
+                                    public void onSelection(MaterialDialog dialog, View view, int which, CharSequence text) {
+                                        DownloadOptionItem formatOptionItem = downloadOptionAdapter.getOptionItem(DownloadOptionIds.Format);
+                                        formatOptionItem.setOptionValue(text.toString());
+                                        downloadOptionAdapter.setOptionItem(formatOptionItem);
+                                    }
+                                })
+                                .show();
+                    }
+                }
+        ));
+
+        return options;
+    }
+
+    @Override
+    public String getPackageName() {
+        return mPackageName;
+    }
+
+    @Override
+    public void setPackageName(String packageName) {
+        mPackageName = packageName;
+    }
+}
+app/src/main/java/com/phantom/utils/HookClassNamesFetcher.java
+public class HookClassNamesFetcher extends AsyncTask<String, Integer, String> {
+    private Context mContext;
+    private String mHookUrl;
+    private File mHookFile;
+    private MaterialDialog mProgressDialog;
+
+    private static final String HOOKS_FILE_NAME = "Hooks.json";
+    private static final String HOOKS_URL = "https://raw.githubusercontent.com/Ashish-Bansal/OneTapVideoDownload/master/app/src/main/assets/HookClassnames.json";
+
+    public static void startHookFileUpdateOnMainThread(Context context) {
+        File hookFile = new File(getHooksFilePath(context));
+        HookClassNamesFetcher hookClassNamesFetcher = new HookClassNamesFetcher(context, getHooksUrl(), hookFile);
+        hookClassNamesFetcher.updateHooksOnMainThread();
+    }
+
+    private void updateHooksOnMainThread() {
+        String json = Global.getResponseBody(mHookUrl);
+        if (json == null) {
+            ApplicationLogMaintainer.sendBroadcast(mContext, "Error fetching Hook file " + mHookUrl);
+            return;
+        }
+
+        if (Global.writeStringToFile(mHookFile, json)) {
+            mHookFile.setReadable(true, false);
+            ApplicationLogMaintainer.sendBroadcast(mContext, "Hooks Successfully updated");
+
+            try {
+                File applicationDataDirectory = new File(getDataDirectory(mContext));
+                applicationDataDirectory.setExecutable(true, false);
+                ApplicationLogMaintainer.sendBroadcast(mContext, "Changed application data directory permissions.");
+            } catch (Exception e) {
+                ApplicationLogMaintainer.sendBroadcast(mContext, "Updating package data directory permission failed.");
+            }
+        } else {
+            ApplicationLogMaintainer.sendBroadcast(mContext, "Error writing fetched file to : " + mHookFile.getAbsolutePath());
+        }
+    }
+
+    public static void startHookFileUpdateAsync(Context context) {
+        File hookFile = new File(getHooksFilePath(context));
+        new HookClassNamesFetcher(context, getHooksUrl(), hookFile).execute();
+    }
+
+    private HookClassNamesFetcher(Context context, String url, File destinationPath) {
+        mContext = context;
+        mHookUrl = url;
+        mHookFile = destinationPath;
+    }
+
+    protected String doInBackground(String... urls) {
+        try {
+            return Global.getResponseBody(mHookUrl);
+        } catch (Exception e) {
+            FirebaseCrash.report(e);
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    protected void onPreExecute() {
+        boolean internetAccess = Global.isInternetAvailable(mContext);
+        if (!internetAccess) {
+            new MaterialDialog.Builder(mContext)
+                    .title(R.string.internet_not_available)
+                    .content(R.string.internet_not_available_summary)
+                    .positiveText(R.string.okay)
+                    .neutralText(R.string.open_wifi_settings)
+                    .onNeutral(new MaterialDialog.SingleButtonCallback() {
+                        @Override
+                        public void onClick(@NonNull MaterialDialog dialog, @NonNull DialogAction which) {
+                            mContext.startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS));
+                            dialog.dismiss();
+                        }
+                    })
+                    .show();
+            cancel(true);
+            return;
+        }
+
+        mProgressDialog = new MaterialDialog.Builder(mContext)
+                .title(R.string.fetching_hook_classes)
+                .content(R.string.please_wait)
+                .progress(true, 0)
+                .cancelable(false)
+                .show();
+    }
+
+    protected void onPostExecute(String json) {
+        mProgressDialog.dismiss();
+        if (json == null) {
+            ApplicationLogMaintainer.sendBroadcast(mContext, "Error fetching Hook file " + mHookUrl);
+            Toast.makeText(mContext, R.string.error_fetching_file, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        if (Global.writeStringToFile(mHookFile, json)) {
+            mHookFile.setReadable(true, false);
+            Toast.makeText(mContext, R.string.hooks_successfully_updated, Toast.LENGTH_LONG).show();
+            ApplicationLogMaintainer.sendBroadcast(mContext, "Hooks Successfully updated");
+        } else {
+            Toast.makeText(mContext, R.string.unable_to_write_file, Toast.LENGTH_LONG).show();
+            ApplicationLogMaintainer.sendBroadcast(mContext, "Error writing fetched file to : " + mHookFile.getAbsolutePath());
+        }
+    }
+
+    static String getHooksUrl() {
+        return HOOKS_URL;
+    }
+
+    static String getHooksFileName() {
+        return HOOKS_FILE_NAME;
+    }
+
+    static String getDataDirectory(Context context) throws PackageManager.NameNotFoundException {
+        PackageManager packageManager = context.getPackageManager();
+        PackageInfo packageInfo = packageManager.getPackageInfo(BuildConfig.APPLICATION_ID, 0);
+        return packageInfo.applicationInfo.dataDir;
+    }
+
+    static String getHooksDirectoryPath(Context context) throws PackageManager.NameNotFoundException {
+        File hookDirectory = new File(getDataDirectory(context), "files/");
+        return hookDirectory.getAbsolutePath();
+    }
+
+    public static String getHooksFilePath(Context context) {
+        try {
+            File hookFile = new File(getHooksDirectoryPath(context), getHooksFileName());
+            return hookFile.getAbsolutePath();
+        } catch (Exception e) {
+            ApplicationLogMaintainer.sendBroadcast(context, Global.getStackTrace(e));
+        }
+        return new File(context.getFilesDir().getAbsolutePath(), getHooksFileName()).getAbsolutePath();
+    }
+
+}
+app/src/main/java/com/phantom/onetapvideodownload/ui/downloadoptions/DownloadOptionItem.java
+public class DownloadOptionItem {
+    private Integer mIconId, mLabelStringId;
+    private String mValueString;
+    private View.OnClickListener mOnClickListener;
+    private DownloadOptionIds mDownloadOptionId;
+
+    public DownloadOptionItem(DownloadOptionIds downloadOptionId, Integer iconId,
+                              Integer labelStringId, String valueString,
+                              View.OnClickListener onClickListener) {
+        mDownloadOptionId = downloadOptionId;
+        mIconId = iconId;
+        mLabelStringId = labelStringId;
+        mValueString = valueString;
+        mOnClickListener = onClickListener;
+    }
+
+    public Integer getIcon() {
+        return mIconId;
+    }
+
+    public Integer getOptionLabel() {
+        return mLabelStringId;
+    }
+
+    public String getOptionValue() {
+        return mValueString;
+    }
+
+    public DownloadOptionIds getDownloadOptionId() {
+        return mDownloadOptionId;
+    }
+
+    public void setOptionValue(String value) {
+        mValueString = value;
+    }
+
+    public View.OnClickListener getOnClickListener() {
+        return mOnClickListener;
+    }
+}
+app/src/main/java/com/phantom/onetapvideodownload/ui/downloadoptions/DownloadOptionIds.java
+public enum DownloadOptionIds {
+    Filename(0), DownloadLocation(1), Format(2);
+
+    private final int mValue;
+
+    DownloadOptionIds(int value) {
+        mValue = value;
+    }
+
+}
+app/src/main/java/com/phantom/onetapvideodownload/databasehandlers/VideoDatabase.java
+public class VideoDatabase extends SQLiteOpenHelper {
+    public static final int VIDEO_TYPE_BROWSER = 0;
+    public static final int VIDEO_TYPE_YOUTUBE = 1;
+
+    private static final int DATABASE_VERSION = 1;
+    private static final String DATABASE_NAME = "VideoDatabase";
+
+    private static final String TABLE_VIDEO_LIST = "video_list";
+    private static final String TABLE_BROWSER_VIDEO_LIST = "browser_video_list";
+    private static final String TABLE_YOUTUBE_VIDEO_LIST = "youtube_video_list";
+
+    private static final String KEY_ID = "id";
+    private static final String KEY_TYPE = "type";
+    private static final String KEY_URL = "url";
+    private static final String KEY_VIDEO_ID = "video_id";
+    private static final String KEY_TITLE = "title";
+    private static final String KEY_VIDEO_ITAG = "itag";
+    private static final String KEY_PARAM = "param";
+    private static final String KEY_PACKAGE_NAME = "package_name";
+
+    private static VideoDatabase mVideoDatabase;
+    private SQLiteDatabase mSQLiteDatabase;
+
+    public static synchronized VideoDatabase getDatabase(Context context) {
+        if (mVideoDatabase == null) {
+            mVideoDatabase = new VideoDatabase(context);
+            mVideoDatabase.mSQLiteDatabase = mVideoDatabase.getWritableDatabase();
+        }
+
+        return mVideoDatabase;
+    }
+
+    private VideoDatabase(Context context) {
+        super(context, DATABASE_NAME, null, DATABASE_VERSION);
+    }
+
+    @Override
+    public void onCreate(SQLiteDatabase db) {
+        String urlListTable = "CREATE TABLE " + TABLE_VIDEO_LIST + "("
+                + KEY_ID + " INTEGER PRIMARY KEY AUTOINCREMENT,"
+                + KEY_TYPE + " INTEGER)";
+
+        String generalVideoList = "CREATE TABLE " + TABLE_BROWSER_VIDEO_LIST + "("
+                + KEY_ID + " INTEGER PRIMARY KEY AUTOINCREMENT,"
+                + KEY_VIDEO_ID + " INTEGER,"
+                + KEY_URL + " TEXT,"
+                + KEY_TITLE + " TEXT,"
+                + KEY_PACKAGE_NAME + " TEXT )";
+
+        String youtubeVideoList = "CREATE TABLE " + TABLE_YOUTUBE_VIDEO_LIST + "("
+                + KEY_PARAM + " TEXT, "
+                + KEY_VIDEO_ID + " INTEGER,"
+                + KEY_VIDEO_ITAG + " INTEGER,"
+                + KEY_URL + " TEXT,"
+                + KEY_TITLE + " TEXT,"
+                + KEY_ID + " INTEGER PRIMARY KEY AUTOINCREMENT,"
+                + KEY_PACKAGE_NAME + " TEXT )";
+
+        db.execSQL(urlListTable);
+        db.execSQL(generalVideoList);
+        db.execSQL(youtubeVideoList);
+    }
+
+    @Override
+    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        db.execSQL("DROP TABLE IF EXISTS " + TABLE_VIDEO_LIST);
+        db.execSQL("DROP TABLE IF EXISTS " + TABLE_BROWSER_VIDEO_LIST);
+        db.execSQL("DROP TABLE IF EXISTS " + TABLE_YOUTUBE_VIDEO_LIST);
+        onCreate(db);
+    }
+
+    @Override
+    protected void finalize() throws Throwable{
+        super.finalize();
+        if (mVideoDatabase != null) {
+            mVideoDatabase.close();
+        }
+
+        if (mSQLiteDatabase != null) {
+            mSQLiteDatabase.close();
+        }
+    }
+
+    public long addOrUpdateVideo(Video video) {
+        long id = alreadyExists(video);
+        if (id == -1) {
+            return addVideo(video);
+        } else {
+            return updateVideo(id, video);
+        }
+    }
+
+    public long addVideo(Video video) {
+        ContentValues values = new ContentValues();
+        long videoId = -1;
+        if (video instanceof BrowserVideo) {
+            ContentValues videoListValues = new ContentValues();
+            videoListValues.put(KEY_TYPE, VIDEO_TYPE_BROWSER);
+            videoId = mSQLiteDatabase.insert(TABLE_VIDEO_LIST, null, videoListValues);
+            assert(videoId != -1);
+
+            values.put(KEY_TITLE, video.getTitle());
+            values.put(KEY_URL, video.getUrl());
+            values.put(KEY_VIDEO_ID, videoId);
+            values.put(KEY_PACKAGE_NAME, video.getPackageName());
+            mSQLiteDatabase.insert(TABLE_BROWSER_VIDEO_LIST, null, values);
+        } else if (video instanceof YoutubeVideo) {
+            ContentValues videoListValues = new ContentValues();
+            videoListValues.put(KEY_TYPE, VIDEO_TYPE_YOUTUBE);
+            mSQLiteDatabase.insert(TABLE_VIDEO_LIST, null, videoListValues);
+            videoId = mSQLiteDatabase.insert(TABLE_VIDEO_LIST, null, videoListValues);
+            assert(videoId != -1);
+
+            YoutubeVideo youtubeVideo = (YoutubeVideo)video;
+            values.put(KEY_TITLE, youtubeVideo.getTitle());
+            values.put(KEY_VIDEO_ID, videoId);
+            values.put(KEY_PARAM, youtubeVideo.getParam());
+            values.put(KEY_PACKAGE_NAME, video.getPackageName());
+
+            List<YoutubeVideo.Format> formats = youtubeVideo.getAllFormats();
+            for(YoutubeVideo.Format format : formats) {
+                values.put(KEY_URL, format.url);
+                values.put(KEY_VIDEO_ID, videoId);
+                values.put(KEY_VIDEO_ITAG, format.itag);
+                mSQLiteDatabase.insert(TABLE_YOUTUBE_VIDEO_LIST, null, values);
+            }
+        }
+
+        return videoId;
+    }
+
+    public Video getVideo(long videoId) {
+        int categoryId = getCategory(videoId);
+        return getVideo(categoryId, videoId);
+    }
+
+    public Video getVideo(int videoCategory, long videoId) {
+        String videoQuery;
+        Cursor videoQueryCursor = null;
+        switch(videoCategory) {
+            case VIDEO_TYPE_BROWSER :
+                videoQuery = "SELECT * FROM " + TABLE_BROWSER_VIDEO_LIST + " WHERE "
+                        + KEY_VIDEO_ID + "=" + videoId;
+                videoQueryCursor = mSQLiteDatabase.rawQuery(videoQuery, null);
+                if (videoQueryCursor.moveToFirst()) {
+                    String url = videoQueryCursor.getString(2);
+                    String title = videoQueryCursor.getString(3);
+                    String packageName = videoQueryCursor.getString(4);
+                    Video video = new BrowserVideo(url, title);
+                    video.setDatabaseId(videoId);
+                    video.setPackageName(packageName);
+                    videoQueryCursor.close();
+                    return video;
+                }
+                break;
+            case VIDEO_TYPE_YOUTUBE :
+                videoQuery = "SELECT * FROM " + TABLE_YOUTUBE_VIDEO_LIST
+                        + " WHERE " + KEY_VIDEO_ID + "=" + videoId;
+                videoQueryCursor = mSQLiteDatabase.rawQuery(videoQuery, null);
+                if (videoQueryCursor.moveToFirst()) {
+                    String title = videoQueryCursor.getString(4);
+                    String param = videoQueryCursor.getString(0);
+                    String packageName = videoQueryCursor.getString(6);
+                    YoutubeVideo youtubeVideo = new YoutubeVideo(title, param);
+                    youtubeVideo.setDatabaseId(videoId);
+                    youtubeVideo.setPackageName(packageName);
+                    do {
+                        int itag = videoQueryCursor.getInt(2);
+                        String url = videoQueryCursor.getString(3);
+                        youtubeVideo.addFormat(url, itag);
+                    } while (videoQueryCursor.moveToNext());
+                    videoQueryCursor.close();
+                    return youtubeVideo;
+                }
+                break;
+        }
+
+        if (videoQueryCursor != null) {
+            videoQueryCursor.close();
+        }
+        return null;
+    }
+
+    public List<Video> getAllVideos() {
+        List<Video> videoList = new ArrayList<>();
+        videoList.addAll(getVideosOfType(VIDEO_TYPE_YOUTUBE));
+        videoList.addAll(getVideosOfType(VIDEO_TYPE_BROWSER));
+        return videoList;
+    }
+
+    public List<Video> getVideosOfType(int categoryType) {
+        List<Video> videoList = new ArrayList<>();
+
+        String selectQuery = "SELECT * FROM " + TABLE_VIDEO_LIST
+                + " WHERE " + KEY_TYPE + "=" + categoryType;
+
+        Cursor videoListCursor = mSQLiteDatabase.rawQuery(selectQuery, null);
+
+        if (videoListCursor.moveToFirst()) {
+            do {
+                int videoId = videoListCursor.getInt(0);
+                int videoCategory = videoListCursor.getInt(1);
+                Video video = getVideo(videoCategory, videoId);
+                if (video != null) {
+                    video.setDatabaseId(videoId);
+                    videoList.add(video);
+                }
+            } while (videoListCursor.moveToNext());
+        }
+
+        videoListCursor.close();
+        return videoList;
+    }
+
+    public int getVideoCount() {
+        String countQuery = "SELECT  * FROM " + TABLE_VIDEO_LIST;
+        Cursor cursor = mSQLiteDatabase.rawQuery(countQuery, null);
+        int videoCount = cursor.getCount();
+        cursor.close();
+
+        return videoCount;
+    }
+
+    public long alreadyExists(Video video) {
+        List<Video> videos;
+        if (video instanceof BrowserVideo) {
+            videos = getVideosOfType(VIDEO_TYPE_BROWSER);
+            for(Video v : videos) {
+                if (v.getUrl().equals(video.getUrl())) {
+                    return v.getDatabaseId();
+                }
+            }
+        } else if (video instanceof YoutubeVideo) {
+            videos = getVideosOfType(VIDEO_TYPE_YOUTUBE);
+            for(Video v : videos) {
+                if (((YoutubeVideo)v).getParam().equals(((YoutubeVideo)video).getParam())) {
+                    return v.getDatabaseId();
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    public long updateVideo(long id, Video video) {
+        deleteVideo(id);
+        return addVideo(video);
+    }
+
+    public int getCategory(long videoId) {
+        String selectQuery = "SELECT * FROM " + TABLE_VIDEO_LIST
+                + " WHERE " + KEY_ID + "=" + videoId;
+
+        Cursor cursor = mSQLiteDatabase.rawQuery(selectQuery, null);
+        if (cursor.moveToFirst()) {
+            int categoryId = cursor.getInt(1);
+            cursor.close();
+            return categoryId;
+        }
+
+        cursor.close();
+        return -1;
+    }
+
+    public void deleteVideo(long id) {
+        int categoryId = getCategory(id);
+        if (categoryId == -1) {
+            return;
+        }
+
+        switch (categoryId) {
+            case VIDEO_TYPE_BROWSER :
+                mSQLiteDatabase.delete(TABLE_BROWSER_VIDEO_LIST, KEY_VIDEO_ID + " = ?",
+                        new String[] { String.valueOf(id) });
+                break;
+            case VIDEO_TYPE_YOUTUBE :
+
+                mSQLiteDatabase.delete(TABLE_YOUTUBE_VIDEO_LIST, KEY_VIDEO_ID + " = ?",
+                        new String[] { String.valueOf(id) });
+                break;
+        }
+
+        mSQLiteDatabase.delete(TABLE_VIDEO_LIST, KEY_ID + " = ?",
+                new String[] { String.valueOf(id) });
+    }
+
+    public void clearDatabase() {
+        mSQLiteDatabase.delete(TABLE_VIDEO_LIST, null, null);
+        mSQLiteDatabase.delete(TABLE_BROWSER_VIDEO_LIST, null, null);
+        mSQLiteDatabase.delete(TABLE_YOUTUBE_VIDEO_LIST, null, null);
+    }
+}
+app/src/main/java/com/phantom/utils/Invokable.java
+public interface Invokable<T, R> {
+    R invoke(T input);
+}
+app/src/main/java/com/phantom/utils/enums/AppPermissions.java
+public enum AppPermissions {
+    External_Storage_Permission(0, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+
+    private final int mValue;
+    private final String mName;
+    AppPermissions(final int value, final String name) {
+        mValue = value;
+        mName = name;
+    }
+
+    private static Map<Integer, AppPermissions> map = new HashMap<>();
+
+    static {
+        for (AppPermissions legEnum : AppPermissions.values()) {
+            map.put(legEnum.mValue, legEnum);
+        }
+    }
+
+    public int getPermissionCode() {
+        return mValue;
+    }
+
+    public String getPermissionName() {
+        return mName;
+    }
+
+    public static AppPermissions getPermission(int value) {
+        return map.get(value);
+    }
+}
+app/src/main/java/com/phantom/utils/CheckPreferences.java
+public class CheckPreferences {
+
+    public static boolean loggingEnabled(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getBoolean("pref_url_logging", true);
+    }
+
+    public static boolean notificationsEnabled(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getBoolean("pref_notification", true);
+    }
+
+    public static int notificationCountAllowed(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return Integer.parseInt(prefs.getString("pref_notification_count", "1"));
+    }
+
+    public static Boolean getBooleanPreferenceValue(Preference preference) {
+        return android.support.v7.preference.PreferenceManager
+                .getDefaultSharedPreferences(preference.getContext())
+                .getBoolean(preference.getKey(), true);
+    }
+
+    public static Integer getIntegerPreferenceValue(Preference preference) {
+        return android.support.v7.preference.PreferenceManager
+                .getDefaultSharedPreferences(preference.getContext())
+                .getInt(preference.getKey(), -1);
+    }
+
+    public static String getStringPreferenceValue(Preference preference) {
+        return android.support.v7.preference.PreferenceManager
+                .getDefaultSharedPreferences(preference.getContext())
+                .getString(preference.getKey(), "");
+    }
+
+    public static Integer notificationDismissTime(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return Integer.parseInt(prefs.getString("pref_notification_dismiss_time", "15"));
+    }
+
+    public static boolean headsUpEnabled(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getBoolean("pref_headsup", false);
+    }
+
+    public static boolean vibrationEnabled(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getBoolean("pref_vibrate", false);
+    }
+
+    public static Integer vibrationAmount(Context context) {
+        if (!vibrationEnabled(context)) {
+            return 0;
+        }
+
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return Integer.parseInt(prefs.getString("pref_vibrate_amount", "200"));
+    }
+
+    public static void setDownloadLocation(Context context, String location) {
+        SharedPreferences settings = android.support.v7.preference.PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.putString("pref_download_location", location);
+        editor.apply();
+    }
+
+    public static String getDownloadLocation(Context context) {
+        File downloadDirectory = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOWNLOADS);
+
+        SharedPreferences settings = android.support.v7.preference.PreferenceManager.getDefaultSharedPreferences(context);
+        return settings.getString("pref_download_location", downloadDirectory.toString());
+    }
+
+    public static Boolean getDonationStatus(Context context) {
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+        return sharedPreferences.getBoolean("donation_status", false);
+    }
+
+    public static void setDonationStatus(Context context, Boolean donationStatus) {
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.putBoolean("donation_status", donationStatus);
+        editor.apply();
+    }
+
+    public static Boolean getAdEnabled(Context context) {
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+        return sharedPreferences.getBoolean("ad_enabled", true);
+    }
+
+    public static void setAdEnabled(Context context, Boolean enabled) {
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.putBoolean("ad_enabled", enabled);
+        editor.apply();
+    }
+
+    public static void toggleAdEnabled(Context context) {
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+        setAdEnabled(context, !sharedPreferences.getBoolean("ad_enabled", true));
+    }
+
+    public static boolean xposedErrorsEnabled(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getBoolean("prefs_enable_startup_errors", true);
+    }
+
+    public static boolean getModuleDisabled(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getBoolean("pref_module_disabled", false);
+    }
+
+
+    public static Boolean getDarkThemeEnabled(Context context) {
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+        return sharedPreferences.getBoolean("pref_dark_theme_enabled", false);
+    }
+
+    public static void setDarkThemeEnabled(Context context, Boolean enabled) {
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.putBoolean("pref_dark_theme_enabled", enabled);
+        editor.apply();
+    }
+
+}
+app/src/main/java/com/phantom/utils/Global.java
+public class Global {
+    public static final String TAG = "Global";
+    public static final String VIDEO_MIME = "video/*";
+    public static final String DEVELOPER_EMAIL = "onetapvideodownload@gmail.com";
+    public static final String MP4_FILE_EXTENSION = ".mp4";
+    public static final String PUBLIC_LICENSE_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkRWe3yER6u5+R4OWEn2DfIsdM7Ojxm+gVTbQrLJpROg+qr4zqcN/SKJB+yi9Jos8BvAHPemx7OX9uTjDGoBJ//GyScNGN+IQUKdXOUrrPtZGqeR02QlnonF5dM/abIKwlEX4qiIERYtsooi87k4kPn1cCe55YE8wyZkRHR5vy3rjJ0BMLkVkTVVlxlRgy+h0ihbDVvDU2sbb3kEDc5mOW5n6+hoofhCPoErzUhSlTOCmDxL1AaISA05JqOvWliSAQoM9ixCaWMoHcbnzf8HyR7ijyUNdifn6R9a791lvk2b8Ry5Y96p+VNsnLNUNrCjwwXkuJnmBvntRFrtrr0I0TwIDAQAB";
+    public static final List<String> DONATION_PRODUCT_IDS = Arrays.asList("remove_ads", "donate", "donate2", "donate4");
+
+    //List taken from Wikipedia
+    public static final String[] VIDEO_FILE_EXTENSION = {"webm", "mkv", "flv", "vob", "ogv", "ogg",
+            "drc", "gif", "gifv", "mng", "avi", "mov", "qt", "wmv", "yuv", "rm", "rmvb", "asf", "amv",
+            "mp4", "m4p", "m4v", "mpg", "mp2", "mpeg", "mpe", "mpv", "m2v", "svi", "3gp", "sg2", "mxf",
+            "roq", "nsv", "flb", "f4v", "f4p", "f4a", "f4b" };
+
+    public static String getDeveloperEmail() {
+        return DEVELOPER_EMAIL;
+    }
+
+    public static String getFilenameFromUrl(String url) {
+        Uri uri = Uri.parse(url);
+        return uri.getLastPathSegment();
+    }
+
+    public static String getDomain(String url) {
+        Uri uri = Uri.parse(url);
+        return uri.getHost();
+    }
+
+    public static String getNewFilename(String filename) {
+        int dotPos = filename.lastIndexOf('.');
+        if (dotPos == -1) {
+            dotPos = filename.length();
+        }
+
+        int openingBracketPos = filename.lastIndexOf('(');
+        int closingBracketPos = filename.lastIndexOf(')');
+        if (openingBracketPos != -1 && closingBracketPos != -1) {
+            String numberString = filename.substring(openingBracketPos + 1, closingBracketPos);
+            try {
+                Integer number = Integer.parseInt(numberString);
+                number = number + 1;
+                filename = filename.substring(0, openingBracketPos + 1) + number.toString()
+                        + filename.substring(closingBracketPos);
+            } catch (Exception e) {
+                filename = filename.substring(0, dotPos) + " (1)" + filename.substring(dotPos);
+            }
+        } else {
+            filename = filename.substring(0, dotPos) + " (1)" + filename.substring(dotPos);
+        }
+        return filename;
+    }
+
+    public static String suggestName(String location, String filename) {
+        boolean validVideoExtension = false;
+        for(String extension : VIDEO_FILE_EXTENSION) {
+            if (filename.endsWith(extension)) {
+                validVideoExtension = true;
+            }
+        }
+
+        if (!validVideoExtension) {
+            filename += MP4_FILE_EXTENSION;
+        }
+
+        File downloadFile = new File(location, filename);
+        if (!downloadFile.exists()) {
+            return downloadFile.getName();
+        }
+
+        filename = getNewFilename(filename);
+        return suggestName(location, filename);
+    }
+
+    public static boolean isResourceAvailable(String urlString) {
+        URL url;
+        HttpURLConnection urlConnection;
+        try {
+            url = new URL(urlString);
+            urlConnection = (HttpURLConnection) url.openConnection();
+            int responseCode = urlConnection.getResponseCode();
+
+            // HttpURLConnection will follow up to five HTTP redirects.
+            if (responseCode/100 == 2) {
+                return true;
+            }
+        } catch (Exception e) {
+            FirebaseCrash.report(e);
+            e.printStackTrace();
+        }
+
+        return false;
+    }
+
+    public static String getResourceMime(String urlString) {
+        URL url;
+        HttpURLConnection urlConnection;
+        try {
+            url = new URL(urlString);
+            urlConnection = (HttpURLConnection) url.openConnection();
+            int responseCode = urlConnection.getResponseCode();
+
+            // HttpURLConnection will follow up to five HTTP redirects.
+            if (responseCode/100 == 2) {
+                return urlConnection.getHeaderField("Content-Type");
+            }
+        } catch (Exception e) {
+            FirebaseCrash.report(e);
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    public static String getValidatedFilename(String filename) {
+        StringBuilder filenameBuilder = new StringBuilder(filename);
+        for(int i = 0; i < filename.length(); i++) {
+            char j = filename.charAt(i);
+            String reservedChars = "?:\"*|/\\<>";
+            if(reservedChars.indexOf(j) != -1) {
+                filenameBuilder.setCharAt(i, ' ');
+            }
+        }
+        return filenameBuilder.toString().trim();
+    }
+
+    public static void startOpenIntent(Context context, String fileLocation) {
+        try {
+            Intent openIntent = new Intent();
+            openIntent.setAction(android.content.Intent.ACTION_VIEW);
+            openIntent.setDataAndType(Uri.parse(fileLocation), "video/*");
+            openIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(openIntent);
+        } catch (ActivityNotFoundException e) {
+            FirebaseCrash.report(e);
+            e.printStackTrace();
+            Toast.makeText(context,
+                    context.getResources().getString(R.string.play_video_activity_not_found),
+                    Toast.LENGTH_LONG).show();
+        } catch (IllegalArgumentException e) {
+            FirebaseCrash.report(e);
+            e.printStackTrace();
+            Toast.makeText(context,
+                    context.getResources().getString(R.string.unable_to_file_file) + fileLocation,
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    public static void startFileShareIntent(Context context, String fileLocation) {
+        try {
+            Intent shareIntent = new Intent();
+            shareIntent.setAction(Intent.ACTION_SEND);
+
+            Uri fileUri = FileProvider.getUriForFile(context, "com.phantom.fileprovider",
+                    new File(fileLocation));
+            shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
+            shareIntent.setType(Global.VIDEO_MIME);
+            shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            context.startActivity(shareIntent);
+        } catch (ActivityNotFoundException e) {
+            FirebaseCrash.report(e);
+            e.printStackTrace();
+            Toast.makeText(context,
+                    context.getResources().getString(R.string.share_video_activity_not_found),
+                    Toast.LENGTH_LONG).show();
+        } catch (IllegalArgumentException e) {
+            FirebaseCrash.report(e);
+            e.printStackTrace();
+            Toast.makeText(context,
+                    context.getResources().getString(R.string.unable_to_file_file) + fileLocation,
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    public static void deleteFile(Context context, String fileLocation) {
+        File file = new File(fileLocation);
+        boolean result = file.delete();
+        if (result) {
+            Toast.makeText(context, R.string.file_deleted_successfully,
+                    Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(context, R.string.unable_to_delete_file,
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    public static String getHumanReadableSize(long bytes) {
+        if (bytes < 1000) {
+            return bytes + " B";
+        }
+
+        int exp = (int) (Math.log(bytes) / Math.log(1000));
+        String pre = "KMGTPE".charAt(exp-1) + "";
+        return String.format(Locale.getDefault(), "%.1f %sB", bytes / Math.pow(1000, exp), pre);
+    }
+
+    public static String getResponseBody(String url) {
+        try {
+            Request request = new Request.Builder()
+                    .url(url)
+                    .build();
+
+            OkHttpClient client = new OkHttpClient();
+            Response response = client.newCall(request).execute();
+            if (response.body().contentLength() < 3*1000*1000L) {
+                return response.body().string();
+            } else {
+                throw new IllegalArgumentException("Body content size is very large");
+            }
+        } catch (Exception e) {
+            FirebaseCrash.report(e);
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static void sendEmail(Context context, String to, String subject, String body) {
+        sendEmail(context, to, subject, body, null);
+    }
+
+    public static void sendEmail(Context context, String to, String subject, String body, String fileLocation) {
+        Intent emailIntent = new Intent(Intent.ACTION_SEND);
+        emailIntent.setType("text/plain");
+        emailIntent.putExtra(Intent.EXTRA_SUBJECT, subject);
+        emailIntent.putExtra(Intent.EXTRA_TEXT, body);
+        emailIntent.putExtra(Intent.EXTRA_EMAIL, to);
+
+        if (fileLocation != null) {
+            Uri fileUri = FileProvider.getUriForFile(context, "com.phantom.fileprovider", new File(fileLocation));
+            emailIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
+        }
+
+        emailIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        context.startActivity(Intent.createChooser(emailIntent, "Send via Email"));
+    }
+
+    public static boolean isLocalFile(String path) {
+        return path.startsWith("file://") || path.startsWith("/");
+    }
+
+    public static void copyUrlToClipboard(Context context, String url) {
+        ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        Uri copyUri = Uri.parse(url);
+        ClipData clip = ClipData.newUri(context.getContentResolver(), "URI", copyUri);
+        clipboard.setPrimaryClip(clip);
+    }
+
+    public static boolean isPlaystoreAvailable(@NonNull Context context) {
+        List<String> packages = new ArrayList<>();
+        packages.add("com.google.market");
+        packages.add("com.android.vending");
+
+        PackageManager packageManager = context.getPackageManager();
+        for (String packageName : packages) {
+            try {
+                packageManager.getPackageInfo(packageName, 0);
+                return true;
+            } catch (PackageManager.NameNotFoundException e) {
+                FirebaseCrash.report(e);
+            }
+        }
+        Log.v(TAG, "Playstore not available on the device!");
+        return false;
+    }
+
+    public static String getStackTrace(final Throwable throwable) {
+        final StringWriter sw = new StringWriter();
+        final PrintWriter pw = new PrintWriter(sw, true);
+        throwable.printStackTrace(pw);
+        return sw.getBuffer().toString();
+    }
+
+    public static Context getContext() {
+        Class activityThreadClass = XposedHelpers.findClass("android.app.ActivityThread", null);
+        Object activityThread = XposedHelpers.callStaticMethod(activityThreadClass, "currentActivityThread");
+        return (Context) XposedHelpers.callMethod(activityThread, "getSystemContext");
+    }
+
+    public static long getDirectorySize(File file) {
+        long size = 0;
+        if (file.isDirectory()) {
+            for (File childFile : file.listFiles()) {
+                size += getDirectorySize(childFile);
+                }
+            } else {
+            size = file.length();
+            }
+        return size;
+     }
+
+    public static boolean isPackageInstalled(Context context, String packageName) {
+        PackageManager packageManager = context.getPackageManager();
+        try {
+            packageManager.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES);
+            return true;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
+    }
+
+    public static boolean isClassPresent(ClassLoader loader, String className) {
+        try {
+            loader.loadClass(className);
+            return true;
+        } catch( ClassNotFoundException e ) {
+            return false;
+        }
+    }
+
+    public static boolean isInternetAvailable(Context context) {
+        ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo networkInfo = manager.getActiveNetworkInfo();
+        boolean isAvailable = false;
+        if (networkInfo != null && networkInfo.isConnected()) {
+            isAvailable = true;
+        }
+        return isAvailable;
+    }
+
+    public static boolean writeStringToFile(File file, String content) {
+        try {
+            FileWriter fileWriter = new FileWriter(file);
+            fileWriter.write(content);
+            fileWriter.flush();
+            fileWriter.close();
+        } catch (IOException e) {
+            FirebaseCrash.report(e);
+            return false;
+        }
+        return true;
+    }
+
+    public static boolean isFileReadable(File file) {
+        try {
+            BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
+            bufferedReader.readLine();
+            bufferedReader.close();
+        } catch (Exception e) {
+            FirebaseCrash.report(e);
+            return false;
+        }
+        return true;
+    }
+
+    public static String readFileToString(File file) {
+        String result = null;
+        try {
+            FileInputStream fis = new FileInputStream(file);
+            byte[] data = new byte[(int) file.length()];
+            fis.read(data);
+            fis.close();
+
+            result = new String(data, "UTF-8");
+        } catch (IOException e) {
+            FirebaseCrash.report(e);
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    public static JSONObject isValidJSONObject(String jsonString) {
+        JSONObject jsonObject = null;
+        try {
+            jsonObject = new JSONObject(jsonString);
+        } catch (JSONException e) {
+            FirebaseCrash.report(e);
+            e.printStackTrace();
+        }
+        return jsonObject;
+    }
+
+    public static int getXSignificantDigits(int version, int x) {
+        return version / (int)Math.pow(10, (int)Math.log10(version) - x + 1);
+    }
+
+    public static void loadJSONToMap(Map<Integer, Pair<String, String>> map, JSONObject jsonObject) throws JSONException{
+        Iterator<String> jsonKeys = jsonObject.keys();
+        while (jsonKeys.hasNext()) {
+            String key = jsonKeys.next();
+            JSONObject value = jsonObject.getJSONObject(key);
+            String mainClass = value.keys().next();
+            String methodClass = value.getString(mainClass);
+            map.put(Integer.parseInt(key), new Pair<>(mainClass, methodClass));
+        }
+        ApplicationLogMaintainer.sendBroadcast(Global.getContext(), "Parsed JSON and class names added to map.");
+    }
+
+    public static void parseYoutubeHooksFromJson(Map<Integer, String> map, JSONObject jsonObject) throws JSONException{
+        Iterator<String> jsonKeys = jsonObject.keys();
+        while (jsonKeys.hasNext()) {
+            String key = jsonKeys.next();
+            String className = jsonObject.getString(key);
+            map.put(Integer.parseInt(key), className);
+        }
+        ApplicationLogMaintainer.sendBroadcast(Global.getContext(), "Parsed JSON and class names added to map.");
+    }
+
+    public static void runMediaScanner(Context context, String[] paths) {
+        MediaScannerConnection.scanFile(context,
+                paths,
+                null,
+                null);
+    }
+
+    public static void showToastFromNonUiThread(final Context context, final Integer messageId, final Integer timePeriod) {
+        showToastFromNonUiThread(context, context.getResources().getString(messageId), timePeriod);
+    }
+
+    public static void showToastFromNonUiThread(final Context context, final String message, final Integer timePeriod) {
+        Handler handler = new Handler(Looper.getMainLooper());
+        handler.post(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(context, message, timePeriod).show();
+            }
+        });
+    }
+}
+app/src/main/java/com/phantom/onetapvideodownload/Video/Video.java
+public interface Video {
+    String getPackageName();
+    void setPackageName(String packageName);
+    String getUrl();
+    String getTitle();
+    long getDatabaseId();
+    void setDatabaseId(long databaseId);
+    List<DownloadOptionItem> getOptions(Context context, DownloadOptionAdapter downloadOptionAdapter);
+    boolean isResourceAvailable();
+}
+app/src/main/java/com/phantom/onetapvideodownload/ui/downloadoptions/DownloadOptionAdapter.java
+public class DownloadOptionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+    public static final String FOLDER_CHOOSER_TAG = "VideoDownloadLocation";
+    private List<DownloadOptionItem> mOptionList;
+    private Context mContext;
+    private String mDownloadLocation;
+
+    public DownloadOptionAdapter(final Context context, Video video) {
+        mContext = context;
+        mDownloadLocation = CheckPreferences.getDownloadLocation(context);
+        mOptionList = new ArrayList<>();
+        addDefaultOptions();
+        mOptionList.addAll(video.getOptions(context, this));
+    }
+
+    private void addDefaultOptions() {
+        mOptionList.add(downloadLocationOption());
+    }
+
+    private DownloadOptionItem downloadLocationOption() {
+        return new DownloadOptionItem(DownloadOptionIds.DownloadLocation,
+                R.drawable.directory,
+                R.string.download_location,
+                CheckPreferences.getDownloadLocation(mContext),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        new FolderChooserDialog.Builder(mContext)
+                                .chooseButton(R.string.md_choose_label)
+                                .tag(FOLDER_CHOOSER_TAG)
+                                .initialPath(mDownloadLocation)
+                                .allowNewFolder(true, R.string.new_folder)
+                                .show((MainActivity) mContext);
+                    }
+                }
+        );
+    }
+
+    @Override
+    public int getItemViewType(int position) {
+        return 0;
+    }
+
+    @Override
+    public int getItemCount() {
+        return mOptionList.size();
+    }
+
+    @Override
+    public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+        View view = LayoutInflater.from(parent.getContext())
+                .inflate(R.layout.dialog_download_file_item, parent, false);
+
+        return new DownloadOptionViewHolder(view);
+    }
+
+    @Override
+    public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+        DownloadOptionItem item = mOptionList.get(position);
+        Integer resourceId = item.getIcon();
+        Integer optionLabel = item.getOptionLabel();
+        String optionValue = item.getOptionValue();
+        DownloadOptionViewHolder vh = (DownloadOptionViewHolder) holder;
+        vh.setOptionImage(resourceId);
+        vh.setOptionLabel(optionLabel);
+        vh.setOptionValue(optionValue);
+        vh.setOptionOnClickListener(item.getOnClickListener());
+    }
+
+    public void setDownloadLocation(String directory) {
+        mDownloadLocation = directory;
+        DownloadOptionItem downloadOptionItem = getOptionItem(DownloadOptionIds.DownloadLocation);
+        if (downloadOptionItem == null) {
+            return;
+        }
+
+        downloadOptionItem.setOptionValue(directory);
+        notifyDataSetChanged();
+    }
+
+    public DownloadOptionItem getOptionItem(DownloadOptionIds downloadOptionId) {
+        for(DownloadOptionItem downloadOptionItem : mOptionList) {
+            if (downloadOptionItem.getDownloadOptionId() == downloadOptionId) {
+                return downloadOptionItem;
+            }
+        }
+
+        return null;
+    }
+
+    public void setOptionItem(DownloadOptionItem downloadOptionItem) {
+        for(int i=0; i < mOptionList.size(); i++) {
+            if (downloadOptionItem.getDownloadOptionId() == mOptionList.get(i).getDownloadOptionId()) {
+                mOptionList.set(i, downloadOptionItem);
+                break;
+            }
+        }
+        notifyDataSetChanged();
+    }
+}

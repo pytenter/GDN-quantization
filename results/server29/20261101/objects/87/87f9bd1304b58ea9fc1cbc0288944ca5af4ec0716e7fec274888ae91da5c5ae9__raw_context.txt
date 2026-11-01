@@ -1,0 +1,2802 @@
+bauble/editor.py
+class GenericEditorPresenter(object):
+    """
+    The presenter of the Model View Presenter Pattern
+
+    :param model: an object instance mapped to an SQLAlchemy table
+    :param view: should be an instance of GenericEditorView
+
+    The presenter should usually be initialized in the following order:
+    1. initialize the widgets
+    2. refresh the view, put values from the model into the widgets
+    3. connect the signal handlers
+    """
+    problem_color = Gdk.color_parse('#FFDCDF')
+    widget_to_field_map = {}
+    view_accept_buttons = []
+
+    PROBLEM_DUPLICATE = random()
+    PROBLEM_EMPTY = random()
+
+    def __init__(self, model, view, refresh_view=False, session=None,
+                 do_commit=False, committing_results=[Gtk.ResponseType.OK]):
+        self.model = model
+        self.view = view
+        self.problems = set()
+        self._dirty = False
+        self.is_committing_presenter = do_commit
+        self.committing_results = committing_results
+        self.running_threads = []
+        self.owns_session = False
+        self.session = session
+        self.clipboard_presenters = []
+        if not hasattr(self.__class__, 'clipboard'):
+            logging.debug('creating clipboard in presenter class %s' % self.__class__.__name__)
+            self.__class__.clipboard = {}
+
+        if session is None:
+            try:
+                self.session = object_session(model)
+            except Exception as e:
+                logger.debug("GenericEditorPresenter::__init__ - %s, %s" % (type(e), e))
+
+            if self.session is None:  # object_session gave None without error
+                if db.Session is not None:
+                    self.session = db.Session()
+                    self.owns_session = True
+                    if isinstance(model, db.Base):
+                        self.model = model = self.session.merge(model)
+                else:
+                    logger.debug('db.Session was None, I cannot get a session.')
+                    self.session = None
+
+        if view:
+            view.accept_buttons = self.view_accept_buttons
+            if model and refresh_view:
+                self.refresh_view()
+            view.connect_signals(self)
+
+    def create_toolbar(self, *args, **kwargs):
+        view, model = self.view, self.model
+        logging.debug('creating toolbar in content_area presenter %s' % self.__class__.__name__)
+        actiongroup = Gtk.ActionGroup('window-clip-actions')
+        accelgroup = Gtk.AccelGroup()
+        fake_toolbar = Gtk.Toolbar()
+        fake_toolbar.set_name('toolbar')
+        view.get_window().add_accel_group(accelgroup)
+        view.get_window().get_content_area().pack_start(fake_toolbar, True, True, 0)
+        for shortcut, cb in (('<ctrl><shift>c', self.on_window_clip_copy),
+                             ('<ctrl><shift>v', self.on_window_clip_paste)):
+            action = Gtk.Action(shortcut, shortcut, 'clip-action', None)
+            actiongroup.add_action_with_accel(action, shortcut)
+            action.connect("activate", cb)
+            action.set_accel_group(accelgroup)
+            action.connect_accelerator()
+            toolitem = action.create_tool_item()
+            fake_toolbar.insert(toolitem, -1)
+        fake_toolbar.set_visible(False)
+        self.clipboard_presenters.append(self)
+
+    def register_clipboard(self):
+        parent = self.parent_ref()
+        parent.clipboard_presenters.append(self)
+
+    def on_window_clip_copy(self, widget, *args, **kwargs):
+        try:
+            notebook = self.view.widgets['notebook']
+            current_page_no = notebook.get_current_page()
+            current_page_widget = notebook.get_nth_page(current_page_no)
+        except:
+            notebook = None
+            current_page_widget = self.view.get_window().get_content_area()
+        for presenter in self.clipboard_presenters:
+            for name in presenter.widget_to_field_map:
+                container = presenter.view.widgets[name]
+                while container.get_parent() != notebook:
+                    if current_page_widget == container:
+                        break
+                    container = container.get_parent()
+                if current_page_widget == container:
+                    value = presenter.view.widget_get_value(name)
+                    logger.debug('writing »%s« in clipboard %s for %s' % (value, presenter.__class__.__name__, name))
+                    presenter.clipboard[name] = value
+
+    def on_window_clip_paste(self, widget, *args, **kwargs):
+        try:
+            notebook = self.view.widgets['notebook']
+            current_page_no = notebook.get_current_page()
+            current_page_widget = notebook.get_nth_page(current_page_no)
+        except:
+            notebook = None
+            current_page_widget = self.view.get_window().get_content_area()
+        for presenter in self.clipboard_presenters:
+            for name in presenter.widget_to_field_map:
+                container = presenter.view.widgets[name]
+                while container.get_parent() != notebook:
+                    if current_page_widget == container:
+                        break
+                    container = container.get_parent()
+                if current_page_widget == container:
+                    if presenter.view.widget_get_value(name):
+                        logger.debug('skipping %s in clipboard %s because widget has value' % (name, presenter.__class__.__name__))
+                        continue
+                    clipboard_value = presenter.clipboard.get(name)
+                    if not clipboard_value:
+                        logger.debug('skipping %s because clipboard %s has no value' % (name, presenter.__class__.__name__))
+                        continue
+                    logger.debug('setting »%s« from clipboard %s for %s' % (clipboard_value, presenter.__class__.__name__, name))
+                    presenter.view.widget_set_value(name, clipboard_value)
+
+    def refresh_sensitivity(self):
+        logger.debug('you should implement this in your subclass')
+
+    def refresh_view(self):
+        '''fill the values in the widgets as the field values in the model
+
+        for radio button groups, we have several widgets all referring
+        to the same model attribute.
+
+         '''
+        for widget, attr in list(self.widget_to_field_map.items()):
+            value = getattr(self.model, attr)
+            value = (value is not None) and value or ''
+            self.view.widget_set_value(widget, value)
+
+    def cancel_threads(self):
+        for k in self.running_threads:
+            try:
+                k.cancel()
+            except:
+                pass
+        for k in self.running_threads:
+            k.join()
+        self.running_threads = []
+
+    def start_thread(self, thread):
+        self.running_threads.append(thread)
+        thread.start()
+        return thread
+
+    def idle_start_thread(self, cls, *args, **kwargs):
+        def create_and_start(cls, args, kwargs):
+            thread = cls(*args, **kwargs)
+            self.running_threads.append(thread)
+            thread.start()
+        GObject.idle_add(create_and_start, cls, args, kwargs)
+
+    def commit_changes(self):
+        '''
+        Commit the changes to self.session()
+        '''
+        objs = list(self.session)
+        try:
+            self.session.commit()
+            try:
+                bauble.gui.get_view().update()
+            except Exception as e:
+                pass
+        except Exception as e:
+            self.session.rollback()
+            self.session.add_all(objs)
+            raise
+        finally:
+            if self.owns_session:
+                self.session.close()
+        return True
+
+    def __set_model_attr(self, attr, value):
+        if getattr(self.model, attr) != value:
+            setattr(self.model, attr, value)
+            self._dirty = True
+            self.view._dirty = True
+            self.view.set_accept_buttons_sensitive(not self.has_problems())
+
+    def __get_widget_name(self, widget):
+        return (isinstance(widget, str)
+                and widget
+                or Gtk.Buildable.get_name(widget))
+
+    widget_get_name = __get_widget_name
+
+    def __get_widget_attr(self, widget):
+        return self.widget_to_field_map.get(self.__get_widget_name(widget))
+
+    def on_textbuffer_changed(self, widget, value=None, attr=None):
+        """handle 'changed' signal on textbuffer widgets.
+
+        this will not work directly. check the unanswered question
+        http://stackoverflow.com/questions/32106765/
+
+        to use it, you need pass the `attr` yourself.
+        """
+
+        if attr is None:
+            attr = self.__get_widget_attr(widget)
+        if attr is None:
+            return
+        if value is None:
+            value = widget.props.text
+            value = value and utils.utf8(value) or None
+        logger.debug("on_text_entry_changed(%s, %s) - %s → %s"
+                     % (widget, attr, getattr(self.model, attr), value))
+        self.__set_model_attr(attr, value)
+
+    def on_text_entry_changed(self, widget, value=None):
+        "handle 'changed' signal on generic text entry widgets."
+
+        attr = self.__get_widget_attr(widget)
+        if attr is None:
+            return
+        value = self.view.widget_get_value(widget)
+        logger.debug("on_text_entry_changed(%s, %s) - %s → %s"
+                     % (widget, attr, getattr(self.model, attr), value))
+        self.__set_model_attr(attr, value)
+        return value
+
+    def on_numeric_text_entry_changed(self, widget, value=None):
+        """handle 'changed' signal on numeric text entry widgets.
+
+        if the widget is associated to a model attribute, new value is
+        type-checked.  as long as the user types digits, they are accepted.
+        whatever else gets ignored.
+
+        """
+        attr = self.__get_widget_attr(widget)
+        if attr is None:
+            return
+        value = self.view.widget_get_value(widget)
+        if value == '':
+            value = 0
+        try:
+            value = int(value)
+            self.__set_model_attr(attr, value)
+        except:
+            value = getattr(self.model, attr)
+            self.view.widget_set_value(widget, value)
+        return value
+
+    def on_non_empty_text_entry_changed(self, widget, value=None):
+        "handle 'changed' signal on compulsory text entry widgets."
+
+        value = self.on_text_entry_changed(widget, value)
+        if not value:
+            self.add_problem(self.PROBLEM_EMPTY, widget)
+        else:
+            self.remove_problem(self.PROBLEM_EMPTY, widget)
+        return value
+
+    def on_unique_text_entry_changed(self, widget, value=None):
+        "handle 'changed' signal on text entry widgets with an uniqueness "
+        "constraint."
+
+        attr = self.__get_widget_attr(widget)
+        if attr is None:
+            return
+        if value is None:
+            value = widget.props.text
+            value = value and utils.utf8(value) or None
+        if not value:
+            self.add_problem(self.PROBLEM_EMPTY, widget)
+        else:
+            self.remove_problem(self.PROBLEM_EMPTY, widget)
+        if getattr(self.model, attr) == value:
+            return
+        logger.debug("on_unique_text_entry_changed(%s, %s) - %s → %s"
+                     % (widget, attr, getattr(self.model, attr), value))
+        ## check uniqueness
+        klass = self.model.__class__
+        k_attr = getattr(klass, attr)
+        q = self.session.query(klass)
+        q = q.filter(k_attr == value)
+        omonym = q.first()
+        if omonym is not None and omonym is not self.model:
+            self.add_problem(self.PROBLEM_DUPLICATE, widget)
+        else:
+            self.remove_problem(self.PROBLEM_DUPLICATE, widget)
+        ## ok
+        self.__set_model_attr(attr, value)
+
+    def on_datetime_entry_changed(self, widget, value=None):
+        "handle 'changed' signal on datetime entry widgets."
+
+        attr = self.__get_widget_attr(widget)
+        logger.debug("on_datetime_entry_changed(%s, %s)" % (widget, attr))
+        if value is None:
+            value = widget.props.text
+            value = value and utils.utf8(value) or None
+        self.__set_model_attr(attr, value)
+
+    def on_check_toggled(self, widget, value=None):
+        "handle toggled signal on check buttons"
+        attr = self.__get_widget_attr(widget)
+        if value is None:
+            value = self.view.widget_get_active(widget)
+            self.view.widget_set_inconsistent(widget, False)
+        if attr is not None:
+            self.__set_model_attr(attr, value)
+        else:
+            logging.debug("presenter %s does not know widget %s" % (
+                self.__class__.__name__, self.__get_widget_name(widget)))
+
+    on_chkbx_toggled = on_check_toggled
+
+    def on_relation_entry_changed(self, widget, value=None):
+        attr = self.__get_widget_attr(widget)
+        logger.debug(
+            'calling unimplemented on_relation_entry_changed(%s, %s, %s(%s))'
+            % (widget, attr, type(value), value))
+
+    def on_group_changed(self, widget, *args):
+        "handle group-changed signal on radio-button"
+        if args:
+            logger.warning("on_group_changed received extra arguments" +
+                           str(args))
+        attr = self.__get_widget_attr(widget)
+        value = self.__get_widget_name(widget)
+        self.__set_model_attr(attr, value)
+
+    def on_combo_changed(self, widget, value=None, *args):
+        """handle changed signal on combo box
+
+        value is only specified while testing"""
+        attr = self.__get_widget_attr(widget)
+        if value is None:
+            index = self.view.combobox_get_active(widget)
+            widget_model = self.view.combobox_get_model(widget)
+            value = widget_model[index][0]
+        self.__set_model_attr(attr, value)
+        self.refresh_view()
+
+    def dirty(self):
+        logger.info('calling deprecated "dirty". use "is_dirty".')
+        return self.is_dirty()
+
+    # whether the presenter should be commited or not
+    def is_dirty(self):
+        """is the presenter dirty?
+
+        the presenter is dirty depending on whether it has changed anything
+        that needs to be committed.  This doesn't necessarily imply that the
+        session is not dirty nor is it required to change back to True if
+        the changes are committed.
+        """
+        return self._dirty
+
+    def has_problems(self, widget=None):
+        """
+        Return True/False depending on if widget has any problems
+        attached to it. if no widget is specified, result is True if
+        there is any problem at all.
+        """
+        if widget is None:
+            return self.problems and True or False
+        for p, w in self.problems:
+            if widget == w:
+                return True
+        return False
+
+    def clear_problems(self):
+        """
+        Clear all the problems from all widgets associated with the presenter
+        """
+        tmp = self.problems.copy()
+        list(map(lambda p: self.remove_problem(p[0], p[1]), tmp))
+        self.problems.clear()
+
+    def remove_problem(self, problem_id, widget=None):
+        """
+        Remove problem_id from self.problems and reset the background
+        color of the widget(s) in problem_widgets.  If problem_id is
+        None and problem_widgets is None then method won't do anything.
+
+        :param problem_id: the problem to remove, if None then remove
+         any problem from the problem_widget(s)
+
+        :param problem_widgets: a Gtk.Widget instance to remove the problem
+         from, if None then remove all occurrences of problem_id regardless
+         of the widget
+        """
+        logger.debug('remove_problem(%s, %s, %s)' %
+                     (self, problem_id, widget))
+        if problem_id is None and widget is None:
+            logger.warning('invoke remove_problem with None, None')
+            # if no problem id and not problem widgets then don't do anything
+            return
+
+        if not isinstance(widget, (Gtk.Widget, type(None))):
+            try:
+                widget = getattr(self.view.widgets, widget)
+            except:
+                logger.info("can't get widget %s" % widget)
+
+        tmp = self.problems.copy()
+        for p, w in tmp:
+            if (w == widget and p == problem_id) or \
+                    (widget is None and p == problem_id) or \
+                    (w == widget and problem_id is None):
+                if w and not prefs.testing:
+                    w.modify_bg(Gtk.StateType.NORMAL, None)
+                    w.modify_base(Gtk.StateType.NORMAL, None)
+                    w.queue_draw()
+                self.problems.remove((p, w))
+        logger.debug('problems now: %s' % self.problems)
+
+    def add_problem(self, problem_id, problem_widgets=None):
+        """
+        Add problem_id to self.problems and change the background of widget(s)
+        in problem_widgets.
+
+        :param problem_id: A unique id for the problem.
+
+        :param problem_widgets: either a widget or list of widgets
+          whose background color should change to indicate a problem
+          (default=None)
+        """
+        ## map case list of widget to list of cases single widget.
+        logger.debug('add_problem(%s, %s, %s)' %
+                     (self, problem_id, problem_widgets))
+        if isinstance(problem_widgets, (tuple, list)):
+            list(map(lambda w: self.add_problem(problem_id, w), problem_widgets))
+            return
+
+        ## here single widget.
+        widget = problem_widgets
+        if not isinstance(widget, Gtk.Widget):
+            try:
+                widget = getattr(self.view.widgets, widget)
+            except:
+                logger.info("can't get widget %s" % widget)
+        self.problems.add((problem_id, widget))
+        if isinstance(widget, str):
+            self.view.mark_problem(widget)
+        elif widget is not None:
+            widget.modify_bg(Gtk.StateType.NORMAL, self.problem_color)
+            widget.modify_base(Gtk.StateType.NORMAL, self.problem_color)
+            widget.queue_draw()
+        logger.debug('problems now: %s' % self.problems)
+
+    def init_enum_combo(self, widget_name, field):
+        """
+        Initialize a Gtk.ComboBox widget with name widget_name from
+        enum values in self.model.field
+
+        :param widget_name:
+
+        :param field:
+        """
+        combo = self.view.widgets[widget_name]
+        mapper = object_mapper(self.model)
+        values = mapper.c[field].type.values
+        if None in values:
+            logger.debug("None value found in column %s, that is not in the Enum" % field)
+            values.remove(None)
+            values.insert(0, '')
+        values = sorted(values)
+        utils.setup_text_combobox(combo, values)
+
+    def set_model_attr(self, attr, value, validator=None):
+        """
+        It is best to use this method to set values on the model
+        rather than setting them directly.  Derived classes can
+        override this method to take action when the model changes.
+
+        :param attr: the attribute on self.model to set
+        :param value: the value the attribute will be set to
+        :param validator: validates the value before setting it
+        """
+        logger.debug('editor.set_model_attr(%s, %s)' % (attr, value))
+        if validator:
+            try:
+                logger.debug("validating %s(%s) for %s using %s" % (type(value).__name__, value, attr, validator.wrapped))
+                value = validator.to_python(value)
+                self.remove_problem('BAD_VALUE_%s' % attr)
+            except ValidatorError as e:
+                logger.debug("GenericEditorPresenter.set_model_attr %s" % e)
+                self.add_problem('BAD_VALUE_%s' % attr)
+            else:
+                logger.debug("validated %s(%s) for %s" % (type(value).__name__, value, attr))
+                setattr(self.model, attr, value)
+        else:
+            setattr(self.model, attr, value)
+
+    def assign_simple_handler(self, widget_name, model_attr, validator=None):
+        '''
+        Assign handlers to widgets to change fields in the model.
+
+        :param widget_name:
+
+        :param model_attr:
+
+        :param validator:
+
+        Note: Where widget is a Gtk.ComboBox or Gtk.ComboBoxEntry then
+        the value is assumed to be stored in model[row][0]
+        '''
+        widget = self.view.widgets[widget_name]
+        check(widget is not None, _('no widget with name %s') % widget_name)
+
+        class ProblemValidator(Validator):
+
+            def __init__(self, presenter, wrapped):
+                self.presenter = presenter
+                self.wrapped = wrapped
+
+            def to_python(self, value):
+                try:
+                    value = self.wrapped.to_python(value)
+                    self.presenter.remove_problem('BAD_VALUE_%s'
+                                                  % model_attr, widget)
+                except Exception as e:
+                    logger.debug("GenericEditorPresenter.ProblemValidator"
+                                 ".to_python %s" % e)
+                    self.presenter.add_problem('BAD_VALUE_%s'
+                                               % model_attr, widget)
+                    raise
+                return value
+
+        if validator:
+            validator = ProblemValidator(presenter=self, wrapped=validator)
+
+        if isinstance(widget, Gtk.Entry):
+            def on_changed(entry):
+                self.set_model_attr(model_attr, entry.props.text, validator)
+            self.view.connect(widget, 'changed', on_changed)
+        elif isinstance(widget, Gtk.TextView):
+            def on_changed(textbuff):
+                self.set_model_attr(model_attr, textbuff.props.text, validator)
+            buff = widget.get_buffer()
+            self.view.connect(buff, 'changed', on_changed)
+        elif isinstance(widget, Gtk.ComboBox):
+            # this also handles Gtk.ComboBoxEntry since it extends
+            # Gtk.ComboBox
+            def combo_changed(combo, data=None):
+                if not combo.get_active_iter():
+                    # get here if there is no model on the ComboBoxEntry
+                    return
+                model = combo.get_model()
+                if model is None or combo.get_active_iter() is None:
+                    return
+                value = model[combo.get_active_iter()][0]
+                value = combo.get_model()[combo.get_active_iter()][0]
+                if isinstance(widget, Gtk.ComboBox) and isinstance(widget.get_child(), Gtk.Entry):
+                    widget.get_child().set_text(utils.utf8(value) or '')
+                self.set_model_attr(model_attr, value, validator)
+
+            def entry_changed(entry, data=None):
+                self.set_model_attr(model_attr, entry.props.text, validator)
+
+            self.view.connect(widget, 'changed', combo_changed)
+            if isinstance(widget, Gtk.ComboBox) and isinstance(widget.get_child(), Gtk.Entry):
+                self.view.connect(widget.get_child(), 'changed', entry_changed)
+        elif isinstance(widget, (Gtk.ToggleButton, Gtk.CheckButton,
+                                 Gtk.RadioButton)):
+            def toggled(button, data=None):
+                active = button.get_active()
+                logger.debug('toggled %s: %s' % (widget_name, active))
+                button.set_inconsistent(False)
+                self.set_model_attr(model_attr, active, validator)
+            self.view.connect(widget, 'toggled', toggled)
+        else:
+            raise ValueError('assign_simple_handler() -- '
+                             'widget type not supported: %s' % type(widget))
+
+    def assign_completions_handler(self, widget, get_completions,
+                                   on_select=lambda v: v):
+        """Dynamically handle completions on a Gtk.Entry.
+
+        :param widget: a Gtk.Entry instance or widget name
+
+        :param get_completions: the callable to invoke when a list of
+          completions is requested, accepts the string typed, returns an
+          iterable of completions
+
+        :param on_select: callback for when a value is selected from
+          the list of completions
+
+        """
+
+        logger.debug('assign_completions_handler %s' % widget)
+        if isinstance(widget, str):
+            widget = self.view.widgets[widget]
+        PROBLEM = hash(Gtk.Buildable.get_name(widget))
+
+        def add_completions(text):
+            if get_completions is None:
+                logger.debug("completion model has static list")
+                # get_completions is None usually means that the
+                # completions model already has a static list of
+                # completions
+                return
+            # get the completions using [0:key_length] as the start of
+            # the string
+
+            def idle_callback(values):
+                completion = widget.get_completion()
+                utils.clear_model(completion)
+                completion_model = Gtk.ListStore(object)
+                for v in values:
+                    completion_model.append([v])
+                completion.set_model(completion_model)
+
+            key_length = widget.get_completion().props.minimum_key_length
+            values = get_completions(text[:key_length])
+            logger.debug('completions to add: %s' % str([i for i in values]))
+            GObject.idle_add(idle_callback, values)
+
+        def on_changed(entry, *args):
+            logger.debug('assign_completions_handler::on_changed %s %s'
+                         % (entry, args))
+            text = entry.get_text()
+
+            key_length = widget.get_completion().props.minimum_key_length
+            if len(text) > key_length:
+                logger.debug('recomputing completions matching %s' % text)
+                add_completions(text)
+
+            def idle_callback(text):
+                logger.debug('on_changed - part two')
+                comp = entry.get_completion()
+                comp_model = comp.get_model()
+                found = []
+                if comp_model:
+                    comp_model.foreach(lambda m, p, i, ud: logger.debug("item(%s) of comp_model: %s" % (p, m[p][0])), None)
+                    # search the tree model to see if the text in the
+                    # entry matches one of the completions, if so then
+                    # emit the match-selected signal, this allows us to
+                    # type a match in the entry without having to select
+                    # it from the popup
+                    def _cmp(row, data):
+                        return utils.utf8(row[0])[:len(text)].lower() == data.lower()
+                    found = utils.search_tree_model(comp_model, text, _cmp)
+                    logger.debug("matches found in ListStore: %s" % str(found))
+                    if not found:
+                        logger.debug('nothing found, nothing to select from')
+                    elif len(found) == 1:
+                        logger.debug('one match, decide whether to select it - %s' % found[0])
+                        v = comp.get_model()[found[0]][0]
+                        # only auto select if the full string has been entered
+                        if text.lower() == utils.utf8(v).lower():
+                            comp.emit('match-selected', comp.get_model(), found[0])
+                        else:
+                            found = None
+                    else:
+                        logger.debug('multiple matches, we cannot select any - %s' % str(found))
+
+                if text != '' and not found and PROBLEM not in self.problems:
+                    self.add_problem(PROBLEM, widget)
+                    on_select(None)
+
+                # if entry is empty select nothing and remove all problem
+                if text == '':
+                    on_select(None)
+                    self.remove_problem(PROBLEM, widget)
+                elif not comp_model:
+                    ## completion model is not in place when object is forced
+                    ## programmatically.
+                    on_select(text)  # `on_select` will know how to convert the
+                                     # text into a properly typed value.
+                    self.remove_problem(PROBLEM, widget)
+                logger.debug('on_changed - part two - returning')
+
+            GObject.idle_add(idle_callback, text)
+            logger.debug('on_changed - part one - returning')
+            return True
+
+        def on_match_select(completion, compl_model, treeiter):
+            value = compl_model[treeiter][0]
+            # temporarily block the changed ID so that this function
+            # doesn't get called twice
+            widget.handler_block(_changed_sid)
+            widget.props.text = utils.utf8(value)
+            widget.handler_unblock(_changed_sid)
+            self.remove_problem(PROBLEM, widget)
+            on_select(value)
+            return True  # return True or on_changed() will be called with ''
+
+        completion = widget.get_completion()
+        check(completion is not None, 'the Gtk.Entry %s doesn\'t have a '
+              'completion attached to it' % Gtk.Buildable.get_name(widget))
+
+        _changed_sid = self.view.connect(widget, 'changed', on_changed)
+        self.view.connect(completion, 'match-selected', on_match_select)
+
+    def start(self):
+        """run the dialog associated to the view
+
+        """
+        result = self.view.get_window().run()
+        if (self.is_committing_presenter
+            and result in self.committing_results
+            and self._dirty):
+            self.commit_changes()
+        self.cleanup()
+        return result
+
+    def cleanup(self):
+        """
+        Revert any changes the presenter might have done to the
+        widgets so that next time the same widgets are open everything
+        will be normal.
+
+        By default it only calls self.view.cleanup()
+        """
+        self.clear_problems()
+        if isinstance(self.view, GenericEditorView):
+            self.view.cleanup()
+bauble/plugins/garden/location.py
+class Location(db.Base, db.Serializable, db.WithNotes):
+    """
+    :Table name: location
+
+    :Columns:
+        *name*:
+
+        *description*:
+
+    :Relation:
+        *plants*:
+
+    """
+    __tablename__ = 'location'
+    __mapper_args__ = {'order_by': 'name'}
+
+    # columns
+    # refers to beds by unique codes
+    code = Column(Unicode(12), unique=True, nullable=False)
+    name = Column(Unicode(80))
+    description = Column(UnicodeText)
+
+    # relations
+    plants = relation('Plant', backref=backref('location', uselist=False))
+
+    def search_view_markup_pair(self):
+        '''provide the two lines describing object for SearchView row.
+        '''
+        if self.description is not None:
+            return (utils.xml_safe(str(self)),
+                    utils.xml_safe(str(self.description)))
+        else:
+            return utils.xml_safe(str(self))
+
+    @validates('code', 'name')
+    def validate_stripping(self, key, value):
+        if value is None:
+            return None
+        return value.strip()
+
+    def __str__(self):
+        if self.name:
+            return '(%s) %s' % (self.code, self.name)
+        else:
+            return str(self.code)
+
+    def has_accessions(self):
+        '''true if location is linked to at least one accession
+        '''
+
+        return False
+
+    @classmethod
+    def retrieve(cls, session, keys):
+        try:
+            return session.query(cls).filter(
+                cls.code == keys['code']).one()
+        except:
+            return None
+
+    def top_level_count(self):
+        accessions = set(p.accession for p in self.plants)
+        species = set(a.species for a in accessions)
+        genera = set(s.genus for s in species)
+        return {(1, 'Locations'): 1,
+                (2, 'Plantings'): len(self.plants),
+                (3, 'Living plants'): sum(p.quantity for p in self.plants),
+                (4, 'Accessions'): set(a.id for a in accessions),
+                (5, 'Species'): set(s.id for s in species),
+                (6, 'Genera'): set(g.id for g in genera),
+                (7, 'Families'): set(g.family.id for g in genera),
+                (8, 'Sources'): set([a.source.source_detail.id
+                                     for a in accessions
+                                     if a.source and a.source.source_detail])}
+bauble/editor.py
+class GenericEditorView(object):
+    """
+    A generic class meant (not) to be subclassed, to provide the view
+    for the Ghini Model-View-Presenter pattern. The idea is that you
+    subclass the Presenter alone, and that the View remains as 'stupid'
+    as it is conceivable.
+
+    The presenter should interact with the view by the sole interface,
+    please consider all members of the view as private, this is
+    particularly true for the ones having anything to do with GTK.
+
+    :param filename: a Gtk.Builder UI definition
+
+    :param parent: a Gtk.Window or subclass to use as the parent
+     window, if parent=None then bauble.gui.window is used
+    """
+    _tooltips = {}
+
+    def __init__(self, filename, parent=None, root_widget_name=None):
+        self.root_widget_name = root_widget_name
+        builder = self.builder = Gtk.Builder()
+        builder.add_from_file(filename)
+        self.filename = filename
+        self.widgets = utils.BuilderWidgets(builder)
+        if parent:
+            self.get_window().set_transient_for(parent)
+        elif bauble.gui:
+            self.get_window().set_transient_for(bauble.gui.window)
+        self.response = None
+        self.__attached_signals = []
+        self.boxes = set()
+
+        # set the tooltips...use Gtk.Tooltip api introducted in GTK+ 2.12
+        for widget_name, markup in self._tooltips.items():
+            try:
+                self.widgets[widget_name].set_tooltip_markup(markup)
+            except Exception as e:
+                values = dict(widget_name=widget_name, exception=e)
+                logger.debug(_('Couldn\'t set the tooltip on widget '
+                               '%(widget_name)s\n\n%(exception)s') % values)
+
+        try:
+            window = self.get_window()
+        except:
+            window = None
+        if window is not None:
+            self.connect(window, 'delete-event', self.on_window_delete)
+            if isinstance(window, Gtk.Dialog):
+                self.connect(window, 'close', self.on_dialog_close)
+                self.connect(window, 'response', self.on_dialog_response)
+        self.box = set()  # the top level, meant for warnings.
+
+    def cancel_threads(self):
+        pass
+
+    def update(self):
+        pass
+
+    def run_file_chooser_dialog(
+            self, text, parent, action, buttons, last_folder, target):
+        """create and run FileChooserDialog, then write result in target
+
+        this is just a bit more than a wrapper. it adds 'last_folder', a
+        string indicationg the location where to put the FileChooserDialog,
+        and 'target', an Entry widget or its name.
+
+        make sure you have a Gtk.ResponseType.ACCEPT button.
+
+        """
+        chooser = Gtk.FileChooserDialog(text, parent, action, buttons)
+        #chooser.set_do_overwrite_confirmation(True)
+        #chooser.connect("confirm-overwrite", confirm_overwrite_callback)
+        try:
+            if last_folder:
+                chooser.set_current_folder(last_folder)
+            if chooser.run() == Gtk.ResponseType.ACCEPT:
+                filename = chooser.get_filename()
+                if filename:
+                    self.widget_set_value(target, filename)
+        except Exception as e:
+            logger.warning("unhandled %s exception in editor.py: %s" %
+                           (type(e), e))
+        chooser.destroy()
+
+    def run_entry_dialog(self, title, parent, flags, buttons, visible=True):
+        d = Gtk.Dialog(title, parent, flags, buttons)
+        d.set_default_response(Gtk.ResponseType.ACCEPT)
+        d.set_default_size(250, -1)
+        entry = Gtk.Entry()
+        if visible is not True:
+            entry.set_visibility(False)
+        entry.connect("activate",
+                      lambda entry: d.response(Gtk.ResponseType.ACCEPT))
+        d.vbox.pack_start(entry, True, True, 0)
+        d.show_all()
+        d.run()
+        user_reply = entry.get_text()
+        d.destroy()
+        return user_reply
+
+    def run_message_dialog(self, msg, type=Gtk.MessageType.INFO,
+                           buttons=Gtk.ButtonsType.OK, parent=None):
+        utils.message_dialog(msg, type, buttons, parent)
+
+    def run_yes_no_dialog(self, msg, parent=None, yes_delay=-1):
+        return utils.yes_no_dialog(msg, parent, yes_delay)
+
+    def get_selection(self):
+        '''return the selection in the graphic interface'''
+        class EmptySelectionException(Exception):
+            pass
+        from bauble.view import SearchView
+        view = bauble.gui.get_view()
+        try:
+            check(isinstance(view, SearchView))
+            tree_view = view.results_view.get_model()
+            check(tree_view is not None)
+        except CheckConditionError:
+            self.run_message_dialog(_('Search for something first.'))
+            return
+
+        return [row[0] for row in tree_view]
+
+    def set_title(self, title):
+        self.get_window().set_title(title)
+
+    def set_icon(self, icon):
+        self.get_window().set_icon(icon)
+
+    def image_set_from_file(self, widget, value):
+        widget = (isinstance(widget, Gtk.Widget)
+                  and widget
+                  or self.widgets[widget])
+        widget.set_from_file(value)
+
+    def set_label(self, widget_name, value):
+        getattr(self.widgets, widget_name).set_markup(value)
+
+    def close_boxes(self):
+        while self.boxes:
+            logger.debug('box is being forcibly removed')
+            box = self.boxes.pop()
+            self.widgets.remove_parent(box)
+            box.destroy()
+
+    def add_box(self, box):
+        logger.debug('box is being added')
+        self.boxes.add(box)
+
+    def remove_box(self, box):
+        logger.debug('box is being removed')
+        if box in self.boxes:
+            self.boxes.remove(box)
+            self.widgets.remove_parent(box)
+            box.destroy()
+        else:
+            logger.debug('box to be removed is not there')
+
+    def add_message_box(self, message_box_type=utils.MESSAGE_BOX_INFO):
+        """add a message box to the message_box_parent container
+
+        :param type: one of MESSAGE_BOX_INFO, MESSAGE_BOX_ERROR or
+          MESSAGE_BOX_YESNO
+        """
+        return utils.add_message_box(self.widgets.message_box_parent,
+                                     message_box_type)
+
+    def connect_signals(self, target):
+        'connect all signals declared in the glade file'
+        if not hasattr(self, 'signals'):
+            from lxml import etree
+            doc = etree.parse(self.filename)
+            self.signals = doc.xpath('//signal')
+        for s in self.signals:
+            try:
+                handler = getattr(target, s.get('handler'))
+            except AttributeError as text:
+                logger.debug("AttributeError: %s" % text)
+                continue
+            signaller = getattr(self.widgets, s.getparent().get('id'))
+            handler_id = signaller.connect(s.get('name'), handler)
+            self.__attached_signals.append((signaller, handler_id))
+
+    def set_accept_buttons_sensitive(self, sensitive):
+        '''set the sensitivity of all the accept/ok buttons
+
+        '''
+        for wname in self.accept_buttons:
+            getattr(self.widgets, wname).set_sensitive(sensitive)
+
+    def connect(self, obj, signal, callback, *args):
+        """
+        Attach a signal handler for signal on obj.  For more
+        information see :meth:`GObject.connect_after`
+
+        :param obj: An instance of a subclass of gobject that will
+          receive the signal
+
+        :param signal: the name of the signal the object will receive
+
+        :param callback: the function or method to call the object
+          receives the signal
+
+        :param args: extra args to pass the the callback
+        """
+        if isinstance(obj, str):
+            obj = self.widgets[obj]
+        sid = obj.connect(signal, callback, *args)
+        self.__attached_signals.append((obj, sid))
+        return sid
+
+    def connect_after(self, obj, signal, callback, *args):  # data=None):
+        """
+        Attach a signal handler for signal on obj.  For more
+        information see :meth:`GObject.connect_after`
+
+        :param obj: An instance of a subclass of gobject that will
+          receive the signal
+
+        :param signal: the name of the signal the object will receive
+
+        :param callback: the function or method to call the object
+          receives the signal
+
+        :param args: extra args to pass the the callback
+        """
+        if isinstance(obj, str):
+            obj = self.widgets[obj]
+        sid = obj.connect_after(signal, callback, *args)
+        # if data:
+        #     sid = obj.connect_after(signal, callback, data)
+        # else:
+        #     sid = obj.connect_after(signal, callback)
+        self.__attached_signals.append((obj, sid))
+        return sid
+
+    def disconnect_all(self):
+        """
+        Disconnects all the signal handlers attached with
+        :meth:`GenericEditorView.connect` or
+        :meth:`GenericEditorView.connect_after`
+        """
+        logger.debug('GenericEditorView:disconnect_all')
+        for obj, sid in self.__attached_signals:
+            obj.disconnect(sid)
+        del self.__attached_signals[:]
+
+    def disconnect_widget_signals(self, widget):
+        """disconnect all signals attached to widget"""
+
+        removed = []
+        for obj, sid in self.__attached_signals:
+            if obj == widget:
+                widget.disconnect(sid)
+                removed.append((obj, sid))
+
+        for item in removed:
+            self.__attached_signals.remove(item)
+
+    def get_window(self):
+        """
+        Return the top level window for view
+        """
+        if self.root_widget_name is not None:
+            return getattr(self.widgets, self.root_widget_name)
+        else:
+            raise NotImplementedError
+
+    def __get_widget(self, widget):
+        p = widget
+        if isinstance(widget, Gtk.Widget):
+            return widget
+        elif isinstance(widget, tuple):
+            if len(widget) == 1:
+                return self.__get_widget(widget[0])
+            parent, widget = widget[:-1], widget[-1]
+            parent = self.__get_widget(parent)
+            for c in parent.get_children():
+                if Gtk.Buildable.get_name(c) == widget:
+                    return c
+        else:
+            return self.widgets[widget]
+        logger.warning('cannot solve widget reference %s' % str(p))
+        return None
+
+    def widget_append_page(self, widget, page, label):
+        widget = self.__get_widget(widget)
+        widget.append_page(page, label)
+
+    def widget_add(self, widget, child):
+        widget = self.__get_widget(widget)
+        widget.add(child)
+
+    def widget_get_model(self, widget):
+        widget = self.__get_widget(widget)
+        return widget.get_model()
+
+    def widget_grab_focus(self, widget):
+        widget = self.__get_widget(widget)
+        return widget.grab_focus()
+
+    def widget_get_active(self, widget):
+        widget = self.__get_widget(widget)
+        return widget.get_active()
+
+    def widget_set_active(self, widget, active=True):
+        widget = self.__get_widget(widget)
+        return widget.set_active(active)
+
+    def widget_set_attributes(self, widget, attribs):
+        widget = self.__get_widget(widget)
+        return widget.set_attributes(attribs)
+
+    def widget_set_inconsistent(self, widget, value):
+        widget = self.__get_widget(widget)
+        widget.set_inconsistent(value)
+
+    def combobox_init(self, widget, values=None, cell_data_func=None):
+        combo = self.__get_widget(widget)
+        model = Gtk.ListStore(str)
+        combo.clear()
+        combo.set_model(model)
+        renderer = Gtk.CellRendererText()
+        combo.pack_start(renderer, True)
+        combo.add_attribute(renderer, 'text', 0)
+        self.combobox_setup(combo, values, cell_data_func)
+
+    def combobox_setup(self, combo, values, cell_data_func):
+        if values is None:
+            return
+        return utils.setup_text_combobox(combo, values, cell_data_func)
+
+    def combobox_remove(self, widget, item):
+        widget = self.__get_widget(widget)
+        if isinstance(item, str):
+            # remove matching
+            model = widget.get_model()
+            for i, row in enumerate(model):
+                if item == row[0]:
+                    widget.remove_text(i)
+                    break
+            logger.warning("combobox_remove - not found >%s<" % item)
+        elif isinstance(item, int):
+            # remove at position
+            widget.remove_text(item)
+        else:
+            logger.warning('invoked combobox_remove with item=(%s)%s' %
+                           (type(item), item))
+
+    def combobox_append_text(self, widget, value):
+        widget = self.__get_widget(widget)
+        widget.append_text(value)
+
+    def combobox_prepend_text(self, widget, value):
+        widget = self.__get_widget(widget)
+        widget.prepend_text(value)
+
+    def combobox_get_active_text(self, widget):
+        widget = self.__get_widget(widget)
+        return widget.get_active_text()
+
+    def combobox_get_active(self, widget):
+        widget = self.__get_widget(widget)
+        return widget.get_active()
+
+    def combobox_set_active(self, widget, index):
+        widget = self.__get_widget(widget)
+        widget.set_active(index)
+
+    def combobox_get_model(self, widget):
+        'get the list of values in the combo'
+        widget = self.__get_widget(widget)
+        return widget.get_model()
+
+    def widget_emit(self, widget, value):
+        widget = self.__get_widget(widget)
+        widget.emit(value)
+
+    def widget_set_expanded(self, widget, value):
+        widget = self.__get_widget(widget)
+        widget.set_expanded(value)
+
+    def widget_set_sensitive(self, widget, value=True):
+        widget = self.__get_widget(widget)
+        widget.set_sensitive(value and True or False)
+
+    def widget_set_visible(self, widget, visible=True):
+        widget = self.__get_widget(widget)
+        widget.set_visible(visible)
+
+    def widget_get_visible(self, widget):
+        widget = self.__get_widget(widget)
+        return widget.get_visible()
+
+    def widget_set_text(self, widget, text):
+        widget = self.__get_widget(widget)
+        widget.set_text(text)
+
+    def widget_get_text(self, widget):
+        widget = self.__get_widget(widget)
+        return widget.get_text()
+
+    def widget_get_value(self, widget, index=0):
+        widget = self.__get_widget(widget)
+        return utils.get_widget_value(widget, index)
+
+    def widget_set_value(self, widget, value, markup=False, default=None,
+                         index=0):
+        '''
+        :param widget: a widget or name of a widget in self.widgets
+        :param value: the value to put in the widgets
+        :param markup: whether the data in value uses pango markup
+        :param default: the default value to put in the widget if value is None
+        :param index: the row index to use for those widgets who use a model
+
+        This method calls bauble.utils.set_widget_value()
+        '''
+        if isinstance(widget, Gtk.Widget):
+            utils.set_widget_value(widget, value, markup, default, index)
+        else:
+            utils.set_widget_value(self.widgets[widget], value, markup,
+                                   default, index)
+
+    def on_dialog_response(self, dialog, response, *args):
+        '''
+        Called if self.get_window() is a Gtk.Dialog and it receives
+        the response signal.
+        '''
+        logger.debug('on_dialog_response')
+        dialog.hide()
+        self.response = response
+        return response
+
+    def on_dialog_close(self, dialog, event=None):
+        """
+        Called if self.get_window() is a Gtk.Dialog and it receives
+        the close signal.
+        """
+        logger.debug('on_dialog_close')
+        dialog.hide()
+        return False
+
+    def on_window_delete(self, window, event=None):
+        """
+        Called when the window return by get_window() receives the
+        delete event.
+        """
+        logger.debug('on_window_delete')
+        window.hide()
+        return False
+
+    def attach_completion(self, entry,
+                          cell_data_func=default_completion_cell_data_func,
+                          match_func=default_completion_match_func,
+                          minimum_key_length=2,
+                          text_column=-1):
+        """
+        Attach an entry completion to a Gtk.Entry.  The defaults
+        values for this attach_completion assumes the completion popup
+        only shows text and that the text is in the first column of
+        the model.
+
+        Return the completion attached to the entry.
+
+        NOTE: If you are selecting completions from strings in your model
+        you must set the text_column parameter to the column in the
+        model that holds the strings or else when you select the string
+        from the completions it won't get set properly in the entry
+        even though you call entry.set_text().
+
+        :param entry: the name of the entry to attach the completion
+
+        :param cell_data_func: the function to use to display the rows in
+          the completion popup
+
+        :param match_func: a function that returns True/False if the
+          value from the model should be shown in the completions
+
+        :param minimum_key_length: default=2
+
+        :param text_column: the value of the text-column property on the entry,
+          default is -1
+        """
+
+        # TODO: we should add a default ctrl-space to show the list of
+        # completions regardless of the length of the string
+        completion = Gtk.EntryCompletion()
+        cell = Gtk.CellRendererText()  # set up the completion renderer
+        completion.pack_start(cell, True)
+        completion.set_cell_data_func(cell, cell_data_func)
+        completion.set_match_func(match_func)
+        completion.set_property('text-column', text_column)
+        completion.set_minimum_key_length(minimum_key_length)
+        completion.set_popup_completion(True)
+        completion.props.popup_set_width = False
+        if isinstance(entry, str):
+            self.widgets[entry].set_completion(completion)
+        else:
+            entry.set_completion(completion)
+
+        # allow later access to the match func just in case
+        completion._match_func = match_func
+
+        return completion
+
+    # TODO: add a default value to set in the combo
+    def init_translatable_combo(self, combo, translations, default=None,
+                                cmp=None):
+        """
+        Initialize a Gtk.ComboBox with translations values where
+        model[row][0] is the value that will be stored in the database
+        and model[row][1] is the value that will be visible in the
+        Gtk.ComboBox.
+
+        A Gtk.ComboBox initialized with this method should work with
+        self.assign_simple_handler()
+
+        :param combo:
+        :param translations: a list of pairs, or a dictionary,
+            of values->translation.
+        """
+        if isinstance(combo, str):
+            combo = self.widgets[combo]
+        combo.clear()
+        # using 'object' avoids SA unicode warning
+        model = Gtk.ListStore(object, str)
+        if isinstance(translations, dict):
+            translations = sorted(translations.items(),
+                                  key=lambda x: (x[1] != None, x[1]))
+        if cmp is not None:
+            translations = sorted(translations,
+                                  key=lambda a: (a[0] != None, a[0]))
+        for key, value in translations:
+            model.append([key, value])
+        combo.set_model(model)
+        cell = Gtk.CellRendererText()
+        combo.pack_start(cell, True)
+        combo.add_attribute(cell, 'text', 1)
+
+    def save_state(self):
+        '''
+        Save the state of the view by setting a value in the preferences
+        that will be called restored in restore_state
+        e.g. prefs[pref_string] = pref_value
+        '''
+        pass
+
+    def restore_state(self):
+        '''
+        Restore the state of the view, this is usually done by getting a value
+        by the preferences and setting the equivalent in the interface
+        '''
+        pass
+
+    def start(self):
+        ## while being ran, the view will invoke callbacks in the presenter
+        ## which, in turn, will alter the attributes in the model.
+        return self.get_window().run()
+
+    def cleanup(self):
+        """
+        Should be called when after self.start() returns.
+
+        By default all it does is call self.disconnect_all()
+        """
+        self.disconnect_all()
+
+    def mark_problem(self, widget):
+        pass
+bauble/error.py
+class CheckConditionError(BaubleError):
+    pass
+bauble/editor.py
+class PicturesPresenter(NotesPresenter):
+    """pictures are associated to notes of category <picture>.
+
+    you add a picture and you see a picture but the database will just hold
+    the name of the corresponding file.
+
+    as for other presenters, you can expand/collapse each inserted
+    picture, you add or remove pictures, you see them on screen.
+
+    this class works just the same as the NotesPresenter, with the
+    note_textview replaced by a Button containing an Image.
+    """
+
+    ContentBox = PictureBox
+
+    def __init__(self, presenter, notes_property, parent_container):
+        super().__init__(
+            presenter, notes_property, parent_container)
+
+        notes = self.box.get_children()
+        if notes:
+            notes[0].set_expanded(False)  # expand none
+bauble/plugins/garden/propagation.py
+class PlantPropagation(db.Base):
+    """
+    PlantPropagation provides an intermediate relation from
+    Plant->Propagation
+    """
+    __tablename__ = 'plant_prop'
+    plant_id = Column(Integer, ForeignKey('plant.id'), nullable=False)
+    propagation_id = Column(Integer, ForeignKey('propagation.id'),
+                            nullable=False)
+
+    propagation = relation('Propagation', uselist=False)
+    plant = relation('Plant', uselist=False)
+bauble/view.py
+class InfoBox(Gtk.Notebook):
+    """
+    Holds list of expanders with an optional tabbed layout.
+
+    The default is to not use tabs. To create the InfoBox with tabs
+    use InfoBox(tabbed=True).  When using tabs then you can either add
+    expanders directly to the InfoBoxPage or using
+    InfoBox.add_expander with the page_num argument.
+
+    Also, it's not recommended to create a subclass of a subclass of
+    InfoBox since if they both use bauble.utils.BuilderWidgets then
+    the widgets will be parented to the infobox that is created first
+    and the expanders of the second infobox will appear empty.
+    """
+
+    def __init__(self, tabbed=False):
+        super().__init__()
+        self.row = None
+        self.set_property('show-border', False)
+        if not tabbed:
+            page = InfoBoxPage()
+            self.insert_page(page, None, 0)
+            self.set_property('show-tabs', False)
+        self.set_current_page(0)
+        self.connect('switch-page', self.on_switch_page)
+
+    # not sure why we pass have self and notebook in the arg list here
+    # since they are the same
+    def on_switch_page(self, notebook, dummy_page, page_num,  *args):
+        """
+        Called when a page is switched
+        """
+        if not self.row:
+            return
+        page = self.get_nth_page(page_num)
+        page.update(self.row)
+
+    def add_expander(self, expander, page_num=0):
+        """
+        Add an expander to a page.
+
+        :param expander: The expander to add.
+        :param page_num: The page number in the InfoBox to add the expander.
+        """
+        page = self.get_nth_page(page_num)
+        page.add_expander(expander)
+
+    def update(self, row):
+        """
+        Update the current page with row.
+        """
+        self.row = row
+        page_num = self.get_current_page()
+        self.get_nth_page(page_num).update(row)
+bauble/plugins/garden/accession.py
+class Accession(db.Base, db.Serializable, db.WithNotes):
+    """
+    :Table name: accession
+
+    :Columns:
+        *code*: :class:`sqlalchemy.types.Unicode`
+            the accession code
+
+        *prov_type*: :class:`bauble.types.Enum`
+            the provenance type
+
+            Possible values:
+                * first column of prov_type_values
+
+        *wild_prov_status*:  :class:`bauble.types.Enum`
+            this column can be used to give more provenance
+            information
+
+            Possible values:
+                * union of first columns of wild_prov_status_values,
+                * purchase_prov_status_values,
+                * cultivated_prov_status_values
+
+        *date_accd*: :class:`bauble.types.Date`
+            the date this accession was accessioned
+
+        *id_qual*: :class:`bauble.types.Enum`
+            The id qualifier is used to indicate uncertainty in the
+            identification of this accession
+
+            Possible values:
+                * aff. - affinity with
+                * cf. - compare with
+                * forsan - perhaps
+                * near - close to
+                * ? - questionable
+                * incorrect
+
+        *id_qual_rank*: :class:`sqlalchemy.types.Unicode`
+            The rank of the species that the id_qual refers to.
+
+        *private*: :class:`sqlalchemy.types.Boolean`
+            Flag to indicate where this information is sensitive and
+            should be kept private
+
+        *species_id*: :class:`sqlalchemy.types.Integer()`
+            foreign key to the species table
+
+    :Properties:
+        *species*:
+            the species this accession refers to
+
+        *source*:
+            source is a relation to a Source instance
+
+        *plants*:
+            a list of plants related to this accession
+
+        *verifications*:
+            a list of verifications on the identification of this accession
+
+    :Constraints:
+
+    """
+    __tablename__ = 'accession'
+    __mapper_args__ = {'order_by': 'accession.code',
+                       'extension': AccessionMapperExtension()}
+
+    # columns
+    #: the accession code
+    code = Column(Unicode(20), nullable=False, unique=True)
+    code_format = '%Y%PD####'
+
+    @validates('code')
+    def validate_stripping(self, key, value):
+        if value is None:
+            return None
+        return value.strip()
+
+    prov_type = Column(types.Enum(values=[i[0] for i in prov_type_values],
+                                  translations=dict(prov_type_values)),
+                       default=None)
+
+    wild_prov_status = Column(
+        types.Enum(values=[i[0] for i in wild_prov_status_values],
+                   translations=dict(wild_prov_status_values)),
+        default=None)
+
+    date_accd = Column(types.Date)
+    date_recvd = Column(types.Date)
+    quantity_recvd = Column(Integer, autoincrement=False)
+    recvd_type = Column(types.Enum(values=list(recvd_type_values.keys()),
+                                   translations=recvd_type_values),
+                        default=None)
+
+    # ITF2 - C24 - Rank Qualified Flag - Transfer code: rkql
+    ## B: Below Family; F: Family; G: Genus; S: Species; I: first
+    ## Infraspecific Epithet; J: second Infraspecific Epithet; C: Cultivar;
+    id_qual_rank = Column(Unicode(10))
+
+    # ITF2 - C25 - Identification Qualifier - Transfer code: idql
+    id_qual = Column(types.Enum(values=['aff.', 'cf.', 'incorrect',
+                                        'forsan', 'near', '?', '']),
+                     nullable=False,
+                     default='')
+
+    # "private" new in 0.8b2
+    private = Column(Boolean, default=False)
+    species_id = Column(Integer, ForeignKey('species.id'), nullable=False)
+
+    # intended location
+    intended_location_id = Column(Integer, ForeignKey('location.id'))
+    intended2_location_id = Column(Integer, ForeignKey('location.id'))
+
+    # the source of the accession
+    source = relation('Source', uselist=False, cascade='all, delete-orphan',
+                      backref=backref('accession', uselist=False))
+
+    # relations
+    species = relation('Species', uselist=False,
+                       backref=backref('accessions',
+                                       cascade='all, delete-orphan'))
+
+    # use Plant.code for the order_by to avoid ambiguous column names
+    plants = relation('Plant', cascade='all, delete-orphan',
+                      #order_by='plant.code',
+                      backref=backref('accession', uselist=False))
+    verifications = relation('Verification',  # order_by='date',
+                             cascade='all, delete-orphan',
+                             backref=backref('accession', uselist=False))
+    vouchers = relation('Voucher', cascade='all, delete-orphan',
+                        backref=backref('accession', uselist=False))
+    intended_location = relation(
+        'Location', primaryjoin='Accession.intended_location_id==Location.id')
+    intended2_location = relation(
+        'Location', primaryjoin='Accession.intended2_location_id==Location.id')
+
+    @classmethod
+    def get_next_code(cls, code_format=None):
+        """
+        Return the next available accession code.
+
+        the format is stored in the `bauble` table.
+        the format may contain a %PD, replaced by the plant delimiter.
+        date formatting is applied.
+
+        If there is an error getting the next code the None is returned.
+        """
+        # auto generate/increment the accession code
+        session = db.Session()
+        if code_format is None:
+            code_format = cls.code_format
+        format = code_format.replace('%PD', Plant.get_delimiter())
+        today = datetime.date.today()
+        if format.find('%{Y-1}') >= 0:
+            format = format.replace('%{Y-1}', str(today.year - 1))
+        format = today.strftime(format)
+        start = format.rstrip('#')
+        if start == format:
+            # fixed value
+            return start
+        digits = len(format) - len(start)
+        format = start + '%%0%dd' % digits
+        q = session.query(Accession.code).\
+            filter(Accession.code.startswith(start))
+        next = None
+        try:
+            if q.count() > 0:
+                codes = [safe_int(row[0][len(start):]) for row in q]
+                next = format % (max(codes)+1)
+            else:
+                next = format % 1
+        except Exception as e:
+            logger.debug(e)
+            pass
+        finally:
+            session.close()
+        return str(next)
+
+    def search_view_markup_pair(self):
+        """provide the two lines describing object for SearchView row.
+
+        """
+        first, second = (utils.xml_safe(str(self)),
+                         self.species_str(markup=True, authors=True))
+        suffix = _("%(1)s plant groups in %(2)s location(s)") % {
+            '1': len(set(self.plants)),
+            '2': len(set(p.location for p in self.plants))}
+        suffix = ('<span foreground="#555555" size="small" '
+                  'weight="light"> - %s</span>') % suffix
+        return first + suffix, second
+
+    @property
+    def parent_plant(self):
+        try:
+            return self.source.plant_propagation.plant
+        except AttributeError:
+            return None
+
+    @property
+    def propagations(self):
+        import operator
+        return reduce(operator.add, [p.propagations for p in self.plants], [])
+
+    @property
+    def pictures(self):
+        import operator
+        return reduce(operator.add, [p.pictures for p in self.plants], [])
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__cached_species_str = {}
+
+    @reconstructor
+    def init_on_load(self):
+        """
+        Called instead of __init__() when an Accession is loaded from
+        the database.
+        """
+        self.__cached_species_str = {}
+
+    def invalidate_str_cache(self):
+        self.__cached_species_str = {}
+
+    def __str__(self):
+        return self.code
+
+    def species_str(self, authors=False, markup=False):
+        """
+        Return the string of the species with the id qualifier(id_qual)
+        injected into the proper place.
+
+        If the species isn't part of a session of if the species is dirty,
+        i.e. in object_session(species).dirty, then a new string will be
+        built even if the species hasn't been changed since the last call
+        to this method.
+        """
+
+        # WARNING: don't use session.is_modified() here because it
+        # will query lots of dependencies
+        try:
+            cached = self.__cached_species_str[(markup, authors)]
+        except KeyError:
+            self.__cached_species_str[(markup, authors)] = None
+            cached = None
+        session = object_session(self.species)
+        if session:
+            # if not part of a session or if the species is dirty then
+            # build a new string
+            if cached is not None and self.species not in session.dirty:
+                return cached
+        if not self.species:
+            return None
+
+        # show a warning if the id_qual is aff. or cf. but the
+        # id_qual_rank is None, but only show it once
+        try:
+            self.__warned_about_id_qual
+        except AttributeError:
+            self.__warned_about_id_qual = False
+        if self.id_qual in ('aff.', 'cf.') and not self.id_qual_rank \
+                and not self.__warned_about_id_qual:
+            msg = _('If the id_qual is aff. or cf. '
+                    'then id_qual_rank is required. %s ') % self.code
+            logger.warning(msg)
+            self.__warned_about_id_qual = True
+
+        if self.id_qual:
+            logger.debug('id_qual is %s' % self.id_qual)
+            sp_str = self.species.str(
+                authors, markup, remove_zws=True,
+                qualification=(self.id_qual_rank, self.id_qual))
+        else:
+            sp_str = self.species.str(authors, markup, remove_zws=True)
+
+        self.__cached_species_str[(markup, authors)] = sp_str
+        return sp_str
+
+    def markup(self):
+        return '%s (%s)' % (self.code, self.accession.species_str(markup=True, authors=True))
+
+    def as_dict(self):
+        result = db.Serializable.as_dict(self)
+        result['species'] = self.species.str(remove_zws=True, authors=False)
+        if self.source and self.source.source_detail:
+            result['contact'] = self.source.source_detail.name
+        return result
+
+    @classmethod
+    def correct_field_names(cls, keys):
+        for internal, exchange in [('species', 'taxon')]:
+            if exchange in keys:
+                keys[internal] = keys[exchange]
+                del keys[exchange]
+
+    @classmethod
+    def compute_serializable_fields(cls, session, keys):
+        logger.debug('compute_serializable_fields(session, %s)' % keys)
+        result = {'species': None}
+        keys = dict(keys)  # make copy
+        if 'species' in keys:
+            keys['taxon'] = keys['species']
+            keys['rank'] = 'species'
+        if 'rank' in keys and 'taxon' in keys:
+            ## now we must connect the accession to the species it refers to
+            if keys['rank'] == 'species':
+                genus_name, epithet = keys['taxon'].split(' ', 1)
+                sp_dict = {'ht-epithet': genus_name,
+                           'epithet': epithet}
+                result['species'] = Species.retrieve_or_create(
+                    session, sp_dict, create=False)
+            elif keys['rank'] == 'genus':
+                result['species'] = Species.retrieve_or_create(
+                    session, {'ht-epithet': keys['taxon'],
+                              'epithet': 'sp'})
+            elif keys['rank'] == 'familia':
+                unknown_genus = 'Zzz-' + keys['taxon'][:-1]
+                Genus.retrieve_or_create(
+                    session, {'ht-epithet': keys['taxon'],
+                              'epithet': unknown_genus})
+                result['species'] = Species.retrieve_or_create(
+                    session, {'ht-epithet': unknown_genus,
+                              'epithet': 'sp'})
+        return result
+
+    @classmethod
+    def retrieve(cls, session, keys):
+        try:
+            return session.query(cls).filter(
+                cls.code == keys['code']).one()
+        except:
+            return None
+
+    def top_level_count(self):
+        sd = self.source and self.source.source_detail
+        return {(1, 'Accessions'): 1,
+                (2, 'Species'): set([self.species.id]),
+                (3, 'Genera'): set([self.species.genus.id]),
+                (4, 'Families'): set([self.species.genus.family.id]),
+                (5, 'Plantings'): len(self.plants),
+                (6, 'Living plants'): sum(p.quantity for p in self.plants),
+                (7, 'Locations'): set([p.location.id for p in self.plants]),
+                (8, 'Sources'): set(sd and [sd.id] or [])}
+bauble/view.py
+class InfoExpander(Gtk.Expander):
+    """
+    an abstract class that is really just a generic expander with a vbox
+    to extend this you just have to implement the update() method
+    """
+
+    # preference for storing the expanded state
+    expanded_pref = None
+
+    def __init__(self, label, widgets=None):
+        """
+        :param label: the name of this info expander, this is displayed on the
+        expander's expander
+
+        :param widgets: a bauble.utils.BuilderWidgets instance
+        """
+        super().__init__()
+        self.set_label(label)
+        self.vbox = Gtk.VBox(False)
+        self.vbox.set_border_width(5)
+        self.add(self.vbox)
+        self.widgets = widgets
+        if not self.expanded_pref:
+            self.set_expanded(True)
+        self.connect("notify::expanded", self.on_expanded)
+
+    def on_expanded(self, expander, *args):
+        if self.expanded_pref:
+            prefs.prefs[self.expanded_pref] = expander.get_expanded()
+            prefs.prefs.save()
+
+    def set_labeled_value(self, prefix, value):
+        '''toggle visibility of labeled value, set value
+
+        if value is not empty, update the value and show both the label and
+        the value.  if the value is empty, show both label and value.
+
+        note: label id is prefix+'_label', value id is prefix+'_data'.
+
+        '''
+        if value:
+            self.widget_set_value(prefix + '_data', value)
+            self.widgets[prefix + '_data'].set_visible(True)
+            self.widgets[prefix + '_label'].set_visible(True)
+        else:
+            self.widgets[prefix + '_data'].set_visible(False)
+            self.widgets[prefix + '_label'].set_visible(False)
+
+    def widget_set_value(self, widget_name, value, markup=False, default=None):
+        '''
+        a shorthand for L{bauble.utils.set_widget_value()}
+        '''
+        utils.set_widget_value(self.widgets[widget_name], value,
+                               markup, default)
+
+    def update(self, value):
+        '''
+        This method should be implemented by classes that extend InfoExpander
+        '''
+        raise NotImplementedError("InfoExpander.update(): not implemented")
+bauble/plugins/plants/species_model.py
+class Species(db.Base, db.Serializable, db.DefiningPictures, db.WithNotes):
+    """
+    :Table name: species
+
+    :Columns:
+        *epithet*:
+        *sp2*:
+        *author*:
+
+        *hybrid*:
+            Hybrid flag
+
+        *infrasp1*:
+        *infrasp1_rank*:
+        *infrasp1_author*:
+
+        *infrasp2*:
+        *infrasp2_rank*:
+        *infrasp2_author*:
+
+        *infrasp3*:
+        *infrasp3_rank*:
+        *infrasp3_author*:
+
+        *infrasp4*:
+        *infrasp4_rank*:
+        *infrasp4_author*:
+
+        *cv_group*:
+        *trade_name*:
+
+        *sp_qual*:
+            Species qualifier
+
+            Possible values:
+                *agg.*: An aggregate species
+
+                *s. lat.*: aggregrate species (sensu lato)
+
+                *s. str.*: segregate species (sensu stricto)
+
+        *label_distribution*:
+            UnicodeText
+            This field is optional and can be used for the label in case
+            str(self.distribution) is too long to fit on the label.
+
+    :Properties:
+        *accessions*:
+
+        *vernacular_names*:
+
+        *default_vernacular_name*:
+
+        *synonyms*:
+
+        *distribution*:
+
+    :Constraints:
+        The combination of epithet, author, hybrid, sp_qual,
+        cv_group, trade_name, genus_id
+    """
+    __tablename__ = 'species'
+    __mapper_args__ = {'order_by': ['epithet', 'author']}
+
+    rank = 'species'
+    link_keys = ['accepted']
+
+    def search_view_markup_pair(self):
+        '''provide the two lines describing object for SearchView row.
+        '''
+        try:
+            if len(self.vernacular_names) > 0:
+                substring = (
+                    '%s -- %s' %
+                    (self.genus.family,
+                     ', '.join([str(v) for v in self.vernacular_names])))
+            else:
+                substring = '%s' % self.genus.family
+            trail = ''
+            if self.accepted:
+                trail += ('<span foreground="#555555" size="small" '
+                          'weight="light"> - ' + _("synonym of %s") + "</span>"
+                          ) % self.accepted.markup(authors=True)
+            citation = self.markup(authors=True)
+            authorship_text = utils.xml_safe(self.author)
+            if authorship_text:
+                citation = citation.replace(authorship_text, '<span weight="light">' + authorship_text + '</span>')
+            return citation + trail, substring
+        except Exception as e:
+            import traceback
+            logger.warning(traceback.format_exc())
+            return '...', '...'
+
+    @property
+    def cites(self):
+        '''the cites status of this taxon, or None
+
+        cites appendix number, one of I, II, or III.
+        not enforced by the software in v1.0.x
+        '''
+
+        cites_notes = [i.note for i in self.notes
+                       if i.category and i.category.upper() == 'CITES']
+        if not cites_notes:
+            return self.genus.cites
+        return cites_notes[0]
+
+    @property
+    def conservation(self):
+        '''the IUCN conservation status of this taxon, or DD
+
+        one of: EX, RE, CR, EN, VU, NT, LC, DD
+        not enforced by the software in v1.0.x
+        '''
+
+        {'EX': _('Extinct (EX)'),
+         'EW': _('Extinct Wild (EW)'),
+         'RE': _('Regionally Extinct (RE)'),
+         'CR': _('Critically Endangered (CR)'),
+         'EN': _('Endangered (EN)'),
+         'VU': _('Vulnerable (VU)'),
+         'NT': _('Near Threatened (NT)'),
+         'LV': _('Least Concern (LC)'),
+         'DD': _('Data Deficient (DD)'),
+         'NE': _('Not Evaluated (NE)')}
+
+        notes = [i.note for i in self.notes
+                 if i.category and i.category.upper() == 'IUCN']
+        return (notes + ['DD'])[0]
+
+    @property
+    def condition(self):
+        '''the condition of this taxon, or None
+
+        this is referred to what the garden conservator considers the
+        area of interest. it is really an interpretation, not a fact.
+        '''
+        # one of, but not forcibly so:
+        [_('endemic'), _('indigenous'), _('native'), _('introduced')]
+
+        notes = [i.note for i in self.notes
+                 if i.category.lower() == 'condition']
+        return (notes + [None])[0]
+
+    def __lowest_infraspecific(self):
+        infrasp = [(self.infrasp1_rank, self.infrasp1,
+                    self.infrasp1_author),
+                   (self.infrasp2_rank, self.infrasp2,
+                    self.infrasp2_author),
+                   (self.infrasp3_rank, self.infrasp3,
+                    self.infrasp3_author),
+                   (self.infrasp4_rank, self.infrasp4,
+                    self.infrasp4_author)]
+        infrasp = [i for i in infrasp if i[0] not in ['cv.', '', None]]
+        if infrasp == []:
+            return ('', '', '')
+        return sorted(infrasp, key=lambda a: rank_level(a[0]))[-1]
+
+    @property
+    def infraspecific_rank(self):
+        return self.__lowest_infraspecific()[0] or ''
+
+    @property
+    def infraspecific_epithet(self):
+        return self.__lowest_infraspecific()[1] or ''
+
+    @property
+    def infraspecific_author(self):
+        return self.__lowest_infraspecific()[2] or ''
+
+    @property
+    def cultivar_epithet(self):
+        infrasp = ((self.infrasp1_rank, self.infrasp1,
+                    self.infrasp1_author),
+                   (self.infrasp2_rank, self.infrasp2,
+                    self.infrasp2_author),
+                   (self.infrasp3_rank, self.infrasp3,
+                    self.infrasp3_author),
+                   (self.infrasp4_rank, self.infrasp4,
+                    self.infrasp4_author))
+        for rank, epithet, author in infrasp:
+            if rank == 'cv.':
+                return epithet
+        return ''
+
+    # columns
+    epithet = Column(Unicode(64), index=True)
+    sp = synonym('epithet')
+    sp2 = Column(Unicode(64), index=True)  # in case hybrid=True
+    author = Column(Unicode(128))
+    hybrid = Column(Boolean, default=False)
+    sp_qual = Column(types.Enum(values=['agg.', 's. lat.', 's. str.', None]),
+                     default=None)
+    cv_group = Column(Unicode(50))
+    trade_name = Column(Unicode(64))
+
+    infrasp1 = Column(Unicode(64))
+    infrasp1_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp1_author = Column(Unicode(64))
+
+    infrasp2 = Column(Unicode(64))
+    infrasp2_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp2_author = Column(Unicode(64))
+
+    infrasp3 = Column(Unicode(64))
+    infrasp3_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp3_author = Column(Unicode(64))
+
+    infrasp4 = Column(Unicode(64))
+    infrasp4_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp4_author = Column(Unicode(64))
+
+    genus_id = Column(Integer, ForeignKey('genus.id'), nullable=False)
+    ## the Species.genus property is defined as backref in Genus.species
+
+    label_distribution = Column(UnicodeText)
+    bc_distribution = Column(UnicodeText)
+
+    # relations
+    synonyms = association_proxy('_synonyms', 'synonym')
+    _synonyms = relation('SpeciesSynonym',
+                         primaryjoin='Species.id==SpeciesSynonym.species_id',
+                         cascade='all, delete-orphan', uselist=True,
+                         backref='species')
+
+    # this is a dummy relation, it is only here to make cascading work
+    # correctly and to ensure that all synonyms related to this genus
+    # get deleted if this genus gets deleted
+    _syn = relation('SpeciesSynonym',
+                    primaryjoin='Species.id==SpeciesSynonym.synonym_id',
+                    cascade='all, delete-orphan', uselist=True)
+
+    ## VernacularName.species gets defined here too.
+    vernacular_names = relation('VernacularName', cascade='all, delete-orphan',
+                                collection_class=VNList,
+                                backref=backref('species', uselist=False))
+    _default_vernacular_name = relation('DefaultVernacularName', uselist=False,
+                                        cascade='all, delete-orphan',
+                                        backref=backref('species',
+                                                        uselist=False))
+    distribution = relation('SpeciesDistribution',
+                            cascade='all, delete-orphan',
+                            backref=backref('species', uselist=False))
+
+    habit_id = Column(Integer, ForeignKey('habit.id'), default=None)
+    habit = relation('Habit', uselist=False, backref='species')
+
+    flower_color_id = Column(Integer, ForeignKey('color.id'), default=None)
+    flower_color = relation('Color', uselist=False, backref='species')
+
+    #hardiness_zone = Column(Unicode(4))
+
+    awards = Column(UnicodeText)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __str__(self):
+        'return the default string representation for self.'
+        return self.str()
+
+    def _get_default_vernacular_name(self):
+        if self._default_vernacular_name is None:
+            return None
+        return self._default_vernacular_name.vernacular_name
+
+    def _set_default_vernacular_name(self, vn):
+        if vn is None:
+            del self.default_vernacular_name
+            return
+        if vn not in self.vernacular_names:
+            self.vernacular_names.append(vn)
+        d = DefaultVernacularName()
+        d.vernacular_name = vn
+        self._default_vernacular_name = d
+
+    def _del_default_vernacular_name(self):
+        utils.delete_or_expunge(self._default_vernacular_name)
+        del self._default_vernacular_name
+    default_vernacular_name = property(_get_default_vernacular_name,
+                                       _set_default_vernacular_name,
+                                       _del_default_vernacular_name)
+
+    def distribution_str(self):
+        if self.distribution is None:
+            return ''
+        else:
+            dist = ['%s' % d for d in self.distribution]
+            return str(', ').join(sorted(dist))
+
+    def markup(self, authors=False, genus=True):
+        '''returns this object as a string with markup
+
+        :param authors: whether the authorship should be included
+        :param genus: whether the genus name should be included
+
+        '''
+        return self.str(authors, markup=True, genus=genus)
+
+    # in PlantPlugins.init() we set this to 'x' for win32
+    hybrid_char = '×'
+
+    def str(self, authors=False, markup=False, remove_zws=False, genus=True,
+            qualification=None):
+        '''
+        returns a string for species
+
+        :param authors: flag to toggle whether authorship should be included
+        :param markup: flag to toggle whether the returned text is marked up
+        to show italics on the epithets
+        :param remove_zws: flag to toggle zero width spaces, helping
+        semantically correct lexicographic order.
+        :param genus: flag to toggle leading genus name.
+        :param qualification: pair or None. if specified, first is the
+        qualified rank, second is the qualification.
+        '''
+        # TODO: this method will raise an error if the session is none
+        # since it won't be able to look up the genus....we could
+        # probably try to query the genus directly with the genus_id
+        if genus is True:
+            genus = str(self.genus)
+        else:
+            genus = ''
+        if self.epithet and not remove_zws:
+            epithet = '\u200b' + self.epithet  # prepend with zero_width_space
+        else:
+            epithet = self.epithet
+        sp2 = self.sp2
+        if markup:
+            escape = utils.xml_safe
+            italicize = lambda s: (  # all but the multiplication signs
+                '<i>%s</i>' % escape(s).replace('×', '</i>×<i>'))
+            genus = italicize(genus)
+            if epithet is not None:
+                epithet = italicize(epithet)
+            if sp2 is not None:
+                sp2 = italicize(sp2)
+        else:
+            italicize = escape = lambda x: x
+
+        author = None
+        if authors and self.author:
+            author = escape(self.author)
+
+        infrasp = ((self.infrasp1_rank, self.infrasp1,
+                    self.infrasp1_author),
+                   (self.infrasp2_rank, self.infrasp2,
+                    self.infrasp2_author),
+                   (self.infrasp3_rank, self.infrasp3,
+                    self.infrasp3_author),
+                   (self.infrasp4_rank, self.infrasp4,
+                    self.infrasp4_author))
+
+        infrasp_parts = []
+        group_added = False
+        for irank, iepithet, iauthor in infrasp:
+            if irank == 'cv.' and iepithet:
+                if self.cv_group and not group_added:
+                    group_added = True
+                    infrasp_parts.append(_("(%(group)s Group)") %
+                                         dict(group=self.cv_group))
+                infrasp_parts.append("'%s'" % escape(iepithet))
+            else:
+                if irank:
+                    infrasp_parts.append(irank)
+                if iepithet and irank:
+                    infrasp_parts.append(italicize(iepithet))
+                elif iepithet:
+                    infrasp_parts.append(escape(iepithet))
+
+            if authors and iauthor:
+                infrasp_parts.append(escape(iauthor))
+        if self.cv_group and not group_added:
+            infrasp_parts.append(_("%(group)s Group") %
+                                 dict(group=self.cv_group))
+
+        # create the binomial part
+        binomial = [genus, self.hybrid and self.hybrid_char, epithet, author]
+        logger.debug("binomial parts: »%s« »%s« »%s« »%s«" % tuple(binomial))
+
+        # create the tail, ie: anything to add on to the end
+        tail = []
+        if self.sp_qual:
+            tail = [self.sp_qual]
+
+        if qualification is not None:
+            rank, qual = qualification
+            if qual in ['incorrect']:
+                rank = None
+            if rank == 'sp':
+                binomial.insert(2, qual)
+            elif not rank:
+                binomial[2] += ' (' + qual + ')'
+            elif rank == 'genus':
+                binomial.insert(0, qual)
+            elif rank == 'infrasp':
+                if infrasp_parts:
+                    infrasp_parts.insert(0, qual)
+            else:
+                for r, e, a in infrasp:
+                    if r == 'cv.':
+                        e = "'%s'" % e
+                    if rank == r:
+                        pos = infrasp_parts.index(e)
+                        infrasp_parts.insert(pos, qual)
+                else:
+                    logger.info('cannot find specified rank %s' % e)
+
+        parts = chain(binomial, infrasp_parts, tail)
+        s = utils.utf8(' '.join(i for i in parts if i))
+        if self.hybrid:
+            s = s.replace('%s ' % self.hybrid_char, self.hybrid_char)
+        return s
+
+    @property
+    def accepted(self):
+        'Name that should be used if name of self should be rejected'
+        from sqlalchemy.orm.session import object_session
+        session = object_session(self)
+        if not session:
+            logger.warning('species:accepted - object not in session')
+            return None
+        syn = session.query(SpeciesSynonym).filter(
+            SpeciesSynonym.synonym_id == self.id).first()
+        accepted = syn and syn.species
+        return accepted
+
+    @accepted.setter
+    def accepted(self, value):
+        'Name that should be used if name of self should be rejected'
+        logger.debug("Accepted taxon: %s %s" % (type(value), value))
+        assert isinstance(value, self.__class__)
+        if self in value.synonyms:
+            return
+        # remove any previous `accepted` link
+        from sqlalchemy.orm.session import object_session
+        session = object_session(self)
+        if not session:
+            logger.warning('species:accepted.setter - object not in session')
+            return
+        previous_synonymy_link = session.query(SpeciesSynonym).filter(
+            SpeciesSynonym.synonym_id == self.id).first()
+        if previous_synonymy_link:
+            a = session.query(Species).filter(Species.id==previous_synonymy_link.species_id).one()
+            a.synonyms.remove(self)
+        session.flush()
+        if value != self:
+            value.synonyms.append(self)
+        session.flush()
+
+    def has_accessions(self):
+        '''true if species is linked to at least one accession
+        '''
+
+        return False
+
+    infrasp_attr = {1: {'rank': 'infrasp1_rank',
+                        'epithet': 'infrasp1',
+                        'author': 'infrasp1_author'},
+                    2: {'rank': 'infrasp2_rank',
+                        'epithet': 'infrasp2',
+                        'author': 'infrasp2_author'},
+                    3: {'rank': 'infrasp3_rank',
+                        'epithet': 'infrasp3',
+                        'author': 'infrasp3_author'},
+                    4: {'rank': 'infrasp4_rank',
+                        'epithet': 'infrasp4',
+                        'author': 'infrasp4_author'}}
+
+    def get_infrasp(self, level):
+        """
+        level should be 1-4
+        """
+        return getattr(self, self.infrasp_attr[level]['rank']), \
+            getattr(self, self.infrasp_attr[level]['epithet']), \
+            getattr(self, self.infrasp_attr[level]['author'])
+
+    def set_infrasp(self, level, rank, epithet, author=None):
+        """
+        level should be 1-4
+        """
+        setattr(self, self.infrasp_attr[level]['rank'], rank)
+        setattr(self, self.infrasp_attr[level]['epithet'], epithet)
+        setattr(self, self.infrasp_attr[level]['author'], author)
+
+    def as_dict(self, recurse=True):
+        result = dict((col, getattr(self, col))
+                      for col in list(self.__table__.columns.keys())
+                      if col not in ['id']
+                      and col[0] != '_'
+                      and getattr(self, col) is not None
+                      and not col.endswith('_id'))
+        result['object'] = 'taxon'
+        result['rank'] = 'species'
+        result['ht-rank'] = 'genus'
+        result['ht-epithet'] = self.genus.epithet
+        if recurse and self.accepted is not None:
+            result['accepted'] = self.accepted.as_dict(recurse=False)
+        return result
+
+    @classmethod
+    def correct_field_names(cls, keys):
+        pass
+
+    @classmethod
+    def retrieve(cls, session, keys):
+        from .genus import Genus
+        try:
+            return session.query(cls).filter(
+                cls.epithet == keys['epithet']).join(Genus).filter(
+                Genus.epithet == keys['ht-epithet']).one()
+        except:
+            return None
+
+    @classmethod
+    def compute_serializable_fields(cls, session, keys):
+        from .genus import Genus
+        result = {'genus': None}
+        ## retrieve genus object
+        specifies_family = keys.get('familia')
+        result['genus'] = Genus.retrieve_or_create(
+            session, {'epithet': keys['ht-epithet'],
+                      'ht-epithet': specifies_family},
+            create=(specifies_family is not None))
+        if result['genus'] is None:
+            raise error.NoResultException()
+        return result
+
+    def top_level_count(self):
+        plants = [p for a in self.accessions for p in a.plants]
+        return {(1, 'Species'): 1,
+                (2, 'Genera'): set([self.genus.id]),
+                (3, 'Families'): set([self.genus.family.id]),
+                (4, 'Accessions'): len(self.accessions),
+                (5, 'Plantings'): len(plants),
+                (6, 'Living plants'): sum(p.quantity for p in plants),
+                (7, 'Locations'): set(p.location.id for p in plants),
+                (8, 'Sources'): set([a.source.source_detail.id
+                                     for a in self.accessions
+                                     if a.source and a.source.source_detail])}
+bauble/view.py
+class PropertiesExpander(InfoExpander):
+
+    def __init__(self):
+        super().__init__(_('Properties'))
+        table = Gtk.Table(rows=4, columns=2)
+        table.set_col_spacings(15)
+        table.set_row_spacings(8)
+
+        # database id
+        id_label = Gtk.Label(label="<b>"+_("ID:")+"</b>")
+        id_label.set_use_markup(True)
+        id_label.set_alignment(1, .5)
+        self.id_data = Gtk.Label(label='--')
+        self.id_data.set_alignment(0, .5)
+        table.attach(id_label, 0, 1, 0, 1)
+        table.attach(self.id_data, 1, 2, 0, 1)
+
+        # object type
+        type_label = Gtk.Label(label="<b>"+_("Type:")+"</b>")
+        type_label.set_use_markup(True)
+        type_label.set_alignment(1, .5)
+        self.type_data = Gtk.Label(label='--')
+        self.type_data.set_alignment(0, .5)
+        table.attach(type_label, 0, 1, 1, 2)
+        table.attach(self.type_data, 1, 2, 1, 2)
+
+        # date created
+        created_label = Gtk.Label(label="<b>"+_("Date created:")+"</b>")
+        created_label.set_use_markup(True)
+        created_label.set_alignment(1, .5)
+        self.created_data = Gtk.Label(label='--')
+        self.created_data.set_alignment(0, .5)
+        table.attach(created_label, 0, 1, 2, 3)
+        table.attach(self.created_data, 1, 2, 2, 3)
+
+        # date last updated
+        updated_label = Gtk.Label(label="<b>"+_("Last updated:")+"</b>")
+        updated_label.set_use_markup(True)
+        updated_label.set_alignment(1, .5)
+        self.updated_data = Gtk.Label(label='--')
+        self.updated_data.set_alignment(0, .5)
+        table.attach(updated_label, 0, 1, 3, 4)
+        table.attach(self.updated_data, 1, 2, 3, 4)
+
+        box = Gtk.HBox()
+        box.pack_start(table, False, False, 0)
+        self.vbox.pack_start(box, False, False, 0)
+
+    def update(self, row):
+        """"
+        Update the widget in the expander.
+        """
+        self.id_data.set_text(str(row.id))
+        self.type_data.set_text(str(type(row).__name__))
+        self.created_data.set_text(
+            row._created
+            and row._created.strftime('%Y-%m-%d %H:%m:%S')
+            or '')
+        self.updated_data.set_text(
+            row._last_updated
+            and row._last_updated.strftime('%Y-%m-%d %H:%m:%S')
+            or '')
+bauble/search.py
+class SearchStrategy(object):
+    """
+    Interface for adding search strategies to a view.
+    """
+
+    def search(self, text, session=None):
+        '''
+        :param text: the search string
+        :param session: the session to use for the search
+
+        Return an iterator that iterates over mapped classes retrieved
+        from the search.
+        '''
+        logger.debug('SearchStrategy "%s"(%s)' % (text, self.__class__.__name__))
+        pass
+bauble/editor.py
+class GenericModelViewPresenterEditor(object):
+    '''
+    GenericModelViewPresenterEditor assume that model is an instance
+    of object mapped to a SQLAlchemy table
+
+    The editor creates its own session and merges the model into
+    it.  If the model is already in another session that original
+    session will not be effected.
+
+    When creating a subclass of this editor then you should explicitly
+    close the session when you are finished with it.
+
+    :param model: an instance of an object mapped to a SQLAlchemy
+      Table, the model will be copied and merged into self.session so
+      that the original model will not be changed
+
+    :param parent: the parent windows for the view or None
+    '''
+    ok_responses = ()
+
+    def __init__(self, model, parent=None):
+        self.session = db.Session()
+        self.model = self.session.merge(model)
+
+    def commit_changes(self):
+        '''
+        Commit the changes to self.session()
+        '''
+        objs = list(self.session)
+        try:
+            self.session.commit()
+            try:
+                bauble.gui.get_view().update()
+            except Exception as e:
+                pass
+        except Exception as e:
+            logger.warning("can't commit changes: (%s) %s" % (type(e), e))
+            self.session.rollback()
+            self.session.add_all(objs)
+            raise
+        return True
+
+    def __del__(self):
+        if hasattr(self, 'session'):
+            # in case one of the check()'s fail in __init__
+            self.session.commit()
+            self.session.close()
+bauble/plugins/garden/location.py
+class LocationEditor(GenericModelViewPresenterEditor):
+
+    # these have to correspond to the response values in the view
+    RESPONSE_OK_AND_ADD = 11
+    RESPONSE_NEXT = 22
+    ok_responses = (RESPONSE_OK_AND_ADD, RESPONSE_NEXT)
+
+    def __init__(self, model=None, parent=None):
+        '''
+        :param model: Location instance or None
+        :param parent: the parent widget or None
+        '''
+        # view and presenter are created in self.start()
+        self.view = None
+        self.presenter = None
+        if model is None:
+            model = Location()
+        super().__init__(model, parent)
+        if not parent and bauble.gui:
+            parent = bauble.gui.window
+        self.parent = parent
+        self._committed = []
+
+        view = LocationEditorView(parent=self.parent)
+        self.presenter = LocationEditorPresenter(self.model, view)
+
+    def handle_response(self, response):
+        '''
+        handle the response from self.presenter.start() in self.start()
+        '''
+        not_ok_msg = 'Are you sure you want to lose your changes?'
+        if response == Gtk.ResponseType.OK or response in self.ok_responses:
+            try:
+                if self.presenter.is_dirty():
+                    self.commit_changes()
+                self._committed.append(self.model)
+            except DBAPIError as e:
+                msg = _('Error committing changes.\n\n%s') % \
+                    utils.xml_safe(e.orig)
+                utils.message_details_dialog(msg, str(e), Gtk.MessageType.ERROR)
+                self.session.rollback()
+                return False
+            except Exception as e:
+                msg = _('Unknown error when committing changes. See the '
+                        'details for more information.\n\n%s') % \
+                    utils.xml_safe(e)
+                utils.message_details_dialog(msg, traceback.format_exc(),
+                                             Gtk.MessageType.ERROR)
+                self.session.rollback()
+                return False
+        elif self.presenter.is_dirty() \
+                and utils.yes_no_dialog(not_ok_msg) \
+                or not self.presenter.is_dirty():
+            self.session.rollback()
+            return True
+        else:
+            return False
+
+        # respond to responses
+        more_committed = None
+        if response == self.RESPONSE_NEXT:
+            self.presenter.cleanup()
+            e = LocationEditor(parent=self.parent)
+            more_committed = e.start()
+        elif response == self.RESPONSE_OK_AND_ADD:
+            from bauble.plugins.garden.plant import PlantEditor, Plant
+            e = PlantEditor(Plant(location=self.model), self.parent)
+            more_committed = e.start()
+        if more_committed is not None:
+            if isinstance(more_committed, list):
+                self._committed.extend(more_committed)
+            else:
+                self._committed.append(more_committed)
+
+        return True
+
+    def start(self):
+        """
+        Started the LocationEditor and return the committed Location objects.
+        """
+        while True:
+            response = self.presenter.start()
+            self.presenter.view.save_state()
+            if self.handle_response(response):
+                break
+        self.session.close()
+        self.presenter.cleanup()
+        return self._committed
+bauble/view.py
+class Action(Gtk.Action):
+
+    """
+    An Action allows a label, tooltip, callback and accelerator to be called
+    when specific items are selected in the SearchView
+    """
+    # issue #30: multiselect and singleselect are really specific to the
+    # SearchView and we could probably generalize this class a little bit
+    # more...or we just assume this class is specific to the SearchView and
+    # document it that way
+
+    def __init__(self, name, label, tooltip=None, stock_id=None,
+                 callback=None, accelerator=None,
+                 multiselect=False, singleselect=True):
+        """
+        callback: the function to call when the the action is activated
+        accelerator: accelerator to call this action
+        multiselect: show menu when multiple items are selected
+        singleselect: show menu when single items are selected
+
+        The activate signal is not automatically connected to the
+        callback method.
+        """
+        super().__init__(name=name, label=label, tooltip=tooltip, stock_id=stock_id)
+        self.callback = callback
+        self.multiselect = multiselect
+        self.singleselect = singleselect
+        self.accelerator = accelerator
+
+    def _set_enabled(self, enable):
+        self.set_visible(enable)
+        # if enable:
+        #     self.connect_accelerator()
+        # else:
+        #     self.disconnect_accelerator()
+
+    def _get_enabled(self):
+        return self.get_visible()
+
+    enabled = property(_get_enabled, _set_enabled)
+bauble/editor.py
+class NotesPresenter(GenericEditorPresenter):
+    """
+    The NotesPresenter provides a generic presenter for editor notes
+    on an item in the database.  This presenter requires that the
+    notes property provide a specific interface.
+
+    :param presenter: the parent presenter of this presenter
+    :param notes_property: the string name of the notes property of
+      the presenter.model
+    :param parent_container: the Gtk.Container to add the notes editor box to
+    """
+
+    ContentBox = NoteBox
+
+    def __init__(self, presenter, notes_property, parent_container):
+        super().__init__(presenter.model, None)
+
+        # The glade file named in ContentBox is structured with two top
+        # GtkWindow next to each other. Here, by not doing any lookup, we
+        # get the first one, from which we extract the 'notes_editor_box'
+        # child. This is expected to contain a 'notes_expander_box' vertical
+        # box, which will host all expanders.  In the content box we
+        # extract, from the same file, the widget named 'notes_box'.
+        filename = os.path.join(paths.lib_dir(), self.ContentBox.glade_ui)
+        self.widgets = utils.BuilderWidgets(filename)
+
+        self.parent_ref = weakref.ref(presenter)
+        self.note_cls = object_mapper(presenter.model).\
+            get_property(notes_property).mapper.class_
+        self.notes = getattr(presenter.model, notes_property)
+        self.parent_container = parent_container
+        editor_box = self.widgets.notes_editor_box  # Gtk.VBox()
+        self.widgets.remove_parent(editor_box)
+        parent_container.add(editor_box)
+
+        # the `expander`s are added to self.box
+        self.box = self.widgets.notes_expander_box
+
+        valid_notes_count = 0
+        for note in self.notes:
+            if self.ContentBox.is_valid_note(note):
+                box = self.add_note(note)
+                box.set_expanded(False)
+                valid_notes_count += 1
+
+        logger.debug('notes: %s' % self.notes)
+        logger.debug('children: %s' % self.box.get_children())
+
+        self.widgets.notes_add_button.connect(
+            'clicked', self.on_add_button_clicked)
+        self.box.show_all()
+
+    def on_add_button_clicked(self, *args):
+        box = self.add_note()
+        box.set_expanded(True)
+
+    def add_note(self, note=None):
+        """
+        Add a new note to the model.
+        """
+        expander = self.ContentBox(self, note)
+        self.box.pack_start(expander, False, False, 0)
+        self.box.reorder_child(expander, 0)
+        expander.show_all()
+        return expander
+bauble/view.py
+class MapInfoExpander(InfoExpander):
+
+    def __init__(self, get_points=None):
+        super().__init__(_('Location on map'))
+
+        self.map_widget = GtkChamplain.Embed()
+        self.map_widget.set_size_request(230, 230)
+        self.vbox.pack_start(self.map_widget, False, False, 0)
+        self.clutter_view = self.map_widget.get_view()
+        self.clutter_view.set_horizontal_wrap(True)
+        self.map_widget.set_sensitive(False)
+        self.get_points = get_points
+        self.layer = Champlain.MarkerLayer()
+        self.clutter_view.add_layer(self.layer)
+        self.layer.show()
+
+    def on_expanded(self, *args):
+        super().on_expanded(*args)
+        self.map_widget.set_visible(self.get_expanded())
+
+    def update(self, row):
+        self.map_widget.set_visible(self.get_expanded())
+        black = Clutter.Color.new(0x00, 0x00, 0x00, 0x7f)
+        self.layer.remove_all()
+        if self.get_points is None:
+            return
+        i = None
+        points = self.get_points(row)
+        for i in points:
+            marker = Champlain.Point()
+            marker.set_color(black)
+            marker.set_size(5)
+            marker.set_location(i['lat'], i['lon'])
+            self.layer.add_marker(marker)
+        if i is not None:
+            self.clutter_view.center_on(i['lat'], i['lon'])
+            self.clutter_view.set_zoom_level(18)
+bauble/view.py
+def select_in_search_results(obj):
+    """
+    :param obj: the object the select
+    @returns: a Gtk.TreeIter to the selected row
+
+    Search the tree model for obj if it exists then select it if not
+    then add it and select it.
+
+    The the obj is not in the model then we add it.
+    """
+    check(obj is not None, 'select_in_search_results: arg is None')
+    view = bauble.gui.get_view()
+    if not isinstance(view, SearchView):
+        return None
+    logger.debug("select_in_search_results %s is in session %s" %
+                 (obj, obj in view.session))
+    model = view.results_view.get_model()
+    found = utils.search_tree_model(model, obj)
+    row_iter = None
+    if len(found) > 0:
+        row_iter = found[0]
+    else:
+        row_iter = model.append(None, [obj])
+        model.append(row_iter, ['-'])
+    view.results_view.set_cursor(model.get_path(row_iter))
+    return row_iter

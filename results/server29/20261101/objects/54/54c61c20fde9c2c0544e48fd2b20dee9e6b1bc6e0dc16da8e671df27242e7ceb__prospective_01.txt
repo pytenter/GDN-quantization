@@ -1,0 +1,4462 @@
+core/src/rs/pedjaapps/smc/screen/GameScreen.java
+public class GameScreen extends AbstractScreen {
+    private static final String GOD_MOD_TEXT = "god";
+    private static final float FREQ_OTU_REFRESH = .2f;
+    public OrthographicCamera cam;
+    public OrthographicCamera guiCam;
+    public HUD hud;
+    public String levelName;
+    public KillPointsTextHandler killPointsTextHandler;
+    public String entryName;
+    public GameScreen parent;
+    public boolean resumed, forceCheckEnter;
+    protected Vector3 cameraEditModeTranslate = new Vector3();
+    private boolean debug;
+    private World world;
+    private OrthographicCamera pCamera;
+    private ShapeRenderer shapeRenderer = new ShapeRenderer();
+    /**
+     * Textures *
+     */
+    private ParticleEffect globalEffect;
+    private SpriteBatch spriteBatch;
+    private BitmapFont debugFont, debugObjectFont;
+    private GlyphLayout debugGlyph;
+    private Vector2 camMin = new Vector2();
+    private Vector2 camMax = new Vector2();
+    private float width, height;
+    private Rectangle maryoBWO = new Rectangle();
+    private GAME_STATE gameState;
+    private LevelLoader loader;
+    private Music music;
+    private boolean cameraForceSnap;
+    private InputProcessor keyboardAndTouch;
+    private Array<GameObject> objectsToUpdate = new Array<>(75);
+    private float timeSinceUpdObjRefresh = FREQ_OTU_REFRESH;
+    private int objRefreshSize;
+    private InputMultiplexer inputprocessor;
+    private GLProfiler profiler;
+
+    public GameScreen(MaryoGame game, boolean fromMenu, String levelName) {
+        this(game, fromMenu, levelName, null);
+    }
+
+    public GameScreen(MaryoGame game, boolean fromMenu, String levelName, GameScreen parent) {
+        super(game);
+        this.profiler = new GLProfiler(Gdx.graphics);
+        this.parent = parent;
+        this.levelName = levelName;
+        gameState = GAME_STATE.GAME_READY;
+        width = Gdx.graphics.getWidth();
+        height = Gdx.graphics.getHeight();
+        world = new World(this);
+        hud = new HUD(world, this);
+        if (parent != null)
+            hud.setHasKeyboardOrController(parent.hud.isHasKeyboardOrController(), true);
+        keyboardAndTouch = new GameScreenInput(this, world);
+        this.cam = new OrthographicCamera(Constants.CAMERA_WIDTH, Constants.CAMERA_HEIGHT);
+        this.cam.setToOrtho(false, Constants.CAMERA_WIDTH, Constants.CAMERA_HEIGHT);
+        this.cam.update();
+
+        pCamera = new OrthographicCamera(Constants.CAMERA_WIDTH, Constants.CAMERA_HEIGHT);
+        pCamera.setToOrtho(false, Constants.CAMERA_WIDTH, Constants.CAMERA_HEIGHT);
+        pCamera.position.set(Constants.CAMERA_WIDTH / 2f, Constants.CAMERA_HEIGHT / 2f, 0);
+        pCamera.update();
+
+        guiCam = new OrthographicCamera(width, height);
+        guiCam.position.set(width / 2f, height / 2f, 0);
+        guiCam.update();
+
+        spriteBatch = new SpriteBatch();
+
+        if (fromMenu) {
+            GameSave.startLevelFresh();
+            game.levelStart(levelName);
+        }
+
+        loader = new LevelLoader(levelName);
+    }
+
+    public GAME_STATE getGameState() {
+        return gameState;
+    }
+
+    public void setGameState(GAME_STATE gameState) {
+        if (gameState == GAME_STATE.GAME_PAUSED && (GameScreenInput.isGamePausedOrEnded(this.gameState)))
+            return;
+
+        if (gameState == GAME_STATE.GAME_PAUSED && this.gameState != GAME_STATE.GAME_PAUSED)
+            MusicManager.pause();
+        else if (gameState != GAME_STATE.GAME_PAUSED && this.gameState == GAME_STATE.GAME_PAUSED)
+            MusicManager.resume();
+
+        this.gameState = gameState;
+        hud.onGameStateChange();
+        hud.updateTimer = !(gameState == GAME_STATE.PLAYER_DEAD || gameState == GAME_STATE.PLAYER_UPDATING ||
+                gameState == GAME_STATE.SHOW_BOX || gameState == GAME_STATE.PLAYER_DIED);
+
+        if (gameState == GAME_STATE.PLAYER_DIED || gameState == GAME_STATE.GAME_LEVEL_END)
+            MusicManager.stop(true);
+
+        if (gameState == GAME_STATE.PLAYER_DEAD)
+            hud.showLevelEndScreen();
+    }
+
+    public Music getMusic() {
+        return music;
+    }
+
+    public boolean isDebug() {
+        return debug;
+    }
+
+    public void setDebug(boolean debug) {
+        this.debug = debug;
+        if (debug)
+            profiler.enable();
+        else
+            profiler.disable();
+    }
+
+    @Override
+    public void show() {
+        music = game.assets.manager.get(loader.level.music.first());
+        if (!resumed)
+            music.setPosition(0);
+        music.setLooping(true);
+        MusicManager.play(music);
+        if (!resumed || forceCheckEnter) {
+            world.maryo.checkLevelEnter(entryName);
+            forceCheckEnter = false;
+        }
+        Gdx.input.setCatchBackKey(true);
+
+        inputprocessor = new InputMultiplexer();
+        inputprocessor.addProcessor(keyboardAndTouch);
+        inputprocessor.addProcessor(hud.stage);
+
+        Gdx.input.setInputProcessor(inputprocessor);
+        game.controllerMappings.setInputProcessor(inputprocessor);
+        if (resumed) {
+            cameraForceSnap = true;
+        }
+    }
+
+    @Override
+    public void render(float delta) {
+        delta = Math.min(delta, 1 / 30f);
+        if (delta <= 0)
+            return;
+
+        Gdx.gl.glClearColor(0f, 0f, 0f, 1);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+        //physics
+        updateObjects(delta);
+        //physics end
+
+        moveCamera(cam, gameState == GAME_STATE.GAME_EDIT_MODE ? cameraEditModeTranslate : world.maryo.position,
+                gameState == GAME_STATE.GAME_EDIT_MODE || (gameState != GAME_STATE.GAME_RUNNING && gameState !=
+                        GAME_STATE.PLAYER_UPDATING && gameState != GAME_STATE.PLAYER_DEAD));
+        drawBackground();
+        spriteBatch.setProjectionMatrix(cam.combined);
+        spriteBatch.begin();
+        drawObjects();
+        killPointsTextHandler.render(spriteBatch, delta);
+
+        if (globalEffect != null) {
+            globalEffect.setPosition(cam.position.x - Constants.CAMERA_WIDTH * 0.5f, cam.position.y + 0.5f *
+                    Constants.CAMERA_HEIGHT);
+            globalEffect.draw(spriteBatch);
+
+            if (gameState == GAME_STATE.GAME_RUNNING) globalEffect.update(delta);
+        }
+
+        spriteBatch.end();
+
+        hud.render(gameState, delta);
+
+        if (debug) {
+            spriteBatch.setProjectionMatrix(guiCam.combined);
+            spriteBatch.begin();
+            drawDebugText();
+            spriteBatch.end();
+            drawDebug();
+        }
+
+        if (gameState == GAME_STATE.PLAYER_DIED) {
+            handlePlayerDied();
+        }
+
+        if (gameState == GAME_STATE.GAME_LEVEL_END) {
+            handleLevelEnded(delta);
+        }
+
+        //cleanup
+        if (world.trashObjects.size > 0) {
+            for (int i = 0; i < world.trashObjects.size; i++)
+                world.level.gameObjects.remove(world.trashObjects.get(i));
+            world.trashObjects.clear();
+            // neuaufbau der objectstoupdate auslösen
+            objRefreshSize = 0;
+        }
+
+        //debug
+        if (gameState == GAME_STATE.GAME_EDIT_MODE) {
+            if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
+                cameraEditModeTranslate.x += 0.2f;
+            } else if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
+                cameraEditModeTranslate.x -= 0.2f;
+            }
+            if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
+                cameraEditModeTranslate.y += 0.2f;
+            } else if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
+                cameraEditModeTranslate.y -= 0.2f;
+            }
+        }
+        if (debug) profiler.reset();
+    }
+
+    public void endLevel() {
+        levelName = getMenuLevelname();
+
+        if (parent != null) {
+            parent.dispose();
+            parent = null;
+        }
+
+        GameSave.levelCleared(levelName);
+        game.levelEnd(levelName, true);
+        MusicManager.stop(true);
+        Sound clear = game.assets.manager.get(Assets.MUSIC_COURSECLEAR);
+        SoundManager.play(clear);
+        setGameState(GAME_STATE.GAME_LEVEL_END);
+        hud.showLevelEndScreen();
+    }
+
+    public String getMenuLevelname() {
+        return parent == null ? levelName : parent.levelName;
+    }
+
+    private void handleLevelEnded(float delta) {
+
+    }
+
+    public void showBoxText(Box box) {
+        setGameState(GAME_STATE.SHOW_BOX);
+        hud.showPopupBox(box.text);
+    }
+
+    public void discardBoxText() {
+        if (gameState == GAME_STATE.SHOW_BOX) {
+            if (hud.hidePopupBox())
+                setGameState(GAME_STATE.GAME_RUNNING);
+        }
+    }
+
+    private void handlePlayerDied() {
+    }
+
+    private void drawBackground() {
+        for (Background background : world.level.backgrounds) {
+            background.render(cam, spriteBatch);
+        }
+    }
+
+    private void moveCamera(OrthographicCamera cam, Vector3 pos, boolean snap) {
+        //frieren bei größer/kleiner, aber sicherstellen das Maryo sichtbar ist (falls aus Kamerabereich geplumpst)
+        if ((gameState == GAME_STATE.PLAYER_UPDATING && !world.maryo.entering && !world.maryo.exiting
+                && world.isObjectVisible(world.maryo, cam))) {
+            return;
+        }
+        if (snap || cameraForceSnap) {
+            cam.position.set(pos);
+            cameraForceSnap = false;
+        } else {
+            cam.position.lerp(pos, 0.05f);
+        }
+        cam.update();
+        if (gameState != GAME_STATE.GAME_EDIT_MODE) keepCameraInBounds(cam);
+    }
+
+    private void keepCameraInBounds(OrthographicCamera cam) {
+        float camX = cam.position.x;
+        float camY = cam.position.y;
+
+        camMin.set(cam.viewportWidth, cam.viewportHeight);
+        camMin.scl(cam.zoom / 2); //bring to center and scale by the zoom level
+        camMax.set(world.level.width, world.level.height);
+        camMax.sub(camMin); //bring to center
+
+        //keep camera within borders
+        camX = Math.min(camMax.x, Math.max(camX, camMin.x));
+        camY = Math.min(camMax.y, Math.max(camY, camMin.y));
+
+        cam.position.set(camX, camY, cam.position.z);
+        cam.update();
+    }
+
+    private void updateObjects(float delta) {
+        if (gameState == GAME_STATE.GAME_RUNNING) {
+            timeSinceUpdObjRefresh += delta;
+            if (timeSinceUpdObjRefresh >= FREQ_OTU_REFRESH || world.level.gameObjects.size() != objRefreshSize) {
+                objectsToUpdate.clear();
+                timeSinceUpdObjRefresh = 0;
+                objRefreshSize = world.level.gameObjects.size();
+                world.createMaryoRectWithOffset(maryoBWO, 8);
+                for (int i = 0, size = world.level.gameObjects.size(); i < size; i++) {
+                    GameObject go = world.level.gameObjects.get(i);
+                    if (maryoBWO.overlaps(go.mColRect) || (go instanceof Fireball) || (go instanceof Iceball)) {
+                        objectsToUpdate.add(go);
+                        go._update(delta);
+                    }
+                }
+            } else {
+                for (int i = 0; i < objectsToUpdate.size; i++) {
+                    GameObject go = objectsToUpdate.get(i);
+                    go._update(delta);
+                }
+            }
+
+        } else if (gameState == GAME_STATE.PLAYER_DEAD || gameState == GAME_STATE.PLAYER_UPDATING)
+            world.maryo._update(delta);
+    }
+
+    private void drawObjects() {
+        world.drawVisibleObjects(cam, spriteBatch);
+    }
+
+    private void drawDebug() {
+        // render blocks
+        shapeRenderer.setProjectionMatrix(cam.combined);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        for (int i = 0; i < world.getVisibleObjects().size; i++) {
+            GameObject go = world.getVisibleObjects().get(i);
+            Rectangle colRect = go.mColRect;
+            Rectangle drawRect = go.mDrawRect;
+            shapeRenderer.setColor(0, 1, 0, 1);
+            shapeRenderer.rect(colRect.x, colRect.y, colRect.width, colRect.height);
+            shapeRenderer.setColor(1, 0, 0, 1);
+            shapeRenderer.rect(drawRect.x, drawRect.y, drawRect.width, drawRect.height);
+        }
+        // render maryo
+        Maryo maryo = world.maryo;
+        Rectangle body = maryo.mColRect;
+        Rectangle bounds = maryo.mDrawRect;
+        world.createMaryoRectWithOffset(maryoBWO, 8);
+        shapeRenderer.setColor(0, 1, 0, 1);
+        shapeRenderer.rect(body.x, body.y, body.width, body.height);
+        shapeRenderer.setColor(1, 0, 0, 1);
+        shapeRenderer.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+        shapeRenderer.setColor(0, 0, 1, 1);
+        shapeRenderer.rect(maryo.debugRayRect.x, maryo.debugRayRect.y, maryo.debugRayRect.width, maryo.debugRayRect
+                .height);
+        shapeRenderer.setColor(0.3f, 0.9f, 0, 0);
+        shapeRenderer.rect(maryoBWO.x, maryoBWO.y, maryoBWO.width, maryoBWO.height);
+        shapeRenderer.end();
+    }
+
+    private void drawDebugText() {
+        String debugMessage = generateDebugMessage();
+        debugGlyph.setText(debugFont, debugMessage);
+        debugFont.draw(spriteBatch, debugMessage, 20, height - 20);
+
+        Vector2 point = World.VECTOR2_POOL.obtain();
+        float x = Gdx.input.getX();
+        float y = invertY(Gdx.input.getY());
+        Utility.guiPositionToGamePosition(x, y, this, point);
+
+        for (GameObject gameObject : world.level.gameObjects) {
+            if (gameObject.mDrawRect.contains(point)) {
+                String objectDebugText = gameObject.toString();
+                float tWidth = width * 0.4f;
+                debugGlyph.setText(debugObjectFont, objectDebugText, Color.BLACK, tWidth, Align.left, true);
+                float height = debugGlyph.height;
+                debugObjectFont.draw(spriteBatch, debugGlyph, x - tWidth, y + height);
+                break;
+            }
+        }
+
+        World.VECTOR2_POOL.free(point);
+    }
+
+    private String generateDebugMessage() {
+        return "Level: width=" + world.level.width + ", height=" + world.level.height
+                + "\n" + "Player: x=" + world.maryo.position.x + ", y=" + world.maryo.position.y
+                + "\n" + "LevelName: " + levelName
+                + "\n" + "Player Vel: x=" + world.maryo.velocity.x + ", y=" + world.maryo.velocity.y
+                + "\n" + "World Camera: x=" + cam.position.x + ", y=" + cam.position.y
+                + "\n" + "JavaHeap: " + Gdx.app.getJavaHeap() / 1000000 + "MB"
+                + "\n" + "NativeHeap: " + Gdx.app.getNativeHeap() / 1000000 + "MB"
+                + "\n" + "OGL Draw Calls: " + profiler.getDrawCalls()
+                + "\n" + "OGL TextureBindings: " + profiler.getTextureBindings()
+                + "\n" + "Screen w=" + width + "h=" + height
+                + "\n" + "FPS: " + Gdx.graphics.getFramesPerSecond();
+    }
+
+    @Override
+    public void resize(int width, int height) {
+        super.resize(width, height);
+        this.width = width;
+        this.height = height;
+        Vector3 oldPos = cam.position;
+
+        Constants.initCamera();
+
+        cam = new OrthographicCamera(Constants.CAMERA_WIDTH, Constants.CAMERA_HEIGHT);
+        cam.setToOrtho(false, Constants.CAMERA_WIDTH, Constants.CAMERA_HEIGHT);
+        cam.update();
+        cam.position.x = oldPos.x;
+        cam.position.y = oldPos.y;
+
+        pCamera = new OrthographicCamera(Constants.CAMERA_WIDTH, Constants.CAMERA_HEIGHT);
+        pCamera.setToOrtho(false, Constants.CAMERA_WIDTH, Constants.CAMERA_HEIGHT);
+        pCamera.position.set(Constants.CAMERA_WIDTH / 2f, Constants.CAMERA_HEIGHT / 2f, 0);
+        pCamera.update();
+
+        guiCam = new OrthographicCamera(width, height);
+        guiCam.position.set(width / 2f, height / 2f, 0);
+        guiCam.update();
+
+        for (Background background : world.level.backgrounds) {
+            background.resize(cam);
+        }
+        hud.resize(width, height);
+    }
+
+    @Override
+    public void hide() {
+        setGameState(GAME_STATE.GAME_PAUSED);
+        music.stop();
+    }
+
+    @Override
+    public void pause() {
+        setGameState(GAME_STATE.GAME_PAUSED);
+        super.pause();
+    }
+
+    @Override
+    public void resume() {
+        super.resume();
+    }
+
+    @Override
+    public void dispose() {
+        super.dispose();
+        music.stop();
+        hud.dispose();
+        inputprocessor.clear();
+        game.assets.dispose();
+        world.dispose();
+        if (globalEffect != null) {
+            globalEffect.dispose();
+        }
+        if (debug) profiler.disable();
+    }
+
+    @Override
+    public void loadAssets() {
+        loader.parseLevel(world);
+        game.assets.manager.load("data/animation/particles/fireball_emitter_2.p", ParticleEffect.class, game.assets
+                .particleEffectParameter);
+        game.assets.manager.load("data/animation/particles/fireball_explosion_emitter.p", ParticleEffect.class, game
+                .assets.particleEffectParameter);
+        game.assets.manager.load("data/animation/particles/iceball_emitter.p", ParticleEffect.class, game.assets
+                .particleEffectParameter);
+        game.assets.manager.load("data/animation/particles/iceball_explosion_emitter.p", ParticleEffect.class, game
+                .assets.particleEffectParameter);
+        game.assets.manager.load("data/animation/particles/star_trail.p", ParticleEffect.class, game.assets
+                .particleEffectParameter);
+        game.assets.manager.load("data/animation/particles/maryo_star.p", ParticleEffect.class, game.assets
+                .particleEffectParameter);
+        hud.loadAssets();
+
+        //audio
+        game.assets.manager.load(Assets.SOUND_AUDIO_ON, Sound.class);
+        game.assets.manager.load(Assets.SOUND_ITEM_GOLDPIECE1, Sound.class);
+        game.assets.manager.load(Assets.SOUND_ITEM_GOLDPIECE_RED, Sound.class);
+        game.assets.manager.load(Assets.SOUND_PLAYER_DEAD, Sound.class);
+        game.assets.manager.load(Assets.SOUND_JUMP_BIG, Sound.class);
+        game.assets.manager.load(Assets.SOUND_JUMP_BIG_POWER, Sound.class);
+        game.assets.manager.load(Assets.SOUND_JUMP_SMALL, Sound.class);
+        game.assets.manager.load(Assets.SOUND_JUMP_SMALL_POWER, Sound.class);
+        game.assets.manager.load(Assets.SOUND_PLAYER_POWERDOWN, Sound.class);
+        game.assets.manager.load(Assets.SOUND_WALL_HIT, Sound.class);
+        game.assets.manager.load(Assets.SOUND_ITEM_FIREBALL, Sound.class);
+        game.assets.manager.load(Assets.SOUND_ITEM_LIVE_UP, Sound.class);
+        game.assets.manager.load(Assets.SOUND_ITEMBOX_SET, Sound.class);
+        game.assets.manager.load(Assets.SOUND_ITEMBOX_GET, Sound.class);
+
+        game.assets.manager.load(Assets.SOUND_SPROUT, Sound.class);
+        game.assets.manager.load(Assets.SOUND_ITEM_STAR_KILL, Sound.class);
+        game.assets.manager.load(Assets.SOUND_LEAVE_PIPE, Sound.class);
+        game.assets.manager.load(Assets.SOUND_ENTER_PIPE, Sound.class);
+
+        game.assets.manager.load(Assets.SOUND_ITEM_FIREBALL_REPELLED, Sound.class);
+
+        game.assets.manager.load(Assets.SOUND_ITEM_ICEBALL_HIT, Sound.class);
+        game.assets.manager.load(Assets.SOUND_ITEM_FIREBALL_EXPLOSION, Sound.class);
+
+        game.assets.manager.load(Assets.MUSIC_COURSECLEAR, Sound.class);
+
+    }
+
+    @Override
+    public void onAssetsLoaded() {
+        hud.initAssets();
+        world.level = loader.level;
+
+        debugFont = new BitmapFont();
+        debugFont.setColor(1, 0, 0, 1);
+
+        debugObjectFont = new BitmapFont();
+        debugGlyph = new GlyphLayout();
+
+        for (GameObject go : loader.level.gameObjects) {
+            go.initAssets();
+        }
+
+        BitmapFont pointsFont = game.assets.manager.get(Assets.SKIN_HUD, Skin.class).getFont(Assets.FONT_SIMPLE25);
+        pointsFont.setColor(1, 1, 1, 1);
+        killPointsTextHandler = new KillPointsTextHandler(pointsFont);
+        for (Background background : world.level.backgrounds) {
+            background.onAssetsLoaded(cam, game.assets);
+        }
+
+        if (!TextUtils.isEmpty(world.level.particleEffect)) {
+            globalEffect = new ParticleEffect(game.assets.manager.get(world.level.particleEffect, ParticleEffect
+                    .class));
+            globalEffect.start();
+        }
+    }
+
+    private float invertY(float y) {
+        return height - y;
+    }
+
+    public World getWorld() {
+        return world;
+    }
+
+    public void setWorld(World world) {
+        this.world = world;
+    }
+
+    public float getWidth() {
+        return width;
+    }
+
+    public void setWidth(float width) {
+        this.width = width;
+    }
+
+    public float getHeight() {
+        return height;
+    }
+
+    public void setHeight(float height) {
+        this.height = height;
+    }
+
+    /**
+     * Wird aufgerufen wenn ENTER oder im HUD weiter gedrückt wird bei Tod, Game Over oder Levenende
+     */
+    public void proceedFromPausedOrEnded() {
+
+        // aus der Pause heraus einfach weitermachen
+        if (gameState == GAME_STATE.GAME_PAUSED)
+            setGameState(GAME_STATE.GAME_RUNNING);
+
+        else if (gameState == GAME_STATE.GAME_LEVEL_END) {
+            // nächstes Level
+            String nextLevel = Level.getNextLevel(getMenuLevelname());
+            if (nextLevel != null)
+                game.setScreen(new LoadingScreen(new GameScreen(game, true, nextLevel), false));
+            else
+                exitToMenu();
+
+        } else if (gameState == GAME_STATE.PLAYER_DEAD || gameState == GAME_STATE.PLAYER_DIED) {
+            if (GameSave.getLifes() > 0)
+                game.setScreen(new LoadingScreen(new GameScreen(game, true, getMenuLevelname()), false));
+            else
+                game.setScreen(new LoadingScreen(new MainMenuScreen(game), false));
+
+            game.levelEnd(levelName, false);
+        }
+    }
+
+    public enum GAME_STATE {
+        GAME_READY, GAME_RUNNING, GAME_PAUSED, GAME_LEVEL_END, PLAYER_DIED, PLAYER_DEAD,
+        SHOW_BOX, PLAYER_UPDATING, GAME_EDIT_MODE
+    }
+
+    public static class KillPointsTextHandler {
+        private final List<KillPoint> pointsTextPool = new ArrayList<>(10);
+        NAHudText<Integer> text = new NAHudText<>(null, null);
+        private BitmapFont font;
+
+        KillPointsTextHandler(BitmapFont font) {
+            this.font = font;
+        }
+
+        public void add(int points, float positionX, float positionY) {
+            for (KillPoint point : pointsTextPool) {
+                if (point.recycled) {
+                    point.reset(positionX, positionY, points);
+                    return;
+                }
+            }
+            KillPoint point = new KillPoint(points, positionX, positionY);
+            pointsTextPool.add(point);
+        }
+
+        public void render(SpriteBatch batch, float deltaTime) {
+            //noinspection ForLoopReplaceableByForEach
+            float oldScale = font.getData().scaleX;
+            boolean useInt = font.usesIntegerPositions();
+            font.getData().setScale(0.015f);
+            font.setUseIntegerPositions(false);
+
+            for (int i = 0, size = pointsTextPool.size(); i < size; i++) {
+                KillPoint point = pointsTextPool.get(i);
+                if (!point.recycled) {
+                    point.draw(batch, deltaTime, font, text);
+                }
+            }
+
+            font.getData().setScale(oldScale);
+            font.setUseIntegerPositions(useInt);
+
+        }
+
+        private static class KillPoint {
+            static final float velocity = 0.9f;
+            static final float maxDistance = 0.4f;
+            private boolean recycled = false;
+            private int points;
+            private float positionX, positionY, origPosY;
+            private float alpha = 1;
+
+            KillPoint(int points, float positionX, float positionY) {
+                this.points = points;
+                this.positionX = positionX;
+                this.positionY = positionY;
+                this.origPosY = positionY;
+            }
+
+            public void draw(SpriteBatch spriteBatch, float deltaTime, BitmapFont font, NAHudText<Integer> text) {
+                if (positionY >= origPosY + maxDistance) {
+                    recycled = true;
+                    return;
+                }
+                float velDelta = velocity * deltaTime;
+                positionY += maxDistance * velDelta;
+                alpha -= 1 / (maxDistance / (maxDistance * velDelta));
+                font.getColor().set(1, 1, 1, alpha);
+                font.draw(spriteBatch, text.toString(points), positionX, positionY);
+            }
+
+            void reset(float posX, float posY, int points) {
+                recycled = false;
+                positionX = posX;
+                positionY = posY;
+                this.points = points;
+                origPosY = posY;
+                alpha = 1;
+            }
+        }
+    }
+}
+core/src/rs/pedjaapps/smc/object/items/Item.java
+public abstract class Item extends DynamicObject
+{
+	//item types
+	public static final int
+	TYPE_POWERUP = 23,
+	TYPE_MUSHROOM_DEFAULT = 25,
+	TYPE_MUSHROOM_LIVE_1 = 35,
+	TYPE_MUSHROOM_POISON = 49,
+	TYPE_MUSHROOM_BLUE = 51,
+    TYPE_MUSHROOM_GHOST = 52,
+	TYPE_FIREPLANT = 24,
+	TYPE_JUMPING_GOLDPIECE = 22,
+	TYPE_FALLING_GOLDPIECE = 48,
+	TYPE_GOLDPIECE = 8,
+	TYPE_MOON = 37,
+	TYPE_STAR = 39;
+
+    public String textureName, textureAtlas;
+
+    protected float popTargetPosY;
+    public boolean playerHit;
+    protected float stateTime;
+    public enum CLASS
+    {
+        goldpiece, moon, jstar, mushroom, fireplant
+    }
+    WorldState worldState = WorldState.IDLE;
+    //is drawn
+    public boolean visible = true;
+
+    protected float originalPosY;
+    //collectible by player
+    public boolean collectible = true;
+    public TextureRegion texture;
+
+    /**
+     * Coin will smoothly pop out of the box*/
+    public boolean popFromBox;
+    private boolean dropping;
+    public boolean isInBox;
+
+    public Item(World world, Vector2 size, Vector3 position)
+    {
+        super(world, size, position);
+        position.z = 0.05f;
+        ppEnabled = false;
+    }
+
+    public abstract int getType();
+
+    public static String getClassFromItemType(int itemType) {
+        switch (itemType) {
+            case TYPE_MUSHROOM_BLUE:
+            case TYPE_MUSHROOM_DEFAULT:
+            case TYPE_MUSHROOM_POISON:
+            case TYPE_MUSHROOM_LIVE_1:
+                return CLASS.mushroom.toString();
+            case TYPE_GOLDPIECE:
+                return CLASS.goldpiece.toString();
+            case TYPE_STAR:
+                return CLASS.jstar.toString();
+            case TYPE_MOON:
+                return CLASS.moon.toString();
+            case TYPE_FIREPLANT:
+                return CLASS.fireplant.toString();
+            default:
+                return null;
+        }
+    }
+
+    public static String getSavedItemTextureName(int itemType) {
+        switch (itemType) {
+            case TYPE_MUSHROOM_BLUE:
+                return MushroomBlue.TEXTURE_NAME;
+            case TYPE_MUSHROOM_DEFAULT:
+                return MushroomDefault.TEXTURE_NAME;
+            case TYPE_FIREPLANT:
+                return "game_items_fireplant";
+            default:
+                return null;
+        }
+
+    }
+
+    public static Item createObject(World world, Assets assets, int itemType, String objectClassString, Vector2 size, Vector3 position)
+    {
+        CLASS itemClass = CLASS.valueOf(objectClassString);
+        Item object = null;
+        switch (itemClass)
+        {
+            case goldpiece:
+                object = new Coin(world, size, position, itemType);
+                break;
+            case moon:
+                Box.createMoon(assets);//load assets
+                object = Box.createMoon(world, position, false, assets, false);
+                break;
+            case jstar:
+                Box.createStar(assets);//load assets
+                object = Box.createStar(world, position, false, assets, false);
+                ((Star)object).moving = true;
+                break;
+            case mushroom:
+                Box.createMushroom(assets, itemType);//load assets
+                object = Box.createMushroom(world, position, itemType, false, assets, false);
+                ((Mushroom)object).moving = true;
+                break;
+            case fireplant:
+                Box.createFireplant(assets);//load assets
+                object = Box.createFireplant(world, position);
+                break;
+        }
+        if(object != null)
+            object.visible = true;
+        return object;
+    }
+
+    @Override
+    public final void _update(float delta)
+    {
+        if(dropping)
+        {
+            stateTime += delta;
+            velocity.y = -1f;
+            velocity.x = 0;
+
+            velocity.scl(delta);
+
+            position.add(velocity);
+            mColRect.x = position.x;
+            mColRect.y = position.y;
+            updateBounds();
+
+            velocity.scl(1 / delta);
+        }
+        else
+        {
+            updateItem(delta);
+        }
+    }
+	
+	public void popOutFromBox(float popTargetPosY)
+	{
+		this.popTargetPosY = popTargetPosY;
+	}
+
+    public abstract void hitPlayer();
+
+    public void updateItem(float delta)
+    {
+        stateTime += delta;
+    }
+
+    public void drop()
+    {
+        dropping = true;
+        playerHit = false;
+    }
+
+    @Override
+    public void dispose()
+    {
+
+    }
+}
+core/src/rs/pedjaapps/smc/utility/Constants.java
+public class Constants
+{
+    public static float CAMERA_WIDTH/* = 10f*/;
+    public static float MENU_CAMERA_WIDTH/* = 10f*/;
+
+    public static final float MENU_CAMERA_HEIGHT = 7f;
+    public static final float CAMERA_HEIGHT = 9f;
+
+    public static float ASPECT_RATIO;
+
+    public static final float MENU_DRAW_WIDTH = 12.444444444f;
+    public static final float DRAW_WIDTH = 16f;
+
+    public static final int GRAVITY = -20;
+
+    static
+    {
+        initCamera();
+    }
+
+    public static void initCamera()
+    {
+        ASPECT_RATIO = (float)MaryoGame.NATIVE_WIDTH/(float)MaryoGame.NATIVE_HEIGHT;
+        CAMERA_WIDTH = CAMERA_HEIGHT * ASPECT_RATIO;
+        MENU_CAMERA_WIDTH = MENU_CAMERA_HEIGHT * ASPECT_RATIO;
+    }
+}
+core/src/rs/pedjaapps/smc/object/items/mushroom/MushroomGhost.java
+public class MushroomGhost extends Mushroom {
+    public MushroomGhost(World world, Vector2 size, Vector3 position) {
+        super(world, size, position);
+        textureName = "game_items_mushroom_ghost";
+        mPickPoints = 800;
+    }
+
+    @Override
+    public int getType() {
+        return TYPE_MUSHROOM_GHOST;
+    }
+
+    @Override
+    protected void performCollisionAction() {
+        playerHit = true;
+        world.maryo.enableGhostMode();
+        Sound sound = world.screen.game.assets.manager.get(Assets.SOUND_ITEM_MUSHROOM_GHOST);
+        SoundManager.play(sound);
+        world.trashObjects.add(this);
+        GameSave.addScore(mPickPoints);
+    }
+}
+core/src/rs/pedjaapps/smc/object/items/Star.java
+public class Star extends Item
+{
+    public static final float GLIM_COLOR_START_ALPHA = 0f;
+    public static final float GLIM_COLOR_MAX_ALPHA = 0.95f;
+    public static final float POSITION_Z = 0.053f;
+    public static final float VELOCITY_X = 3f;
+    public static final float VELOCITY_Y = 10f;
+    public static final float DEF_SIZE = 0.65625f;
+
+    public boolean moving;
+    public float velY = -1;
+
+    private Direction direction = Direction.right;
+
+    private final Color glimColor = new Color(0.160784314f, 0.654901961f, 1f, GLIM_COLOR_START_ALPHA);
+    private float glimCounter;
+    private boolean glimMode = true;
+    ParticleEffect trail;
+
+    public Star(World world, Vector2 size, Vector3 position)
+    {
+        super(world, size, position);
+        position.z = POSITION_Z;
+        textureName = "game_items_star";
+    }
+
+    @Override
+    public int getType() {
+        return TYPE_STAR;
+    }
+
+    @Override
+    public void initAssets()
+    {
+        texture = world.screen.game.assets.manager.get(Assets.ATLAS_DYNAMIC, TextureAtlas.class)
+                .findRegion(textureName);
+        trail = new ParticleEffect(world.screen.game.assets.manager.get("data/animation/particles/star_trail.p", ParticleEffect.class));
+    }
+
+    @Override
+    public void _render(SpriteBatch spriteBatch)
+    {
+        if (!visible) return;
+        trail.setPosition(mColRect.x + mColRect.width * 0.5f, mColRect.y + mColRect.height * 0.5f);
+        trail.draw(spriteBatch);
+        spriteBatch.setShader(Shader.NORMAL_BLEND_SHADER);
+
+        if (glimMode)
+        {
+            glimColor.a = glimCounter;
+            if (glimCounter > GLIM_COLOR_MAX_ALPHA)
+            {
+                glimMode = false;
+                glimCounter = GLIM_COLOR_MAX_ALPHA;
+            }
+        }
+        else
+        {
+            glimColor.a = glimCounter;
+            if (glimCounter < GLIM_COLOR_START_ALPHA)
+            {
+                glimMode = true;
+                glimCounter = GLIM_COLOR_START_ALPHA;
+            }
+        }
+        spriteBatch.setColor(glimColor);
+
+        float width = Utility.getWidth(texture, mDrawRect.height);
+        float originX = width * 0.5f;
+        float originY = mDrawRect.height * 0.5f;
+        spriteBatch.draw(texture, mDrawRect.x, mDrawRect.y, originX, originY, width, mDrawRect.height, 1, 1, mRotationZ);
+
+        spriteBatch.setShader(null);
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    @Override
+    public void updateItem(float delta)
+    {
+        super.updateItem(delta);
+        if (popFromBox)
+        {
+            // scale velocity to frame units
+            velocity.scl(delta);
+
+            // update position
+            position.add(velocity);
+            mColRect.y = position.y;
+            updateBounds();
+
+            // un-scale velocity (not in frame time)
+            velocity.scl(1 / delta);
+
+            if (position.y >= popTargetPosY)
+            {
+                isInBox = false;
+                popFromBox = false;
+                moving = true;
+                velocity.x = direction == Direction.right ? VELOCITY_X : -VELOCITY_X;
+            }
+        }
+        else if (moving)
+        {
+            trail.update(delta);
+            // Setting initial vertical acceleration
+            acceleration.y = Constants.GRAVITY;
+
+            // Convert acceleration to frame time
+            acceleration.scl(delta);
+
+            // apply acceleration to change velocity
+            velocity.add(acceleration);
+
+            checkCollisionWithBlocks(delta, true, true, false, false);
+
+            switch (direction)
+            {
+                case right:
+                    velocity.x = VELOCITY_X;
+                    break;
+                case left:
+                    velocity.x = -VELOCITY_X;
+                    break;
+            }
+            if (velY != -1)
+            {
+                velocity.y = velY;
+                velY = -1;
+            }
+        }
+        if (glimMode)
+        {
+            glimCounter += (delta * 3f);
+        }
+        else
+        {
+            glimCounter -= (delta * 3f);
+        }
+        getRotation(delta);
+    }
+
+    private void getRotation(float delta)
+    {
+        float circumference = (float) Math.PI * (mColRect.width);
+        float deltaVelocity = VELOCITY_X * delta;
+        float step = (circumference / deltaVelocity);
+        float frameRotation = 360 / step;//degrees
+        frameRotation *= 0.5f;
+
+        if(velocity.y > 0.0f)
+        {
+            mRotationZ += frameRotation;
+        }
+        // rotate back to 0 if falling
+        else
+        {
+            frameRotation *= 0.9f;
+            if(mRotationZ > 5.0f && mRotationZ <= 175.0f)
+            {
+                mRotationZ -= frameRotation;
+            }
+            else if(mRotationZ < 355 && mRotationZ > 185)
+            {
+                mRotationZ += frameRotation;
+            }
+        }
+        if(mRotationZ > 360)
+        {
+            mRotationZ = mRotationZ - 360;
+        }
+        if(mRotationZ < -360)
+        {
+            mRotationZ = 0 - mRotationZ;
+        }
+    }
+
+    @Override
+    protected boolean handleCollision(GameObject object, boolean vertical)
+    {
+        if (object instanceof Sprite)
+        {
+            if (((Sprite) object).type == Sprite.Type.massive)
+            {
+                if (vertical)
+                {
+                    velY = mColRect.y < object.mColRect.y ? 0 : VELOCITY_Y;
+                    return true;
+                }
+                else if (mColRect.y > groundY)
+                {
+                    if (velocity.x < 0)
+                    {
+                        direction = Direction.right;
+                    }
+                    else
+                    {
+                        direction = Direction.left;
+                    }
+                    return true;
+                }
+            }
+            else if (((Sprite) object).type == Sprite.Type.halfmassive)
+            {
+                if (vertical && mColRect.y + mColRect.height > object.mColRect.y + object.mColRect.height)
+                {
+                    velY = VELOCITY_Y;
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    @Override
+    public float maxVelocity()
+    {
+        return VELOCITY_X;
+    }
+
+    @Override
+    public void hitPlayer()
+    {
+        if (isInBox) return;
+        playerHit = true;
+        AssetManager manager = world.screen.game.assets.manager;
+        if(!manager.isLoaded(Assets.MUSIC_INVINCIBLE))
+        {
+            manager.load(Assets.MUSIC_INVINCIBLE, Music.class);
+            manager.finishLoading();
+        }
+        MusicManager.play(manager.get(Assets.MUSIC_INVINCIBLE, Music.class), false);
+        GameSave.addScore(1000);
+        ((GameScreen)world.screen).killPointsTextHandler.add(1000, position.x, position.y + mDrawRect.height);
+        world.maryo.starPicked();
+        world.trashObjects.add(this);
+    }
+
+    @Override
+    public void popOutFromBox(float popTargetPositionY)
+    {
+        super.popOutFromBox(popTargetPositionY);
+        visible = true;
+        popFromBox = true;
+        velocity.y = VELOCITY_Y;
+        originalPosY = position.y;
+    }
+
+    @Override
+    public void dispose()
+    {
+        super.dispose();
+        trail.dispose();
+        trail = null;
+    }
+}
+core/src/rs/pedjaapps/smc/audio/SoundManager.java
+public class SoundManager
+{
+    public static long play(Sound sound)
+    {
+        return play(sound, 1f);
+    }
+
+    public static long play(Sound sound, float volume)
+    {
+        if(sound == null || !PrefsManager.isPlaySounds())return -1;
+        return sound.play(volume * PrefsManager.getSoundVolume());
+    }
+}
+core/src/rs/pedjaapps/smc/object/items/mushroom/MushroomBlue.java
+public class MushroomBlue extends Mushroom
+{
+
+    public static final String TEXTURE_NAME = "game_items_mushroom_blue";
+
+    public MushroomBlue(World world, Vector2 size, Vector3 position)
+    {
+        super(world, size, position);
+        textureName = TEXTURE_NAME;
+        mPickPoints = 700;
+    }
+
+    @Override
+    public int getType() {
+        return TYPE_MUSHROOM_BLUE;
+    }
+
+    @Override
+    protected void performCollisionAction()
+    {
+        playerHit = true;
+        world.maryo.upgrade(Maryo.MaryoState.ice, this, false);
+        world.trashObjects.add(this);
+        GameSave.addScore(mPickPoints);
+    }
+}
+core/src/rs/pedjaapps/smc/object/maryo/Maryo.java
+public class Maryo extends DynamicObject
+{
+
+
+    private enum Keys
+    {
+        LEFT, RIGHT, UP, DOWN, JUMP, FIRE
+    }
+
+    private static final int POWER_JUMP_DELTA = 1;
+
+    private static final float MAX_JUMP_SPEED = 10f;
+    private static final float POWER_MAX_JUMP_SPEED = 12f;
+    private float mMaxJumpSpeed = MAX_JUMP_SPEED;
+
+    public boolean jumpPeakReached;
+
+    private float downPressTime;
+
+    private Set<Keys> keys = new HashSet<>(Keys.values().length);
+
+    public enum MaryoState
+    {
+        small, big, fire, ice;
+
+        public static int toInt(MaryoState ms) {
+            switch (ms) {
+                case big: return 1;
+                case fire: return 2;
+                case ice: return 3;
+                default: return 0;
+            }
+        }
+
+        public static MaryoState fromInt(int i) {
+            switch (i) {
+                case 1: return big;
+                case 2: return fire;
+                case 3: return ice;
+                default: return small;
+            }
+        }
+    }
+
+    private static final float GHOST_EFFECT_TIMEOUT = 10f;
+    public static float STAR_EFFECT_TIMEOUT = 16f;
+    public static final float STAR_EFFECT_SPEEDFACTOR = 1.2f;
+    private static final float GLIM_COLOR_START_ALPHA = 0f;
+    private static final float GLIM_COLOR_MAX_ALPHA = 0.95f;
+
+    //this could be all done dynamically, but this way we minimize allocation in game loop
+    //omg, this is a lot of constants :D
+    private static final int A_KEY_WALKING_SMALL = 0;
+    private static final int A_KEY_CLIMB_SMALL = 1;
+    private static final int A_KEY_WALKING_BIG = 2;
+    private static final int A_KEY_CLIMB_BIG = 3;
+    private static final int A_KEY_WALKING_FIRE = 4;
+    private static final int A_KEY_THROW_FIRE = 5;
+    private static final int A_KEY_CLIMB_FIRE = 6;
+    private static final int A_KEY_WALKING_ICE = 9;
+    private static final int A_KEY_THROW_ICE = 10;
+    private static final int A_KEY_CLIMB_ICE = 11;
+
+    private static final int T_KEY_DUCK_RIGHT_SMALL = 0;
+    private static final int T_KEY_JUMP_RIGHT_SMALL = 1;
+    private static final int T_KEY_FALL_RIGHT_SMALL = 2;
+    private static final int T_KEY_DEAD_RIGHT_SMALL = 3;
+    private static final int T_KEY_STAND_RIGHT_SMALL = 4;
+
+    private static final int T_KEY_DUCK_RIGHT_BIG = 5;
+    private static final int T_KEY_JUMP_RIGHT_BIG = 6;
+    private static final int T_KEY_FALL_RIGHT_BIG = 7;
+    private static final int T_KEY_DEAD_RIGHT_BIG = 8;
+    private static final int T_KEY_STAND_RIGHT_BIG = 9;
+
+    private static final int T_KEY_DUCK_RIGHT_FIRE = 10;
+    private static final int T_KEY_JUMP_RIGHT_FIRE = 11;
+    private static final int T_KEY_FALL_RIGHT_FIRE = 12;
+    private static final int T_KEY_DEAD_RIGHT_FIRE = 13;
+    private static final int T_KEY_STAND_RIGHT_FIRE = 14;
+
+    private static final int T_KEY_DUCK_RIGHT_ICE = 20;
+    private static final int T_KEY_JUMP_RIGHT_ICE = 21;
+    private static final int T_KEY_FALL_RIGHT_ICE = 22;
+    private static final int T_KEY_DEAD_RIGHT_ICE = 23;
+    private static final int T_KEY_STAND_RIGHT_ICE = 24;
+
+    public static final float POSITION_Z = 0.0999f;
+
+    private static final float RUNNING_FRAME_DURATION = 0.08f;
+    private static final float CLIMB_FRAME_DURATION = 0.25f;
+    private static final float THROW_FRAME_DURATION = 0.1f;
+    private static final float RESIZE_ANIMATION_DURATION = 0.977f;
+    private static final float RESIZE_ANIMATION_FRAME_DURATION = RESIZE_ANIMATION_DURATION / 8f;
+
+    private static final float MAX_VEL = 4f;
+    private static final float GOD_MOD_TIMEOUT = 3000;//3 sec
+
+    private static final float BULLET_COOLDOWN = 1f;//1 sec
+
+    private WorldState worldState = WorldState.JUMPING;
+    private MaryoState maryoState;
+    private boolean facingLeft = false;
+
+    private boolean handleCollision = true;
+    private DyingAnimation dyingAnim = new DyingAnimation();
+
+    private Sound jumpSound = null;
+
+    public Rectangle debugRayRect = new Rectangle();
+
+    /**
+     * Makes player invincible and transparent for all enemies
+     * Used (for limited time) when player is downgraded (or if you hack the game :D
+     */
+    private boolean godMode = false;
+    private long godModeActivatedTime;
+
+    private Animation<TextureRegion> resizingAnimation;
+    private float resizeAnimStartTime;
+    private MaryoState newState;//used with resize animation
+    private MaryoState oldState;//used with resize animation
+
+    //exit, enter
+    private float enterStartTime;
+    public boolean exiting, entering;
+    private LevelExit exit;
+    private LevelEntry entry;
+    private Vector3 exitEnterStartPosition = new Vector3();
+    private static final float exitEnterVelocity = 1.3f;
+    private int rotation = 0;
+    private ParticleEffect powerJumpEffect, starEffect;
+    private boolean powerJump;
+    private float bulletShotTime = BULLET_COOLDOWN;
+    private boolean fire;
+    private float fireAnimationStateTime;
+
+    public boolean mInvincibleStar;
+    private final Color glimColor = new Color(0.160784314f, 0.654901961f, 1f, GLIM_COLOR_START_ALPHA);
+    private float glimCounter;
+    private boolean starMusicPlaying;
+    private boolean glimMode = true;
+    private float starEffectTime;
+    public boolean canWalkOnAir = false;
+
+    public boolean ghostmode;
+    private float leftGhostTime;
+
+    //textures
+    private TextureRegion[] tMap = new TextureRegion[25];
+    private Animation<TextureRegion>[] aMap = new Animation[12];
+
+    private MovingPlatform attachedTo;
+    private float distanceOnPlatform;
+    private Vector3 prevPos = new Vector3();
+
+    private float velocityDumpOrig;
+
+    public Maryo(World world, Vector3 position, Vector2 size)
+    {
+        super(world, size, position);
+        maryoState = GameSave.getMaryoState();
+        setupBoundingBox();
+
+        position.y = mColRect.y = mDrawRect.y += 0.5f;
+        world.screen.game.assets.manager.load("data/animation/particles/maryo_power_jump_emitter.p", ParticleEffect.class, world.screen.game.assets.particleEffectParameter);
+        velocityDumpOrig = velocityDump;
+    }
+
+    private void setupBoundingBox()
+    {
+        float centerX = position.x + mColRect.width / 2;
+        switch (maryoState)
+        {
+            case small:
+                mDrawRect.width = 0.9f;
+                mDrawRect.height = 0.9f;
+                break;
+            case big:
+            case fire:
+            case ice:
+                mDrawRect.height = 1.09f;
+                mDrawRect.width = 1.09f;
+                break;
+        }
+        mColRect.x = mDrawRect.x + mDrawRect.width / 4;
+        mColRect.width = mDrawRect.width / 2;
+        position.x = mColRect.x;
+
+        if (worldState == WorldState.DUCKING)
+        {
+            mColRect.height = mDrawRect.height / 2;
+        }
+        else
+        {
+            mColRect.height = mDrawRect.height * 0.9f;
+        }
+
+        position.x = mColRect.x = centerX - mColRect.width / 2;
+    }
+
+    @Override
+    public void updateBounds()
+    {
+        mDrawRect.x = mColRect.x - mDrawRect.width / 4;
+        mDrawRect.y = mColRect.y;
+    }
+
+    public void initAssets()
+    {
+        MaryoState[] states = new MaryoState[]{MaryoState.small, MaryoState.big, MaryoState.fire, MaryoState.ice};
+        for (MaryoState ms : states)
+        {
+            loadTextures(ms);
+        }
+        setJumpSound();
+        powerJumpEffect = new ParticleEffect(world.screen.game.assets.manager.get("data/animation/particles/maryo_power_jump_emitter.p", ParticleEffect.class));
+        starEffect = new ParticleEffect(world.screen.game.assets.manager.get("data/animation/particles/maryo_star.p", ParticleEffect.class));
+
+    }
+
+    @Override
+    public void dispose()
+    {
+        //we dont actually ahve to do anything here, since maryo is always present, and no new reources are created
+    }
+
+    private void loadTextures(MaryoState state)
+    {
+        TextureAtlas atlas = world.screen.game.assets.manager.get(Assets.ATLAS_DYNAMIC);
+        String prefix = "maryo_" + state + "_";
+
+        TextureRegion tmpStandRight;
+        tMap[tIndex(state, TKey.stand_right)] = tmpStandRight = atlas.findRegion(prefix + TKey.stand_right.toString());
+
+        TextureRegion[] walkFrames = new TextureRegion[4];
+        walkFrames[0] = tmpStandRight;
+        walkFrames[1] = atlas.findRegion(prefix + "walk_right_1");
+        walkFrames[2] = atlas.findRegion(prefix + "walk_right_2");
+        walkFrames[3] = walkFrames[1];
+        aMap[aIndex(state, AKey.walk)] = new Animation<>(RUNNING_FRAME_DURATION, walkFrames);
+
+        TextureRegion[] climbFrames = new TextureRegion[2];
+        climbFrames[0] = atlas.findRegion(prefix + TKey.climb_left + "");
+        climbFrames[1] = atlas.findRegion(prefix + TKey.climb_right + "");
+        aMap[aIndex(state, AKey.climb)] = new Animation<>(CLIMB_FRAME_DURATION, climbFrames);
+
+        if (state == MaryoState.ice || state == MaryoState.fire)
+        {
+            TextureRegion[] throwFrames = new TextureRegion[2];
+            throwFrames[0] = atlas.findRegion(prefix + "throw_right_1");
+            throwFrames[1] = atlas.findRegion(prefix + "throw_right_2");
+            aMap[aIndex(state, AKey._throw)] = new Animation<>(THROW_FRAME_DURATION, throwFrames);
+        }
+
+        tMap[tIndex(state, TKey.jump_right)] = atlas.findRegion(prefix + TKey.jump_right.toString());
+        tMap[tIndex(state, TKey.fall_right)] = atlas.findRegion(prefix + TKey.fall_right.toString());
+
+        if (MaryoState.small == state)
+        {
+            tMap[tIndex(state, TKey.dead_right)] = atlas.findRegion(prefix + TKey.dead_right.toString());
+        }
+
+        tMap[tIndex(state, TKey.duck_right)] = atlas.findRegion(prefix + TKey.duck_right.toString());
+    }
+
+    @Override
+    public void _render(SpriteBatch spriteBatch)
+    {
+        TextureRegion marioFrame;
+        if (exiting || entering)
+        {
+            marioFrame = tMap[tIndex(maryoState, TKey.stand_right)];
+
+            float originX = mDrawRect.width * 0.5f;
+            float originY = mDrawRect.height * 0.5f;
+            spriteBatch.draw(marioFrame, mDrawRect.x, mDrawRect.y, originX, originY, mDrawRect.width, mDrawRect.height, 1, 1, rotation);
+
+            return;
+        }
+        if (resizingAnimation != null && stateTime > resizeAnimStartTime + RESIZE_ANIMATION_DURATION)
+        {
+            if (newState == MaryoState.small)
+            {
+                godMode = true;
+                godModeActivatedTime = System.currentTimeMillis();
+
+                dropSavedItem();
+            }
+            else
+            {
+                godMode = false;
+            }
+            resizeAnimStartTime = 0;
+            resizingAnimation = null;
+            maryoState = newState;
+            ((GameScreen) world.screen).setGameState(GameScreen.GAME_STATE.GAME_RUNNING);
+            newState = null;
+            oldState = null;
+            setupBoundingBox();
+            GameSave.setMaryoState(maryoState);
+        }
+        if (resizingAnimation != null)
+        {
+            int index = resizingAnimation.getKeyFrameIndex(stateTime);
+            marioFrame = resizingAnimation.getKeyFrame(stateTime);
+            if (index == 0)
+            {
+                maryoState = oldState;
+                setupBoundingBox();
+            }
+            else
+            {
+                maryoState = newState;
+                setupBoundingBox();
+            }
+        }
+        else if (fire && (hasFireAbility()))
+        {
+            Animation<TextureRegion> animation = aMap[aIndex(maryoState, AKey._throw)];
+            marioFrame = animation.getKeyFrame(fireAnimationStateTime, false);
+            if (animation.isAnimationFinished(fireAnimationStateTime))
+            {
+                fire = false;
+                fireAnimationStateTime = 0;
+                //doFire();
+            }
+        }
+        else if (worldState.equals(WorldState.WALKING))
+        {
+            marioFrame = aMap[aIndex(maryoState, AKey.walk)].getKeyFrame(stateTime, true);
+        }
+        else if (worldState == WorldState.DUCKING)
+        {
+            marioFrame = tMap[tIndex(maryoState, TKey.duck_right)];
+        }
+        else if (getWorldState().equals(WorldState.JUMPING))
+        {
+            if (velocity.y > 0)
+            {
+                marioFrame = tMap[tIndex(maryoState, TKey.jump_right)];
+            }
+            else
+            {
+                marioFrame = tMap[tIndex(maryoState, TKey.fall_right)];
+            }
+        }
+        else if (worldState == WorldState.DYING)
+        {
+            marioFrame = tMap[tIndex(MaryoState.small, TKey.dead_right)];
+        }
+        else if (worldState == WorldState.CLIMBING)
+        {
+            TextureRegion[] frames = aMap[aIndex(maryoState, AKey.climb)].getKeyFrames();
+            float distance = position.y - exitEnterStartPosition.y;
+            marioFrame = frames[Math.floor(distance / 0.3f) % 2 == 0 ? 0 : 1];
+        }
+        else
+        {
+            marioFrame = tMap[tIndex(maryoState, TKey.stand_right)];
+        }
+
+        if (mInvincibleStar)
+        {
+            starEffect.setPosition(mColRect.x + mColRect.width * 0.5f, mColRect.y + mColRect.height * 0.5f);
+            starEffect.draw(spriteBatch);
+            spriteBatch.setShader(Shader.NORMAL_BLEND_SHADER);
+
+            if (glimMode)
+            {
+                glimColor.a = Math.max(glimCounter, 0);
+                if (glimCounter > GLIM_COLOR_MAX_ALPHA)
+                {
+                    glimMode = false;
+                    glimCounter = GLIM_COLOR_MAX_ALPHA;
+                }
+            }
+            else
+            {
+                glimColor.a = Math.max(glimCounter, 0);
+                if (glimCounter < GLIM_COLOR_START_ALPHA)
+                {
+                    glimMode = true;
+                    glimCounter = GLIM_COLOR_START_ALPHA;
+                }
+            }
+            spriteBatch.setColor(glimColor);
+        } else if (ghostmode)
+            spriteBatch.setShader(Shader.GS_SHADER);
+
+        marioFrame.flip(facingLeft, false);
+        //if god mode, make player half-transparent
+        if (godMode)
+        {
+            Color color = spriteBatch.getColor();
+            float oldA = color.a;
+
+            color.a = 0.5f;
+            spriteBatch.setColor(color);
+
+            spriteBatch.draw(marioFrame, mDrawRect.x, mDrawRect.y, mDrawRect.width, mDrawRect.height);
+
+            color.a = oldA;
+            spriteBatch.setColor(color);
+        }
+        else
+        {
+            spriteBatch.draw(marioFrame, mDrawRect.x, mDrawRect.y, mDrawRect.width, mDrawRect.height);
+        }
+        marioFrame.flip(facingLeft, false);
+        if (worldState == WorldState.DUCKING && powerJump)
+        {
+            powerJumpEffect.setPosition(position.x, position.y + 0.05f);
+            if (powerJumpEffect.isComplete())
+                powerJumpEffect.reset();
+        }
+        if (!powerJumpEffect.isComplete())
+            powerJumpEffect.draw(spriteBatch);
+
+        if (mInvincibleStar || ghostmode)
+            spriteBatch.setShader(null);
+
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    private void dropSavedItem() {
+        if(GameSave.getItem() == 0)
+            return;
+        //drop item
+
+        int itemType = GameSave.getItem();
+
+        OrthographicCamera cam = ((GameScreen) world.screen).cam;
+
+        Vector3 newPos = new Vector3(cam.position.x, cam.position.y + cam.viewportHeight * 0.5f - 1.5f, 0);
+
+        Item item = Item.createObject(world, world.screen.game.assets, itemType, Item.getClassFromItemType(itemType)
+                , null, newPos);
+        item.initAssets();
+        world.level.gameObjects.add(item);
+        Sound sound = world.screen.game.assets.manager.get(Assets.SOUND_ITEMBOX_GET);
+        SoundManager.play(sound);
+        item.drop();
+        GameSave.setItem(0);
+    }
+
+    private int tIndex(MaryoState state, TKey tkey)
+    {
+        switch (tkey)
+        {
+            case stand_right:
+                switch (state)
+                {
+                    case small:
+                        return T_KEY_STAND_RIGHT_SMALL;
+                    case big:
+                        return T_KEY_STAND_RIGHT_BIG;
+                    case fire:
+                        return T_KEY_STAND_RIGHT_FIRE;
+                    case ice:
+                        return T_KEY_STAND_RIGHT_ICE;
+                }
+                break;
+            case jump_right:
+                switch (state)
+                {
+                    case small:
+                        return T_KEY_JUMP_RIGHT_SMALL;
+                    case big:
+                        return T_KEY_JUMP_RIGHT_BIG;
+                    case fire:
+                        return T_KEY_JUMP_RIGHT_FIRE;
+                    case ice:
+                        return T_KEY_JUMP_RIGHT_ICE;
+                }
+                break;
+            case fall_right:
+                switch (state)
+                {
+                    case small:
+                        return T_KEY_FALL_RIGHT_SMALL;
+                    case big:
+                        return T_KEY_FALL_RIGHT_BIG;
+                    case fire:
+                        return T_KEY_FALL_RIGHT_FIRE;
+                    case ice:
+                        return T_KEY_FALL_RIGHT_ICE;
+                }
+                break;
+            case dead_right:
+                switch (state)
+                {
+                    case small:
+                        return T_KEY_DEAD_RIGHT_SMALL;
+                    case big:
+                        return T_KEY_DEAD_RIGHT_BIG;
+                    case fire:
+                        return T_KEY_DEAD_RIGHT_FIRE;
+                    case ice:
+                        return T_KEY_DEAD_RIGHT_ICE;
+                }
+                break;
+            case duck_right:
+                switch (state)
+                {
+                    case small:
+                        return T_KEY_DUCK_RIGHT_SMALL;
+                    case big:
+                        return T_KEY_DUCK_RIGHT_BIG;
+                    case fire:
+                        return T_KEY_DUCK_RIGHT_FIRE;
+                    case ice:
+                        return T_KEY_DUCK_RIGHT_ICE;
+                }
+                break;
+        }
+        throw new IllegalArgumentException("Unknown texture key '" + tkey + "' or maryoState '" + maryoState + "'");
+    }
+
+    private int aIndex(MaryoState state, AKey akey)
+    {
+        switch (state)
+        {
+            case small:
+                switch (akey)
+                {
+                    case walk:
+                        return A_KEY_WALKING_SMALL;
+                    case climb:
+                        return A_KEY_CLIMB_SMALL;
+                }
+                break;
+            case big:
+                switch (akey)
+                {
+                    case walk:
+                        return A_KEY_WALKING_BIG;
+                    case climb:
+                        return A_KEY_CLIMB_BIG;
+                }
+                break;
+            case fire:
+                switch (akey)
+                {
+                    case walk:
+                        return A_KEY_WALKING_FIRE;
+                    case climb:
+                        return A_KEY_CLIMB_FIRE;
+                    case _throw:
+                        return A_KEY_THROW_FIRE;
+                }
+                break;
+            case ice:
+                switch (akey)
+                {
+                    case walk:
+                        return A_KEY_WALKING_ICE;
+                    case climb:
+                        return A_KEY_CLIMB_ICE;
+                    case _throw:
+                        return A_KEY_THROW_ICE;
+                }
+                break;
+        }
+        throw new IllegalArgumentException("Unknown animation key '" + akey + "' or maryoState '" + maryoState + "'");
+    }
+
+    @Override
+    public void _update(float delta)
+    {
+        if (((GameScreen) world.screen).getGameState() == GameScreen.GAME_STATE.GAME_RUNNING)
+        {
+            if (downPressTime > POWER_JUMP_DELTA)
+            {
+                mMaxJumpSpeed = POWER_MAX_JUMP_SPEED;
+                powerJump = true;
+            }
+            else
+            {
+                mMaxJumpSpeed = MAX_JUMP_SPEED;
+                powerJump = false;
+            }
+            grounded = position.y - groundY < 0.1f;
+            if (!grounded && getWorldState() != GameObject.WorldState.CLIMBING)
+            {
+                setWorldState(Maryo.WorldState.JUMPING);
+            }
+            boolean resetDownPressedTime = true;
+            if (keys.contains(Keys.JUMP))
+            {
+                if (!jumpPeakReached && velocity.y < mMaxJumpSpeed)
+                {
+                    float jumpTime = 0.1f;
+                    float acceleration = mMaxJumpSpeed / (jumpTime / delta);
+                    if (velocity.y + acceleration > mMaxJumpSpeed)
+                    {
+                        velocity.y = mMaxJumpSpeed;
+                        jumpPeakReached = true;
+                    }
+                    else
+                    {
+                        velocity.add(0, acceleration, 0);
+                    }
+
+                    resetDownPressedTime = false;
+                }
+                else
+                {
+                    jumpPeakReached = true;
+                }
+            }
+            if (getWorldState() == GameObject.WorldState.CLIMBING)
+            {
+                if (keys.contains(Keys.LEFT))
+                {
+                    // left is pressed
+                    position.x -= 1.2f * delta;
+                }
+                else if (keys.contains(Keys.RIGHT))
+                {
+                    // right is pressed
+                    position.x += 1.2f * delta;
+                }
+                if (keys.contains(Keys.UP))
+                {
+                    position.y += 1.8f * delta;
+                }
+                else if (keys.contains(Keys.DOWN))
+                {
+                    position.y -= 1.8f * delta;
+                }
+            }
+            else
+            {
+                float speedFactor = (mInvincibleStar ? STAR_EFFECT_SPEEDFACTOR : 1f);
+                if (keys.contains(Keys.LEFT))
+                {
+                    // left is pressed
+                    facingLeft = true;
+                    if (getWorldState() != Maryo.WorldState.JUMPING)
+                    {
+                        setWorldState(Maryo.WorldState.WALKING);
+                    }
+                    velocity.set(velocity.x = -4.5f * speedFactor, velocity.y, velocity.z);
+                }
+                else if (keys.contains(Keys.RIGHT))
+                {
+                    // right is pressed
+                    facingLeft = false;
+                    if (getWorldState() != Maryo.WorldState.JUMPING)
+                    {
+                        setWorldState(Maryo.WorldState.WALKING);
+                    }
+                    velocity.set(velocity.x = +4.5f * speedFactor, velocity.y, velocity.z);
+                }
+                else if (keys.contains(Keys.DOWN))
+                {
+                    downPressTime += delta;
+                    resetDownPressedTime = resetDownPressedTime & !grounded;
+                    if (getWorldState() != Maryo.WorldState.JUMPING)
+                    {
+                        setWorldState(Maryo.WorldState.DUCKING);
+                    }
+                }
+                else
+                {
+                    if (getWorldState() != Maryo.WorldState.JUMPING)
+                    {
+                        setWorldState(Maryo.WorldState.IDLE);
+                    }
+                    //slowly decrease linear velocity on x axes
+                    //velocity.set(velocity.x * 0.7f, /*vel.y > 0 ? vel.y * 0.7f : */velocity.y, velocity.z);
+                }
+            }
+            if (resetDownPressedTime)
+            {
+                downPressTime = 0;
+                powerJumpEffect.allowCompletion();
+            }
+            if (grounded && getWorldState().equals(Maryo.WorldState.JUMPING))
+            {
+                setWorldState(Maryo.WorldState.IDLE);
+            }
+        }
+        if (exiting)
+        {
+            boolean isDone = false;
+            float velDelta = exitEnterVelocity * delta;
+            if ("up".equals(exit.direction))
+            {
+                if (position.y >= exitEnterStartPosition.y + mDrawRect.height)
+                {
+                    isDone = true;
+                }
+                else
+                {
+                    mColRect.y = position.y += mDrawRect.height * velDelta;
+                }
+            }
+            else if ("down".equals(exit.direction))
+            {
+                if (position.y <= exitEnterStartPosition.y - mDrawRect.height)
+                {
+                    isDone = true;
+                }
+                else
+                {
+                    mColRect.y = position.y -= mDrawRect.height * velDelta;
+                }
+            }
+            else if ("right".equals(exit.direction))
+            {
+                if (position.x >= exitEnterStartPosition.x + mDrawRect.width)
+                {
+                    isDone = true;
+                }
+                else
+                {
+                    rotation = -90;
+                    mColRect.x = position.x += mDrawRect.width * velDelta;
+                }
+            }
+            else if ("left".equals(exit.direction))
+            {
+                if (exitEnterStartPosition.x - position.x >= mDrawRect.width)
+                {
+                    isDone = true;
+                }
+                else
+                {
+                    rotation = 90;
+                    mColRect.x = position.x -= mDrawRect.width * velDelta;
+                }
+            }
+            if (isDone)
+            {
+                exiting = false;
+                //((GameScreen)world.screen).setGameState(GameScreen.GAME_STATE.GAME_RUNNING);
+
+                doExit();
+            }
+            else
+            {
+                updateBounds();
+            }
+            return;
+        }
+        if (entering)
+        {
+            enterStartTime += delta;
+            if (enterStartTime < 1)
+            {
+                return;
+            }
+            boolean isDone = false;
+            float velDelta = exitEnterVelocity * delta;
+            float offset = 0.1f;
+            if ("up".equals(entry.direction))
+            {
+                if (position.y - offset > entry.mColRect.y + entry.mColRect.height)
+                {
+                    isDone = true;
+                }
+                else
+                {
+                    mColRect.y = position.y += mDrawRect.height * velDelta;
+                }
+            }
+            else if ("down".equals(entry.direction))
+            {
+                if (position.y + mDrawRect.height + offset < entry.mColRect.y)
+                {
+                    isDone = true;
+                }
+                else
+                {
+                    mColRect.y = position.y -= mDrawRect.height * velDelta;
+                }
+            }
+            else if ("right".equals(entry.direction))
+            {
+                if (position.x + offset > entry.mColRect.x + entry.mColRect.width)
+                {
+                    isDone = true;
+                }
+                else
+                {
+                    rotation = -90;
+                    mColRect.x = position.x += mDrawRect.width * velDelta;
+                }
+            }
+            else if ("left".equals(entry.direction))
+            {
+                if (position.x + mDrawRect.width + offset < entry.mColRect.x)
+                {
+                    isDone = true;
+                }
+                else
+                {
+                    rotation = 90;
+                    mColRect.x = position.x -= mDrawRect.width * velDelta;
+                }
+            }
+            if (isDone)
+            {
+                position.z = POSITION_Z;
+                Collections.sort(world.level.gameObjects, new LevelLoader.ZSpriteComparator());
+                entering = false;
+                ((GameScreen) world.screen).setGameState(GameScreen.GAME_STATE.GAME_RUNNING);
+            }
+            else
+            {
+                updateBounds();
+            }
+            return;
+        }
+        if (fire)
+        {
+            fireAnimationStateTime += delta;
+        }
+        //disable godmod after timeot
+        if (godMode && System.currentTimeMillis() - godModeActivatedTime > GOD_MOD_TIMEOUT)
+        {
+            godMode = false;
+        }
+        if (worldState == WorldState.DYING)
+        {
+            stateTime += delta;
+            if (dyingAnim.update(delta))
+            {
+                acceleration.y = Constants.GRAVITY;
+                acceleration.scl(delta);
+
+                velocity.add(acceleration);
+
+                checkCollisionWithBlocks(delta, false, false);
+
+                stateTime += delta;
+            }
+        }
+        else if (resizingAnimation != null)
+        {
+            stateTime += delta;
+        }
+        else
+        {
+            if (worldState == WorldState.CLIMBING)
+            {
+                checkCollisionWithBlocks(delta);
+                boolean climbing = false;
+                Array<GameObject> vo = world.getVisibleObjects();
+                for (int i = 0, size = vo.size; i < size; i++)
+                {
+                    GameObject go = vo.get(i);
+                    if (go instanceof Sprite && ((Sprite) go).type == Sprite.Type.climbable && go.mColRect.overlaps(mColRect))
+                    {
+                        climbing = true;
+                        break;
+                    }
+                }
+                if (!climbing) setWorldState(WorldState.JUMPING);
+                stateTime += delta;
+            }
+            else
+            {
+                if (closestObject instanceof Sprite)
+                {
+                    float groundMod = 1.0f;
+
+                    // ground type
+                    switch (((Sprite) closestObject).groundType)
+                    {
+                        case GROUND_ICE:
+                        {
+                            groundMod = 1.220f;
+                            break;
+                        }
+                    }
+                    velocityDump = velocityDump * groundMod;
+                }
+                super._update(delta);
+                velocityDump = velocityDumpOrig;
+
+                if (closestObject != null)
+                {
+                    debugRayRect.set(position.x, closestObject.mDrawRect.y + closestObject.mDrawRect.height, mColRect.width, position.y - (closestObject.mDrawRect.y + closestObject.mDrawRect.height));
+                }
+                else
+                {
+                    debugRayRect.set(position.x, 0, mColRect.width, position.y);
+                }
+
+                if (closestObject != null
+                        && closestObject instanceof Sprite
+                        && ((Sprite) closestObject).type == Sprite.Type.halfmassive
+                        && worldState == WorldState.DUCKING)
+                {
+                    position.y -= 0.1f;
+                }
+                if (position.y - groundY < 0.1f && closestObject instanceof MovingPlatform && ((MovingPlatform) closestObject).canAttachTo)
+                {
+                    if (attachedTo != closestObject)
+                    {
+                        attachedTo = (MovingPlatform) closestObject;
+                        attachedTo.platformState = MovingPlatform.MOVING_PLATFORM_TOUCHED;
+                        attachedTo.touched = true;
+                        distanceOnPlatform = position.x - attachedTo.position.x;
+                    }
+                }
+                else
+                {
+                    attachedTo = null;
+                    distanceOnPlatform = 0;
+                    prevPos.x = 0;
+                }
+                if (attachedTo != null)
+                {
+                    if (prevPos.x != 0) distanceOnPlatform += position.x - prevPos.x;
+                    mColRect.x = position.x = attachedTo.position.x + distanceOnPlatform;
+                    if (velocity.y <= 0)
+                    {
+                        mColRect.y = position.y = attachedTo.position.y + attachedTo.mColRect.height;
+                    }
+                    updateBounds();
+                    prevPos.set(position);
+                }
+            }
+        }
+        if (!powerJumpEffect.isComplete() )
+        {
+            powerJumpEffect.update(delta);
+        }
+        if (mInvincibleStar)
+        {
+            starEffect.update(delta);
+        }
+        bulletShotTime += delta;
+        if (mInvincibleStar)
+        {
+            starEffectTime += delta;
+            if (glimMode)
+            {
+                glimCounter += (delta * 8f);
+            }
+            else
+            {
+                glimCounter -= (delta * 6f);
+            }
+            // Musik 1 Sekunde vor Ablauf beenden und blinken ebenfalls
+            if (starEffectTime >= STAR_EFFECT_TIMEOUT - 1f) {
+                if (starMusicPlaying)
+                    MusicManager.stop(false);
+                starMusicPlaying = false;
+                glimCounter = GLIM_COLOR_START_ALPHA;
+            } else
+                starMusicPlaying = true;
+            //und wenn die Zeit um ist, dann ganz beenden
+            if (starEffectTime >= STAR_EFFECT_TIMEOUT) {
+                mInvincibleStar = false;
+                starEffectTime = 0;
+            }
+        }
+        if (ghostmode) {
+            leftGhostTime -= delta;
+            if (leftGhostTime < 0) {
+                ghostmode = false;
+                SoundManager.play(world.screen.game.assets.manager.get(Assets.SOUND_PLAYER_GHOSTEND, Sound.class));
+            }
+        }
+    }
+
+    private void doExit()
+    {
+        //just change level
+        String nextLevelName;
+        //next level in list
+        GameScreen gameScreen = (GameScreen) world.screen;
+        if (TextUtils.isEmpty(exit.levelName) && TextUtils.isEmpty(exit.entry))
+            gameScreen.endLevel();
+
+        //go to sublevel
+        else
+        {
+            //same level
+            if (TextUtils.isEmpty(exit.levelName))
+            {
+                LevelEntry entry = world.level.findEntryOrThrow(exit.entry);
+                enterLevel(entry);
+            }
+            else//another level
+            {
+                /*if (TextUtils.isEmpty(exit.entry))
+                {
+                    throw new GdxRuntimeException("Cannot go to sublevel, entry is null");
+                }*/
+                nextLevelName = exit.levelName;
+                GameScreen parent = gameScreen.parent;
+
+                boolean resume = false;
+                GameScreen newScreen;
+                //we are exiting sublevel
+                if (parent != null && parent.levelName.equals(nextLevelName))
+                {
+                    newScreen = parent;
+                    newScreen.entryName = exit.entry;
+                    newScreen.forceCheckEnter = true;
+
+                    //update maryo state in new level
+                    newScreen.getWorld().maryo.setMarioState(maryoState);
+                    newScreen.getWorld().maryo.mInvincibleStar = mInvincibleStar;
+                    newScreen.getWorld().maryo.starEffectTime = starEffectTime;
+                    newScreen.getWorld().maryo.canWalkOnAir = canWalkOnAir;
+
+                    resume = true;
+                }
+                //new level or sublevel
+                else
+                {
+                    if (parent != null)
+                    {
+                        parent.dispose();
+                    }
+                    parent = gameScreen;
+                    world.visitedSubLevels.add(nextLevelName);
+                    newScreen = new GameScreen(world.screen.game, false, nextLevelName, parent);
+                    newScreen.entryName = exit.entry;
+                }
+                world.screen.game.setScreen(new LoadingScreen(newScreen, resume));
+            }
+        }
+    }
+
+    @Override
+    protected boolean handleCollision(GameObject object, boolean vertical)
+    {
+        if (!handleCollision) return false;
+        super.handleCollision(object, vertical);
+        if (object instanceof Item)
+        {
+            Item item = (Item) object;
+            if (!item.playerHit) item.hitPlayer();
+            //world.trashObjects.add(item);
+        }
+        else if (object instanceof Enemy && ((Enemy) object).handleCollision)
+        {
+                boolean deadAnyway = isDeadByJumpingOnTopOfEnemy((Enemy) object);
+                if (mInvincibleStar)
+                {
+                    if (worldState != WorldState.IDLE && worldState != WorldState.DUCKING)
+                    {
+                        if (((Enemy) object).canBeKilledByStar())
+                        {
+                            ((Enemy) object).downgradeOrDie(this, true, true);
+                            GameSave.addScore(((Enemy) object).mKillPoints);
+                        }
+                        else
+                        {
+                            hitEnemy((Enemy) object, vertical);
+                        }
+                    }
+                    else
+                    {
+                        ((Enemy) object).turn();
+                    }
+                }
+                else if (((Enemy) object).frozen)
+                {
+                    ((Enemy) object).downgradeOrDie(this, true, false);
+                    GameSave.addScore(((Enemy) object).mKillPoints);
+                }
+                else if (deadAnyway)
+                {
+                    if (!godMode)
+                        downgradeOrDie(false);
+                }
+                else
+                {
+                    hitEnemy((Enemy) object, vertical);
+
+
+            }
+        }
+        else if (object instanceof Box && position.y + mColRect.height <= object.position.y)
+        {
+            ((Box) object).activate();
+        }
+        else if (object instanceof LevelExit && !exiting) {
+            if (keys.contains(Keys.LEFT))
+                checkLeave("left");
+            else if (keys.contains(Keys.RIGHT))
+                checkLeave("right");
+            else if (keys.contains(Keys.UP))
+                checkLeave("up");
+            // down nicht beachtet, da der Spieler eh drauf steht
+        }
+        return false;
+    }
+
+    private void hitEnemy(Enemy enemy, boolean vertical)
+    {
+        boolean doBounce = false;
+        int resolution = enemy.hitByPlayer(this, vertical);
+        if (resolution == Enemy.HIT_RESOLUTION_ENEMY_DIED)
+        {
+            doBounce = true;
+            GameSave.addScore(enemy.mKillPoints);
+        }
+        else if (resolution == Enemy.HIT_RESOLUTION_PLAYER_DIED)
+        {
+            if (!godMode)
+                downgradeOrDie(false);
+        }
+        else if (vertical)
+            doBounce = true;
+
+        if (doBounce) {
+            velocity.y = 5f * Gdx.graphics.getDeltaTime();
+            if (keys.contains(Keys.JUMP)) {
+                jumpPeakReached = false;
+                downPressTime = POWER_JUMP_DELTA + 1;
+            }
+        }
+    }
+
+    private boolean isDeadByJumpingOnTopOfEnemy(Enemy enemy)
+    {
+        return !enemy.canBeKilledByJumpingOnTop();
+    }
+
+    public WorldState getWorldState()
+    {
+        return worldState;
+    }
+
+    public void setWorldState(WorldState newWorldState)
+    {
+        if (worldState == WorldState.DYING) return;
+        this.worldState = newWorldState;
+        if (worldState == WorldState.DUCKING)
+        {
+            mColRect.height = mDrawRect.height / 2;
+        }
+        else
+        {
+            mColRect.height = mDrawRect.height * 0.9f;
+        }
+        if (worldState == WorldState.CLIMBING)
+        {
+            exitEnterStartPosition.set(position);
+            velocity.x = 0;
+            velocity.y = 0;
+        }
+    }
+
+    @Override
+    public float maxVelocity() {
+        if (mInvincibleStar)
+            return MAX_VEL * STAR_EFFECT_SPEEDFACTOR;
+        else
+            return MAX_VEL;
+    }
+
+    public void downgradeOrDie(boolean forceDie)
+    {
+        if (maryoState == MaryoState.small || forceDie)
+        {
+            if (mInvincibleStar)
+                MusicManager.stop(false);
+
+            worldState = WorldState.DYING;
+            GameSave.setMaryoState(MaryoState.small);
+            setMarioState(MaryoState.small);
+            updateBounds();
+            GameSave.setItem(0);
+            dyingAnim.start();
+        }
+        else
+        {
+            SoundManager.play(world.screen.game.assets.manager.get(Assets.SOUND_PLAYER_POWERDOWN, Sound.class));
+            upgrade(MaryoState.small, null, true);
+        }
+    }
+
+    /*
+    * Level up*/
+    public void upgrade(MaryoState newState, Item item, boolean downgrade)
+    {
+        //cant upgrade from ice/fire to big
+        if (!downgrade && (maryoState == newState && (newState == MaryoState.big || newState == MaryoState.ice || newState == MaryoState.fire))
+                || (newState == MaryoState.big && (maryoState == MaryoState.ice || maryoState == MaryoState.fire)))
+        {
+            Sound sound = world.screen.game.assets.manager.get(Assets.SOUND_ITEMBOX_SET);
+            SoundManager.play(sound);
+            GameSave.setItem(item.getType());
+            return;
+        }
+        else if (maryoState == newState)
+        {
+            return;
+        }
+        this.newState = newState;
+        oldState = maryoState;
+        Array<TextureRegion> frames = generateResizeAnimationFrames(maryoState, newState);
+        resizingAnimation = new Animation<>(RESIZE_ANIMATION_FRAME_DURATION, frames);
+        resizingAnimation.setPlayMode(Animation.PlayMode.LOOP);
+        resizeAnimStartTime = stateTime;
+        godMode = true;
+
+        ((GameScreen) world.screen).setGameState(GameScreen.GAME_STATE.PLAYER_UPDATING);
+
+        //play new state sound
+        Sound sound = upgradeSound(newState, downgrade);
+        SoundManager.play(sound);
+        fire = false;
+    }
+
+    private Sound upgradeSound(MaryoState newState, boolean downgrade)
+    {
+        switch (newState)
+        {
+            case big:
+                return world.screen.game.assets.manager.get(Assets.SOUND_ITEM_MUSHROOM);
+            case fire:
+                return world.screen.game.assets.manager.get(Assets.SOUND_ITEM_FIREPLANT);
+            case ice:
+                return world.screen.game.assets.manager.get(Assets.SOUND_ITEM_MUSHROOM_BLUE);
+        }
+        return null;
+    }
+
+    private Array<TextureRegion> generateResizeAnimationFrames(MaryoState stateFrom, MaryoState stateTo)
+    {
+        Array<TextureRegion> regions = new Array<>();
+        if (worldState.equals(WorldState.WALKING))
+        {
+            regions.add(aMap[aIndex(stateFrom, AKey.walk)].getKeyFrame(stateTime, true));
+            regions.add(aMap[aIndex(stateTo, AKey.walk)].getKeyFrame(stateTime, true));
+        }
+        else if (worldState == WorldState.DUCKING)
+        {
+            regions.add(tMap[tIndex(stateFrom, TKey.duck_right)]);
+            regions.add(tMap[tIndex(stateTo, TKey.duck_right)]);
+        }
+        else if (getWorldState().equals(WorldState.JUMPING))
+        {
+            if (velocity.y > 0)
+            {
+                regions.add(tMap[tIndex(stateFrom, TKey.jump_right)]);
+                regions.add(tMap[tIndex(stateTo, TKey.jump_right)]);
+            }
+            else
+            {
+                regions.add(tMap[tIndex(stateFrom, TKey.fall_right)]);
+                regions.add(tMap[tIndex(stateTo, TKey.fall_right)]);
+            }
+        }
+        else if (worldState == WorldState.DYING)
+        {
+            regions.add(tMap[tIndex(stateFrom, TKey.dead_right)]);
+            regions.add(tMap[tIndex(stateTo, TKey.dead_right)]);
+        }
+        else
+        {
+            regions.add(tMap[tIndex(stateFrom, TKey.stand_right)]);
+            regions.add(tMap[tIndex(stateTo, TKey.stand_right)]);
+        }
+        return regions;
+    }
+
+    public class DyingAnimation
+    {
+        private float diedTime;
+        boolean upAnimFinished, dyedReset, firstDelayFinished;
+        Vector3 diedPosition;
+        boolean upBoost;
+
+        public void start()
+        {
+            diedTime = stateTime;
+            MusicManager.stop(true);
+            handleCollision = false;
+            diedPosition = new Vector3(position);
+            Sound sound = world.screen.game.assets.manager.get(Assets.SOUND_PLAYER_DEAD);
+            SoundManager.play(sound);
+            ((GameScreen) world.screen).setGameState(GameScreen.GAME_STATE.PLAYER_DEAD);
+        }
+
+        public boolean update(float delta)
+        {
+            velocity.x = 0;
+            position.x = diedPosition.x;
+            if (mDrawRect.y + mDrawRect.height < 0)//first check if player is visible
+            {
+                GameSave.setMaryoState(MaryoState.small);
+                ((GameScreen) world.screen).setGameState(GameScreen.GAME_STATE.PLAYER_DIED);
+                world.trashObjects.add(Maryo.this);
+                return false;
+            }
+
+            if (!firstDelayFinished && stateTime - diedTime < 0.5f)//delay 500ms
+            {
+                return false;
+            }
+            else
+            {
+                firstDelayFinished = true;
+            }
+
+            if (!upBoost)
+            {
+                //animate player up a bit
+                velocity.y = 8f;
+                upBoost = true;
+            }
+
+            return true;
+        }
+    }
+
+    @Override
+    protected boolean handleDroppedBelowWorld()
+    {
+        if (!canWalkOnAir)
+        {
+            if (worldState != WorldState.DYING)
+            {
+                downgradeOrDie(true);
+            }
+            return true;
+        }
+        else
+        {
+            return super.handleDroppedBelowWorld();
+        }
+    }
+
+    private void setJumpSound()
+    {
+        switch (maryoState)
+        {
+            case small:
+                if (powerJump)
+                {
+                    jumpSound = world.screen.game.assets.manager.get(Assets.SOUND_JUMP_SMALL_POWER);
+                }
+                else
+                {
+                    jumpSound = world.screen.game.assets.manager.get(Assets.SOUND_JUMP_SMALL);
+                }
+                break;
+            case big:
+            case fire:
+            case ice:
+                if (powerJump)
+                {
+                    jumpSound = world.screen.game.assets.manager.get(Assets.SOUND_JUMP_BIG_POWER);
+                }
+                else
+                {
+                    jumpSound = world.screen.game.assets.manager.get(Assets.SOUND_JUMP_BIG);
+                }
+                break;
+        }
+    }
+
+    public MaryoState getMarioState()
+    {
+        return maryoState;
+    }
+
+    public void setMarioState(MaryoState marioState)
+    {
+        this.maryoState = marioState;
+        setJumpSound();
+    }
+
+    public void checkLevelEnter(String entry_)
+    {
+        LevelEntry entry = world.level.findEntry(entry_);
+        if (entry != null)
+        {
+            if (entry.type == LEVEL_EXIT_BEAM)
+            {
+                float entryCenter = entry.mColRect.x + entry.mColRect.width * 0.5f;
+                position.x = mColRect.x = entryCenter - mColRect.width * 0.5f;
+                position.y = mColRect.y = entry.mColRect.y + entry.mColRect.height + mColRect.height;
+                updateBounds();
+            }
+            else
+            {
+                enterLevel(entry);
+            }
+        }
+    }
+
+    public void enterLevel(LevelEntry entry)
+    {
+        Sound sound = world.screen.game.assets.manager.get(Assets.SOUND_ENTER_PIPE);
+        SoundManager.play(sound);
+        ((GameScreen) world.screen).setGameState(GameScreen.GAME_STATE.PLAYER_UPDATING);
+        entering = true;
+        this.entry = entry;
+        if (entry.type == LevelExit.LEVEL_EXIT_WARP)
+        {
+            // left
+            if ("left".equals(entry.direction))
+            {
+                position.x = mColRect.x = entry.mColRect.x + entry.mColRect.width;
+
+                float entryCenter = entry.mColRect.y + entry.mColRect.height * 0.5f;
+                position.y = mColRect.y = entryCenter - mColRect.height * 0.5f;
+            }
+            // right
+            else if ("right".equals(entry.direction))
+            {
+                position.x = mColRect.x = entry.mColRect.x - mColRect.width;
+
+
+                float entryCenter = entry.mColRect.y + entry.mColRect.height * 0.5f;
+                position.y = mColRect.y = entryCenter - mColRect.height * 0.5f;
+            }
+            //up
+            else if ("up".equals(entry.direction))
+            {
+                position.y = mColRect.y = entry.mColRect.y - mColRect.height;
+
+                float entryCenter = entry.mColRect.x + entry.mColRect.width * 0.5f;
+                position.x = mColRect.x = entryCenter - mColRect.width * 0.5f;
+            }
+            // down
+            else if ("down".equals(entry.direction))
+            {
+                position.y = mColRect.y = entry.mColRect.y;
+
+                float entryCenter = entry.mColRect.x + entry.mColRect.width * 0.5f;
+                position.x = mColRect.x = entryCenter - mColRect.width * 0.5f;
+            }
+        }
+        else if (entry.type == LEVEL_EXIT_BEAM)
+        {
+            float entryCenter = entry.mColRect.x + entry.mColRect.width * 0.5f;
+            position.x = mColRect.x = entryCenter - mColRect.width * 0.5f;
+            position.y = mColRect.y = entry.mColRect.y + entry.mColRect.height + mColRect.height;
+        }
+        updateBounds();
+        exitEnterStartPosition.set(position);
+        position.z = LevelLoader.m_pos_z_passive_start;
+        Collections.sort(world.level.gameObjects, new LevelLoader.ZSpriteComparator());
+
+        //todo sound
+    }
+
+    public void exitLevel(LevelExit exit)
+    {
+        // already visited sublevels are not allowed
+        if (exit.levelName != null && world.visitedSubLevels.contains(exit.levelName, false))
+            return;
+
+        switch (exit.type)
+        {
+            case LEVEL_EXIT_BEAM:
+                if (exiting) return;
+                exiting = true;
+                this.exit = exit;
+                doExit();
+                break;
+            case LevelExit.LEVEL_EXIT_WARP:
+                if (exiting) return;
+                Sound sound = world.screen.game.assets.manager.get(Assets.SOUND_LEAVE_PIPE);
+                SoundManager.play(sound);
+                ((GameScreen) world.screen).setGameState(GameScreen.GAME_STATE.PLAYER_UPDATING);
+                exiting = true;
+                this.exit = exit;
+                if ("up".equals(exit.direction) || "down".equals(exit.direction))
+                {
+                    float exitCenter = exit.mColRect.x + exit.mColRect.width * 0.5f;
+                    position.x = mColRect.x = exitCenter - mColRect.width * 0.5f;
+                }
+                else
+                {
+                    float exitCenter = exit.mColRect.y + exit.mColRect.height * 0.5f;
+                    position.y = mColRect.y = exitCenter - mColRect.height * 0.5f;
+                }
+                updateBounds();
+                exitEnterStartPosition.set(position);
+                position.z = LevelLoader.m_pos_z_passive_start;
+                Collections.sort(world.level.gameObjects, new LevelLoader.ZSpriteComparator());
+
+                //todo sound
+                break;
+        }
+    }
+
+    public void fire()
+    {
+        if (worldState == WorldState.DUCKING || !hasFireAbility())
+            return;
+        if (bulletShotTime < BULLET_COOLDOWN)
+            return;
+        fire = true;
+        doFire();
+    }
+
+    public boolean hasFireAbility() {
+        return maryoState == MaryoState.fire || maryoState == MaryoState.ice;
+    }
+
+    private void doFire()
+    {
+        Sound sound = null;
+        if (maryoState == MaryoState.fire)
+        {
+            addFireball(0f);
+            if (mInvincibleStar)
+            {
+                addFireball(Fireball.VELOCITY_Y * 0.5f);
+            }
+            bulletShotTime = 0;
+            sound = world.screen.game.assets.manager.get(Assets.SOUND_ITEM_FIREBALL);
+        }
+        else if (maryoState == MaryoState.ice)
+        {
+            addIceball(0f);
+            if (mInvincibleStar)
+            {
+                addIceball(Fireball.VELOCITY_Y * 0.5f);
+            }
+            bulletShotTime = 0;
+            sound = world.screen.game.assets.manager.get(Assets.SOUND_ITEM_FIREBALL);
+        }
+
+        SoundManager.play(sound);
+    }
+
+    private void addIceball(float velY)
+    {
+        Iceball iceball = world.ICEBALL_POOL.obtain();
+        iceball.mColRect.x = iceball.position.x = mDrawRect.x + mDrawRect.width * 0.5f;
+        iceball.mColRect.y = iceball.position.y = mDrawRect.y + mDrawRect.height * 0.5f;
+        iceball.updateBounds();
+        iceball.reset();
+        iceball.direction = facingLeft ? Direction.left : Direction.right;
+        iceball.velocity.y = velY;
+        world.level.gameObjects.add(iceball);
+        Collections.sort(world.level.gameObjects, new LevelLoader.ZSpriteComparator());
+    }
+
+    private void addFireball(float velY)
+    {
+        Fireball fireball = world.FIREBALL_POOL.obtain();
+        fireball.mColRect.x = fireball.position.x = mDrawRect.x + mDrawRect.width * 0.5f;
+        fireball.mColRect.y = fireball.position.y = mDrawRect.y + mDrawRect.height * 0.5f;
+        fireball.updateBounds();
+        fireball.reset();
+        fireball.direction = facingLeft ? Direction.left : Direction.right;
+        fireball.velocity.y = velY;
+        world.level.gameObjects.add(fireball);
+        Collections.sort(world.level.gameObjects, new LevelLoader.ZSpriteComparator());
+    }
+
+    public void starPicked()
+    {
+        starEffectTime = 0;
+        mInvincibleStar = true;
+    }
+
+    public void enableGhostMode() {
+        leftGhostTime = GHOST_EFFECT_TIMEOUT;
+        ghostmode = true;
+    }
+
+    public void leftPressed()
+    {
+        keys.add(Keys.LEFT);
+        //checkLeave("left");
+    }
+
+    public void rightPressed()
+    {
+        keys.add(Keys.RIGHT);
+        //checkLeave("right");
+    }
+
+    public void upPressed()
+    {
+        keys.add(Keys.UP);
+        boolean climbing = false;
+        //checkLeave("up");
+        //!exiting ist wahrscheinlich unnötig, aber vorher kam dieser Fall hier auch nur vor wenn kein Leave da war
+        if (!exiting && getWorldState() != GameObject.WorldState.CLIMBING) {
+            Array<GameObject> vo = world.getVisibleObjects();
+            for (int i = 0, size = vo.size; i < size; i++) {
+                GameObject go = vo.get(i);
+                if (go instanceof Sprite && ((Sprite) go).type == Sprite.Type.climbable && go.mColRect.overlaps(mColRect)) {
+                    climbing = true;
+                    break;
+                }
+            }
+            if (climbing) setWorldState(GameObject.WorldState.CLIMBING);
+        }
+    }
+
+    private void checkLeave(String dir)
+    {
+        Array<GameObject> vo = world.getVisibleObjects();
+        //for(GameObject go : world.getVisibleObjects())
+        for (int i = 0, size = vo.size; i < size; i++)
+        {
+            GameObject go = vo.get(i);
+            if (go instanceof LevelExit
+                    && go.mColRect.overlaps(mColRect)
+                    && (((LevelExit) go).type == LEVEL_EXIT_BEAM || (((LevelExit) go).type == LevelExit.LEVEL_EXIT_WARP && dir.equals(((LevelExit) go).direction))))
+            {
+                /*String nextLevelName = Level.levels[++GameSaveUtility.getInstance().save.currentLevel];
+                world.screen.game.setScreen(new LoadingScreen(new GameScreen(world.screen.game, false, nextLevelName), false));*/
+                exitLevel((LevelExit) go);
+                return;
+            }
+        }
+    }
+
+    public void downPressed()
+    {
+        keys.add(Keys.DOWN);
+        checkLeave("down");
+    }
+
+    public void jumpPressed()
+    {
+        keys.add(Keys.JUMP);
+        if (grounded || getWorldState() == GameObject.WorldState.CLIMBING)
+        {
+            setWorldState(GameObject.WorldState.JUMPING);
+            jumpPeakReached = false;
+
+            setJumpSound();
+            Sound sound = jumpSound;
+            SoundManager.play(sound);
+        } else
+            jumpPeakReached = true;
+    }
+
+    public void firePressed()
+    {
+        keys.add(Keys.FIRE);
+        fire();
+    }
+
+    public void leftReleased()
+    {
+        keys.remove(Keys.LEFT);
+    }
+
+    public void rightReleased()
+    {
+        keys.remove(Keys.RIGHT);
+    }
+
+    public void upReleased()
+    {
+        keys.remove(Keys.UP);
+    }
+
+    public void downReleased()
+    {
+        keys.remove(Keys.DOWN);
+    }
+
+    public void jumpReleased()
+    {
+        keys.remove(Keys.JUMP);
+    }
+
+    public void fireReleased()
+    {
+        keys.remove(Keys.FIRE);
+    }
+}
+core/src/rs/pedjaapps/smc/object/items/Fireplant.java
+public class Fireplant extends Item
+{
+    public static final int POINTS = 700;
+    public static final float VELOCITY_POP = 1.6f;
+    public static final float DEF_SIZE = 0.65625f;
+    private Animation<TextureRegion> animation;
+
+    public Fireplant(World world, Vector2 size, Vector3 position)
+    {
+        super(world, size, position);
+        position.z = 0.051f;
+    }
+
+    @Override
+    public int getType() {
+        return TYPE_FIREPLANT;
+    }
+
+    @Override
+    public void initAssets()
+    {
+        TextureAtlas atlas = world.screen.game.assets.manager.get(Assets.ATLAS_DYNAMIC);
+        animation = new Animation(1f, atlas.findRegion("game_items_fireplant_left"),
+                atlas.findRegion("game_items_fireplant"),
+                atlas.findRegion("game_items_fireplant_right"));
+        animation.setPlayMode(Animation.PlayMode.LOOP_PINGPONG);
+    }
+
+    @Override
+    public void updateItem(float delta)
+    {
+        super.updateItem(delta);
+        if(popFromBox)
+        {
+            // scale velocity to frame units
+            velocity.scl(delta);
+
+            // update position
+            position.add(velocity);
+            mColRect.y = position.y;
+            updateBounds();
+
+            // un-scale velocity (not in frame time)
+            velocity.scl(1 / delta);
+
+            if(position.y >= popTargetPosY)
+            {
+                popFromBox = false;
+                isInBox = false;
+            }
+        }
+    }
+
+    @Override
+    public void popOutFromBox(float popTargetPosY)
+    {
+        super.popOutFromBox(popTargetPosY);
+        visible = true;
+        popFromBox = true;
+        velocity.y = VELOCITY_POP;
+        originalPosY = position.y;
+        ParticleEffect effect = world.screen.game.assets.manager.get("data/animation/particles/fireplant_emitter.p", ParticleEffect.class);
+        effect.setPosition(position.x + mDrawRect.width / 2, position.y + mDrawRect.height / 2);
+        effect.start();
+    }
+
+    @Override
+    public void _render(SpriteBatch spriteBatch)
+    {
+        if(!visible)return;
+        TextureRegion frame = animation.getKeyFrame(stateTime, true);
+        Utility.draw(spriteBatch, frame, position.x, position.y, mDrawRect.height);
+
+        ParticleEffect effect = world.screen.game.assets.manager.get("data/animation/particles/fireplant_emitter.p", ParticleEffect.class);
+        effect.setPosition(position.x + mDrawRect.width / 2, position.y + mDrawRect.height / 2);
+        effect.draw(spriteBatch, Gdx.graphics.getDeltaTime());
+    }
+
+    @Override
+    public void hitPlayer()
+    {
+        if(isInBox)return;
+        playerHit = true;
+        world.maryo.upgrade(Maryo.MaryoState.fire, this, false);
+        world.trashObjects.add(this);
+        GameSave.addScore(POINTS);
+        ((GameScreen)world.screen).killPointsTextHandler.add(POINTS, position.x, position.y + mDrawRect.height);
+    }
+
+    @Override
+    public void dispose()
+    {
+        super.dispose();
+        animation = null;
+    }
+
+    @Override
+    public float maxVelocity()
+    {
+        return 0;
+    }
+}
+core/src/rs/pedjaapps/smc/object/items/mushroom/Mushroom.java
+public abstract class Mushroom extends Item
+{
+    private static final float VELOCITY = 1.5f;
+    private static final float VELOCITY_POP = 1.6f;
+    public static final float DEF_SIZE = 0.546875f;
+
+    private boolean grounded = false;
+    protected int mPickPoints;
+
+    public boolean moving;
+
+    public enum Direction
+    {
+        right, left
+    }
+
+    private Direction direction = Direction.right;
+
+    public Mushroom(World world, Vector2 size, Vector3 position)
+    {
+        super(world, size, position);
+    }
+
+    @Override
+    public void initAssets()
+    {
+        texture = world.screen.game.assets.manager.get(Assets.ATLAS_DYNAMIC, TextureAtlas.class).findRegion(textureName);
+    }
+
+    @Override
+    public void _render(SpriteBatch spriteBatch)
+    {
+        if(!visible)return;
+        Utility.draw(spriteBatch, texture, position.x, position.y, mDrawRect.height);
+    }
+
+    @Override
+    public void updateItem(float delta)
+    {
+        super.updateItem(delta);
+        if(popFromBox)
+        {
+            // scale velocity to frame units
+            velocity.scl(delta);
+
+            // update position
+            position.add(velocity);
+            mColRect.y = position.y;
+            updateBounds();
+
+            // un-scale velocity (not in frame time)
+            velocity.scl(1 / delta);
+
+            if(position.y >= popTargetPosY)
+            {
+                isInBox = false;
+                popFromBox = false;
+                moving = true;
+                velocity.x = direction == Direction.right ? VELOCITY : -VELOCITY;
+            }
+        }
+        else if(moving)
+        {
+            // Setting initial vertical acceleration
+            acceleration.y = Constants.GRAVITY;
+
+            // Convert acceleration to frame time
+            acceleration.scl(delta);
+
+            // apply acceleration to change velocity
+            velocity.add(acceleration);
+
+            checkCollisionWithBlocks(delta);
+
+            switch(direction)
+            {
+                case right:
+                    velocity.x = VELOCITY;
+                    break;
+                case left:
+                    velocity.x = -VELOCITY;
+                    break;
+            }
+        }
+    }
+
+    @Override
+    protected boolean handleDroppedBelowWorld()
+    {
+        world.trashObjects.add(this);
+        return false;
+    }
+
+    @Override
+    protected boolean handleCollision(GameObject object, boolean vertical)
+    {
+        if(object instanceof Sprite
+                && ((Sprite)object).type == Sprite.Type.massive)
+        {
+            if(vertical)
+            {
+                if (velocity.y < 0)
+                {
+                    grounded = true;
+                }
+                velocity.y = 0;
+            }
+            else
+            {
+                if(object.position.y + object.mDrawRect.height / 2 > position.y)
+                {
+                    direction = direction == Direction.right ? Direction.left : Direction.right;
+                    velocity.x = velocity.x > 0 ? -velocity.x : Math.abs(velocity.x);
+                }
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public void hitPlayer()
+    {
+        if(isInBox)return;
+        playerHit = true;
+        performCollisionAction();
+        if(mPickPoints > 0)
+            ((GameScreen)world.screen).killPointsTextHandler.add(mPickPoints, position.x, position.y + mDrawRect.height);
+    }
+
+    @Override
+    public void popOutFromBox(float popTargetPositionY)
+    {
+        super.popOutFromBox(popTargetPositionY);
+        visible = true;
+        popFromBox = true;
+        velocity.y = VELOCITY_POP;
+        originalPosY = position.y;
+    }
+
+    @Override
+    public float maxVelocity()
+    {
+        return VELOCITY;
+    }
+
+    protected abstract void performCollisionAction();
+}
+core/src/rs/pedjaapps/smc/object/items/mushroom/MushroomDefault.java
+public class MushroomDefault extends Mushroom
+{
+
+    public static final String TEXTURE_NAME = "game_items_mushroom_red";
+
+    public MushroomDefault(World world, Vector2 size, Vector3 position)
+    {
+        super(world, size, position);
+        textureName = TEXTURE_NAME;
+        mPickPoints = 500;
+    }
+
+    @Override
+    public int getType() {
+        return TYPE_MUSHROOM_DEFAULT;
+    }
+
+    @Override
+    protected void performCollisionAction()
+    {
+        playerHit = true;
+        world.maryo.upgrade(Maryo.MaryoState.big, this, false);
+        world.trashObjects.add(this);
+        GameSave.addScore(mPickPoints);
+    }
+}
+core/src/rs/pedjaapps/smc/utility/GameSave.java
+public class GameSave {
+    public static final String LEADERBOARD_TOTAL = "TOTAL_SCORE";
+    public static final String EVENT_LEVEL_STARTED = "EVENT_LEVEL_STARTED";
+    public static final String EVENT_LEVEL_CLEARED = "EVENT_LEVEL_CLEARED";
+    public static final String CLOUD_FILE_NAME = "gamestate";
+    public static IGameServiceClient cloudSaveClient;
+    // der aktuelle Stand, der gerade gespielt wird
+    private static int levelScore;
+    private static long levelPlaytime;
+    private static int levelStartedNum;
+    private static int maryoState;
+    private static int persistentMaryoState;
+    private static int lifes;
+    private static long totalPlaytime;
+    private static int coins;
+    private static int item;
+    private static int persistentItem;
+    private static int totalScore;
+    private static int bestTotal;
+    private static int gameOverNum;
+    //cloud save
+    private static boolean loadedFromCloud;
+    private static boolean loadingFromCloud;
+
+    public static boolean isLoadingFromCloud() {
+        return loadingFromCloud || cloudSaveClient != null && cloudSaveClient.isConnectionPending();
+    }
+
+    public static long getLevelPlaytime() {
+        return levelPlaytime;
+    }
+
+    public static void addLevelPlaytime(long timeToAdd) {
+        levelPlaytime += timeToAdd;
+        totalPlaytime += timeToAdd;
+    }
+
+    public static void init() {
+        // gibt es bereits einen gespeicherten Stand?
+        boolean didRead = false;
+        try {
+            String savedGame = PrefsManager.getSaveGame();
+            if (savedGame != null) {
+                readFromJson(savedGame);
+                didRead = true;
+            }
+        } catch (Throwable t) {
+            Gdx.app.error("GameSave", "Error loading saved state", t);
+        }
+
+        if (!didRead || lifes <= 0)
+            resetGameOver();
+    }
+
+    /**
+     * read saved game, if gameovernum and levelstarts are greater than current state
+     *
+     * @param savedgame json
+     * @return true if savegame was read, false otherwise
+     */
+    private static boolean readFromJson(String savedgame) {
+        JsonValue savegame = new JsonReader().parse(savedgame);
+        int readLevelStartedNum = savegame.getInt("levelstarts", 0);
+        int readGameOverNum = savegame.getInt("gameovers", 1);
+
+        boolean readStateIsNewer = (readGameOverNum > gameOverNum
+                || readGameOverNum == gameOverNum && readLevelStartedNum > levelStartedNum);
+
+        if (readStateIsNewer) {
+            lifes = savegame.getInt("lifes");
+            coins = savegame.getInt("coins");
+            persistentItem = savegame.getInt("item");
+            persistentMaryoState = savegame.getInt("state");
+            totalPlaytime = savegame.getLong("playtime");
+            levelStartedNum = readLevelStartedNum;
+            gameOverNum = readGameOverNum;
+            item = persistentItem;
+            maryoState = persistentMaryoState;
+        }
+
+        // following
+        bestTotal = Math.max(bestTotal, savegame.getInt("bestTotal", 0));
+
+        JsonValue levelList = savegame.get("levels");
+        for (JsonValue jsonlevel = levelList.child; jsonlevel != null; jsonlevel = jsonlevel.next) {
+            String levelId = jsonlevel.getString("id");
+            Level level = Level.getLevel(levelId);
+            if (level != null) {
+                if (readStateIsNewer)
+                    level.currentScore = jsonlevel.getInt("score");
+                level.bestScore = Math.max(level.bestScore, jsonlevel.getInt("best"));
+            }
+        }
+
+        recalcTotalScore();
+
+        return readStateIsNewer;
+    }
+
+    private static JsonValue toJson() {
+        JsonValue json = new JsonValue(JsonValue.ValueType.object);
+        json.addChild("lifes", new JsonValue(lifes));
+        json.addChild("coins", new JsonValue(coins));
+        json.addChild("item", new JsonValue(persistentItem));
+        json.addChild("state", new JsonValue(persistentMaryoState));
+        json.addChild("playtime", new JsonValue(totalPlaytime));
+        json.addChild("levelstarts", new JsonValue(levelStartedNum));
+        json.addChild("gameovers", new JsonValue(gameOverNum));
+        json.addChild("bestTotal", new JsonValue(bestTotal));
+
+        JsonValue levelArray = new JsonValue(JsonValue.ValueType.array);
+        for (String levelId : Level.getLevelList()) {
+            Level level = Level.getLevel(levelId);
+
+            if (level.bestScore > 0) {
+                JsonValue levelJson = new JsonValue(JsonValue.ValueType.object);
+                levelJson.addChild("id", new JsonValue(levelId));
+                levelJson.addChild("score", new JsonValue(level.currentScore));
+                levelJson.addChild("best", new JsonValue(level.bestScore));
+                levelArray.addChild(levelJson);
+            }
+        }
+        json.addChild("levels", levelArray);
+
+        return json;
+    }
+
+    public static void resetGameOver() {
+        lifes = 4;
+        item = 0;
+        coins = 0;
+        persistentMaryoState = 0;
+        maryoState = 0;
+        totalPlaytime = 0;
+        totalScore = 0;
+        gameOverNum++;
+
+        for (String levelId : Level.getLevelList()) {
+            Level level = Level.getLevel(levelId);
+
+            level.currentScore = 0;
+        }
+        save();
+    }
+
+    private static void save() {
+        save(null);
+    }
+
+    public static void save(ISaveGameStateResponseListener cloudResponseListener) {
+        JsonValue json = toJson();
+        String jsonString = json.toJson(JsonWriter.OutputType.json);
+        PrefsManager.setSaveGame(jsonString);
+
+        if (cloudSaveClient != null && loadedFromCloud)
+            cloudSaveClient.saveGameState(CLOUD_FILE_NAME,
+                    Utility.encode(jsonString, PrefsManager.SCCPLF).getBytes(),
+                    levelStartedNum, cloudResponseListener);
+    }
+
+    public static void addCoins(AbstractScreen screen, int addCoins) {
+        coins += addCoins;
+        if (coins >= 100) {
+            coins -= 100;
+            lifes++;
+            AssetManager manager = screen.game.assets.manager;
+            if (manager.isLoaded(Assets.SOUND_ITEM_LIVE_UP_2))
+                SoundManager.play(manager.get(Assets.SOUND_ITEM_LIVE_UP_2, Sound.class));
+        }
+    }
+
+    public static int getCoins() {
+        return coins;
+    }
+
+    public static int getItem() {
+        return item;
+    }
+
+    public static void setItem(int itemType) {
+        item = itemType;
+    }
+
+    public static Maryo.MaryoState getMaryoState() {
+        return Maryo.MaryoState.fromInt(maryoState);
+    }
+
+    public static void setMaryoState(Maryo.MaryoState newState) {
+        maryoState = Maryo.MaryoState.toInt(newState);
+    }
+
+    public static Maryo.MaryoState getPersistentMaryoState() {
+        return Maryo.MaryoState.fromInt(persistentMaryoState);
+    }
+
+    public static int getPersistentItem() {
+        return persistentItem;
+    }
+
+    public static int getLifes() {
+        return lifes;
+    }
+
+    public static void addScore(int score) {
+        levelScore += score;
+    }
+
+    public static void addLifes(int addedLifes) {
+        lifes += addedLifes;
+    }
+
+    public static int getScore() {
+        return levelScore;
+    }
+
+    public static int getTotalScore() {
+        return totalScore;
+    }
+
+    /**
+     * Starten eines Spiels aus dem Menü heraus
+     */
+    public static boolean startLevelFresh() {
+        item = persistentItem;
+        maryoState = persistentMaryoState;
+        persistentMaryoState = 0;
+        persistentItem = 0;
+        levelPlaytime = 0;
+        lifes--;
+        levelScore = 0;
+        levelStartedNum++;
+        save();
+        return lifes >= 0;
+    }
+
+    /**
+     * Level erfolgreich beendet => Punkte etc übernehmen
+     */
+    public static void levelCleared(String levelName) {
+        persistentItem = item;
+        persistentMaryoState = maryoState;
+        lifes++;
+
+        Level level = Level.getLevel(levelName);
+        level.currentScore = levelScore;
+        if (level.currentScore > level.bestScore)
+            level.bestScore = levelScore;
+
+        recalcTotalScore();
+        save();
+    }
+
+    private static void recalcTotalScore() {
+        totalScore = 0;
+
+        for (String levelId : Level.getLevelList()) {
+            Level level = Level.getLevel(levelId);
+
+            totalScore += level.currentScore;
+        }
+
+        if (totalScore > bestTotal)
+            bestTotal = totalScore;
+    }
+
+    public static void loadFromCloudIfApplicable(final MaryoGame game) {
+        if (!loadedFromCloud && !loadingFromCloud && cloudSaveClient != null && cloudSaveClient.isSessionActive()
+                && cloudSaveClient.isFeatureSupported(IGameServiceClient.GameServiceFeature.GameStateStorage)) {
+            loadingFromCloud = true;
+            cloudSaveClient.loadGameState(GameSave.CLOUD_FILE_NAME, new ILoadGameStateResponseListener() {
+                @Override
+                public void gsGameStateLoaded(final byte[] gameState) {
+                    Gdx.app.postRunnable(new Runnable() {
+                        @Override
+                        public void run() {
+                            // wenn abgebrochen wurde, dann nicht mehr laden
+                            if (loadedFromCloud)
+                                return;
+
+                            loadingFromCloud = false;
+                            loadedFromCloud = true;
+
+                            try {
+                                String json = Utility.decode(new String(gameState), PrefsManager.SCCPLF);
+                                boolean madeChanges = false;
+                                if (json != null)
+                                    madeChanges = readFromJson(json);
+
+                                if (madeChanges)
+                                    game.onChangedStateFromCloud();
+                            } catch (Throwable t) {
+                                // eat
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    public static void resetLoadedFromCloud() {
+        loadingFromCloud = false;
+        loadedFromCloud = false;
+    }
+}
+core/src/rs/pedjaapps/smc/object/items/mushroom/MushroomPoison.java
+public class MushroomPoison extends Mushroom
+{
+    public MushroomPoison(World world, Vector2 size, Vector3 position)
+    {
+        super(world, size, position);
+        textureName = "game_items_mushroom_poison";
+    }
+
+    @Override
+    public int getType() {
+        return TYPE_MUSHROOM_POISON;
+    }
+
+    @Override
+    protected void performCollisionAction()
+    {
+        playerHit = true;
+        if (!world.maryo.mInvincibleStar)
+            world.maryo.downgradeOrDie(false);
+        world.trashObjects.add(this);
+    }
+}
+core/src/rs/pedjaapps/smc/object/items/Coin.java
+public class Coin extends Item
+{
+    public static final float DEF_SIZE = 0.59375f;
+    public static final int TYPE_YELLOW = 0;
+    public static final int TYPE_RED = 1;
+    public int points = 5;
+    private Animation<TextureRegion> animation;
+    private int coinType;
+
+    /**
+     * Coin will move out of the screen when collected
+     */
+    private boolean scrollOut;
+
+
+    public Coin(World world, Vector2 size, Vector3 position, int coinType)
+    {
+        super(world, size, position);
+        position.z = 0.041f;
+        this.coinType = coinType;
+    }
+
+    @Override
+    public int getType() {
+        return TYPE_GOLDPIECE;
+    }
+
+    @Override
+    public float maxVelocity()
+    {
+        return 0;
+    }
+
+    @Override
+    public void initAssets()
+    {
+        TextureAtlas atlas = world.screen.game.assets.manager.get(Assets.ATLAS_DYNAMIC);
+        Array<TextureAtlas.AtlasRegion> frames = new Array<TextureAtlas.AtlasRegion>();
+
+        for (int i = 1; i < 11; i++)
+        {
+            frames.add(atlas.findRegion("game_items_waffle_" + (coinType == TYPE_YELLOW ? "yellow" : "red")
+                    + "_" + String.valueOf(i)));
+        }
+
+        animation = new Animation(0.10f, frames);
+
+        if (coinType == TYPE_YELLOW)
+        {
+            points = 5;
+        }
+        else
+        {
+            points = 100;
+        }
+
+        stateTime = MathUtils.random(1.2f);
+    }
+
+    @Override
+    public void _render(SpriteBatch spriteBatch)
+    {
+        if (!visible) return;
+        //if (!playerHit)
+        //{
+        TextureRegion frame = animation.getKeyFrame(stateTime, true);
+        Utility.draw(spriteBatch, frame, position.x, position.y, mDrawRect.height);
+        //}
+        //else
+        //{
+        //    font.draw(spriteBatch, position + "", pointsTextPosition.x, pointsTextPosition.y);
+        //}
+    }
+
+    @Override
+    public void updateItem(float delta)
+    {
+        super.updateItem(delta);
+        //pointsTextPosition.y += 3f * delta;
+        if (popFromBox)
+        {
+            // scale velocity to frame units
+            velocity.scl(delta);
+
+            // update position
+            position.add(velocity);
+            mColRect.y = position.y;
+            updateBounds();
+
+            // un-scale velocity (not in frame time)
+            velocity.scl(1 / delta);
+
+            if (position.y >= originalPosY + mColRect.height + 0.3f)
+            {
+                popFromBox = false;
+                collect();
+            }
+        }
+        if (scrollOut)
+        {
+            velocity.scl(delta);
+
+            position.add(velocity);
+            mColRect.y = position.y;
+            mColRect.x = position.x;
+            updateBounds();
+
+            // un-scale velocity (not in frame time)
+            velocity.scl(1 / delta);
+            OrthographicCamera cam = ((GameScreen) world.screen).cam;
+            float camLeft = cam.position.x - cam.viewportWidth / 2;
+            float camTop = cam.position.y + cam.viewportHeight / 2;
+            float objRight = position.x + mDrawRect.width;
+            float objBottom = position.y;
+            if (objRight < camLeft || objBottom > camTop)//is visible
+            {
+                world.trashObjects.add(this);
+            }
+
+        }
+    }
+
+    private void collect()
+    {
+        scrollOut = true;
+        velocity.x = -9f;
+        velocity.y = 2f;
+        ((GameScreen) world.screen).killPointsTextHandler.add(points, position.x, position.y + mDrawRect.height);
+    }
+
+    @Override
+    public void hitPlayer()
+    {
+        if (!collectible) return;
+        playerHit = true;
+        GameSave.addCoins(world.screen, coinType == TYPE_YELLOW ? 1 : 5);
+        Sound sound = getSound();
+        SoundManager.play(sound);
+        GameSave.addScore(points);
+
+        collect();
+    }
+
+    public Sound getSound() {
+        if (coinType == TYPE_YELLOW)
+            return world.screen.game.assets.manager.get(Assets.SOUND_ITEM_GOLDPIECE1);
+        else
+            return world.screen.game.assets.manager.get(Assets.SOUND_ITEM_GOLDPIECE_RED);
+    }
+
+    @Override
+    public void popOutFromBox(float popTargetPositionY)
+    {
+        super.popOutFromBox(popTargetPositionY);
+        visible = true;
+        popFromBox = true;
+        velocity.y = 4f;
+        originalPosY = position.y;
+        if (coinType == TYPE_YELLOW)
+        {
+            GameSave.addCoins(world.screen, 1);
+        }
+        else
+        {
+            GameSave.addCoins(world.screen, 5);
+        }
+        GameSave.addScore(points);
+    }
+
+    @Override
+    public void dispose()
+    {
+        super.dispose();
+        animation = null;
+    }
+}
+core/src/rs/pedjaapps/smc/utility/Utility.java
+public class Utility
+{
+
+    /**
+     * This class can not bi instantiated, it will throw exception if you try to instantiate it
+     * @throws java.lang.IllegalStateException*/
+    public Utility()
+    {
+        throw new IllegalStateException("Class " + this.getClass().getName() + " is not instantiable!");
+    }
+
+    public static float getHeight(float width, TextureRegion region)
+    {
+        return width*region.getRegionHeight()/region.getRegionWidth();
+    }
+
+    public static float getHeight(float width, Texture texture)
+    {
+        return width*texture.getHeight()/texture.getWidth();
+    }
+
+    public static float getHeight(float newWidth, float origWidth, float origHeight)
+    {
+        return newWidth * origHeight / origWidth;
+    }
+
+    /**Checks current sound state(on/off) and toggles it
+     * @return new state of the sound(true = on, false = off)*/
+    public static boolean toggleSound()
+    {
+        boolean currentState = PrefsManager.isPlaySounds();
+        PrefsManager.setPlaySounds(!currentState);
+        return !currentState;
+    }
+
+
+    /**Checks current music state(on/off) and toggles it
+     * @return new state of the music(true = on, false = off)*/
+    public static boolean toggleMusic()
+    {
+        boolean currentState = PrefsManager.isPlayMusic();
+        PrefsManager.setPlayMusic(!currentState);
+        return !currentState;
+    }
+
+    public static void draw(SpriteBatch batch, Texture texture, float x, float y, float height)
+    {
+        batch.draw(texture, x, y, height * texture.getWidth()/texture.getHeight(), height);
+    }
+
+    public static void draw(SpriteBatch batch, TextureRegion region, float x, float y, float height)
+    {
+        batch.draw(region, x, y, height * region.getRegionWidth() / region.getRegionHeight(), height);
+    }
+
+    public static float getWidth(TextureRegion region, float height)
+    {
+        return height * region.getRegionWidth() / region.getRegionHeight();
+    }
+
+    public static float getWidth(Texture texture, float height)
+    {
+        return height * texture.getWidth() / texture.getHeight();
+    }
+
+    /*(+x\y-height)/64*/
+
+	public static int parseInt(String input, int defValue)
+	{
+		try
+		{
+			return Integer.parseInt(input);
+		}
+		catch(Exception e)
+		{
+			return defValue;
+		}
+	}
+
+	public static String millisToString(float millis)
+	{
+        int s = (int) millis % 60;
+        int m = ((int) ((millis / 60) % 60));
+
+		return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+	}
+
+    public static void guiPositionToGamePosition(float positionX, float positionY, GameScreen gameScreen, Vector2 point)
+    {
+        OrthographicCamera cam = gameScreen.cam;
+        OrthographicCamera guiCam = gameScreen.guiCam;
+
+        float camViewX = cam.position.x - (cam.viewportWidth * cam.zoom) * 0.5f;
+        float camViewY = cam.position.y - (cam.viewportHeight * cam.zoom) * 0.5f;
+        float widthMul = guiCam.viewportWidth / (cam.viewportWidth * cam.zoom);
+        float heightMul = guiCam.viewportHeight / (cam.viewportHeight * cam.zoom);
+        point.x = camViewX + positionX / widthMul;
+        point.y = camViewY + positionY / heightMul;
+    }
+
+    public static String encode(String s, String key) {
+        return new String(Base64Coder.encode(xorWithKey(s.getBytes(), key.getBytes())));
+    }
+
+    public static String decode(String s, String key) {
+        return new String(xorWithKey(Base64Coder.decode(s), key.getBytes()));
+    }
+
+    private static byte[] xorWithKey(byte[] a, byte[] key) {
+        byte[] out = new byte[a.length];
+        for (int i = 0; i < a.length; i++) {
+            out[i] = (byte) (a[i] ^ key[i % key.length]);
+        }
+
+        return out;
+    }
+
+
+}
+core/src/rs/pedjaapps/smc/assets/Assets.java
+public class Assets {
+    public static final String SKIN_HUD = "data/hud/smcskin.json";
+    public static final String LOGO_GAME = "logo_smc_big_1";
+    public static final String LOGO_LOADING = "logo_loading";
+
+    public static final String FONT_SIMPLE25 = "grobold25";
+    public static final String LABEL_SIMPLE25 = "small";
+    public static final String LABEL_BORDER25 = "outline_small";
+    public static final String LABEL_BORDER60 = "outline";
+
+    public static final String WINDOW_NOFRAME = "frameless";
+    public static final String WINDOW_SMALL = "small";
+
+    public static final String BUTTON_BORDER = "framed";
+    public static final String BUTTON_FA = "fa45";
+    public static final String BUTTON_FA_FRAMELESS = "fa45noborder";
+    public static final String BUTTON_SMALL = "small";
+    public static final String BUTTON_SMALL_FRAMELESS = "smallnoborder";
+
+    public static final String COLOR_EMPH1 = "emph1";
+    public static final String COLOR_EMPH2 = "emph2";
+    public static final String COLOR_PRESSED = "button_pressed";
+
+    public static final String SOUND_ITEM_LIVE_UP_2 = "data/sounds/item/live_up_2.ogg";
+    public static final String SOUND_ITEM_LIVE_UP = "data/sounds/item/live_up.ogg";
+    public static final String SOUND_PLAYER_DEAD = "data/sounds/player/dead.ogg";
+    public static final String SOUND_PLAYER_GHOSTEND = "data/sounds/player/ghost_end.ogg";
+    public static final String SOUND_JUMP_BIG = "data/sounds/player/jump_big.ogg";
+    public static final String SOUND_JUMP_BIG_POWER = "data/sounds/player/jump_big_power.ogg";
+    public static final String SOUND_JUMP_SMALL = "data/sounds/player/jump_small.ogg";
+    public static final String SOUND_PLAYER_POWERDOWN = "data/sounds/player/powerdown.ogg";
+    public static final String SOUND_JUMP_SMALL_POWER = "data/sounds/player/jump_small_power.ogg";
+    public static final String SOUND_AUDIO_ON = "data/sounds/audio_on.ogg";
+    public static final String SOUND_ENTER_PIPE = "data/sounds/enter_pipe.ogg";
+    public static final String SOUND_LEAVE_PIPE = "data/sounds/leave_pipe.ogg";
+    public static final String SOUND_SPROUT = "data/sounds/sprout_1.ogg";
+    public static final String SOUND_ITEMBOX_SET = "data/sounds/itembox_set.ogg";
+    public static final String SOUND_ITEMBOX_GET = "data/sounds/itembox_get.ogg";
+    //???? unused
+    public static final String SOUND_STOMP1 = "data/sounds/stomp_1.ogg";
+    public static final String SOUND_STOMP4 = "data/sounds/stomp_4.ogg";
+    public static final String SOUND_WALL_HIT = "data/sounds/wall_hit.ogg";
+    public static final String SOUND_BOSS_FURBALL_HIT_FAILED = "data/sounds/enemy/boss/furball/hit_failed.ogg";
+    public static final String SOUND_BOSS_FURBALL_HIT = "data/sounds/enemy/boss/furball/hit.ogg";
+    public static final String SOUND_ENEMY_DIE_EATO = "data/sounds/enemy/eato/die.ogg";
+    public static final String SOUND_ENEMY_DIE_FLYON = "data/sounds/enemy/flyon/die.ogg";
+    public static final String SOUND_ENEMY_DIE_FURBALL = "data/sounds/enemy/furball/die.ogg";
+    public static final String SOUND_ENEMY_DIE_GEE = "data/sounds/enemy/gee/die.ogg";
+    public static final String SOUND_ENEMY_DIE_KRUSH = "data/sounds/enemy/krush/die.ogg";
+    public static final String SOUND_ENEMY_ROKKO_HIT = "data/sounds/enemy/rokko/hit.ogg";
+    public static final String SOUND_ENEMY_TURTLE_SHELL_HIT = "data/sounds/enemy/turtle/shell/hit.ogg";
+    public static final String SOUND_ENEMY_DIE_THROMP = "data/sounds/enemy/thromp/die.ogg";
+    public static final String SOUND_ITEM_FIREBALL = "data/sounds/item/fireball.ogg";
+    public static final String SOUND_ITEM_FIREBALL_EXPLOSION = "data/sounds/item/fireball_explosion.ogg";
+    public static final String SOUND_ITEM_ICEBALL_HIT = "data/sounds/item/iceball.ogg";
+    public static final String SOUND_ITEM_FIREBALL_REPELLED = "data/sounds/item/fireball_repelled.ogg";
+    public static final String SOUND_ITEM_FIREPLANT = "data/sounds/item/fireplant.ogg";
+    public static final String SOUND_ITEM_GOLDPIECE1 = "data/sounds/item/goldpiece_1.ogg";
+    public static final String SOUND_ITEM_GOLDPIECE_RED = "data/sounds/item/goldpiece_red.ogg";
+    public static final String SOUND_ITEM_ICE_KILL = "data/sounds/item/ice_kill.ogg";
+    public static final String SOUND_ITEM_MOON = "data/sounds/item/moon.ogg";
+    public static final String SOUND_ITEM_MUSHROOM = "data/sounds/item/mushroom.ogg";
+    public static final String SOUND_ITEM_MUSHROOM_BLUE = "data/sounds/item/mushroom_blue.ogg";
+    public static final String SOUND_ITEM_MUSHROOM_GHOST = "data/sounds/item/mushroom_ghost.ogg";
+    public static final String SOUND_ITEM_STAR_KILL = "data/sounds/item/star_kill.ogg";
+
+    public static final String PARTICLES_BOX_ACTIVATED = "data/animation/particles/box_activated.p";
+
+    public static final String MUSIC_COURSECLEAR = "data/music/game/courseclear.ogg";
+    public static final String MUSIC_INVINCIBLE = "data/music/game/star.ogg";
+
+    public static final String ATLAS_STATIC = "data/static.pack";
+    public static final String ATLAS_DYNAMIC = "data/dynamic.pack";
+
+    public AssetManager manager;
+    public TextureLoader.TextureParameter textureParameter;
+    public ParticleEffectLoader.ParticleEffectParameter particleEffectParameter;
+
+    public Assets() {
+        textureParameter = new TextureLoader.TextureParameter();
+        //textureParameter.genMipMaps = true;
+        textureParameter.magFilter = Texture.TextureFilter.Linear;
+        textureParameter.minFilter = Texture.TextureFilter.Linear;
+
+        manager = new AssetManager();
+
+        particleEffectParameter = new ParticleEffectLoader.ParticleEffectParameter();
+        particleEffectParameter.atlasFile = Assets.ATLAS_DYNAMIC;
+        particleEffectParameter.atlasPrefix = "particles_";
+        particleEffectParameter.imagesDir = Gdx.files.internal("data/animation/particles");
+
+        // set the loaders for the generator and the fonts themselves
+        manager.setLoader(ParticleEffect.class, ".p", new ParticleEffectLoader(new InternalFileHandleResolver()));
+        manager.setLoader(Sound.class, ".ogg", new SoundLoader(new InternalFileHandleResolver()));
+        manager.setLoader(Music.class, ".ogg", new MusicLoader(new InternalFileHandleResolver()));
+    }
+
+    public void dispose() {
+        //do not clear. This is just annoying because it needs to be loaded again
+        //TODO: große Klopper müssen wieder weggemacht werden (Background, Musik)
+        //manager.clear();
+    }
+
+}
+core/src/rs/pedjaapps/smc/utility/LevelLoader.java
+public class LevelLoader
+{
+    public static final Pattern TXT_NAME_IN_ATLAS = Pattern.compile(".+\\.pack:.+");
+    public Level level;
+    private boolean levelParsed = false;
+
+    private enum ObjectClass
+    {
+        sprite, item, box, player, enemy, moving_platform, enemy_stopper, level_entry, level_exit,
+    }
+
+    public static final float m_pos_z_passive_start = 0.01f;
+    private static final float m_pos_z_massive_start = 0.08f;
+    private static final float m_pos_z_front_passive_start = 0.1f;
+    private static final float m_pos_z_halfmassive_start = 0.04f;
+
+    /**
+     * Use this constructor only from pc when you want to automatically fix assets dependencies
+     */
+    public LevelLoader(String levelName)
+    {
+        level = new Level(levelName);
+    }
+
+    public synchronized void parseLevel(World world)
+    {
+        JsonValue jLevel;
+        try
+        {
+            jLevel = new JsonReader().parse (Gdx.files.internal("data/levels/" + level.levelName + Level.LEVEL_EXT));
+            parseInfo(jLevel, world.screen.game.assets);
+            parseParticleEffect(jLevel, world.screen.game.assets);
+            parseBg(jLevel, world.screen.game.assets);
+            parseGameObjects(world, jLevel, world.screen.game.assets);
+        }
+        catch (Throwable e)
+        {
+            e.printStackTrace();
+            throw new RuntimeException("Unable to load level! " + e.getMessage());
+        }
+        levelParsed = true;
+    }
+
+    private void parseParticleEffect(JsonValue jLevel, Assets assets)
+    {
+        JsonValue jParticleEffect = jLevel.get("particle_effect");
+        if(jParticleEffect != null)
+        {
+            String effect = jParticleEffect.getString("effect", "");
+            if(!TextUtils.isEmpty(effect))
+            {
+                assets.manager.load(effect, ParticleEffect.class, assets.particleEffectParameter);
+                level.particleEffect = effect;
+            }
+        }
+    }
+
+    private void parseGameObjects(World world, JsonValue level, Assets assets)
+    {
+        JsonValue jObjects = level.get("objects");
+        for (JsonValue jObject = jObjects.child; jObject != null; jObject = jObject.next)
+        {
+            switch (ObjectClass.valueOf(jObject.getString("obj_class")))
+            {
+                case sprite:
+                    parseSprite(world, jObject, assets);
+                    break;
+                case player:
+                    parsePlayer(jObject, world);
+                    break;
+                case item:
+                    parseItem(world, jObject, assets);
+                    break;
+                case enemy:
+                    parseEnemy(world, jObject, assets);
+                    break;
+                case enemy_stopper:
+                    parseEnemyStopper(world, jObject);
+                    break;
+                case box:
+                    parseBox(world, jObject, assets);
+                    break;
+                case level_entry:
+                    /*{"direction":"up","posy":-228,"name":"1","posx":8074,"type":1,"obj_class":"level_entry"}*/
+                    parseLevelEntry(world, jObject);
+                    break;
+                case level_exit:
+                    parseLevelExit(world, jObject);
+                    break;
+                case moving_platform:
+                    parseMovingPlatform(world, jObject, assets);
+                    break;
+            }
+        }
+        //this.level.gameObjects.sort(new ZSpriteComparator());
+        Collections.sort(this.level.gameObjects, new ZSpriteComparator());
+    }
+
+    private void parseInfo(JsonValue jLevel, Assets assets)
+    {
+        JsonValue jInfo = jLevel.get("info");
+        float width = jInfo.getFloat("level_width");
+        float height = jInfo.getFloat("level_height");
+        level.width = width;
+        level.height = Math.max(height, Constants.CAMERA_HEIGHT);
+        if (jInfo.has("level_music"))
+        {
+            JsonValue jMusic = jInfo.get("level_music");
+            Array<String> music = new Array<>();
+            for (JsonValue thisMusic = jMusic.child; thisMusic != null; thisMusic = thisMusic.next)
+            {
+                String tmp = thisMusic.asString();
+                assets.manager.load(tmp, Music.class);
+                if (!levelParsed) music.add(thisMusic.asString());
+            }
+            if (!levelParsed) level.music = music;
+        }
+    }
+
+    private void parseBg(JsonValue jLevel, Assets assets)
+    {
+        JsonValue jBgs = jLevel.get("backgrounds");
+        if (jBgs != null)
+        {
+            for (JsonValue jBg = jBgs.child; jBg != null; jBg = jBg.next)
+            {
+                int type = jBg.getInt("type", 0);
+                if (type == BG_IMG_ALL || type == BG_IMG_BOTTOM || type == BG_IMG_TOP)
+                {
+                    String textureName = jBg.getString("texture_name", null);
+                    if (textureName != null)
+                        assets.manager.load(textureName, Texture.class, assets.textureParameter);
+                    if (levelParsed) return;
+
+                    Vector2 speed = new Vector2();
+
+                    speed.x = jBg.getFloat("speedx", 0);
+                    speed.y = jBg.getFloat("speedy", 0);
+
+                    Vector2 pos = new Vector2();
+
+                    pos.x = jBg.getFloat("posx", 0);
+                    pos.y = jBg.getFloat("posy", 0);
+
+                    float width = jBg.getFloat("width", 0);
+                    float height = jBg.getFloat("height", 0);
+
+                    Background bg = new Background(pos, speed, textureName, width, height, level.width, level.height, type);
+
+                    bg.width = jBg.getFloat("width", 0);
+                    bg.height = jBg.getFloat("height", 0);
+                    level.backgrounds.add(bg);
+                }
+                else if (type == BG_GR_VER || type == BG_GR_HOR)
+                {
+                    Background bg = new Background(type);
+                    float r1 = jBg.getFloat("r_1") / 255;//convert from 0-255 range to 0-1 range
+                    float r2 = jBg.getFloat("r_2") / 255;
+                    float g1 = jBg.getFloat("g_1") / 255;
+                    float g2 = jBg.getFloat("g_2") / 255;
+                    float b1 = jBg.getFloat("b_1") / 255;
+                    float b2 = jBg.getFloat("b_2") / 255;
+
+                    Color color1 = new Color(r1, g1, b1, 0f);//color is 0-1 range where 1 = 255
+                    Color color2 = new Color(r2, g2, b2, 0f);
+
+                    bg.setColors(color1, color2);
+                    level.backgrounds.add(bg);
+                }
+            }
+        }
+    }
+
+    private void parsePlayer(JsonValue jPlayer, World world)
+    {
+        if (levelParsed) return;
+        float x = jPlayer.getFloat("posx");
+        float y = jPlayer.getFloat("posy");
+        level.spanPosition = new Vector3(x, y, Maryo.POSITION_Z);
+        Maryo maryo = new Maryo(world, level.spanPosition, new Vector2(0.9f, 0.9f));
+        world.maryo = maryo;
+        level.gameObjects.add(maryo);
+    }
+
+    private void parseSprite(World world, JsonValue jSprite, Assets assets)
+    {
+        Vector3 position = new Vector3(jSprite.getFloat("posx"), jSprite.getFloat("posy"), 0);
+        Sprite.Type sType = null;
+        if (jSprite.has("massive_type"))
+        {
+            sType = Sprite.Type.valueOf(jSprite.getString("massive_type"));
+            switch (sType)
+            {
+                case massive:
+                    position.z = m_pos_z_massive_start;
+                    break;
+                case passive:
+                    position.z = m_pos_z_passive_start;
+                    break;
+                case halfmassive:
+                    position.z = m_pos_z_halfmassive_start;
+                    break;
+                case front_passive:
+                    position.z = m_pos_z_front_passive_start;
+                    break;
+                case climbable:
+                    position.z = m_pos_z_halfmassive_start;
+                    break;
+            }
+        }
+        else
+        {
+            position.z = m_pos_z_front_passive_start;
+        }
+        Vector2 size = new Vector2(jSprite.getFloat("width"), jSprite.getFloat("height"));
+
+        Rectangle rectangle = new Rectangle();
+        rectangle.x = jSprite.getFloat("c_posx", 0);
+        rectangle.y = jSprite.getFloat("c_posy", 0);
+        rectangle.width = jSprite.getFloat("c_width", size.x);
+        rectangle.height = jSprite.getFloat("c_height", size.y);
+        Sprite sprite = new Sprite(world, size, position, rectangle);
+        sprite.type = sType;
+        sprite.groundType = jSprite.getInt("ground_type", Sprite.GROUND_NORMAL);
+
+        sprite.textureName = jSprite.getString("texture_name");
+        sprite.textureAtlas = jSprite.getString("texture_atlas", null);
+
+        if (TextUtils.isEmpty(sprite.textureName) && TextUtils.isEmpty(sprite.textureAtlas))
+        {
+            throw new GdxRuntimeException("Both textureName and textureAtlas are null");
+        }
+
+        if (TextUtils.isEmpty(sprite.textureName))
+        {
+            throw new IllegalArgumentException("texture name is invalid: \"" + sprite.textureName + "\"");
+        }
+
+        if (!TXT_NAME_IN_ATLAS.matcher(sprite.textureName).matches())
+        {
+            assets.manager.load(sprite.textureName, Texture.class, assets.textureParameter);
+        }
+
+        if (!TextUtils.isEmpty(sprite.textureAtlas))
+        {
+            assets.manager.load(sprite.textureAtlas, TextureAtlas.class);
+        }
+
+        sprite.mRotationX = jSprite.getInt("rotationX", 0);
+        sprite.mRotationY = jSprite.getInt("rotationY", 0);
+        sprite.mRotationZ = jSprite.getInt("rotationZ", 0);
+        if (sprite.mRotationZ == 270)
+        {
+            sprite.mRotationZ = -sprite.mRotationZ;
+        }
+        if (!levelParsed) level.gameObjects.add(sprite);
+
+    }
+
+    private void parseEnemy(World world, JsonValue jEnemy, Assets assets)
+    {
+        Enemy enemy = Enemy.initEnemy(world, jEnemy);
+        if (enemy == null) return;
+        if (jEnemy.has("texture_atlas"))
+        {
+            enemy.textureAtlas = jEnemy.getString("texture_atlas");
+            assets.manager.load(enemy.textureAtlas, TextureAtlas.class);
+        }
+        if (jEnemy.has("texture_name"))
+            enemy.textureName = jEnemy.getString("texture_name");
+
+        if (!levelParsed) level.gameObjects.add(enemy);
+    }
+
+    private void parseEnemyStopper(World world, JsonValue jEnemyStopper)
+    {
+        if (levelParsed) return;
+        Vector3 position = new Vector3(jEnemyStopper.getFloat("posx"), jEnemyStopper.getFloat("posy"), 0);
+        float width = jEnemyStopper.getFloat("width");
+        float height = jEnemyStopper.getFloat("height");
+
+        EnemyStopper stopper = new EnemyStopper(world, new Vector2(width, height), position);
+
+        level.gameObjects.add(stopper);
+    }
+
+    private void parseLevelEntry(World world, JsonValue jEntry)
+    {
+        if (levelParsed) return;
+        Vector3 position = new Vector3(jEntry.getFloat("posx"), jEntry.getFloat("posy"), 0);
+        float width = jEntry.getFloat("width");
+        float height = jEntry.getFloat("height");
+
+        LevelEntry entry = new LevelEntry(world, new Vector2(width, height), position);
+        entry.direction = jEntry.getString("direction", "");
+        entry.type = jEntry.getInt("type", 0);
+        entry.name = jEntry.getString("name", "");
+
+        level.gameObjects.add(entry);
+    }
+
+    private void parseLevelExit(World world, JsonValue jExit)
+    {
+        if (levelParsed) return;
+        Vector3 position = new Vector3(jExit.getFloat("posx"), jExit.getFloat("posy"), 0);
+        float width = jExit.getFloat("width");
+        float height = jExit.getFloat("height");
+        LevelExit exit = new LevelExit(world, new Vector2(width, height), position, jExit.getInt("type", 0), jExit.getString("direction", ""));
+        exit.cameraMotion = jExit.getInt("camera_motion", 0);
+        exit.levelName = jExit.getString("level_name", null);
+        exit.entry = jExit.getString("entry", "");
+
+        level.gameObjects.add(exit);
+    }
+
+    private void parseMovingPlatform(World world, JsonValue jMovingPlatform, Assets assets)
+    {
+        if (levelParsed) return;
+        Vector3 position = new Vector3(jMovingPlatform.getFloat("posx"), jMovingPlatform.getFloat("posy"), 0);
+        float width = jMovingPlatform.getFloat("width");
+        float height = jMovingPlatform.getFloat("height");
+        MovingPlatform platform = new MovingPlatform(world, new Vector2(width, height), position, null);
+        platform.max_distance = jMovingPlatform.getInt("max_distance", 0);
+        platform.speed = jMovingPlatform.getFloat("speed", 0);
+        platform.touch_time = jMovingPlatform.getFloat("touch_time", 0);
+        platform.shake_time = jMovingPlatform.getFloat("shake_time", 0);
+        platform.touch_move_time = jMovingPlatform.getFloat("touch_move_time", 0);
+        platform.move_type = jMovingPlatform.getInt("move_type", 0);
+        platform.middle_img_count = jMovingPlatform.getInt("middle_img_count", 0);
+        platform.direction = jMovingPlatform.getString("direction", "");
+        platform.image_top_left = jMovingPlatform.getString("image_top_left", "");
+        platform.image_top_middle = jMovingPlatform.getString("image_top_middle", "");
+        platform.image_top_right = jMovingPlatform.getString("image_top_right", "");
+        platform.textureAtlas = jMovingPlatform.getString("texture_atlas", "");
+        if (platform.textureAtlas != null && !platform.textureAtlas.trim().isEmpty())
+        {
+            assets.manager.load(platform.textureAtlas, TextureAtlas.class);
+        }
+        else
+        {
+            assets.manager.load(platform.image_top_left, Texture.class);
+            assets.manager.load(platform.image_top_middle, Texture.class);
+            assets.manager.load(platform.image_top_right, Texture.class);
+        }
+
+        Sprite.Type sType = null;
+        if (jMovingPlatform.has("massive_type"))
+        {
+            sType = Sprite.Type.valueOf(jMovingPlatform.getString("massive_type"));
+            switch (sType)
+            {
+                case massive:
+                    position.z = m_pos_z_massive_start;
+                    break;
+                case passive:
+                    position.z = m_pos_z_passive_start;
+                    break;
+                case halfmassive:
+                    position.z = m_pos_z_halfmassive_start;
+                    break;
+                case front_passive:
+                    position.z = m_pos_z_front_passive_start;
+                    break;
+                case climbable:
+                    position.z = m_pos_z_halfmassive_start;
+                    break;
+            }
+        }
+        else
+        {
+            position.z = m_pos_z_front_passive_start;
+        }
+        platform.type = sType;
+
+        JsonValue jPath = jMovingPlatform.get("path");
+        if (platform.move_type == MovingPlatform.MOVING_PLATFORM_TYPE_PATH && jPath == null)
+        {
+            throw new GdxRuntimeException("MovingPlatform type is 'path' but no path defined");
+        }
+        if (jPath != null)
+        {
+            MovingPlatform.Path path = new MovingPlatform.Path();
+            path.posx = jPath.getFloat("posx", 0);
+            path.posy = jPath.getFloat("posy", 0);
+            path.rewind = jPath.getInt("rewind", 0);
+
+            JsonValue jSegments = jPath.get("segments");
+            if (jSegments == null || jSegments.child == null)
+            {
+                throw new GdxRuntimeException("Path doesn't contain segments. Level: " + level.levelName);
+            }
+            for (JsonValue jSegment = jSegments.child; jSegment != null; jSegment = jSegment.next)
+            {
+                MovingPlatform.Path.Segment segment = new MovingPlatform.Path.Segment();
+                segment.start.x = jSegment.getFloat("startx", 0);
+                segment.start.y = jSegment.getFloat("starty", 0);
+                segment.end.x = jSegment.getFloat("endx", 0);
+                segment.end.y = jSegment.getFloat("endy", 0);
+                path.segments.add(segment);
+            }
+            platform.path = path;
+        }
+
+        level.gameObjects.add(platform);
+    }
+
+    private void parseItem(World world, JsonValue jItem, Assets assets)
+    {
+        Vector3 position = new Vector3(jItem.getFloat("posx", 0), jItem.getFloat("posy", 0), 0);
+
+        String type = jItem.getString("type");
+        int itemSubtype;
+        switch (Item.CLASS.valueOf(type)) {
+            case mushroom:
+                itemSubtype = jItem.getInt("mushroom_type", 0);
+                break;
+            case goldpiece:
+                itemSubtype = (jItem.getString("color", "").equals("red") ? Coin.TYPE_RED : Coin.TYPE_YELLOW);
+                break;
+            default:
+                itemSubtype = 0;
+        }
+
+        Item item = Item.createObject(world, assets, itemSubtype, type, new Vector2(jItem.getFloat("width"), jItem.getFloat("height")), position);
+
+        if (item == null) return;
+        if (jItem.has("texture_atlas"))
+        {
+            item.textureAtlas = jItem.getString("texture_atlas");
+            assets.manager.load(item.textureAtlas, TextureAtlas.class);
+        }
+        if (!levelParsed) level.gameObjects.add(item);
+    }
+
+    private void parseBox(World world, JsonValue jBox, Assets assets)
+    {
+        Box box = Box.initBox(world, jBox, assets);
+        if (!levelParsed) level.gameObjects.add(box);
+    }
+
+    /**
+     * Comparator used for sorting, sorts in ascending order (biggset z to smallest z).
+     *
+     * @author mzechner
+     */
+    public static class ZSpriteComparator implements Comparator<GameObject>
+    {
+        @Override
+        public int compare(GameObject sprite1, GameObject sprite2)
+        {
+            if (sprite1.position.z > sprite2.position.z) return 1;
+            if (sprite1.position.z < sprite2.position.z) return -1;
+            return 0;
+        }
+    }
+
+}
+core/src/rs/pedjaapps/smc/object/items/Moon.java
+public class Moon extends Item
+{
+    public static final float VELOCITY_POP = 1.6f;
+    public static final float DEF_SIZE = 0.65625f;
+    private Animation<TextureRegion> animation;
+
+    public Moon(World world, Vector2 size, Vector3 position)
+    {
+        super(world, size, position);
+        position.z = 0.052f;
+    }
+
+    @Override
+    public int getType() {
+        return TYPE_MOON;
+    }
+
+    @Override
+    public void initAssets()
+    {
+        TextureAtlas atlas = world.screen.game.assets.manager.get(Assets.ATLAS_DYNAMIC);
+        animation = new Animation(1f, atlas.findRegion("game_items_moon_1"),
+                atlas.findRegion("game_items_moon_2"));
+        animation.setPlayMode(Animation.PlayMode.LOOP_PINGPONG);
+    }
+
+    @Override
+    public void updateItem(float delta)
+    {
+        super.updateItem(delta);
+        if (popFromBox)
+        {
+            // scale velocity to frame units
+            velocity.scl(delta);
+
+            // update position
+            position.add(velocity);
+            mColRect.y = position.y;
+            updateBounds();
+
+            // un-scale velocity (not in frame time)
+            velocity.scl(1 / delta);
+
+            if (position.y >= popTargetPosY)
+            {
+                popFromBox = false;
+                isInBox = false;
+            }
+        }
+    }
+
+    @Override
+    public void popOutFromBox(float popTargetPosY)
+    {
+        super.popOutFromBox(popTargetPosY);
+        visible = true;
+        popFromBox = true;
+        velocity.y = VELOCITY_POP;
+        originalPosY = position.y;
+    }
+
+    @Override
+    public void _render(SpriteBatch spriteBatch)
+    {
+        if (!visible) return;
+        TextureRegion frame = animation.getKeyFrame(stateTime, true);
+        Utility.draw(spriteBatch, frame, position.x, position.y, mDrawRect.height);
+    }
+
+    @Override
+    protected boolean handleDroppedBelowWorld()
+    {
+        world.trashObjects.add(this);
+        return false;
+    }
+
+    @Override
+    public void hitPlayer()
+    {
+        if (isInBox) return;
+        playerHit = true;
+        world.trashObjects.add(this);
+        GameSave.addLifes(3);
+        GameSave.addScore(4000);
+
+        Sound sound = world.screen.game.assets.manager.get(Assets.SOUND_ITEM_MOON);
+        SoundManager.play(sound);
+        ((GameScreen) world.screen).killPointsTextHandler.add(4000, position.x, position.y + mDrawRect.height);
+    }
+
+    @Override
+    public void dispose()
+    {
+        super.dispose();
+        animation = null;
+    }
+
+    @Override
+    public float maxVelocity()
+    {
+        return 0;
+    }
+}
+core/src/rs/pedjaapps/smc/object/items/mushroom/MushroomLive1.java
+public class MushroomLive1 extends Mushroom
+{
+
+    public MushroomLive1(World world, Vector2 size, Vector3 position)
+    {
+        super(world, size, position);
+        textureName = "game_items_mushroom_green";
+        mPickPoints = 1000;
+    }
+
+    @Override
+    public int getType() {
+        return TYPE_MUSHROOM_LIVE_1;
+    }
+
+    @Override
+    protected void performCollisionAction()
+    {
+        playerHit = true;
+        GameSave.addLifes(1);
+        Sound sound = world.screen.game.assets.manager.get(Assets.SOUND_ITEM_LIVE_UP);
+        SoundManager.play(sound);
+        world.trashObjects.add(this);
+        GameSave.addScore(mPickPoints);
+    }
+}

@@ -1,0 +1,25 @@
+--- consumed_failed_probe_guard
++++ native_load_order_repair_guard
+@@ -351,6 +351,11 @@
+                 actual_completed_payloads=receipt['actual_RESULT_payload_count'], gpu=gpu)
+ 
+ def driver_identity(root,gpu,rows):
++    # Keep the exact installed CUPTI ELF alive before cuInit. The opposite
++    # order reproducibly segfaults in CUPTI during libcudart exit callbacks.
++    # This ordinary ELF load calls no CUDA/CUPTI API and does not import Torch.
++    from native_profiler_lifecycle import preload_cupti_before_driver
++    native_initialization=preload_cupti_before_driver(root)
+     guards=vendor(root)
+     source=Path(root)/'vendor/inherited_device_guards.py'
+     tree=ast.parse(source.read_text())
+@@ -363,7 +368,9 @@
+     require(replacements==1,'Exactly one driver CVD selector change required')
+     ns=dict(Path=Path,require=require,sha=sha,os=os,UUID=UUIDS[gpu])
+     exec(compile(ast.fix_missing_locations(ast.Module(body=[fn],type_ignores=[])),str(source),'exec'),ns)
+-    return ns[fn.name](rows)
++    receipt=ns[fn.name](rows)
++    receipt['native_profiler_initialization']=native_initialization
++    return receipt
+ 
+ def _own_gpu(root,gpu,pid=None):
+     observation=vendor(root).query_gpu()

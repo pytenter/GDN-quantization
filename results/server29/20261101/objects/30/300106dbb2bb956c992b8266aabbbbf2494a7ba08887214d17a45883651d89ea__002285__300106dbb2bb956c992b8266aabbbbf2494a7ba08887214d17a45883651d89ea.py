@@ -1,0 +1,5 @@
+def __create_fn__(_type_inner_kernel_number, _type_local_buffer_number, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_local_buffer_number, _return_type):
+ def __init__(self,inner_kernel_number:_type_inner_kernel_number,local_buffer_number:_type_local_buffer_number=_dflt_local_buffer_number)->_return_type:
+  self.inner_kernel_number=inner_kernel_number
+  self.local_buffer_number=local_buffer_number
+ return __init__

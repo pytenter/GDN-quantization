@@ -1,0 +1,10 @@
+def __create_fn__(_type_description, _type_edge_traversals, _type_immutable_state, _type_initial_state, _type_properties, _type_result_graph_index, _type_run_graph_index, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_description, _dflt_edge_traversals, _dflt_immutable_state, _dflt_initial_state, _dflt_properties, _dflt_result_graph_index, _dflt_run_graph_index, _return_type):
+ def __init__(self,description:_type_description=_dflt_description,edge_traversals:_type_edge_traversals=_dflt_edge_traversals,immutable_state:_type_immutable_state=_dflt_immutable_state,initial_state:_type_initial_state=_dflt_initial_state,properties:_type_properties=_dflt_properties,result_graph_index:_type_result_graph_index=_dflt_result_graph_index,run_graph_index:_type_run_graph_index=_dflt_run_graph_index)->_return_type:
+  self.description=description
+  self.edge_traversals=edge_traversals
+  self.immutable_state=immutable_state
+  self.initial_state=initial_state
+  self.properties=properties
+  self.result_graph_index=result_graph_index
+  self.run_graph_index=run_graph_index
+ return __init__

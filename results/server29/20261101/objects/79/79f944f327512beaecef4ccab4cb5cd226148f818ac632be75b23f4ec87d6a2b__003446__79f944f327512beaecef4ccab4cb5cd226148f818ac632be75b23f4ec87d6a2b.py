@@ -1,0 +1,12 @@
+def __create_fn__(_type_group, _type_cu_seqlens, _type_cu_seqlens_cpu, _type_is_last_rank, _type_pre_num_ranks, _type_is_first_rank, _type_post_num_ranks, _type_conv1d_kernel_size, _type_pre_num_conv_tokens, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_group, _dflt_cu_seqlens, _dflt_cu_seqlens_cpu, _dflt_is_last_rank, _dflt_pre_num_ranks, _dflt_is_first_rank, _dflt_post_num_ranks, _dflt_conv1d_kernel_size, _dflt_pre_num_conv_tokens, _return_type):
+ def __init__(self,group:_type_group=_dflt_group,cu_seqlens:_type_cu_seqlens=_dflt_cu_seqlens,cu_seqlens_cpu:_type_cu_seqlens_cpu=_dflt_cu_seqlens_cpu,is_last_rank:_type_is_last_rank=_dflt_is_last_rank,pre_num_ranks:_type_pre_num_ranks=_dflt_pre_num_ranks,is_first_rank:_type_is_first_rank=_dflt_is_first_rank,post_num_ranks:_type_post_num_ranks=_dflt_post_num_ranks,conv1d_kernel_size:_type_conv1d_kernel_size=_dflt_conv1d_kernel_size,pre_num_conv_tokens:_type_pre_num_conv_tokens=_dflt_pre_num_conv_tokens)->_return_type:
+  self.group=group
+  self.cu_seqlens=cu_seqlens
+  self.cu_seqlens_cpu=cu_seqlens_cpu
+  self.is_last_rank=is_last_rank
+  self.pre_num_ranks=pre_num_ranks
+  self.is_first_rank=is_first_rank
+  self.post_num_ranks=post_num_ranks
+  self.conv1d_kernel_size=conv1d_kernel_size
+  self.pre_num_conv_tokens=pre_num_conv_tokens
+ return __init__

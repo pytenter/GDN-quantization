@@ -1,0 +1,50 @@
+# src
+
+原始相对目录：`src`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`sglang-v0.5.19-ling256/python/sglang/benchmark/endpoint.py`](../../objects/d2/d287fed5afed9b8ec12be7d97131fe0ec1a34ade63b130a29429c043792ce05a__endpoint.py)
+- [`sglang-v0.5.19-ling256/test/manual/test_vertex_endpoint.py`](../../objects/3d/3d1fffd23fbc1df7be83687e32efcbdabd2bb78ea4d8690cb1b1ad4ee1fa7d92__test_vertex_endpoint.py)
+- [`sglang-v0.5.19-ling256/python/sglang/srt/kv_canary/endpoint.py`](../../objects/37/373c89fade17867c597021a7f478757406084b591ad2faf4ad5295ce46c07534__endpoint.py)
+- [`sglang-v0.5.19-ling256/test/registered/core/test_srt_endpoint.py`](../../objects/b5/b5d276ba980f09de4ab46311693bbca342b60709d37acc61a45fc8fa8c968550__test_srt_endpoint.py)
+- [`sglang-v0.5.19-ling256/python/sglang/lang/backend/runtime_endpoint.py`](../../objects/f9/f93f4b29e3b9e6d712b81a33f734f97fa03f1340c4f34725155440d20f70b979__runtime_endpoint.py)
+- [`sglang-v0.5.19-ling256/examples/sagemaker/deploy_and_serve_endpoint.py`](../../objects/38/38c3a4476cda3ab87053100331ee16534885cc807e86d7b5172c9ab057fad532__deploy_and_serve_endpoint.py)
+- [`sglang-v0.5.19-ling256/test/registered/kv_canary/test_self_unit_endpoint.py`](../../objects/5a/5a1f8964b5966c1804f213cf176cada8bb74535ee87892dcc02bb6fbef808927__test_self_unit_endpoint.py)
+- [`sglang-v0.5.19-ling256/.claude/skills/sglang-prod-incident-triage/references/endpoints-and-signals.md`](../../objects/d2/d2b4b9b8b0942ee17dd7fd0b99bc1f7dde946068603596fe039b5de190ed32a6__endpoints-and-signals.md)
+- [`sglang-v0.5.19-ling256/README.md`](../../objects/ee/ee6908559f95fe54c3f6773ed23e163d76c984f4750445830a343eac6edca1d0__README.md)
+- [`sglang-v0.5.19-ling256/docs/AGENTS.md`](../../objects/8a/8a7a20ff823b927914e2b7c314b6546bc6313514f6c30afdcf4c354209534cd0__AGENTS.md)
+- [`sglang-v0.5.19-ling256/docs/README.md`](../../objects/41/4113fd63d082364a30e247b9bd30ce9f889af88f7d42a10e77ffb3d48d05c66a__README.md)
+- [`sglang-v0.5.19-ling256/test/README.md`](../../objects/41/41cf81bd6b5ee8f0b78af7c367bad428c187bbc4caee9808d49c521ae7c8b147__README.md)
+- [`sglang-v0.5.19-ling256/CODE_OF_CONDUCT.md`](../../objects/45/45e493d72595f8417db0fec343c3c64f291a084a889dbffa1b5fddd04dd997f4__CODE_OF_CONDUCT.md)
+- [`sglang-v0.5.19-ling256/docs/CONTRIBUTING.md`](../../objects/fd/fd8f79849bfe313f81aca1c2480a5faab258d2e503d1b20f58deeff91b99604f__CONTRIBUTING.md)
+- [`sglang-v0.5.19-ling256/.github/MAINTAINER.md`](../../objects/f4/f4ad3c867e8ee4d6426a832cb9de6966b2ef9933b40dee2a29b73507d0852dbc__MAINTAINER.md)
+- [`sglang-v0.5.19-ling256/benchmark/asr/README.md`](../../objects/23/2382c07e206b50bd741128307de00d85bbc8263545a1dfdaeb9b7fbb43e9def3__README.md)
+- [`sglang-v0.5.19-ling256/benchmark/ocr/README.md`](../../objects/04/04ce804b773ea21a46782803624f96a28f0f6a7257d91cec56626c4189e6eb0e__README.md)
+- [`sglang-v0.5.19-ling256/python/sglang/README.md`](../../objects/be/be384ec7ae1c720c6711a2d5385dc0b09aafd3b4055c48092975efdb89b62d06__README.md)
+- [`sglang-v0.5.19-ling256/.github/FOLDER_README.md`](../../objects/33/338cd9d78de4818bf5a4d0b5ad180fedb606b2d2d9aab2a8510df0e2eb4f2add__FOLDER_README.md)
+- [`sglang-v0.5.19-ling256/benchmark/mmlu/README.md`](../../objects/ec/eccc264762e26fd071123f57a8753c3338cd9fce94f2b32ea666ee0a1787308f__README.md)
+- [`sglang-v0.5.19-ling256/benchmark/mmmu/README.md`](../../objects/e2/e20b6a779fb4ea9e46dc60b53c7ea7f1812c157a9684390be54c6b75fca52cfd__README.md)
+- [`sglang-v0.5.19-ling256/rust/mem-cache/README.md`](../../objects/ff/ff7b578a1bee5a0503fb5399dbf3de047c944d2e66935e0d553d5de47500064a__README.md)
+- [`sglang-v0.5.19-ling256/rust/sglang-mm/README.md`](../../objects/e1/e1c92aecab5e92dc1d7ac1998b69abc0b2fd9d8723d18ec0d65d80c9e9729456__README.md)
+- [`sglang-v0.5.19-ling256/benchmark/boolq/README.md`](../../objects/74/74ac5c16ac983b8356c7b38031e3b7d5b8870ce26ce41f75fc6a7c7193ea7aec__README.md)
+- [`sglang-v0.5.19-ling256/benchmark/gsm8k/README.md`](../../objects/23/23862e9018fbd7835039841ae388b22a45b1a168da546b364c761fc6fce927b5__README.md)
+- [`sglang-v0.5.19-ling256/scripts/release/README.md`](../../objects/73/73f1147c5cc428bb757bb9fe369656147f8af67299c7a0fe22692adb9db05730__README.md)
+- [`sglang-v0.5.19-ling256/test/registered/README.md`](../../objects/cb/cbc4a93334a26e851d650ef44a6d6b1cbec44a1e9c0007f0e08291a3b5a21cc1__README.md)
+- [`sglang-v0.5.19-ling256/examples/runtime/README.md`](../../objects/e2/e2160220c9afbab5ed8221069ddd5d72e7b4f9b4f605e3586b409acb6b1bda78__README.md)
+- [`sglang-v0.5.19-ling256/benchmark/hicache/README.md`](../../objects/a1/a1935bbcf00ffcfe13ff3bf72082d44cbf1bfb3f67918b5545fabfa5d744ca2a__README.md)
+- [`sglang-v0.5.19-ling256/3rdparty/amd/wheel/README.md`](../../objects/77/77448ceea7b500155f727c7528b0c3d68a88531af573aefedca1cb70399898cd__README.md)
+- [`sglang-v0.5.19-ling256/rust/sglang-server/README.md`](../../objects/71/713710dd74fbbd68ea08af9fc689d16b5645cbb4519810b569487f9bdeb1ae36__README.md)
+- [`sglang-v0.5.19-ling256/scripts/ci_monitor/README.md`](../../objects/22/22d3f3a9ac7fbe65a5845441f1527043b307aad3a9448fc59ba567eee12d61ca__README.md)
+- [`sglang-v0.5.19-ling256/3rdparty/amd/tuning/TUNING.md`](../../objects/11/11c496a657d4282dd4d0887f74ed58b0fc8f2ed3a97842378a1833e7d989a51a__TUNING.md)
+- [`sglang-v0.5.19-ling256/benchmark/blog_v0_2/README.md`](../../objects/e9/e9668e1319ceb581b44b4128e073d7401c6cca1d516f92641207163d7b251537__README.md)
+- [`sglang-v0.5.19-ling256/benchmark/blog_v0_2/config.md`](../../objects/41/4177a161ca7c5aa65841956bd60006ee8c1ccd1290179c182cdb1899dd9a5a10__config.md)
+- [`sglang-v0.5.19-ling256/benchmark/hellaswag/README.md`](../../objects/10/10dec6742da5e94108bd6a1dc43bf313761693e59ac78d8e5ff085d05b0ea6b9__README.md)
+- [`sglang-v0.5.19-ling256/.claude/rules/comment-style.md`](../../objects/77/77685bca58a00fbdb78fc13e80ababcd147b1f9f65fa7559efa443893e618426__comment-style.md)
+- [`sglang-v0.5.19-ling256/scripts/code_sync/guideline.md`](../../objects/f4/f4c7d8cbc8ce3d2ddaebe56bb51c7a092a22792cb4b6dba64a49edc21699a9ee__guideline.md)
+- [`sglang-v0.5.19-ling256/test/registered/unit/README.md`](../../objects/9e/9e25453f4c2d4d125a34ffe7fb530029868bb2336caf74dfb0c88c94d878db05__README.md)
+- [`sglang-v0.5.19-ling256/.claude/rules/no-dataclasses.md`](../../objects/4e/4e7f00c8cf78f69437214861b5588163a46369c2c5952335c1b3353e9a7e2e4c__no-dataclasses.md)

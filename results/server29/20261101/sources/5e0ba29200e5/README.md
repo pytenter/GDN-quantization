@@ -1,0 +1,50 @@
+# qwen-gdn-c6r-c7-canonical60-v1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/worktrees/qwen-gdn-c6r-c7-canonical60-v1`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`experiments/QWEN_C6R_H_LAYERWISE_QDQ_FINE_DIAGNOSIS_V1/FINAL_REPORT.md`](../../objects/19/19a8f5fbfe3eccf9a9a80fe649ae26c47893ee2b70ea31681408db6862f5b648__FINAL_REPORT.md)
+- [`experiments/QWEN_C6R_H_DISCORDANT_MECHANISM_DIAGNOSIS_V1/FINAL_REPORT.md`](../../objects/42/4225e7740009a65b5cd0e3fd55f637296523913604de7db6fac66e25765868b4__FINAL_REPORT.md)
+- [`experiments/QWEN_C6R_C7_FIRST_DIVERGENCE_PREFIX_REPLAY_V1/FINAL_REPORT.md`](../../objects/b9/b95d6ec4673864d6bfd9307165aca032fc01556188140db015bc151325c1c353__FINAL_REPORT.md)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/REPRODUCE.md`](../../objects/d6/d65dc4752de3dd09d6165d17984e917ac4b56b6f6fa81947792a925c05e14ca4__REPRODUCE.md)
+- [`experiments/QWEN_GDN_C6R_C7_CANONICAL60_V1/analysis/endpoint_completion.json`](../../objects/c0/c028066e3d0a85f587f89d1991077e81f7fb46b68b834e163e8d08c7a1883d62__endpoint_completion.json)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/FINAL_REPORT.md`](../../objects/5d/5dac21842e30281e912fcc4a3a2218f27cce835130e27387aef17ace75a856d5__FINAL_REPORT.md)
+- [`experiments/QWEN_C6R_H_DISCORDANT_MECHANISM_DIAGNOSIS_V1/FINAL_REPORT_SEALED.md`](../../objects/bc/bc84404d8050c65eeca2a8b51c90a356ebe4cdfc76b6d7f2b1ce3ef1e7b71036__FINAL_REPORT_SEALED.md)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/DATA_DICTIONARY.md`](../../objects/9b/9b254c73ee6294cfff9855f7e2ea91b5ef27f2f3762983a1c405a56ada702da4__DATA_DICTIONARY.md)
+- [`experiments/QWEN_GDN_C6R_C7_CANONICAL60_V1/analysis/generation_behavior_per_sample.csv`](../../objects/a6/a69c718639a6d8a9d2afc7c6473046576549246ff883e8997124c8c0cf2f32b4__generation_behavior_per_sample.csv)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/analysis/pair_taxonomy.csv`](../../objects/18/1831e0d6e052262513530472a451eab946890420a524155e4a227571b9c52966__pair_taxonomy.csv)
+- [`experiments/QWEN_C6R_H_LAYERWISE_QDQ_FINE_DIAGNOSIS_V1/analysis/per_sample_layer_qdq.csv`](../../objects/ef/eff9e01f0e6bb8bdda8feae50dfa29563d90495d4e59bd95fc341b46f52e1fdd__per_sample_layer_qdq.csv)
+- [`experiments/QWEN_C6R_H_DISCORDANT_MECHANISM_DIAGNOSIS_V1/analysis/qdq_region_per_sample.csv`](../../objects/ce/ce3e3ef4e196b2c46ab6876cbecc7fcb38f0e04aec9825defa12e94d1088f7c5__qdq_region_per_sample.csv)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/analysis/final_validation.json`](../../objects/07/07bfba0bfe92d17e4925507ee16ac16270a9caaa097e23ffabe0631524077f5d__final_validation.json)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/analysis/diagnosis_summary.json`](../../objects/0f/0f6e1e894010bef1b1de1275b2e61de444b0b9b7c2251e6fa38fa148fbb88b79__diagnosis_summary.json)
+- [`experiments/QWEN_C6R_H_DISCORDANT_MECHANISM_DIAGNOSIS_V1/analysis/layer_region_per_sample.csv`](../../objects/61/61d0d810fa08549b020788bb601a4d6606f3bd16aa8dc53a441d8019035e3403__layer_region_per_sample.csv)
+- [`experiments/QWEN_C6R_C7_FIRST_DIVERGENCE_PREFIX_REPLAY_V1/analysis/layer_region_per_sample.csv`](../../objects/73/73f0264ca9f692ca2ec53eda48c3b0c28dd058b4f817d66a3175dc8b16fc0d64__layer_region_per_sample.csv)
+- [`experiments/QWEN_C6R_H_DISCORDANT_MECHANISM_DIAGNOSIS_V1/analysis/per_sample_worst_regions.csv`](../../objects/5e/5ed28f7b30ee8e9582595eef76314e74511bdff6f33bb18d02840a0e8b582330__per_sample_worst_regions.csv)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/scripts/postendpoint_diagnosis.py`](../../objects/bf/bfd2068d9ce90b78ea1652f64501ef14dca63bb277608cae19bf7e37da554ba0__postendpoint_diagnosis.py)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/analysis/question_cluster_stability.csv`](../../objects/3d/3d31a14ee2d5155e7d16fc600d3e2a1fe4964920975b3a3174aa04cb3b7d3723__question_cluster_stability.csv)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/analysis/c7_rescue_mechanism_summary.csv`](../../objects/78/78218c1c8637d0beeaba1e3c8168d0566739652a0f5019608e9e82825c75f398__c7_rescue_mechanism_summary.csv)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/analysis/c6r_c7_paired_endpoint_table.csv`](../../objects/9a/9aaad0a6a2997aa1ff527099f88771cddd517a68e2c9bdf1ce14d548074a6c2f__c6r_c7_paired_endpoint_table.csv)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/analysis/c6r_vs_h_contextual_taxonomy.csv`](../../objects/c2/c2df8f0d65422c7f09fe44ce1427d6fd63ba75a4c045fb3475cc2521c772fb87__c6r_vs_h_contextual_taxonomy.csv)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/analysis/c7_rescue_mechanism_summary.json`](../../objects/86/8623327f66cebb6d9f13de03f31437378ddb4906c9f50b15337e8eeb88e07560__c7_rescue_mechanism_summary.json)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/scripts/finalize_postendpoint_diagnosis.py`](../../objects/01/01a8120c3b312b50463c8741536ecaba9a366b769e33d2b26c8e59236e30f5db__finalize_postendpoint_diagnosis.py)
+- [`experiments/QWEN_GDN_A800_CLEANROOM_C5R_C6R_C7_MATCHED_V1/deployment/selected_artifacts_pre_endpoint.json`](../../objects/37/371ee4a71e5af88d4c850ab382c0bbd637a4b025413a299faf9e9ecb131df140__selected_artifacts_pre_endpoint.json)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/analysis/c7_regression_mechanism_summary.csv`](../../objects/61/61cb3f457288624047b64aa0b3b0afe94a19780806405f65ffa89b66d76f6395__c7_regression_mechanism_summary.csv)
+- [`experiments/QWEN_C6R_C7_CANONICAL60_POSTENDPOINT_DIAGNOSIS_V1/analysis/c7_regression_mechanism_summary.json`](../../objects/10/10163cecbb41c1b2fb7cd74a20f0808c26b8c9ea0570861b14e869a2d63c5413__c7_regression_mechanism_summary.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/source_evidence/deployment/selected_artifacts_pre_endpoint.json`](../../objects/37/371ee4a71e5af88d4c850ab382c0bbd637a4b025413a299faf9e9ecb131df140__selected_artifacts_pre_endpoint.json)
+- [`experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/source_evidence/protocol/PROTOCOL_AMENDMENT_C5R_AUXILIARY_ENDPOINT_V1.json`](../../objects/3c/3c2191f4f27a0357149fa1821fb160466f276f08f801443d8d6fe1e18c7966c5__PROTOCOL_AMENDMENT_C5R_AUXILIARY_ENDPOINT_V1.json)
+- [`experiments/QWEN_C6R_H_LAYERWISE_QDQ_FINE_DIAGNOSIS_V1/FINAL_SHA256SUMS`](../../objects/65/65e7922db341b4ccb69db10b135151e0b0dc13bf300271252f9580bff293f066__FINAL_SHA256SUMS)
+- [`experiments/QWEN_C6R_H_DISCORDANT_MECHANISM_DIAGNOSIS_V1/FINAL_SHA256SUMS`](../../objects/66/660607755f8fd059704228c174a636c67032250152be616ae02e7b71e2ba4b6d__FINAL_SHA256SUMS)
+- [`experiments/QWEN_GDN_C6R_C7_CANONICAL60_V1/scripts/canonical60_finalize.py`](../../objects/4a/4a00d1bc74090a63ddba63b800f82647bfc2b9af25c4e1b2c54f0f3321a8c41b__canonical60_finalize.py)
+- [`experiments/QWEN_GDN_C6R_C7_CANONICAL60_V1/configs/canonical60_protocol.json`](../../objects/82/8286635cf1895b226bf8951729e91d6ee789b51764efffa60b344a49e6307e59__canonical60_protocol.json)
+- [`experiments/QWEN_GDN_C6R_C7_CANONICAL60_V1/scores/canonical60_pair_table.csv`](../../objects/bd/bdc08a7cb472925d419c2d0b9d7c894663a63d943da294b84f8c06b566f81e05__canonical60_pair_table.csv)
+- [`experiments/QWEN_GDN_C6R_C7_CANONICAL60_V1/manifests/final_artifact_sha256.txt`](../../objects/7b/7bf7977a8d3152ba6f599e28ab04164792e6adbf57c5fe49610cb92615231c4d__final_artifact_sha256.txt)
+- [`experiments/QWEN_GDN_C6R_C7_CANONICAL60_V1/analysis/failure_transition_table.csv`](../../objects/d1/d1939518c165a38b8bd558d56c9a5e12dea37752b2ed91106c899ed601e1f161__failure_transition_table.csv)
+- [`experiments/QWEN_C6R_H_DISCORDANT_MECHANISM_DIAGNOSIS_V1/analysis/qdq_metrics.csv`](../../objects/9c/9cc5413bce4fab158bfdec306579c70a0ccd79ab51beafb526c2626792a5f391__qdq_metrics.csv)
+- [`experiments/QWEN_C6R_H_LAYERWISE_QDQ_FINE_DIAGNOSIS_V1/analysis/final_verdict.json`](../../objects/74/74ffa1818c58170f36ab62d8fc01fcdaf1ca8c5f281143421097e595d23297d1__final_verdict.json)
+- [`experiments/QWEN_C6R_H_DISCORDANT_MECHANISM_DIAGNOSIS_V1/analysis/layer_metrics.csv`](../../objects/98/9834529e052157142b46423fdd36c7126e73d8a9d42cea45b8562dd252474b36__layer_metrics.csv)
+- [`experiments/QWEN_C6R_H_DISCORDANT_MECHANISM_DIAGNOSIS_V1/analysis/model_metrics.csv`](../../objects/b4/b448a3f62faad0839caa53c6400a318577fa4fceadc1a3a1e4c319dbe21cfb18__model_metrics.csv)

@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(profiling_window_duration_sec={self.profiling_window_duration_sec!r}, number_of_events={self.number_of_events!r}, profiler_prepare_call_duration_us={self.profiler_prepare_call_duration_us!r}, profiler_enable_call_duration_us={self.profiler_enable_call_duration_us!r}, profiler_disable_call_duration_us={self.profiler_disable_call_duration_us!r}, parse_kineto_call_duration_us={self.parse_kineto_call_duration_us!r}, function_events_build_tree_call_duration_us={self.function_events_build_tree_call_duration_us!r})"
+ return __repr__

@@ -1,0 +1,6 @@
+def __create_fn__(_type_output_spec, _type_redistribute_schema, _type_needs_redistribute, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_redistribute_schema, _dflt_needs_redistribute, _return_type):
+ def __init__(self,output_spec:_type_output_spec,redistribute_schema:_type_redistribute_schema=_dflt_redistribute_schema,needs_redistribute:_type_needs_redistribute=_dflt_needs_redistribute)->_return_type:
+  self.output_spec=output_spec
+  self.redistribute_schema=redistribute_schema
+  self.needs_redistribute=needs_redistribute
+ return __init__

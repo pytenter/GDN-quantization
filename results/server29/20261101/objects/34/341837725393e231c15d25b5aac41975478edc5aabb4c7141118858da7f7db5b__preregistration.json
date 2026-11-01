@@ -1,0 +1,88 @@
+{
+  "task": "QWEN_GDN_DISTRIBUTED_RECURRENT_TRAINING_V2",
+  "purpose": "Validate distributed recurrent-aware rotation training as an independent numerical implementation, without reinterpreting the failed V1 single-versus-dual trajectory gate.",
+  "base_main_commit": "78b566659776a32183fcc0d6271fe2219bcf5c58",
+  "branch": "exp/qwen-gdn-distributed-recurrent-training-v2",
+  "training_host_amendment": {
+    "authorized_by_user": true,
+    "training_host": "202.38.247.29",
+    "physical_training_gpus": [6, 7],
+    "original_four_gpu_host": "202.38.247.55",
+    "original_host_role": "canonical checkpoint portability and later inference only",
+    "reason": "User explicitly designated an otherwise idle GPU 6/7 pair on a second server; formal C5/C6 training remains separately gated by the governing V2 protocol.",
+    "hardware_audit": "analysis/training_server_hardware_topology.json",
+    "no_other_process_interruption": true
+  },
+  "training_host_revision_2": {
+    "authorized_by_user": true,
+    "reason": "User chose to return V2 diagnostics and eventual training to the original four-RTX3090 server after the second server's canonical-source dependency blocker was documented.",
+    "current_training_host": "202.38.247.55",
+    "current_training_pair": [0, 1],
+    "pair_selection_condition": "Both GPUs must remain idle immediately before each diagnostic stage.",
+    "original_host_also_canonical_inference_host": true,
+    "supersedes_first_training_host_amendment_for_future_work_only": true,
+    "new_server_artifacts_preserved_read_only": true,
+    "no_formal_training_authorized_by_this_revision": true
+  },
+  "checkout_method": "Independent git clone --shared from verified origin/main because server Git 1.8.3.1 has no git worktree command; no old working-tree changes copied.",
+  "old_v1_read_only": {
+    "report_sha256": "6d63919bf90059f20a69fc2f55d48d595daa5c19cc4fd4a455eb38d21bd5cada",
+    "final_verdict_sha256": "747e3e5ed74aecd23ac3db61e211dc2c99f6532e4ce0d59e8586c2218a5dab93",
+    "FORWARD_EXACT_GATE": "PASS",
+    "TRAJECTORY_ENVELOPE_GATE": "FAIL",
+    "FIXED_NON_AIME_ENDPOINT_PROBE": "FAIL",
+    "NEXT_STAGE_AUTHORIZED": "NO"
+  },
+  "v2_validity_gates": [
+    "HARDWARE_TOPOLOGY_GATE",
+    "DISTRIBUTED_RUNTIME_GATE",
+    "RECURRENT_DETERMINISM_GATE",
+    "SAME_TOPOLOGY_REPRODUCIBILITY_GATE",
+    "GRADIENT_CORRECTNESS_GATE",
+    "CHECKPOINT_PORTABILITY_GATE",
+    "MEMORY_SCALING_GATE",
+    "ACTIVATION_CHECKPOINT_GATE",
+    "H32_SUSTAINED_GATE",
+    "H64_SUSTAINED_GATE",
+    "H128_SUSTAINED_GATE"
+  ],
+  "distributed_topology_order": ["two_process_PP2_complete_block_split", "PP2_selective_checkpoint_if_needed", "TP2_design_only_if_PP2_H32_fails"],
+  "distributed_environment": {
+    "backend": "NCCL",
+    "NCCL_ALGO": "Ring",
+    "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+    "TF32": false,
+    "cudnn_benchmark": false,
+    "overlap": false,
+    "seed_policy": "identical Python, NumPy, torch and CUDA seeds per fresh process"
+  },
+  "same_topology_reproducibility": {
+    "runs": 5,
+    "theta_initialization": "zero_Hadamard_step0",
+    "gradient_horizon": 1,
+    "primary_gate": "bitwise_equality",
+    "fallback_tolerance": "must be frozen prospectively before seeing complete five-run results; no posthoc expansion"
+  },
+  "gradient_correctness": {
+    "sample": "fixed non-AIME",
+    "gradient_horizon": 1,
+    "minimum_parameters": 8,
+    "layers": 2,
+    "finite_difference": "central; multiple epsilon; distinguish STE surrogate from discrete objective"
+  },
+  "checkpoint_portability": {"updates": 8, "gradient_horizon": 4, "save": "rotation plus optimizer metadata and config only"},
+  "memory_horizons_one_update": [1, 4, 8, 16, 32],
+  "sustained_horizons_in_order": [32, 64, 128],
+  "sustained_updates": 30,
+  "minimum_peak_free_margin_fraction": 0.05,
+  "recommended_peak_free_margin_fraction": 0.10,
+  "forbidden": [
+    "formal_C5_C6_full_training",
+    "AIME_or_other_reasoning_benchmarks",
+    "4_GPU_training",
+    "old_V1_artifact_mutation",
+    "quantizer_or_rotation_objective_or_dataset_change",
+    "environment_package_upgrade_without_approval"
+  ],
+  "stop_point": "report_and_commit_push_only; formal training and AIME require separate approval"
+}

@@ -1,0 +1,12 @@
+def __create_fn__(_type_use_autocast_during_eval, _type_margin, _type_interval, _type_fp8_format, _type_amax_history_len, _type_amax_compute_algo, _type_override_linear_precision, _type_use_mxfp8_block_scaling, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_use_autocast_during_eval, _dflt_margin, _dflt_interval, _dflt_fp8_format, _dflt_amax_history_len, _dflt_amax_compute_algo, _dflt_override_linear_precision, _dflt_use_mxfp8_block_scaling, _return_type):
+ def __init__(self,use_autocast_during_eval:_type_use_autocast_during_eval=_dflt_use_autocast_during_eval,margin:_type_margin=_dflt_margin,interval:_type_interval=_dflt_interval,fp8_format:_type_fp8_format=_dflt_fp8_format,amax_history_len:_type_amax_history_len=_dflt_amax_history_len,amax_compute_algo:_type_amax_compute_algo=_dflt_amax_compute_algo,override_linear_precision:_type_override_linear_precision=_dflt_override_linear_precision,use_mxfp8_block_scaling:_type_use_mxfp8_block_scaling=_dflt_use_mxfp8_block_scaling)->_return_type:
+  self.use_autocast_during_eval=use_autocast_during_eval
+  self.margin=margin
+  self.interval=interval
+  self.fp8_format=fp8_format
+  self.amax_history_len=amax_history_len
+  self.amax_compute_algo=amax_compute_algo
+  self.override_linear_precision=override_linear_precision
+  self.use_mxfp8_block_scaling=use_mxfp8_block_scaling
+  self.__post_init__()
+ return __init__

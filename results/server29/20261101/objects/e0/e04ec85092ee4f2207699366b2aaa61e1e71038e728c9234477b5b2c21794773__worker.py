@@ -1,0 +1,252 @@
+"""One trajectory at a time; original formal H/C128; unchanged sealed Dual-M AST."""
+import os
+os.environ['CUBLAS_WORKSPACE_CONFIG']=':4096:8'
+import argparse,collections,contextlib,copy,gc,hashlib,json,math,pathlib,random,statistics,sys,time,traceback
+import torch
+import core as K
+import codec as C
+import reducer as R
+ROOT=K.ROOT
+SAMPLE=(0,7,31,63,127)
+CURRENT={}
+def cpu_tree(x,memo=None,device='cpu'):
+ if memo is None:memo={}
+ if isinstance(x,torch.Tensor):return x.detach().to(device).clone()
+ if isinstance(x,(str,int,float,bool,type(None),torch.dtype,torch.device)):return x
+ if id(x) in memo:return memo[id(x)]
+ if isinstance(x,dict):
+  y={};memo[id(x)]=y;y.update({k:cpu_tree(v,memo,device) for k,v in x.items()});return y
+ if isinstance(x,list):
+  y=[];memo[id(x)]=y;y.extend(cpu_tree(v,memo,device) for v in x);return y
+ if isinstance(x,tuple):return tuple(cpu_tree(v,memo,device) for v in x)
+ if hasattr(x,'__dict__'):
+  y=copy.copy(x);memo[id(x)]=y
+  for k,v in vars(x).items():setattr(y,k,cpu_tree(v,memo,device))
+  return y
+ return copy.copy(x)
+def describe(x,seen=None):
+ if seen is None:seen=set()
+ if isinstance(x,torch.Tensor):return dict(shape=list(x.shape),dtype=str(x.dtype),sha256=K.tsha(x))
+ if isinstance(x,(str,int,float,bool,type(None))):return x
+ if isinstance(x,(torch.dtype,torch.device)):return str(x)
+ if id(x) in seen:return 'SHARED_OBJECT'
+ seen.add(id(x))
+ if isinstance(x,dict):return {str(k):describe(v,seen) for k,v in sorted(x.items(),key=lambda z:str(z[0]))}
+ if isinstance(x,(list,tuple)):return [describe(v,seen) for v in x]
+ if hasattr(x,'__dict__'):return dict(class_name=type(x).__module__+'.'+type(x).__name__,attributes={k:describe(v,seen) for k,v in sorted(vars(x).items())})
+ return str(x)
+def deep_hash(cache):return hashlib.sha256(json.dumps(describe(cache),sort_keys=True).encode()).hexdigest()
+def checkpoint(cache,cursor,condition,doc_id,positions,restore=False):
+ start=time.monotonic();before=deep_hash(cache) if restore else None
+ payload=dict(cache=cpu_tree(cache),cursor=cursor,condition=condition,doc_id=doc_id,RNG_CPU=torch.get_rng_state(),RNG_CUDA=torch.cuda.get_rng_state(),RNG_python=random.getstate(),completed_score_positions=list(positions),completed_score_logits=cpu_tree(positions),reducer_state=dict(status='DEFERRED_CPU_FROM_SAVED_FULL_LOGITS',completed=list(positions)),prereg_sha256=K.sha(ROOT/'preregistration.json'),source_manifest_sha256=K.sha(ROOT/'source_manifest.json'),codec_identity=condition)
+ p=ROOT/'checkpoints/CURRENT.pt';tmp=p.with_suffix('.tmp');torch.save(payload,tmp);os.replace(tmp,p);digest=K.sha(p)
+ out=cache
+ if restore:
+  loaded=torch.load(p,map_location='cpu',weights_only=False)
+  K.check(loaded['cursor']==cursor and loaded['condition']==condition and loaded['doc_id']==doc_id,'Checkpoint identity/cursor mismatch')
+  out=cpu_tree(loaded['cache'],device='cuda:0');torch.set_rng_state(loaded['RNG_CPU']);torch.cuda.set_rng_state(loaded['RNG_CUDA']);random.setstate(loaded['RNG_python'])
+  K.check(deep_hash(out)==before,'Checkpoint tensor or metadata identity failed')
+  K.check(out.get_seq_length()==cursor,'Checkpoint full-attention cursor failed')
+  del loaded
+ elapsed=time.monotonic()-start
+ row=dict(cursor=cursor,condition=condition,doc_id=doc_id,sha256=digest,bytes=p.stat().st_size,wall_seconds=elapsed,restored_exact=restore,completed_scores=list(positions),retention='One rolling current checkpoint only; prior versions intentionally replaced by preregistered retention')
+ with (ROOT/'checkpoints/CATALOG.jsonl').open('a') as f:f.write(json.dumps(row)+'\n')
+ del payload;return out,row
+
+class Observe:
+ def __init__(self,model,qmod,f,on):
+  self.model=model;self.qmod=qmod;self.f=f;self.on=on;self.position=-1;self.active=None;self.previous={};self.calls=collections.Counter();self.details={};self.finite=[];self.handles=[]
+  layers=model.model.layers if hasattr(model.model,'layers') else model.model.language_model.layers
+  for l in f.GDN_LAYERS:
+   block=getattr(layers[l],'linear_attn',None) or getattr(layers[l],'self_attn',None)
+   self.handles.append(block.register_forward_pre_hook(lambda m,a,l=l:setattr(self,'active',l)))
+  self.oldchunk=qmod.torch_chunk_gated_delta_rule;self.oldrec=qmod.torch_recurrent_gated_delta_rule
+  qmod.torch_chunk_gated_delta_rule=self.wrap(self.oldchunk);qmod.torch_recurrent_gated_delta_rule=self.wrap(self.oldrec)
+ def wrap(self,fn):
+  def invoke(q,k,v,*args,**kw):
+   l=self.active;K.check(l in self.f.GDN_LAYERS,'Unknown GDN layer');self.calls[(self.position,l)]+=1
+   initial=kw.get('initial_state')
+   if self.previous:
+    K.check(initial is not None and initial.data_ptr()==self.previous[l][0],'Next token did not consume QDQ cache storage')
+    if self.previous[l][1] is not None:K.check(K.tsha(initial)==self.previous[l][1],'QDQ bytes changed before next token consumed them')
+   qhash=K.tsha(q) if self.on else None;khash=K.tsha(k) if self.on else None
+   y,s=fn(q,k,v,*args,**kw)
+   K.check(s.dtype==torch.float32 and tuple(s.shape)==(1,32,128,128),'State dtype/shape changed');self.finite.append(torch.isfinite(s).all())
+   if self.on:self.details[str(l)]=dict(q=qhash,k=khash,updated_state=K.tsha(s),current_readout=K.tsha(y.to(v.dtype)),initial=K.tsha(initial) if initial is not None else None)
+   return y,s
+  return invoke
+ def close(self):
+  self.qmod.torch_chunk_gated_delta_rule=self.oldchunk;self.qmod.torch_recurrent_gated_delta_rule=self.oldrec
+  for h in self.handles:h.remove()
+
+def original_c128(cache,f,trace=False,metrics=False):
+ audit=dict(calls=0,layers=set(),scale_shapes={},code_min=0,code_max=0);detail={};stats=[]
+ body=(K.OLD/'runtime_sources/formal_c128_runner.py').read_text().splitlines()
+ before=next(i+1 for i,s in enumerate(body) if 'state.copy_(dequant.to(state.dtype))' in s)
+ scale_line=next(i+1 for i,s in enumerate(body) if 'scale = source.abs().amax' in s)
+ decode_line=next(i+1 for i,s in enumerate(body) if 'dequant = codes * scale' in s)
+ after_line=next(i+1 for i,s in enumerate(body) if 'audit["layers"].add(layer_idx)' in s)
+ profiles={}
+ def local(frame,event,arg):
+  if event=='line' and metrics and frame.f_lineno in (scale_line,decode_line,after_line):
+   l=frame.f_locals['layer_idx']
+   if frame.f_lineno==scale_line:profiles[l]=[torch.cuda.Event(enable_timing=True) for _ in range(5)];profiles[l][0].record()
+   elif frame.f_lineno==decode_line:profiles[l][1].record()
+   else:profiles[l][4].record()
+  if event=='line' and frame.f_lineno==before:
+   d=frame.f_locals;l=d['layer_idx']
+   if metrics:profiles[l][2].record()
+   detail[str(l)]=dict(codes=K.tsha(d['codes'].to(torch.int8)),scales=K.tsha(d['scale']),dequant=K.tsha(d['dequant']),pre=K.tsha(d['state']))
+   if metrics:
+    x=d['state'];z=d['codes'];scale=d['scale'];lev=x/scale;energy=x.square().sum();err=(d['dequant']-x).square().sum()
+    stats.append(dict(layer=l,relative_local_QDQ_mse=float(err/energy.clamp_min(1e-30)),scale_min=float(scale.min()),scale_max=float(scale.max()),rounded_clamp_fraction=float((lev.round().abs()>127).float().mean()),unrounded_over127_fraction=float((lev.abs()>127).float().mean())))
+    profiles[l][3].record()
+  return local
+ def globaltrace(frame,event,arg):return local if frame.f_code is f.quantize_c128.__code__ else None
+ previous=sys.gettrace()
+ if trace or metrics:sys.settrace(globaltrace)
+ try:f.quantize_c128(cache,audit)
+ finally:sys.settrace(previous)
+ K.check(audit['calls']==1 and audit['layers']==set(f.GDN_LAYERS),'C128 calls/writebacks not exact24')
+ if trace:
+  for l in f.GDN_LAYERS:detail[str(l)]['post']=K.tsha(f.get_state(cache,l))
+ if metrics:
+  for row in stats:
+   ev=profiles[row['layer']];ev[4].synchronize();row.update(encode_ms=ev[0].elapsed_time(ev[1]),decode_and_finite_check_ms=ev[1].elapsed_time(ev[2]),writeback_ms=ev[3].elapsed_time(ev[4]))
+ return detail,stats
+
+def dual(cache,f,trace=False,metrics=False,parity=False):
+ sources=K.states(cache,f);x=torch.cat(sources,dim=0)
+ events=[torch.cuda.Event(enable_timing=True) for _ in range(5)];events[0].record();encoded,raw=C.trace_encode(x,'DUAL_M_INT8');events[1].record();y=encoded.decode();events[2].record()
+ K.check(torch.isfinite(y).all(),'Nonfinite Dual-M decode')
+ row_bad=(raw[0]<2**-24)|(raw[0]>65504.);col_bad=((raw[1]<2**-24)|(raw[1]>65504.))|((raw[2]<2**-24)|(raw[2]>65504.))
+ risk=False;max_energy=0.;max_error=0.
+ if bool(row_bad.any()|col_bad.any()):
+  mask=(row_bad.expand_as(x)|col_bad.expand_as(x))&(x!=0);xd=x.double();err=y.double()-xd;energy=xd.square().sum((-1,-2));affected=(xd.square()*mask).sum((-1,-2));fraction=torch.where(energy>0,affected/energy,0);mse=torch.where(affected>0,(err.square()*mask).sum((-1,-2))/affected,0)
+  max_energy=float(fraction.max());max_error=float(mse.max());bad=(fraction>=1e-4)&(mse>1e-2)
+  if bool(bad.any()):
+   ij=bad.nonzero()[0].cpu().tolist();K.save('scale_safety.json',dict(status='FAIL',context=dict(CURRENT),layer=f.GDN_LAYERS[ij[0]],head=ij[1],affected_energy_fraction=float(fraction[tuple(ij)]),affected_relative_mse=float(mse[tuple(ij)])))
+   raise RuntimeError('Frozen per-layer/head FP16 scale risk STOP')
+  del xd,err,energy,affected,fraction,mse,mask
+ detail={};stat=dict(raw_row_bound_hits=int(row_bad.sum()),raw_column_bound_hits=int(col_bad.sum()),row_floor_hits=int((raw[0]<2**-24).sum()),row_ceiling_hits=int((raw[0]>65504.).sum()),column_floor_hits=sum(int((a<2**-24).sum()) for a in raw[1:]),column_ceiling_hits=sum(int((a>65504.).sum()) for a in raw[1:]),max_affected_energy_fraction=max_energy,max_affected_relative_mse=max_error)
+ if trace:
+  for i,l in enumerate(f.GDN_LAYERS):detail[str(l)]=dict(codes=K.tsha(encoded.codes[i:i+1]),rows=K.tsha(encoded.rows[i:i+1]),columns=K.tsha(encoded.columns[i:i+1]),dequant=K.tsha(y[i:i+1]),pre=K.tsha(sources[i]))
+ if metrics:
+  levels=(x/encoded.rows.float())/encoded.columns.float();energy=x.square().sum();err=(y-x).square().sum();effective=encoded.rows.float()*encoded.columns.float()
+  stat.update(relative_local_QDQ_mse=float(err/energy.clamp_min(1e-30)),effective_scale_min=float(effective.min()),effective_scale_max=float(effective.max()),rounded_clamp_fraction=float((levels.round().abs()>127).float().mean()),unrounded_over127_fraction=float((levels.abs()>127).float().mean()),zero_code_fraction=float((encoded.codes==0).float().mean()),saturation_fraction=float((encoded.codes.abs()==127).float().mean()))
+ if parity:
+  plan=C.references.STEP['QuantizationPlan']('gdn',torch.full((32,128),8,dtype=torch.long,device=x.device),torch.ones((32,128),device=x.device))
+  z,rows,cols,two,ref=C.references.STEP['fit_state'](x,plan)
+  K.check(two is None and torch.equal(z,encoded.codes.to(torch.int16)) and torch.equal(rows,encoded.rows.squeeze(-1)) and torch.equal(cols,encoded.columns.squeeze(-2)) and torch.equal(ref,y),'Official all8/ones GPU parity failed')
+  for i in range(24):
+   separate=C.encode(x[i:i+1],'DUAL_M_INT8')
+   K.check(K.tsha(separate.codes)==K.tsha(encoded.codes[i:i+1]) and K.tsha(separate.rows)==K.tsha(encoded.rows[i:i+1]) and K.tsha(separate.columns)==K.tsha(encoded.columns[i:i+1]) and K.tsha(separate.decode())==K.tsha(y[i:i+1]),'Batched layer encode differs from individual layer encode')
+  stat.update(official_exact='PASS_TORCH_EQUAL_CODES_SCALES_DEQUANT',official_zero_sign_differences=int(((y==0)&(ref==0)&(torch.signbit(y)!=torch.signbit(ref))).sum()),batched_vs_individual='BYTE_EXACT')
+ events[3].record()
+ for i,state in enumerate(sources):state.copy_(y[i:i+1])
+ events[4].record();events[4].synchronize()
+ if trace:
+  for i,l in enumerate(f.GDN_LAYERS):detail[str(l)]['post']=K.tsha(sources[i])
+ timing=dict(encode_ms=events[0].elapsed_time(events[1]),decode_ms=events[1].elapsed_time(events[2]),writeback_ms=events[3].elapsed_time(events[4]),safety_and_metric_audit_ms=events[2].elapsed_time(events[3]))
+ del x,y,encoded,raw,sources;return detail,stat,timing
+
+def canary_ids():
+ ids=K.read(K.OLD/'documents/doc_01/input_ids_128.json')
+ K.check(len(ids)==128 and hashlib.sha256(json.dumps(ids,separators=(',',':')).encode()).hexdigest()=='e8b4bd1b698e1f77d24f8a705c6cc8b1b7a703c1d472c4c2fbfb1a5a960e1d5b','Canary identity mismatch');return ids
+
+def run(model,qmod,condition,ids,doc_id,tag,observer,reference=False,science=False,restore_test=False):
+ f=K.formal(not reference);cache=None;obs=Observe(model,qmod,f,observer);rows=[];performance=[];scores={};mechanism=[];checkpoints=[];nonfinite_count=0;start=time.monotonic()
+ hctx=f.QwenKeyHadamardPatch(model) if condition!='FP_NATIVE' else contextlib.nullcontext()
+ with hctx,torch.inference_mode():
+  for t,token in enumerate(ids):
+   CURRENT.update(tag=tag,condition=condition,token_index=t,consumed=t+1,doc_id=doc_id);obs.position=t;obs.details={};obs.finite=[]
+   ts=time.monotonic();out=model(input_ids=torch.tensor([[int(token)]],device='cuda:0'),past_key_values=cache,use_cache=True);cache=out.past_key_values
+   K.check(torch.stack(obs.finite).all()&torch.isfinite(out.logits).all(),'Nonfinite state/logits');torch.cuda.synchronize();forward=time.monotonic()-ts
+   is_score=(t in R.SCORE_POSITIONS) if science else t in SAMPLE
+   detail={};stat={};dt={};events=[torch.cuda.Event(enable_timing=True) for _ in range(2)];events[0].record();qdq_start=time.monotonic()
+   if condition=='H_C128':detail,stat=original_c128(cache,f,trace=observer,metrics=is_score)
+   elif condition=='H_DUAL_M':detail,stat,dt=dual(cache,f,trace=observer,metrics=is_score,parity=(not science and tag=='D_ON' and t==0))
+   events[1].record();events[1].synchronize();qdq_s=time.monotonic()-qdq_start
+   obs.previous={l:(f.get_state(cache,l).data_ptr(),K.tsha(f.get_state(cache,l)) if (observer or is_score or t%1024==0) else None) for l in f.GDN_LAYERS} if condition!='FP_NATIVE' else {}
+   full_seconds=time.monotonic()-ts
+   if not science:
+    rows.append(dict(t=t,input_id=int(token),logits=K.tsha(out.logits),cache=K.cache_hash(cache),cache_cursor=int(cache.get_seq_length()),helper=dict(obs.details),QDQ=detail))
+   if is_score:
+    scores[t]=out.logits.detach().cpu().float().contiguous();mechanism.append(dict(token_index=t,condition=condition,stats=stat))
+   performance.append(dict(t=t,forward_seconds=forward,qdq_seconds=qdq_s,full_model_plus_QDQ_seconds=full_seconds,qdq_gpu_ms=events[0].elapsed_time(events[1]),codec=dt,scale_risk=stat if isinstance(stat,dict) else {}))
+   if restore_test and t==63:
+    cache,info=checkpoint(cache,t+1,condition,doc_id,scores,True);checkpoints.append(info);obs.previous={l:(f.get_state(cache,l).data_ptr(),K.tsha(f.get_state(cache,l)) if (observer or is_score or t%1024==0) else None) for l in f.GDN_LAYERS}
+   if science and (t+1)%8192==0:
+    cache,info=checkpoint(cache,t+1,condition,doc_id,scores);checkpoints.append(info)
+   if (t+1)% (1024 if science else 32)==0:print(json.dumps(dict(tag=tag,condition=condition,consumed=t+1,elapsed_seconds=time.monotonic()-start)),flush=True)
+   for l in f.GDN_LAYERS:K.check(obs.calls[(t,l)]==1,'Not exactly one GDN core call per layer/token')
+   del out,events
+ K.check(len(obs.calls)==len(ids)*24,'Unexpected/missing GDN calls');obs.close()
+ scorefile=ROOT/('scores/'+tag+'.pt');torch.save(dict(logits=scores,condition=condition,doc_id=doc_id,consumed_tokens=len(ids),score_positions=list(scores),source_manifest_sha256=K.sha(ROOT/'source_manifest.json'),input_ids_sha256=hashlib.sha256(json.dumps(ids,separators=(',',':')).encode()).hexdigest()),scorefile)
+ result=dict(status='PASS',condition=condition,tag=tag,observer=observer,reference=reference,doc_id=doc_id,consumed_tokens=len(ids),rows=rows,performance=performance,score_file=str(scorefile.relative_to(ROOT)),score_file_sha256=K.sha(scorefile),mechanism=mechanism,checkpoints=checkpoints,wall_seconds=time.monotonic()-start,writebacks=len(ids)*24 if condition!='FP_NATIVE' else 0,next_token_consumption_checks=(len(ids)-1)*24 if condition!='FP_NATIVE' else 0,cache_representation='FP32 QDQ values; no physical INT8 qualification',**K.gpu_memory())
+ del cache,obs;gc.collect();torch.cuda.empty_cache();return result
+
+def comparable(rows,helpers=False):
+ return [dict(t=r['t'],input_id=r['input_id'],logits=r['logits'],cache=r['cache'],cache_cursor=r['cache_cursor'],**({'helper':r['helper'],'QDQ':r['QDQ']} if helpers else {})) for r in rows]
+
+def initial(model,qmod):
+ ids=canary_ids();results={}
+ plan=[('FP_NATIVE','N_OFF',False,False),('H_C128','A_REFERENCE',True,True),('H_C128','A_OFF',False,False),('H_C128','A_ON',True,False),('H_DUAL_M','D_OFF',False,False),('H_DUAL_M','D_ON',True,False)]
+ for condition,tag,on,reference in plan:
+  results[tag]=run(model,qmod,condition,ids,'OLD_FROZEN_CANARY_DOC_01',tag,on,reference,restore_test=tag=='A_ON')
+  K.save('analysis/'+tag+'.json',results[tag])
+  if tag=='A_ON':
+   K.check(comparable(results['A_REFERENCE']['rows'],True)==comparable(results['A_ON']['rows'],True),'Original H/C128 vs new executor exact parity failed')
+   K.check(comparable(results['A_OFF']['rows'])==comparable(results['A_ON']['rows']),'A observer OFF/ON changed outputs')
+  if tag=='D_ON':K.check(comparable(results['D_OFF']['rows'])==comparable(results['D_ON']['rows']),'D observer OFF/ON changed outputs')
+ K.save('CANARY_INITIAL.json',dict(status='PASS',tags=list(results),H_C128_original_reference='BYTE_EXACT_ALL_128',observer_A_D='BYTE_EXACT',checkpoint_resume='BYTE_EXACT_AT_64_NO_REPEATED_PREFIX'))
+ return dict(status='PASS')
+
+def fresh(model,qmod):
+ ids=canary_ids();summaries={}
+ for condition,tag,old in [('FP_NATIVE','N_FRESH','N_OFF'),('H_C128','A_FRESH','A_ON'),('H_DUAL_M','D_FRESH','D_ON')]:
+  on=condition!='FP_NATIVE';result=run(model,qmod,condition,ids,'OLD_FROZEN_CANARY_DOC_01',tag,on)
+  K.check(comparable(result['rows'],on)==comparable(K.read(ROOT/('analysis/'+old+'.json'))['rows'],on),'Same GPU fresh-process exact parity failed')
+  K.save('analysis/'+tag+'.json',result)
+ for condition,tag in [('FP_NATIVE','N_OFF'),('H_C128','A_OFF'),('H_DUAL_M','D_OFF')]:
+  result=K.read(ROOT/('analysis/'+tag+'.json'));times=[v['full_model_plus_QDQ_seconds'] for v in result['performance'][16:]];p95=sorted(times)[math.ceil(len(times)*.95)-1]
+  summaries[condition]=dict(sample_count=len(times),median_seconds=statistics.median(times),p95_seconds=p95,tokens_per_second=1/statistics.median(times),peak_allocated=result['peak_allocated'],peak_reserved=result['peak_reserved'],load_included_elsewhere=True)
+ # Matching saved canary logits validate and measure the actual CPU score path, without formal scientific positions.
+ a=torch.load(ROOT/'scores/N_OFF.pt',map_location='cpu',weights_only=True)['logits'];cost=[]
+ for tag in ('A_OFF','D_OFF'):
+  b=torch.load(ROOT/('scores/'+tag+'.pt'),map_location='cpu',weights_only=True)['logits']
+  for t in SAMPLE:
+   ts=time.monotonic();v=R.kl_fp32(a[t],b[t]);ref=R.kl_fp64_independent(a[t],b[t]);cross=R.kl_fp64_torch_crosscheck(a[t],b[t]);K.check(abs(cross-ref['KL_FP64'])<=ref['FP64_reference_roundoff'],'Canary reducer FP64 crosscheck failed');cost.append(dict(tag=tag,t=t,KL32=v,KL64=ref['KL_FP64'],seconds=time.monotonic()-ts,roundoff=ref['FP64_reference_roundoff']))
+ K.save('analysis/CANARY_REDUCER.json',dict(status='PASS',observations=cost,reducer_policy_sha256=R.REDUCTION_POLICY_SHA256,scope='Canary diagnostics only; no formal32K scores'))
+ # Conservative preregistered projection: p95 after warmup, 1.6x context/host margin, explicit load/score/IO and release reserve.
+ per_phase={};cp=K.read(ROOT/'analysis/A_ON.json')['checkpoints'][0];cp_perbyte=cp['wall_seconds']/cp['bytes'];kv32=2*8*4*256*32768*2;checkpoint_total=kv32+24*32*128*128*4+384*248320*4
+ for doc in (1,2):
+  for condition in K.CONDITIONS:
+   per_phase['science_doc'+str(doc)+'_'+condition]=32768*summaries[condition]['p95_seconds']*1.6+120+4*checkpoint_total*cp_perbyte+384*248320*4/(50*1024**2)
+ total=sum(per_phase.values());mem=max(v['peak_reserved'] for v in summaries.values())+kv32+512*1024**2
+ memory_limit=min(24*1024**3,torch.cuda.get_device_properties(0).total_memory)-256*1024**2
+ status='PASS' if total+900<24*3600 and mem<memory_limit else 'RESOURCE_BLOCKED'
+ K.save('G4_RUNTIME_BUDGET.json',dict(status=status,projected_remaining_GPU_seconds=total,phase_predictions_seconds=per_phase,safety_exit_reserve_seconds=900,projection='6 full prefixes; actual canary p95 *1.6 context/host margin +120s load per trajectory +4 linear IO projections +50MiB/s full-score writes; CPU final reducer after GPU release',throughput=summaries,projected_peak_reserved_bytes=mem,admissible_memory_bytes=memory_limit,KV_cache_32K_bytes=kv32,checkpoint_projected_bytes=checkpoint_total,actual_checkpoint=cp,score_audit_times=cost,new_task_GPUh_budget=24.0,old_task_budget_not_reused=True))
+ return dict(status='PASS',fresh_process='BYTE_EXACT_NATIVE_A_D',G4=status)
+
+def science(model,qmod,phase):
+ parts=phase.split('_',2);doc=int(parts[1][3:]);condition=parts[2]
+ manifest=K.read(ROOT/'frozen_documents.json');d=manifest['selected_documents'][doc-1];artifact=d['artifacts']['input_ids_32768'];ids=K.read(ROOT/artifact['path'])
+ K.check(len(ids)==32768 and hashlib.sha256(json.dumps(ids,separators=(',',':')).encode()).hexdigest()==artifact['canonical_json_sha256'],'Formal document token identity failed')
+ result=run(model,qmod,condition,ids,d['document_id'],phase,False,science=True)
+ K.check(len(torch.load(ROOT/result['score_file'],map_location='cpu',weights_only=True)['logits'])==384,'Formal trajectory did not provide384 real logits')
+ K.save('analysis/'+phase+'.json',result);return dict(status='PASS',condition=condition,doc=doc,consumed=32768,scores=384)
+
+def main():
+ phase=sys.argv[1];start=time.monotonic()
+ K.check(not (ROOT/'FIRST_FAILURE.json').exists(),'Prior failure prohibits further GPU work')
+ try:
+  K.configure();R.configure_cpu();model,qmod,load=K.load();K.save('analysis/ENV_'+phase+'.json',dict(load=load,UUID=K.UUID,CUDA_VISIBLE_DEVICES=os.environ.get('CUDA_VISIBLE_DEVICES'),strict=True,TF32=False))
+  if phase=='canary_initial':result=initial(model,qmod)
+  elif phase=='canary_fresh':result=fresh(model,qmod)
+  else:result=science(model,qmod,phase)
+  del model;gc.collect();torch.cuda.empty_cache();K.save('analysis/RECEIPT_'+phase+'.json',dict(status='PASS',result=result,wall_seconds=time.monotonic()-start,**K.gpu_memory()))
+ except BaseException as e:
+  if not (ROOT/'FIRST_FAILURE.json').exists():K.save('FIRST_FAILURE.json',dict(status='FAIL_AND_STOP',phase=phase,error=repr(e),context=dict(CURRENT),traceback=traceback.format_exc(),wall_seconds=time.monotonic()-start,no_GPU_retry=True))
+  raise
+if __name__=='__main__':main()

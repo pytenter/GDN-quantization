@@ -1,0 +1,379 @@
+pybufrkit/descriptors.py
+class ElementDescriptor(Descriptor):
+    """
+    Element Descriptor 0XXYYY
+
+    :param int id_: The descriptor ID
+    :param str name: Name of the descriptor
+    :param str unit: Units of the descriptor
+    :param int scale: Scale factor of the descriptor value
+    :param int refval: Reference value of the descriptor value
+    :param int nbits: The number of bits used by the descriptor
+    :param str crex_unit: Units of the descriptor for CREX spec
+    :param int crex_scale: Scale factor of the descriptor value for CREX Spec
+    :param int crex_nchars: Number of characters used by the descriptor for CREX Spec
+    """
+
+    def __init__(self, id_, name, unit, scale, refval, nbits,
+                 crex_unit, crex_scale, crex_nchars):
+        super(ElementDescriptor, self).__init__(id_)
+        self.name, self.unit, self.scale, self.refval, self.nbits = (
+            name, unit, scale, refval, nbits
+        )
+        self.crex_unit, self.crex_scale, self.crex_nchars = crex_unit, crex_scale, crex_nchars
+
+    def as_list(self):
+        return [self.id, self.name, self.unit, self.scale, self.refval, self.nbits]
+
+    def as_dict(self):
+        return {self.id: (self.name, self.unit, self.scale, self.refval, self.nbits)}
+
+    def accept(self, visitor):
+        visitor.visit_element_descriptor(self)
+pybufrkit/descriptors.py
+class FixedReplicationDescriptor(ReplicationDescriptor):
+    """
+    Fixed replication Descriptor 1XXYYY
+    """
+
+    def __init__(self, id_, members=None):
+        super(FixedReplicationDescriptor, self).__init__(id_, members)
+
+    @property
+    def n_repeats(self):
+        """
+        Number of times to perform the replication. This value is decoded
+        directly from the descriptor ID.
+        """
+        return self.id % 1000
+
+    def accept(self, visitor):
+        visitor.visit_replication_descriptor(self)
+        if not self.members:
+            visitor.visit_replication_descriptor_end(self)
+            return
+        for member in self.members:
+            member.accept(visitor)
+        visitor.visit_replication_descriptor_end(self)
+pybufrkit/constants.py
+UNITS_CODE_TABLE = 'CODE TABLE'
+pybufrkit/constants.py
+DEFAULT_TABLES_DIR = os.path.join(BASE_DIR, 'tables')
+pybufrkit/descriptors.py
+class SkippedLocalDescriptor(Descriptor):
+    """
+    The skipped local descriptor is a placeholder for any descriptors followed by
+    operator descriptor 206YYY.
+    """
+
+    def __init__(self, id_, nbits):
+        # TODO: If a local descriptor does not exist in tables, it will be
+        # created as an undefined descriptor. So how it should be converted
+        # later to SkippedLocalDescriptor if it has a preceding 206YYY? During
+        # template lint?
+        super(SkippedLocalDescriptor, self).__init__(id_)
+        self.nbits = nbits
+        # Dummy unit so it does not fail on unit checking in other functions
+        self.unit = 'SKIPPED'
+
+    def __str__(self):
+        return 'S{:05d}'.format(self.id)
+pybufrkit/descriptors.py
+class OperatorDescriptor(Descriptor):
+    """
+    Operator Descriptor 2XXYYY
+    """
+
+    def __init__(self, id_):
+        super(OperatorDescriptor, self).__init__(id_)
+
+    @property
+    def operator_code(self):
+        return self.id // 1000
+
+    @property
+    def operand_value(self):
+        return self.id % 1000
+pybufrkit/descriptors.py
+class DelayedReplicationDescriptor(ReplicationDescriptor):
+    """
+    Delayed replication Descriptor 1XX000
+    """
+
+    def __init__(self, id_, members=None, factor=None):
+        super(DelayedReplicationDescriptor, self).__init__(id_, members)
+        self.factor = factor
+
+    @property
+    def n_repeats(self):
+        raise PyBufrKitError('Cannot access n_repeats for Delayed Replication')
+
+    def accept(self, visitor):
+        visitor.visit_replication_descriptor(self)
+        visitor.visit_replication_factor(self.factor)
+        if not self.members:
+            visitor.visit_replication_descriptor_end(self)
+            return
+        for member in self.members:
+            member.accept(visitor)
+        visitor.visit_replication_descriptor_end(self)
+pybufrkit/bufr.py
+class SectionConfigurer(object):
+    """
+    This class is responsible for loading the section config JSON files. It also
+    initialise and configure a requested Section.
+    """
+
+    def __init__(self, definitions_dir=None):
+        definitions_dir = definitions_dir or os.path.join(BASE_DIR, 'definitions')
+        fnames = [fname for fname in os.listdir(definitions_dir)
+                  if fname.startswith('section') and fname.endswith('.json')]
+
+        log.debug("Reading definition json files from {}".format(definitions_dir))
+
+        self.configurations = {}
+        for fname in fnames:
+            with open(os.path.join(definitions_dir, fname)) as ins:
+                index, edition = self.get_section_index_and_edition(fname)
+                data = json.load(ins)
+                if index not in self.configurations:
+                    self.configurations[index] = {}
+                config = self.configurations[index]
+                edition_key = DEFAULT_SECTION_EDITION if edition is None else edition
+                config[edition_key] = data
+                # If this config is default, also add it for the default key
+                if data.get('default', False) and edition_key != DEFAULT_SECTION_EDITION:
+                    config[DEFAULT_SECTION_EDITION] = data
+
+    def configure_section(self, bufr_message, section_index, configuration_transformers=()):
+        """
+        Initialise and Configure a section for the give section index and
+        version.
+
+        :param BufrMessage bufr_message: The Bufr Message object to configure
+        :param int section_index: (Zero-based) index of the section
+        :param collection configuration_transformers: A collection of configuration
+            transformation functions. These functions make it possible to use
+            the same set of JSON files while still dynamically providing
+            different coder behaviours.
+        :return: The configured section or ``None`` if not present
+        """
+
+        config = self.get_configuration(bufr_message, section_index)
+
+        for configuration_transformer in configuration_transformers:
+            config = configuration_transformer(config)
+
+        section = BufrSection()
+        section.set_metadata('index', config['index'])
+        section.set_metadata('description', config.get('description', ''))
+        section.set_metadata('optional', config.get('optional', False))
+        section.set_metadata('end_of_message', config.get('end_of_message', False))
+
+        for parameter in config['parameters']:
+            data_type = parameter['type']
+            nbits = parameter['nbits']
+            if data_type == 'bytes':
+                assert nbits % NBITS_PER_BYTE == 0, \
+                    'nbits for bytes type must be integer multiple of 8: {}'.format(nbits)
+            section_parameter = SectionParameter(
+                parameter['name'],
+                nbits,
+                data_type,
+                parameter.get('expected', None),
+                parameter.get('as_property', False)
+            )
+            section.add_parameter(section_parameter)
+
+        # Check whether this section is optional. If it is optional, check whether it exists in the
+        # current message.
+        is_section_presents = (
+            not section.optional or
+            getattr(bufr_message, 'is_section{}_presents'.format(section_index)).value
+        )
+
+        # If the section exists, add the section for process other wise ignore it
+        if is_section_presents:
+            bufr_message.add_section(section)
+            return section
+        else:
+            log.info("Section {} is not present".format(section_index))
+            return None
+
+    def get_configuration(self, bufr_message, section_index):
+        # When the bufr_message is first created, it has no edition information.
+        # So the default edition is used.
+        if bufr_message.edition is not None:
+            section_edition = bufr_message.edition.value or DEFAULT_SECTION_EDITION
+        else:
+            section_edition = DEFAULT_SECTION_EDITION
+
+        log.info("Configure Section {} of edition {}".format(
+            section_index, section_edition if section_edition != DEFAULT_SECTION_EDITION else 'default'))
+
+        section_configs = self.configurations[section_index]
+
+        # Get the default config for the section if specific edition is not found
+        return section_configs.get(section_edition, section_configs[DEFAULT_SECTION_EDITION])
+
+    def configure_section_with_values(self, bufr_message, section_index, values, overrides=None):
+        """
+        Initialise and Configure a section for the give section index and version
+        and also populate the value of each section parameter with the given list
+        of values. Used by the encoder.
+
+        :param BufrMessage bufr_message: The BUFR message object to configure
+        :param int section_index: The zero-based section index
+        :param list values: A list of values for the parameters.
+        :return: The configured section or ``None`` if the section is not present
+        """
+        section = self.configure_section(bufr_message, section_index)
+        if section is not None:
+            assert len(section) == len(values), \
+                'Number of Section parameters ({}) not equal to number of values to be encoded ({})'.format(
+                    len(section), len(values))
+            for idx, parameter in enumerate(section):
+                parameter.value = values[idx] if overrides is None else overrides.get(parameter.name, values[idx])
+
+        return section
+
+    @staticmethod
+    def get_section_index_and_edition(fname):
+        """
+        Get Section Index and version from file name of a configuration file.
+
+        :param str fname: The base file name
+        :return: The index and edition numbers.
+        """
+        expr = os.path.splitext(fname)[0][7:]
+        if '-' in expr:
+            fields = expr.split('-')
+            return int(fields[0]), int(fields[1])
+        else:
+            return int(expr), None
+
+    @staticmethod
+    def info_configuration(config):
+        """
+        This is a configuration transformation function to make the decoder work
+        only for the part of message before the template data.
+
+        :param dict config: The config JSON object loaded from a configuration file.
+        """
+        parameter_types = [parameter['type'] for parameter in config['parameters']]
+        if PARAMETER_TYPE_TEMPLATE_DATA in parameter_types:
+            new_config = deepcopy(config)
+            new_config['end_of_message'] = True
+            new_config['parameters'] = config['parameters'][:parameter_types.index(PARAMETER_TYPE_TEMPLATE_DATA)]
+            return new_config
+        else:
+            return config
+
+    @staticmethod
+    def ignore_value_expectation(config):
+        """
+        Remove any expectation value check.
+
+        :param dict config: The config JSON object loaded from a configuration file.
+        """
+        new_config = deepcopy(config)
+        for parameter in new_config['parameters']:
+            parameter['expected'] = None
+        return new_config
+pybufrkit/constants.py
+UNITS_STRING = 'CCITT IA5'
+pybufrkit/errors.py
+class PyBufrKitError(Exception):
+    """
+    This is the root exception object of the package.
+    """
+
+    def __init__(self, message=''):
+        self.message = message
+
+    def __str__(self):
+        return 'Error: {}'.format(self.message)
+pybufrkit/constants.py
+UNITS_FLAG_TABLE = 'FLAG TABLE'
+pybufrkit/descriptors.py
+class SequenceDescriptor(Descriptor):
+    """
+    Sequence Descriptor 3XXYYY
+    """
+
+    def __init__(self, id_, name, members=None):
+        super(SequenceDescriptor, self).__init__(id_)
+        self.members = members
+        self.name = name
+
+    def __iter__(self):
+        return iter(self.members)
+
+    def __getitem__(self, item):
+        return self.members.__getitem__(item)
+
+    def accept(self, visitor):
+        visitor.visit_sequence_descriptor(self)
+        if not self.members:
+            return
+        for member in self.members:
+            member.accept(visitor)
+        visitor.visit_sequence_descriptor_end(self)
+pybufrkit/errors.py
+class UnknownDescriptor(PyBufrKitError):
+    """
+    An unknown, i.e. not found in BUFR tables, BUFR descriptor.
+    """
+pybufrkit/descriptors.py
+class MarkerDescriptor(ElementDescriptor):
+    """
+    A marker descriptor is useful in the case when marker operator descriptors
+    are used to signify a statistical value of an element descriptor. For an
+    example, 224255 and 225255.
+    """
+
+    def __str__(self):
+        return '{}{:05d}'.format(
+            marker_descriptor_prefix.get(self.marker_id, 'M'),
+            self.id
+        )
+
+    @staticmethod
+    def from_element_descriptor(ed, marker_id,
+                                scale=None, refval=None, nbits=None):
+        """
+        Create from a given element descriptor with the option to override its
+        scale, refval and nbits.
+
+        :param ElementDescriptor ed: The element descriptor
+        :param int marker_id: The marker operator ID
+        :param int scale: Overridden value for scale.
+        :param int refval: Overridden value for reference.
+        :param int nbits: Overridden value for number of bits.
+        :rtype: MarkerDescriptor
+        """
+        md = MarkerDescriptor(
+            ed.id, ed.name, ed.unit,
+            ed.scale if scale is None else scale,
+            ed.refval if refval is None else refval,
+            ed.nbits if nbits is None else nbits,
+            ed.crex_unit, ed.crex_scale, ed.crex_nchars
+        )
+        md.marker_id = marker_id
+        return md
+pybufrkit/descriptors.py
+class AssociatedDescriptor(Descriptor):
+    """
+    Associated field for element descriptor
+
+    :param int nbits: Number of bits used by this descriptor.
+    """
+
+    def __init__(self, id_, nbits):
+        super(AssociatedDescriptor, self).__init__(id_)
+        self.nbits = nbits
+        # Dummy unit so it does not fail on unit checking in other functions
+        self.unit = 'ASSOCIATED'
+
+    def __str__(self):
+        return 'A{:05d}'.format(self.id)

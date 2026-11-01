@@ -1,0 +1,1 @@
+lambda _cls, split_module, submodule_inputs, non_acc_submodule_prefix: _tuple_new(_cls, (split_module, submodule_inputs, non_acc_submodule_prefix))

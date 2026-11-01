@@ -1,0 +1,8 @@
+def __create_fn__(_type_accumulate_error, _type_traverse_method, _type_find_all, _type_return_intermediate, _type_all_outputs, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_accumulate_error, _dflt_traverse_method, _dflt_find_all, _dflt_return_intermediate, _dflt_all_outputs, _return_type):
+ def __init__(self,accumulate_error:_type_accumulate_error=_dflt_accumulate_error,traverse_method:_type_traverse_method=_dflt_traverse_method,find_all:_type_find_all=_dflt_find_all,return_intermediate:_type_return_intermediate=_dflt_return_intermediate,all_outputs:_type_all_outputs=_dflt_all_outputs)->_return_type:
+  self.accumulate_error=accumulate_error
+  self.traverse_method=traverse_method
+  self.find_all=find_all
+  self.return_intermediate=return_intermediate
+  self.all_outputs=all_outputs
+ return __init__

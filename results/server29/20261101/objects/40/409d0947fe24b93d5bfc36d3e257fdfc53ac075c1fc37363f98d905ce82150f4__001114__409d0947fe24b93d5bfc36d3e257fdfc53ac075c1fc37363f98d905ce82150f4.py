@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __hash__(self):
+  return hash((self.num_warps,self.waves_per_eu,self.num_stages,self.num_ctas,self.num_buffers_warp_spec,self.num_consumer_groups,self.reg_dec_producer,self.reg_inc_consumer,self.extern_libs,self.cluster_dims,self.debug,self.sanitize_overflow,self.arch,self.supported_fp8_dtypes,self.deprecated_fp8_dtypes,self.default_dot_input_precision,self.allowed_dot_input_precisions,self.enable_fp_fusion,self.launch_cooperative_grid,self.matrix_instr_nonkdim,self.kpack,self.allow_flush_denorm,self.max_num_imprecise_acc_default,self.backend_name,self.instruction_sched_variant,))
+ return __hash__

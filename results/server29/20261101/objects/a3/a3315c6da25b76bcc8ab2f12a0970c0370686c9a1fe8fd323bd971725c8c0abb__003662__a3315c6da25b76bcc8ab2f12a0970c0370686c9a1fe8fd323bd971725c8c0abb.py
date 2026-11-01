@@ -1,0 +1,1 @@
+lambda _cls, request_method, request_url, preload_content, decode_content, enforce_content_length: _tuple_new(_cls, (request_method, request_url, preload_content, decode_content, enforce_content_length))

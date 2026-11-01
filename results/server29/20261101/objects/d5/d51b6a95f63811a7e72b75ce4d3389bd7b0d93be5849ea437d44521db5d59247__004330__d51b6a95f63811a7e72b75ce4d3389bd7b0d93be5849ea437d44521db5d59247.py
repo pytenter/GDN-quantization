@@ -1,0 +1,1 @@
+lambda _cls, name, terminal, host, started, pid: _tuple_new(_cls, (name, terminal, host, started, pid))

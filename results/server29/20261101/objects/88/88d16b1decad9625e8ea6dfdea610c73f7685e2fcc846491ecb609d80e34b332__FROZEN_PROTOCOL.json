@@ -1,0 +1,61 @@
+{
+  "task_id": "QWEN_GDN_HADAMARD_DUAL_M_AIME26_FORMAL_60_V1",
+  "frozen": true,
+  "method": "HADAMARD_H128_DUAL_M_INT8",
+  "N": 60,
+  "seeds": [
+    1,
+    2
+  ],
+  "max_new_tokens": 81920,
+  "sampling": {
+    "enable_thinking": true,
+    "do_sample": true,
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 20,
+    "min_p": 0.0,
+    "presence_penalty": 1.5,
+    "repetition_penalty": 1.0,
+    "scope": "generated output tokens only",
+    "source_sha256": "9ff56d00b6b2dbaf9be3c3186bd30be8d3b9cc9d9b580a680316bcc8c01247dd"
+  },
+  "state_timing": "FP full prompt prefill under H128 -> one Dual-M QDQ/writeback -> first sample -> each cached decode -> Dual-M QDQ/writeback -> next sample",
+  "prefill_internal_per_token_QDQ": false,
+  "all_24_GDN_layers": true,
+  "KV_quantization": false,
+  "codec": "all8 signedINT8/ones weights/no pivots/FP16row+column/onecolumnLS/finalreencode originalreference",
+  "resident_state": "native FP32 reconstructed QDQ carriers, not physical packedINT8",
+  "runtime": {
+    "deterministic": true,
+    "TF32": false,
+    "compensated_chunk": true,
+    "intraop": 1,
+    "interop": 1,
+    "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+    "BF16_weights": true,
+    "logical_GPU": 0
+  },
+  "canary": {
+    "nonAIME_fixed_input": true,
+    "total_input_tokens": 64,
+    "prefill_tokens": 16,
+    "cached_decode_forwards": 48,
+    "fresh_process_repeats_per_GPU": 2,
+    "require_exact_same_GPU": true,
+    "crossGPU_bitwise_claim": false,
+    "original_reference_numeric_bounds_unchanged": true
+  },
+  "formal_scoring": "Original FrozenV4 only after all60 legalcomplete, no interim correctness",
+  "scheduling": "fixed canonical_index%4,15jobs/GPU; independent seed/cache per job; no migration",
+  "resume": "task-level only; validate complete payload before skip; preserve interruptedattempt; do not auto-retry numerical/OOM failure",
+  "MAX_ACTIVE_GPUS": 4,
+  "GPUh_hard_cap": null,
+  "performance_profiling": "FORBIDDEN",
+  "gate_repair_limit": 1,
+  "run_id": "H_DUALM_AIME60_SAMPLER_SCOPE_REPAIR_V1",
+  "repair_count": 1,
+  "parent_failed_run": "/data/zypan/analyses/qwen_gdn_hadamard_dual_m_aime26_formal_60_v1",
+  "sampler_determinism_scope": "Original unchanged sample_next/warper/nativeCUDA cumsum only temporarily deterministicFalse; restoredTrue in finally BEFORE any GDN/H/QDQ; no replacement cumsum or algorithm",
+  "runtime_numeric_math": "GDN/H/codec strictdeterministicTrue always, originalcompensatedchunk unchanged"
+}

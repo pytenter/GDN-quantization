@@ -1,0 +1,120 @@
+{
+  "GPU_calls": 0,
+  "SSH_calls": 0,
+  "base_memory_if_one_int8_exponent_per_G32": {
+    "extra_bits_per_state_value": 0.25,
+    "extra_bytes_24layers": 393216,
+    "extra_bytes_per_layer": 16384,
+    "new_base_bits_per_value": 5.90625,
+    "new_base_bytes_24layers": 9289728,
+    "old_base_bits_per_value": 5.65625,
+    "old_base_bytes_24layers": 8896512,
+    "warning": "Only if every stategroup gets onephysicalINT8exponent; include buffer-group exponents and allocator/scratch separately if candidate uses them."
+  },
+  "counterexample_files": [
+    {
+      "bytes": 6366,
+      "path": "operations/repair_candidates/qdq_stability_cpu_only_20261025/reproduce_contracting_qdq_instability.py",
+      "sha256": "f5bfe9f520855c8c2bf62bfe3b0284901db0e7ac8e9ee090ea91fdbefb402780"
+    },
+    {
+      "bytes": 10459,
+      "path": "operations/repair_candidates/qdq_stability_cpu_only_20261025/QDQ_CONTRACTIVE_RECURRENCE_CPU_COUNTEREXAMPLE.json",
+      "sha256": "ad219d5fe6d9007292bd324d1ddac9059f26f41d4e3c105fd230a16debaf36c1"
+    }
+  ],
+  "created_utc": "2026-10-25T12:52:43.396593+00:00",
+  "exploratory_history": {
+    "classification": "CPU mathematical exploratory witness, not a scientific execution failure; subsequent fixedfinite roster catches overflow and records full reproducible evidence",
+    "initial_finite_150case1000step_oracle_stopped_by_unhandled_struct_OverflowError": true,
+    "initial_unbounded_error": false
+  },
+  "findings": [
+    {
+      "detail": "Buffer replay matches native Eq3 decay-before-prediction and beta placement; query readout normalization/scale,16-to32 shared-key mapping, state K-axis/value-column grouping, integer-zero-point subtraction, independent token ownership and writeback reset are consistent under current declared conventions.",
+      "status": "NO_CONCRETE_MATH_IMPLEMENTATION_BUG_IDENTIFIED"
+    },
+    {
+      "detail": "Actual layer0/head10/value51/keygroup1 contains finite state lo=-587500.1875 hi=401660.125, scale=65944.02083333333>65520 IEEE overflow midpoint; removing/clamping the finite-positive guard would not preserve the declared codec.",
+      "status": "REAL_FP16_DOMAIN_FAILURE_PRESERVED"
+    },
+    {
+      "detail": "Paper norm<=a applies only between roundings. State-dependent affine QDQ is not norm-nonincreasing and can feed back magnitude-dependent error. Independent fixed-key zero-value synthetic recurrence has spectral norm0.9984999895 but QDQ reaches scale65545.9625 atstep913. This is possible-mechanism evidence, not attribution of the real failed head.",
+      "status": "CONTRACTION_DOES_NOT_PROVE_QDQ_STABILITY"
+    },
+    {
+      "detail": "Native GateB disables both quantizers and checks at most24tokens; quantized GateC uses4heads,K32,V3,at most266tokens,strong-random decay g\u2208[-.7,0] with occasional-80. Neither establishes9B/81k weak-decay stability. Existing gates legitimately passed their finite scope.",
+      "status": "GATE_COVERAGE_GAP_NOT_GATE_FAILURE"
+    },
+    {
+      "detail": "Layer0/head10 is correctly INT4 according to fixed score/mask, a_h=.9985055989236571,E_h=515.4889090384299; selectedINT8heads are5,11,16,17,18,19,22,23. Do not change based on failedAIME trajectory.",
+      "status": "CALIBRATION_MASK_AXIS_CORRECT"
+    },
+    {
+      "detail": "Actual failure diagnostic records extrema and counters but not nativeg/beta/recovered-keynorm/packed-base norm/quantization expansion/recurrence before-after or bounded per-step transitions. The evidence cannot distinguish a quantizer-pumping path from other unexpected inputs with causal certainty.",
+      "status": "ACTUAL_CAUSE_UNRESOLVED"
+    },
+    {
+      "detail": "Paper benchmarks usegreedy/thinkingdisabled and report generationcaps1024/8192; original FrozenV4 thinking/sampler/81920 are an authorized protocol extrapolation. Officialimplementation was not located; paper omits exact affine scale/ZP/cast/tie rules.",
+      "status": "PAPER_SCOPE_AND_METHOD_LIMIT"
+    },
+    {
+      "detail": "A mantissaFP16+exponentINT8 codec changes originalFP16scale storage and accepted numeric domain; exact e0 equivalence alone does not make its newformat originalR2/R3. Avoiding castoverflow does not prove finite-long-run stability.",
+      "status": "FORMAT_EXTENSION_REQUIRES_DISCLOSURE"
+    }
+  ],
+  "inspected": [
+    {
+      "bytes": 9573,
+      "path": "src/pace_quantizer.py",
+      "sha256": "ed2ec5a039820b96e8d687381a17fda72ca05de51f9b30ffc842bedaea8f038c"
+    },
+    {
+      "bytes": 14522,
+      "path": "src/pace_buffer.py",
+      "sha256": "cb873e21d975768a9c6b8bb5fcfb9bbe77f9316fcaa683baa8b46ce2338a358d"
+    },
+    {
+      "bytes": 42496,
+      "path": "src/pace_runtime.py",
+      "sha256": "340db2f23cef56137b2b6ee35f0a14c46481c935ea1287043bc20303a883accc"
+    },
+    {
+      "bytes": 88546,
+      "path": "vendor/modeling_qwen3_5.py",
+      "sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a"
+    },
+    {
+      "bytes": 21880,
+      "path": "tests/test_pace_math.py",
+      "sha256": "af7fe55b05ff61a5360def73e6c803585259795fcad77ad99b056f2ab65563d2"
+    },
+    {
+      "bytes": 405471,
+      "path": "research/arxiv_2610.29545v1.html",
+      "sha256": "abf335a9423088e991326b5242d39617c4b5e7952c17b088c594f60634a81995"
+    },
+    {
+      "bytes": 4437,
+      "path": "research/paper_method_audit.json",
+      "sha256": "6c44361b460ec3188d7a59687d36fc8e18084df5941e956c50662ad4f76db697"
+    },
+    {
+      "bytes": 13394,
+      "path": "operations/HUMAN_TASK_REQUEST.txt",
+      "sha256": "838d7dad3d7de35eca3df9dd72a00937caae8f670e942afd025ac7da0c3d77b0"
+    }
+  ],
+  "model_loads": 0,
+  "permit_sha256": "32ca98b22157ec6b5c03ea648c39cc8f6e88b3d773e3ee245380fd53c5dbf2d7",
+  "production_source_manifest_sha256": "f51840870f017786bf761a53804a81bfa5c4a941a2207f136349761e0272256f",
+  "recommended_next_cpu_checks": [
+    "Use this deterministic witness as a stability stress fixture without asserting that a range-extension candidate must numerically stabilize it.",
+    "Check accepted-domain e0 codes/ZP/mantissa/decode exact equivalence independently and every physical metadata byte.",
+    "At trueextended range use integerbounded exponent, storedmantissa for encoding and decoding, and guard decoded FP32products and scale reconstruction.",
+    "A future authorized diagnostic execution should preserve actual g/beta/recovered-keynorm/base and pre/postQnorm/range for the bounded failing layer/head; do not change mask, thresholds, prompts, queue or accept nonzeroexit."
+  ],
+  "scope": "Local CPU-only read-only scientific-source review plus new unbound stdlib counterexample; no production/source/seal/GPU/SSH/model/score changes",
+  "scoring_calls": 0,
+  "status": "PASS_READONLY_RUNTIME_MATH_AUDIT_WITH_NUMERICAL_STABILITY_LIMITATIONS"
+}

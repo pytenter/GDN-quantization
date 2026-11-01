@@ -1,0 +1,1 @@
+lambda _cls, actual, expected, value: _tuple_new(_cls, (actual, expected, value))

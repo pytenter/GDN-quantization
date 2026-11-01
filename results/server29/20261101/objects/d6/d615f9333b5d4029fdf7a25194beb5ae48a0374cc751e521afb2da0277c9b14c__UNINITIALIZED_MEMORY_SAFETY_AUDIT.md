@@ -1,0 +1,5 @@
+本轮未修改或测试fill=False。已保存的ENVIRONMENT记录仍为deterministic_algorithms=True、deterministic_fill=True、TF32=False。
+
+前序CPU审计的13类缓冲、45条源码目录和63项检查原样保留于 `parent_cpu/UNINITIALIZED_MEMORY_SAFETY_AUDIT.md`。历史新增847 kernel/token中724为fill类，但不能把类别计数当作全部由单一fill开关引起的因果证据。generic resize增长、Flash/可选FLA masked tile和跨stream全写后读覆盖仍未完整闭合，结论维持FILL_OPT_SAFETY_UNPROVEN。
+
+本轮未获得或生成独立fill安全资格；没有全局关闭fill/determinism，也没有以输出相同替代未初始化读取安全证明。

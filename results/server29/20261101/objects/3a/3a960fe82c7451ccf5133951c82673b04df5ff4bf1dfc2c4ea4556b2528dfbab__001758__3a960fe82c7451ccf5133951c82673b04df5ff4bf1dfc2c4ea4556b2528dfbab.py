@@ -1,0 +1,1 @@
+lambda _cls, mesh_dim, src_dst_placements, logical_shape: _tuple_new(_cls, (mesh_dim, src_dst_placements, logical_shape))

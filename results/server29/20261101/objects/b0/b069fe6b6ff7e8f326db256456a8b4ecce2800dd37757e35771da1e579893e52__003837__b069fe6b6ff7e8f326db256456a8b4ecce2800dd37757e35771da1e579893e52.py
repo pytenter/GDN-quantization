@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(task_type={self.task_type!r}, dataset_type={self.dataset_type!r}, dataset_name={self.dataset_name!r}, metric_type={self.metric_type!r}, metric_value={self.metric_value!r}, task_name={self.task_name!r}, dataset_config={self.dataset_config!r}, dataset_split={self.dataset_split!r}, dataset_revision={self.dataset_revision!r}, dataset_args={self.dataset_args!r}, metric_name={self.metric_name!r}, metric_config={self.metric_config!r}, metric_args={self.metric_args!r}, verified={self.verified!r}, verify_token={self.verify_token!r}, source_name={self.source_name!r}, source_url={self.source_url!r})"
+ return __repr__

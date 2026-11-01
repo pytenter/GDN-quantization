@@ -1,0 +1,1 @@
+lambda _cls, voluntary, involuntary: _tuple_new(_cls, (voluntary, involuntary))

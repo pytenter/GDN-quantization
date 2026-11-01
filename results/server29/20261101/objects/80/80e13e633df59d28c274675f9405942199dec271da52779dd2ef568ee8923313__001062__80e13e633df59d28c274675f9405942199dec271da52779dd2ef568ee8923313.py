@@ -1,0 +1,1 @@
+lambda _cls, output, buffer: _tuple_new(_cls, (output, buffer))

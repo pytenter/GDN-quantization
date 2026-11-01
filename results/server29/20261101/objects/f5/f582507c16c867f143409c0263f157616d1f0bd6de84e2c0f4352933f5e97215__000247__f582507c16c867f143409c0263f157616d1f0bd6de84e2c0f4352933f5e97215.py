@@ -1,0 +1,1 @@
+lambda _cls, treespec_to_json, json_to_treespec: _tuple_new(_cls, (treespec_to_json, json_to_treespec))

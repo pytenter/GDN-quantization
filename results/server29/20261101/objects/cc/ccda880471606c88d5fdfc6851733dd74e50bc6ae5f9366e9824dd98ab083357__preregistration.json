@@ -1,0 +1,26 @@
+{
+  "experiment_id": "QWEN_GDN_FSDP2_OUTPUT_HOOK_CAUSAL_CLOSURE_V1",
+  "parent_branch": "exp/qwen-gdn-fsdp2-recurrent-reentry-closure-v1",
+  "parent_head": "f730e3dca7589d8cc272de839d6e5b3a77cd1eaa",
+  "new_branch": "exp/qwen-gdn-fsdp2-output-hook-causal-closure-v1",
+  "scientific_question": "Does the internal-state C5 loss bypass an ordinary FSDP-wrapped module output needed for pre-backward unshard in the full 9B H4 graph?",
+  "frozen_parent": {
+    "H1": "PASS",
+    "full_model_H4_backward": "FAIL_SETSTORAGE_SIZE_0_BOTH_RANKS",
+    "H32": "NOT_DETERMINED",
+    "reduced_reentry_storage_reproducer": "NOT_FOUND",
+    "FAILED_STORAGE_OWNER": "UNKNOWN"
+  },
+  "ordered_phases": [
+    "static C5 graph and output/view audit before GPU",
+    "same-process single-GPU H1 original versus zero-anchor exact semantics",
+    "reuse frozen parent H4 baseline; do not rerun by default",
+    "one full 9B H4 zero-anchor causal test if single gate PASS",
+    "hook audit only after reduced passing noninterference gate and if safe",
+    "final verdict, hashes, commit, push"
+  ],
+  "full_9b_H4_run_caps": {"baseline_trace": 1, "zero_anchor": 1, "hook_only": 1},
+  "forbidden": ["H8", "H16", "H32", "H64", "H128", "formal C5/C6", "AIME", "TP", "PP", "activation checkpointing", "production Qwen source edits", "canonical Torch/CUDA upgrade", "canonical DeepSpeed install", "C128/recurrent writeback/C5/rotation change"],
+  "stop_rules": ["zero-anchor single-GPU exact gate FAIL", "new full-model failure mode", "hook noninterference FAIL", "unsafe GPU pair", "unexpected numerical/semantic failure"],
+  "old_artifacts": "read-only"
+}

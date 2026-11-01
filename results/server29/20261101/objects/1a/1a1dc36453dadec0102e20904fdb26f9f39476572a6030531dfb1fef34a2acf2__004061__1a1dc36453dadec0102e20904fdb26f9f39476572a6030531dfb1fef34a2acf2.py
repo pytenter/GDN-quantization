@@ -1,0 +1,13 @@
+def __create_fn__(_type_sequences, _type_scores, _type_logits, _type_encoder_attentions, _type_encoder_hidden_states, _type_decoder_attentions, _type_cross_attentions, _type_decoder_hidden_states, _type_past_key_values, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_scores, _dflt_logits, _dflt_encoder_attentions, _dflt_encoder_hidden_states, _dflt_decoder_attentions, _dflt_cross_attentions, _dflt_decoder_hidden_states, _dflt_past_key_values, _return_type):
+ def __init__(self,sequences:_type_sequences,scores:_type_scores=_dflt_scores,logits:_type_logits=_dflt_logits,encoder_attentions:_type_encoder_attentions=_dflt_encoder_attentions,encoder_hidden_states:_type_encoder_hidden_states=_dflt_encoder_hidden_states,decoder_attentions:_type_decoder_attentions=_dflt_decoder_attentions,cross_attentions:_type_cross_attentions=_dflt_cross_attentions,decoder_hidden_states:_type_decoder_hidden_states=_dflt_decoder_hidden_states,past_key_values:_type_past_key_values=_dflt_past_key_values)->_return_type:
+  self.sequences=sequences
+  self.scores=scores
+  self.logits=logits
+  self.encoder_attentions=encoder_attentions
+  self.encoder_hidden_states=encoder_hidden_states
+  self.decoder_attentions=decoder_attentions
+  self.cross_attentions=cross_attentions
+  self.decoder_hidden_states=decoder_hidden_states
+  self.past_key_values=past_key_values
+  self.__post_init__()
+ return __init__

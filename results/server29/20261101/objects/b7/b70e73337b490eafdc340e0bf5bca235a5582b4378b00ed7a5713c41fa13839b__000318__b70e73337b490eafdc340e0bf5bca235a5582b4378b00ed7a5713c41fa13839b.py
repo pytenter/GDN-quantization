@@ -1,0 +1,1 @@
+lambda _cls, resolution_callback, def_: _tuple_new(_cls, (resolution_callback, def_))

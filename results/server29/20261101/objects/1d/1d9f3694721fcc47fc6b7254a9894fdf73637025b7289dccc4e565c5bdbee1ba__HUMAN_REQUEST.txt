@@ -1,0 +1,812 @@
+# Codex 任务：Qwen3.5-9B GDN — HMMT February 2026 四配置正式评测
+
+## 0. 总体目标与工程授权
+
+本任务是 Qwen3.5-9B GDN Recurrent-State Quantization 研究的一次独立 Benchmark 验证。
+
+此前已经完成 AIME26 的 PACE + LeapQuant-style Direct Read 对照：
+
+- `LQUnroll+dP8`：20/30，66.67%。
+- `LQUnroll+dP16`：24/30，80.00%。
+
+上述结果为历史参考，不直接迁移到本轮 HMMT。
+
+本次计划在 **HMMT February 2026 全部 33 道题**上运行四个固定配置，每题 seed1 生成一次，总计 132 条新轨迹。
+
+任务名称：
+
+`QWEN_GDN_HMMT26_FP_LQ8_HLQ8_LQ16_V1`
+
+本任务授权完成必要的代码审计、最小实现修改、非 HMMT 数值验证、正式推理、评分、统计、故障恢复和报告封存。
+
+无需逐步骤请求人工确认。
+
+但必须遵守科学门禁：如果发现模型实现错误、Hadamard 坐标不一致或评分规则未冻结，不得带着问题启动对应配置的正式生成。
+
+不设置人为的 16 GPUh 上限。资源使用必须如实记录。
+
+禁止根据 HMMT 中途准确率修改量化方法。
+
+---
+
+## 1. 正式四配置
+
+| ID | 配置名称 | State 精度 | Rotation | Decode Period |
+|---|---|---|---|---|
+| C0 | `FP_STATE` | FP32 | None | None |
+| C1 | `LQUnroll+dP8` | Mixed INT4/INT8 | None | 8 |
+| C2 | `H+LQUnroll+dP8` | Mixed INT4/INT8 | H128 Key-side | 8 |
+| C3 | `LQUnroll+dP16` | Mixed INT4/INT8 | None | 16 |
+
+正式任务总数：
+
+- 33 道题。
+- 4 种配置。
+- 1 个 seed。
+- 132 条唯一新生成轨迹。
+
+### 1.1 三个量化配置共同约束
+
+必须沿用当前已经完成 AIME26 的 LQUnroll 正式实现：
+
+- 模型：Qwen3.5-9B GDN。
+- GDN Layers：24。
+- 每层 32 个 State Heads。
+- 每个 Head 的 State 为 128×128。
+- 24 个 INT4 Heads + 8 个 INT8 Heads。
+- Head mask 使用历史冻结版本。
+- Key-axis G32。
+- Asymmetric Affine Quantization。
+- 整数 Zero Point。
+- FP16 scale mantissa + optional INT8 exponent。
+- Decode Key 使用现有 G32 INT4 编码。
+- LeapQuant-style Window Unrolling / Direct Read。
+- FP32 Delta Update 缓存。
+- FP32 log-decay 缓存。
+- 无 Compensator Tokens。
+- 无 Residual Smoothing。
+- 无新的 Rotation 训练。
+
+C1 和 C3 必须复用此前 AIME26 已验证通过的实际源码，而不是重新实现一个数值行为可能不同的版本。
+
+C2 在 C1 基础上新增固定 H128 Key-side Rotation。
+
+### 1.2 必须保持的因果对照关系
+
+C1 vs C0：
+
+评估 Mixed INT4/INT8 + dP8 相对于 FP32 State 的推理能力损失。
+
+C2 vs C1：
+
+只引入固定 Key-side H128 Rotation。
+
+C3 vs C1：
+
+只改变 `decode_period=8 → 16`。
+
+除了上述预定变化，不允许出现其他算法差异。
+
+本轮不增加 `H+LQUnroll+dP16`，因此不评估 Rotation × Period 的完整交互效应。
+
+---
+
+## 2. 源码身份检查
+
+先定位此前正式完成的：
+
+`PACE48_LQUNROLL_DP8_V1`
+
+`PACE48_LQUNROLL_DP16_V1`
+
+以及它们对应的正式交付目录、manifest 和源码 SHA256。
+
+重点检查：
+
+- `src/pace_buffer.py`
+- `src/pace_runtime.py`
+- `src/pace_quantizer.py`
+- 对应 Direct Read GPU Kernel
+- `vendor/modeling_qwen3_5.py`
+- 正式模型加载器
+- AIME26 正式 worker 和生成入口
+
+必须核对：
+
+1. dP8 和 dP16 的最终执行源码。
+2. 当前 LQUnroll 数值验证状态。
+3. Head mask 身份。
+4. Quantizer / K4 codec 身份。
+5. Model/tokenizer revision。
+6. 模型权重 dtype。
+7. CUDA/PyTorch/Triton 版本。
+8. 原数值与性能门禁。
+9. 实际 deterministic_algorithms 设置。
+
+不能只根据目录名或 Git HEAD 假定源码与此前正式实验一致。
+
+建立新的独立实验目录，不得覆盖或修改已经封存的 AIME26 实验。
+
+如果正式源码版本或量化器身份无法确认，停止相应配置启动，并报告阻塞。
+
+---
+
+## 3. HMMT 数据集冻结
+
+官方数据集：
+
+https://huggingface.co/datasets/MathArena/hmmt_feb_2026
+
+官方评测项目：
+
+https://github.com/eth-sri/matharena
+
+使用数据集实际存在的：
+
+`split="train"`
+
+该 split 是官方发布方式，本任务仅用于评测，不用于训练。
+
+必须确认：
+
+- 数据集精确包含 33 道题。
+- `problem_idx` 唯一。
+- 字段 `problem` 非空。
+- 字段 `answer` 非空。
+- 字段 `problem_type` 正确读取。
+- 所有四组使用完全相同的题目顺序。
+- 不删除任何题目，不抽样子集。
+
+按 `problem_idx` 升序冻结题目列表。
+
+记录：
+
+- Hugging Face Dataset revision/commit。
+- 每道题原文 SHA256。
+- 全量题目集合 SHA256。
+- Gold answer 文件 SHA256。
+- Prompt 模板 SHA256。
+
+如果无法在线下载，可使用已经存在的官方数据快照，但必须核验内容、题数和版本身份；不能用手工改写的题目替代。
+
+严禁将 `answer` 字段传入模型 Prompt、推理上下文或任何生成时可访问的 metadata。
+
+不使用 HMMT 题目或答案进行校准、Head Selection、Rotation Selection 或 Quantizer 调参。
+
+此前 RepoBench-P 校准工件应保持冻结。
+
+---
+
+## 4. 统一生成协议
+
+本轮建立独立的 HMMT Frozen Protocol。
+
+所有四个配置使用：
+
+```yaml
+model: Qwen3.5-9B
+dataset: MathArena/hmmt_feb_2026
+split: train
+questions: 33
+seed: 1
+samples_per_problem: 1
+thinking: true
+temperature: 0.6
+top_p: 0.95
+top_k: 20
+max_new_tokens: 65536
+```
+
+其他采样相关设置，如：
+
+- `min_p`
+- `presence_penalty`
+- `frequency_penalty`
+- `repetition_penalty`
+- EOS / stop tokens
+- sampler backend
+- random generator 初始化
+- deterministic_algorithms
+
+必须从此前正式 Qwen runner 中读取真实语义，并在新 HMMT 配置中显式冻结。
+
+不要依靠未记录的框架默认值。
+
+本轮明确采用 temperature 0.6 和 65,536 Token 生成上限，因此属于新的 HMMT 协议，不能直接声称与此前 AIME26 的 81,920 Token、历史 sampling 设置完全相同。
+
+如果模型最大上下文长度不足以满足原计划，必须报告阻塞，不允许偷偷降低 max_new_tokens。
+
+所有配置使用同样的 Chat Template、System Prompt、User Prompt、Thinking 模式和最终答案格式要求。
+
+建议优先复用已验证的 Qwen 数学推理 Prompt 结构，只更换题目正文，并统一要求将最终答案明确放在 `\boxed{}` 中。
+
+正式生成之前冻结最终 Prompt 的完整字节与 hash。
+
+每道题每种配置必须独立初始化同一 seed1 的 RNG；任务分配顺序和执行 GPU 不能隐式改变采样种子。
+
+不要因为四组生成内容不同而进行重采样或改变截断条件。
+
+---
+
+## 5. C0：FP_STATE 基线
+
+C0 必须是真正的 FP32 Recurrent State 基线。
+
+具体要求：
+
+- 模型主权重保持 BF16。
+- 模型常规激活沿用原模型路径。
+- GDN Recurrent State 使用 FP32。
+- 不进行 State INT4/INT8 量化。
+- 不执行周期性 State QDQ。
+- 不启用 K4 更新缓存。
+- 不启用 Hadamard。
+- 不把 BF16 State 冒充 FP32。
+- 不把历史 AIME 的 FP 正确题数直接填入 HMMT。
+
+优先使用此前已经验证过的 native FP_STATE 实现。
+
+先进行短序列数值检查，保证缓存更新、Prefill/Decode 接口及采样路径正确。
+
+C0 必须实际生成新的 33 条 HMMT 轨迹。
+
+---
+
+## 6. C1 / C3：复用已有 LQUnroll
+
+C1：
+
+`Mixed4/8 + LQUnroll + dP8`
+
+C3：
+
+`Mixed4/8 + LQUnroll + dP16`
+
+复用原有的：
+
+- Packed base。
+- Direct Read Kernel。
+- K4 编码。
+- FP32 Delta Update。
+- Boundary Reconstruction。
+- Mixed INT4/INT8 量化写回。
+
+不允许退回原 PACE 每 Token 完整 FP32 Replay。
+
+### 6.1 周期边界
+
+dP8：
+
+第 8、16、24……次 Decode Forward 完成更新和输出后，量化写回一次 State。
+
+dP16：
+
+第 16、32、48……次 Decode Forward 完成更新和输出后，量化写回一次 State。
+
+沿用历史 `generated_tokens - 1` 的 Decode Forward 计数语义。
+
+最后一个 sampled EOS 不应错误地作为已经进入 GDN 的 Token。
+
+未满窗口终止时沿用：
+
+`finalize(policy="preserve")`
+
+不能额外量化尾部 State。
+
+---
+
+## 7. C2：Key-side Hadamard 正确接入
+
+这是本轮唯一需要新增算法代码的配置。
+
+命名：
+
+`H+LQUnroll+dP8`
+
+Hadamard 规格：
+
+- H128。
+- 固定正交 Hadamard。
+- 无训练参数。
+- 不进行可学习 Rotation。
+- 不跨 Head 混合。
+- 不旋转 Value 维度。
+- Head mask 不改变。
+- Period 固定为 8。
+
+### 7.1 正确的坐标变换
+
+GDN 的 State 约定：
+
+`S: [B, H, K, V]`
+
+对于 Key-side Hadamard：
+
+`S_rot = H · S`
+
+`k_rot = H · k`
+
+`q_rot = H · q`
+
+真实代码必须检查矩阵乘法方向、维度布局和 decay 的广播方式。
+
+如果原更新为：
+
+`S_t = D_t S_(t-1) + k_t u_t^T`
+
+需要验证当前 GDN 的 `D_t` 与 H 是否可交换。
+
+只有在变换保持递推语义等价的前提下才能直接使用上述坐标映射。
+
+不能把 KDA 的 Value-side Rotation 实现照搬到 GDN。
+
+### 7.2 Prefill 和 Decode 必须一致
+
+Hadamard 必须同时作用于：
+
+- Prefill 对应的 Key 计算路径。
+- Decode 的 Key 计算路径。
+- Query readout。
+- State 持久表示坐标系。
+- Direct Read 的基础 State 和更新向量逻辑。
+
+必须特别检查：
+
+- 是否在 K normalization 前或后应用旋转。
+- 是否与原 BF16 / FP32 cast 顺序兼容。
+- 是否重复旋转 State。
+- 是否出现 Prefill Endpoint Double Rotation。
+- 是否将已旋转 State 错误地按 Native Basis 解释。
+- 是否在每个周期额外发生一次无意义的逆旋转。
+- 是否改变原有 K4 编码的分组规则。
+
+### 7.3 State 常驻旋转坐标
+
+建议采用一致的 Resident Key Basis：
+
+整个 Decode 过程中的 Packed Base、缓存 Key 和 Query Readout 都在统一的 Key-side Hadamard 坐标系中。
+
+不要在周期边界不断切换旋转坐标。
+
+### 7.4 Hadamard 验证门禁
+
+正式 HMMT 之前，先进行非 HMMT 数值验证。
+
+第一步：不量化，只使用 FP32 State。
+
+比较 Native FP 与 Key-side Hadamard FP 的 GDN Output、State 坐标变换结果和最终模型输出。
+
+第二步：打开 Mixed INT4/INT8 和 dP8。
+
+比较：
+
+- H+LQUnroll Direct Read。
+- 对应旋转坐标系中的 Dense Replay Reference。
+
+至少覆盖 Decode 长度：
+
+`1, 2, 7, 8, 9, 15, 16, 17, 31, 32`
+
+验证：
+
+- Delta Update。
+- Query Readout。
+- State Boundary Reconstruction。
+- Packed INT4/INT8 codes。
+- Scale / Zero Point / Exponent。
+- Writeback Count。
+- Pending Buffer。
+- Nonfinite。
+- Tensor Shape / dtype。
+- Prefill / Decode 连续性。
+
+数值差异应按预先冻结的误差门禁判定，不能为了通过实验随意放宽容差。
+
+若 C2 Hadamard 门禁失败，不得运行 C2 正式 HMMT；已验证的其他独立配置可以继续，但最后必须报告为部分完成，不能制造四配置完整结果。
+
+---
+
+## 8. HMMT 数学评分器
+
+这次不能直接使用 AIME Frozen V4 的 0～999 整数正确性判断。
+
+HMMT 包含：
+
+- 正整数。
+- 负整数。
+- 有理数。
+- 分数 LaTeX。
+- 代数表达式。
+- 其他可解析的数学结果。
+
+优先研究并复用官方 MathArena HMMT 的 Final Answer 评分流程：
+
+https://github.com/eth-sri/matharena
+
+对应官方 Competition 配置：
+
+`hmmt/hmmt_feb_2026.yaml`
+
+固定官方仓库 commit 和评分依赖。
+
+若必须编写适配评分器，必须在正式实验前完成并冻结。
+
+### 8.1 答案提取
+
+所有配置统一：
+
+- 从完整输出中提取最终提交答案。
+- 正确识别 `\boxed{}`。
+- 支持常见 LaTeX 分数和数学表达式。
+- 不能因为推理过程中曾出现正确答案就判为正确。
+- 不能在提取失败时从全文中任意搜索与 Gold 相符的子串。
+- 保留原始提取字符串和解析结果。
+
+### 8.2 数学等价判定
+
+必须覆盖：
+
+- `1/2` 与 `\frac{1}{2}`。
+- `0.5` 与 `1/2`。
+- 负分数。
+- 可精确化简的符号表达式。
+- 无法解析的答案。
+- 多个 boxed answers。
+- EOS 未正常结束。
+- Length-cap 截断。
+
+优先使用经过验证的数学解析库与 SymPy 精确等价逻辑。
+
+不得使用未经约束的 Python `eval` 执行模型输出。
+
+对于精确数学题，不能随意设置宽松浮点容差把不相等的答案判为正确。
+
+解析失败时保留 `UNRESOLVED` / `PARSE_FAILED` 的内部诊断状态；最终如何计分必须在正式生成前写入冻结评分协议。
+
+如果需要人工复核，使用不暴露配置身份的盲审，并保存裁决依据。
+
+### 8.3 评分复核
+
+完成后对 132 条轨迹执行两次独立 CPU 评分。
+
+两次必须使用相同的冻结评分规则，但独立执行并核对输出。
+
+如果出现不一致或解析异常，应报告具体题目并按预先冻结的规则裁决，不能根据哪个配置得分更高而调整评分规则。
+
+不得使用 HMMT Gold 来修改 Prompt、量化器或模型输出。
+
+---
+
+## 9. GPU 执行与任务分发
+
+首先检查现有 GPU0～GPU3 的进程和真实资源占用。
+
+当前可能仍存在其他 PACE / Pure INT4 / dP32 测试进程。
+
+要求：
+
+- 不抢占其他任务。
+- 不终止已有 Worker。
+- 不修改正在运行实验的文件。
+- 不使用未确认空闲的 GPU。
+- 优先使用已有 Qwen TP1 独立 Worker 环境。
+- 不自动改成跨卡 Tensor Parallel。
+- 不假设 4 张 RTX3090 必须同时空闲。
+
+如果有多个可用 GPU，允许把 132 条任务分发到独立 Worker。
+
+建议建立原子化任务领取机制，避免固定队列导致 GPU 空闲而其他 GPU 积压。
+
+任务唯一主键：
+
+`(experiment_id, config_id, problem_idx, seed)`
+
+每条任务只能有一个有效正式结果。
+
+允许按照题目或配置分发，但每个 Worker 必须使用完全相同的冻结源码、模型和运行协议。
+
+### 9.1 断点恢复
+
+恢复时必须验证：
+
+- 配置身份。
+- Model SHA / revision。
+- Source SHA。
+- Dataset SHA。
+- Prompt SHA。
+- Seed。
+- 完整生成轨迹。
+- Token 计数。
+- 运行终态。
+
+已经合法完成的轨迹不重新生成。
+
+失败轨迹如需恢复，应标记失败原因及重试次数，并确保不会同时留下两个被计分的版本。
+
+不能因为某题错误就重新采样。
+
+### 9.2 运行计账
+
+记录：
+
+- Worker PID。
+- 物理 GPU UUID。
+- CUDA_VISIBLE_DEVICES 映射。
+- Prompt Token 数。
+- Generated Token 数。
+- Actual Decode Forward 数。
+- EOS / Length-cap。
+- Generation Wall。
+- Prefill Wall。
+- Decode Wall。
+- 固定口径 Decode tokens/s。
+- CUDA peak allocated / reserved。
+- Live Recurrent State bytes。
+- Update Buffer payload / capacity。
+- Quantization Writeback Count。
+- Nonfinite / Runtime Errors。
+
+GPU 计账区分：
+
+- Generation Wall。
+- Dispatch-wall GPU-accounting Hours。
+- 实际 GPU active 时间（如果测得）。
+
+不得把 dispatch-wall 称为实测 GPU active 时间。
+
+---
+
+## 10. 正式启动顺序与冻结
+
+### Phase A：身份和数据检查
+
+确认：
+
+- 四配置源码。
+- 33 道题。
+- 正式 Prompt。
+- Sampling Protocol。
+- Gold isolation。
+- 评分器。
+- 运行环境。
+
+### Phase B：非 HMMT 数值验证
+
+完成：
+
+- FP State 路径。
+- 原 LQUnroll dP8/dP16。
+- H128 坐标等价。
+- H+LQUnroll dP8 Direct Read。
+- Prefill / Decode 生命周期。
+- K4 / Mixed4/8 状态存储。
+- Writeback / EOS / Tail 语义。
+
+### Phase C：实验封存
+
+生成完整 Frozen Manifest。
+
+包含模型、数据、Prompt、源码、配置、Seed、采样、评分和执行环境信息。
+
+不得在查看 HMMT 正式准确率后改变冻结参数。
+
+### Phase D：132 条正式生成
+
+执行：
+
+- C0：33 条。
+- C1：33 条。
+- C2：33 条。
+- C3：33 条。
+
+全部使用 seed1。
+
+只统计新 HMMT 轨迹，不复用任何历史 AIME 答案。
+
+### Phase E：评分与结果封存
+
+使用冻结评分器完成评分、配对统计和工件完整性审计。
+
+只在科学结论中使用完成且资格有效的结果。
+
+---
+
+## 11. 结果分析要求
+
+### 11.1 主结果表
+
+必须输出：
+
+| Configuration | Correct | Accuracy | ΔFP | Mean Tokens | EOS | Length-cap |
+|---|---:|---:|---:|---:|---:|---:|
+| FP_STATE | | | — | | | |
+| LQUnroll+dP8 | | | | | | |
+| H+LQUnroll+dP8 | | | | | | |
+| LQUnroll+dP16 | | | | | | |
+
+其中 `ΔFP` 表示同一批 33 道题、相同新 HMMT 协议下，与 FP 的正确题数或准确率百分点差异。
+
+不能使用旧 AIME FP 结果作为 HMMT FP。
+
+### 11.2 逐题配对
+
+生成：
+
+`paired_results.csv`
+
+必须至少包含：
+
+- problem_idx
+- problem_type
+- FP 正确性
+- LQ8 正确性
+- H+LQ8 正确性
+- LQ16 正确性
+- 各配置生成长度
+- EOS / Length-cap
+- Final answer
+- Parser status
+- Scorer result
+- Source artifact path
+
+保留原始轨迹与评分记录的可追溯关系。
+
+### 11.3 三组主要比较
+
+Primary A：
+
+`LQUnroll+dP8 vs FP_STATE`
+
+Primary B：
+
+`H+LQUnroll+dP8 vs LQUnroll+dP8`
+
+Primary C：
+
+`LQUnroll+dP16 vs LQUnroll+dP8`
+
+每组报告：
+
+- Both Correct。
+- A Only Correct。
+- B Only Correct。
+- Both Wrong。
+- Net Correct Difference。
+- Accuracy Difference。
+- Exact McNemar p-value。
+
+对于多组检验和 33 道题的小样本限制，应保持探索性解释，不把未显著差异宣称为生成等价。
+
+可以额外给出与 FP 的其他描述性比较，但不得把所有比较都解释为独立主假设。
+
+### 11.4 生成行为诊断
+
+记录并分析：
+
+- Mean / Median Generated Tokens。
+- EOS rate。
+- Length-cap rate。
+- 32-gram repetition ratio。
+- Nonfinite。
+- Runtime error。
+- Quantization Writeback Count。
+- State storage bytes。
+- Decode Buffer peak payload。
+- Generation wall。
+
+不同配置可能生成不同长度，因此不能直接用完整生成 wall 的比值宣称 GPU Kernel 加速。
+
+### 11.5 吞吐分析
+
+本轮优先目标是 HMMT 准确率验证。
+
+允许报告 HMMT 的实际 decode throughput，但应注明它受到输出长度、硬件负载及请求调度影响。
+
+如果要比较算法吞吐，应复用已经验证的同输入、固定工作量 benchmark，而不是以不同答案轨迹的总时长作为严格性能证明。
+
+不需要为本次 HMMT 自动新增第五种性能配置。
+
+---
+
+## 12. 交付工件
+
+创建独立目录：
+
+`QWEN_GDN_HMMT26_FP_LQ8_HLQ8_LQ16_V1/`
+
+至少包含：
+
+- `README.md`
+- `CONFIG_FROZEN.json`
+- `DATASET_MANIFEST.json`
+- `PROMPT_AND_SAMPLER_MANIFEST.json`
+- `SOURCE_IDENTITY.json`
+- `ROTATION_PARITY_REPORT.md`
+- `DIRECT_READ_VALIDATION.md`
+- `SCORER_PROTOCOL.md`
+- `SCORER_VALIDATION.md`
+- `GPU_EXECUTION_LOG.md`
+- `per_question_results/`
+- `paired_results.csv`
+- `accuracy_summary.csv`
+- `generation_diagnostics.json`
+- `memory_accounting.json`
+- `runtime_accounting.json`
+- `HMMT26_EXPERIMENT_REPORT.md`
+- `MANIFEST.sha256`
+
+所有源代码修改必须另存新工作目录或独立版本，不覆盖此前 AIME26 工件。
+
+---
+
+## 13. 最终报告回答的问题
+
+正式完成后，使用中文回答：
+
+1. FP32 Qwen3.5-9B 在 HMMT February 2026 上正确多少题？
+2. LQUnroll+dP8 相对 FP 损失多少题？
+3. 加入 H128 Hadamard 后，dP8 改善还是退化？
+4. dP16 是否继续优于 dP8？
+5. dP16 在 AIME26 中的正向结果，是否在 HMMT 中得到方向性复现？
+6. 是否出现新的生成长度、EOS、截断或重复异常？
+7. Hadamard 的提升或退化是否伴随新的量化数值异常？
+8. 四种配置各自真实使用多少 State 与 Buffer 空间？
+9. 哪个配置在当前 HMMT 协议下的准确率最好？
+10. 哪些结论具有配对证据，哪些仅是描述性观察？
+
+最终必须明确：
+
+- HMMT 是新的评测数据集。
+- 只有一个 seed。
+- 33 题属于小样本。
+- 与 DAMP 论文的每题多次采样协议不同。
+- 本轮不能宣称复现了 DAMP 的原论文准确率。
+- 不得把 AIME26 与 HMMT 的不同分数直接作为量化器跨协议改进的因果证据。
+
+---
+
+## 14. 严格停止条件
+
+出现以下情况时，不得启动受影响配置的正式实验：
+
+- 正式模型或源码身份无法确定。
+- 33 题数据集内容无法冻结。
+- Gold answer 意外进入生成 Prompt。
+- FP State 路径错误。
+- Hadamard Key-side 坐标不一致。
+- Prefill/Decode 重复旋转。
+- Direct Read 数值门禁不通过。
+- Head mask 与原版本不同。
+- K4 codec 与原版本不同。
+- Quantizer 发生非授权修改。
+- 评分器无法正确处理分数和表达式。
+- 缺少 GPU 资源。
+- 原冻结实验工件存在覆盖风险。
+
+如果只是某个配置的吞吐下降、显存增加或生成质量较差，不得因此提前停止该配置，也不得临时调整量化器。
+
+允许保留有效的部分结果，但必须明确标记 `PARTIAL`，不得将其宣称为四配置全部完成。
+
+最终状态采用：
+
+- `COMPLETE_132`
+- `PARTIAL_WITH_VALIDATED_ARTIFACTS`
+- `STOP_SOURCE_IDENTITY_FAILED`
+- `STOP_ROTATION_PARITY_FAILED`
+- `STOP_DIRECT_READ_VALIDATION_FAILED`
+- `STOP_SCORER_VALIDATION_FAILED`
+- `STOP_DATASET_INTEGRITY_FAILED`
+- `STOP_GPU_RESOURCE_BLOCKED`
+- `STOP_RUNTIME_BLOCKED`
+
+## 15. 执行要求
+
+本任务不仅要求编写实验计划，还要求在实际服务器环境中完成必要代码实现与验证，并在门禁通过、资源可用的情况下实际启动四配置 HMMT 正式评测。
+
+不得虚报运行、评分或完成状态。
+
+如有已经合法完成的任务，可依照冻结身份验证后恢复。
+
+全部完成后封存结果，输出正式 Markdown 报告，并停止。
+
+不要自动追加新的 Hadamard+dP16、PureINT4、dP32、Compensator、Residual Smoothing、其他 seed 或其他 Benchmark。

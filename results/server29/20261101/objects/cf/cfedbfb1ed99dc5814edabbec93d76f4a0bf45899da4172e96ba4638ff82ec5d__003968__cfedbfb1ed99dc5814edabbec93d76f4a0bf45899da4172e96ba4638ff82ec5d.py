@@ -1,0 +1,13 @@
+def __create_fn__(_type_dim, _type_broadcast_buffers, _type_bucket_cap_mb, _type_find_unused_parameters, _type_check_reduction, _type_gradient_as_bucket_view, _type_static_graph, _type_comm_hook, _type_comm_wrapper, _type_comm_state_option, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_dim, _dflt_broadcast_buffers, _dflt_bucket_cap_mb, _dflt_find_unused_parameters, _dflt_check_reduction, _dflt_gradient_as_bucket_view, _dflt_static_graph, _dflt_comm_hook, _dflt_comm_wrapper, _dflt_comm_state_option, _return_type):
+ def __init__(self,dim:_type_dim=_dflt_dim,broadcast_buffers:_type_broadcast_buffers=_dflt_broadcast_buffers,bucket_cap_mb:_type_bucket_cap_mb=_dflt_bucket_cap_mb,find_unused_parameters:_type_find_unused_parameters=_dflt_find_unused_parameters,check_reduction:_type_check_reduction=_dflt_check_reduction,gradient_as_bucket_view:_type_gradient_as_bucket_view=_dflt_gradient_as_bucket_view,static_graph:_type_static_graph=_dflt_static_graph,comm_hook:_type_comm_hook=_dflt_comm_hook,comm_wrapper:_type_comm_wrapper=_dflt_comm_wrapper,comm_state_option:_type_comm_state_option=_HAS_DEFAULT_FACTORY)->_return_type:
+  self.dim=dim
+  self.broadcast_buffers=broadcast_buffers
+  self.bucket_cap_mb=bucket_cap_mb
+  self.find_unused_parameters=find_unused_parameters
+  self.check_reduction=check_reduction
+  self.gradient_as_bucket_view=gradient_as_bucket_view
+  self.static_graph=static_graph
+  self.comm_hook=comm_hook
+  self.comm_wrapper=comm_wrapper
+  self.comm_state_option=_dflt_comm_state_option() if comm_state_option is _HAS_DEFAULT_FACTORY else comm_state_option
+ return __init__

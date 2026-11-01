@@ -1,0 +1,1 @@
+lambda _cls, float_dtype, complex_dtype, int_dtype: _tuple_new(_cls, (float_dtype, complex_dtype, int_dtype))

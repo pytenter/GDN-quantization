@@ -1,0 +1,10 @@
+{
+  "task_id": "QWEN_GDN_DUAL_M_EQUIVALENT_SPEEDUP_V1",
+  "status": "NOT_RUN_NO_CANDIDATE",
+  "candidate_created": false,
+  "reason": "Case C：真实128-token H_DUAL_M profile中，模型forward CPU owner范围27.217554568秒，占完整28.763418689秒的94.621%；QDQ与原安全检查owner为1.226533067秒（4.264%）。真实24层batched LS设备活动中位599.5825微秒/token，仅占encode设备活动17.5767%，不能当作完整wall；完整模型存在3767个真实kernel活动/token，主要CPU self耗时在aten::mm、model_forward与cudaLaunchKernel。三次非instrumented H_DualM中位6.801314154 token/s，与H_C128的6.662540440接近且未观察到LS主导的额外端到端耗时。故不实施codec融合候选，不更改模型/GDN数学，按授权止损；512/2048扩展与候选A/B/C资格均NOT_RUN。删除整个instrumented QDQ owner仅有条件估计1.044541倍，非instrumented严格加速上限仍UNKNOWN，不能承诺生产加速。",
+  "root_decision_sha256": "c4768c02677b75fbdfabcf86bddc8994f144bb6a1f5e13f492d76f938afc83f6",
+  "phase0_profile_sha256": "85a91783ac8aa2ed9139a7b6dfdd1a7eb71e539c05998f53f6b8e4d8497fe86c",
+  "scope": "Nooptimizedimplementation or old-vs-new numerical/performancecomparison executed",
+  "gate_scope": "OPTIMIZED_RUNTIME_PROFILE"
+}

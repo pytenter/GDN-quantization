@@ -1,0 +1,1367 @@
+Android/appSupervisory/src/main/java/br/com/brolam/oha/supervisory/data/OhaEnergyUseContract.java
+public class OhaEnergyUseContract {
+
+    /*Definir a URL base de acesso:*/
+    public static final String CONTENT_AUTHORITY = "br.com.brolam.oha.supervisory.energy.use";
+    public static final Uri BASE_CONTENT_URI = Uri.parse("content://" + CONTENT_AUTHORITY);
+
+    /*Definir o caminho por recurso:*/
+    public static final String PATH_LOG = "log";
+    public static final String PATH_DAYS = "days";
+    //Parêmetro para informar a data final para consultar a utilização de energia por dia:
+    public static final String PATH_DAYS_PARAM_END_DATE = "endDate";
+    public static final String PATH_BILL = "bill";
+
+    /*Definir as URLs:*/
+    public static final Uri CONTENT_URI_LOG = BASE_CONTENT_URI.buildUpon()
+            .appendPath(PATH_LOG)
+            .build();
+
+    public static final Uri CONTENT_URI_DAYS = BASE_CONTENT_URI.buildUpon()
+            .appendPath(PATH_DAYS)
+            .build();
+
+    /**
+     * Recupear a URI para consultar a utilização de energia por dia {@link br.com.brolam.oha.supervisory.data.cursors.OhaEnergyUseDaysCursor}
+     * @param endDate informar a data final para limitar o curosr até a data informada.
+     */
+    public static Uri getUriDays(Date endDate){
+       return CONTENT_URI_DAYS.buildUpon().appendQueryParameter(PATH_DAYS_PARAM_END_DATE, Long.toString(endDate.getTime())).build();
+    }
+
+    public static final Uri CONTENT_URI_BILL = BASE_CONTENT_URI.buildUpon()
+            .appendPath(PATH_BILL)
+            .build();
+
+    /**
+     * Recuperar a Uri de uma conta de energia por ID para ser utilizada nas operações de Consulta,
+     * alteração e exclusão.
+     * @param id informar uma ID válido.
+     * @return Uri com o parâmetro _id
+     */
+    public static Uri getUriBillById(int id){
+        return CONTENT_URI_BILL.buildUpon().appendQueryParameter(BaseColumns._ID, String.valueOf(id)).build();
+    }
+
+    /**
+     * Armazenar os registros de utilização da energia.
+     */
+    public static final class EnergyUseLogEntry implements BaseColumns {
+        //Definir o nome  da tabela no banco de dados
+        public static final String TABLE_NAME = "energyUserLog";
+
+        //Duração em segundos entre esse log e o log anterior.
+        public static final String COLUMN_DURATION = "duration";
+        //Tensão média na Duração do log.
+        public static final String COLUMN_VOLTAGE = "voltage";
+        //Watts média da fase 1 na Duração do log.
+        public static final String COLUMN_WATTS_1 = "watts1";
+        //Watts média da fase 2 na Duração do log.
+        public static final String COLUMN_WATTS_2 = "watts2";
+        //Watts média da fase 3 na Duração do log.
+        public static final String COLUMN_WATTS_3 = "watts3";
+        //Watts média das fases 1,2 e 3 na Duração do log.
+        public static final String COLUMN_WATTS_TOTAL = "watts_total";
+
+        /*Campos calculado por Watts Horas: */
+        //Recuperar o período de disponibilidade de logs:
+        public static final String[] COLUMNS_CALC_PERIOD = new String[]{
+                String.format("MIN(%s)", _ID),
+                String.format("MAX(%s)", _ID)
+        };
+        //Índices referente a lista de campos COLUMNS_CALC_PERIOD, favor sempre utilizar
+        //esses Índices para acessar as colunas no cursor.
+        public static final byte INDEX_COLUMNS_CALC_PERIOD_BEGIN = 0;
+        public static final byte INDEX_COLUMNS_CALC_PERIOD_END = 1;
+
+        public static final String[] COLUMNS_CALC_TOTAL = new String[]{
+                String.format("SUM(%s)", COLUMN_DURATION),
+                String.format("SUM((%s * %s) / 3600.00)", COLUMN_WATTS_TOTAL, COLUMN_DURATION ),
+                String.format("MAX(%s)", COLUMN_WATTS_TOTAL),
+                //Recuperar o custo por KWH:
+                String.format("(SELECT AVG(%s) FROM %s WHERE %s.%s BETWEEN %s AND %s)", EnergyUseBillEntry.COLUMN_KWH_COST, EnergyUseBillEntry.TABLE_NAME, EnergyUseLogEntry.TABLE_NAME, EnergyUseLogEntry._ID, EnergyUseBillEntry.COLUMN_FROM, EnergyUseBillEntry.COLUMN_TO),
+        };
+
+        //Índices referente a lista de campos COLUMNS_CALC, favor sempre utilizar
+        //esses Índices para acessar as colunas no cursor.
+        public static final byte INDEX_COLUMN_CALC_DURATION_SUN = 0;
+        public static final byte INDEX_COLUMN_CALC_WH_TOTAL_SUN = 1;
+        public static final byte INDEX_COLUMN_CALC_WATTS_MAX = 2;
+        public static final byte INDEX_COLUMN_CALC_KWH_COST = 3;
+        //Somente disponível no {@link OhaEnergyUseDaysCursor}
+        public static final byte INDEX_COLUMN_CALC_DATE = 4;
+
+        /**
+         * Recuperar o SQL para criar a tabela energyUserLog no banco de dados.
+         */
+        public static String getSQLCreate(){
+            return String.format("CREATE TABLE %s ( %s LONG PRIMARY KEY, %s REAL, %s REAL, %s REAL, %s REAL, %s REAL, %s REAL)",
+                    TABLE_NAME,
+                    _ID,
+                    COLUMN_DURATION,
+                    COLUMN_VOLTAGE,
+                    COLUMN_WATTS_1,
+                    COLUMN_WATTS_2,
+                    COLUMN_WATTS_3,
+                    COLUMN_WATTS_TOTAL);
+        }
+
+        /**
+         * Analisar e validar um registro de utilização de energia
+         */
+        public static ContentValues parse(Date dateTime, double duration, double voltage, double watts1, double watts2, double watts3){
+            ContentValues contentValues = new ContentValues();
+            contentValues.put(_ID, dateTime.getTime());
+            contentValues.put(COLUMN_DURATION, duration );
+            contentValues.put(COLUMN_VOLTAGE, voltage );
+            contentValues.put(COLUMN_WATTS_1, watts1 );
+            contentValues.put(COLUMN_WATTS_2, watts2 );
+            contentValues.put(COLUMN_WATTS_3, watts3 );
+            contentValues.put(COLUMN_WATTS_TOTAL, watts1 + watts2 + watts3 );
+            return contentValues;
+        }
+
+        public enum FilterWatts{
+            NONE,
+            PHASE1,
+            PHASE2,
+            PHASE3,
+            TOTAL;
+
+            public String getFieldName(){
+                switch (this){
+                    case PHASE1: return EnergyUseLogEntry.COLUMN_WATTS_1;
+                    case PHASE2: return EnergyUseLogEntry.COLUMN_WATTS_2;
+                    case PHASE3: return EnergyUseLogEntry.COLUMN_WATTS_3;
+                    case TOTAL: return EnergyUseLogEntry.COLUMN_WATTS_TOTAL;
+                    default:return EnergyUseLogEntry.COLUMN_WATTS_TOTAL;
+                }
+            }
+        }
+    }
+
+    /**
+     * Armazenar a conta de utilização da energia.
+     */
+    public static final class EnergyUseBillEntry implements BaseColumns {
+        //Definir o nome  da tabela no banco de dados:
+        public static final String TABLE_NAME = "energyUserBill";
+
+        /*Definir os nomes dos campos na tabela:*/
+        public static final String COLUMN_FROM = "period_from";
+        public static final String COLUMN_TO = "period_to";
+        public static final String COLUMN_KWH_COST = "kwh_cost";
+        public static final String[] COLUMN_ALL = new String[]{
+                _ID,
+                COLUMN_FROM,
+                COLUMN_TO,
+                COLUMN_KWH_COST,
+        };
+
+        //Índices referente a lista de campos COLUMN_ALL, favor sempre utilizar
+        //esses Índices para acessar as colunas no cursor.
+        public static final byte INDEX_COLUMN_ID = 0;
+        public static final byte INDEX_COLUMN_FROM = 1;
+        public static final byte INDEX_COLUMN_TO = 2;
+        public static final byte INDEX_COLUMN_KWH_COST = 3;
+        //Somente disponível no {@link OhaEnergyUseBillCursor}
+        public static final byte INDEX_COLUMN_CALC_DURATION_SUN = 4;
+        public static final byte INDEX_COLUMN_CALC_WH_TOTAL_SUN = 5;
+        public static final byte INDEX_COLUMN_CALC_WATTS_MAX = 6;
+
+        /**
+         * Recuperar o SQL para criar a tabela energyUserBill no banco de dados.
+         */
+        public static String getSQLCreate(){
+            return String.format("CREATE TABLE %s ( %s INTEGER PRIMARY KEY autoincrement, %s LONG, %s LONG, %s REAL)",
+                    TABLE_NAME,
+                    _ID,
+                    COLUMN_FROM,
+                    COLUMN_TO,
+                    COLUMN_KWH_COST
+            );
+        }
+
+        /**
+         * Analisar e validar um conta de utilização de energia
+         */
+        public static ContentValues parse(Date from, Date to, double kwhCost) {
+            ContentValues contentValues = new ContentValues();
+            contentValues.put(COLUMN_FROM, OhaHelper.getDateBegin(from).getTime());
+            contentValues.put(COLUMN_TO, OhaHelper.getDateEnd(to, false).getTime());
+            contentValues.put(COLUMN_KWH_COST, kwhCost);
+            return contentValues;
+        }
+
+    }
+}
+Android/appSupervisory/src/main/java/br/com/brolam/oha/supervisory/ui/adapters/holders/OhaEnergyUseBillHolder.java
+public class OhaEnergyUseBillHolder extends OhaMainHolder {
+
+    TextView textViewTitle;
+    TextView textViewRead;
+    TextView textViewDailyCost;
+    TextView textViewBody;
+    TextView textViewWattsMax;
+    Toolbar toolbar;
+
+    public OhaEnergyUseBillHolder(View itemView) {
+        super(itemView);
+        this.textViewTitle = (TextView)itemView.findViewById(R.id.textViewTitle);
+        this.textViewRead = (TextView)itemView.findViewById(R.id.textViewRead);
+        this.textViewDailyCost = (TextView)itemView.findViewById(R.id.textViewDailyCost);
+        this.textViewBody = (TextView)itemView.findViewById(R.id.textViewBody);
+        this.textViewWattsMax = (TextView)itemView.findViewById(R.id.textViewWattsMax);
+        this.toolbar = (Toolbar)itemView.findViewById(R.id.toolbar);
+        this.toolbar.inflateMenu(R.menu.holder_energy_use_bill);
+    }
+
+    @Override
+    public void bindView(final Cursor cursor, final OhaMainHolder.IOhaMainHolder iOhaMainHolder) {
+
+        long billAmountDays = OhaHelper.getAmountDays(cursor.getLong(EnergyUseBillEntry.INDEX_COLUMN_FROM), cursor.getLong(EnergyUseBillEntry.INDEX_COLUMN_TO));
+        double billReadingDays = OhaHelper.convertSecondsToDays(cursor.getDouble(EnergyUseBillEntry.INDEX_COLUMN_CALC_DURATION_SUN));
+
+        Double totalKWH = OhaHelper.convertWhToKWH(cursor.getDouble(EnergyUseBillEntry.INDEX_COLUMN_CALC_WH_TOTAL_SUN));
+        Double dailyCost = totalKWH * cursor.getDouble(EnergyUseBillEntry.INDEX_COLUMN_KWH_COST);
+        Double avgKWH = totalKWH > 0 ? totalKWH / billReadingDays : 0.00;
+        Double wattsMax = cursor.getDouble(EnergyUseBillEntry.INDEX_COLUMN_CALC_WATTS_MAX);
+        this.textViewTitle.setText(getEnergyBillTitle(this.textViewTitle.getContext(), cursor.getLong(EnergyUseBillEntry.INDEX_COLUMN_FROM), cursor.getLong(EnergyUseBillEntry.INDEX_COLUMN_TO)));
+        String read = textViewRead.getContext().getString(R.string.energy_use_bill_card_read, OhaHelper.formatNumber(billReadingDays, "#0.00"), OhaHelper.formatNumber(billAmountDays, "#0") );
+        this.textViewRead.setText(read);
+        this.textViewDailyCost.setText(OhaHelper.formatMoney(dailyCost, "#,##0.00"));
+        String body = this.textViewBody.getContext().getString(R.string.energy_use_bill_card_body, OhaHelper.formatNumber(totalKWH, "#0.00"), OhaHelper.formatNumber(avgKWH, "##0.00"));
+        this.textViewBody.setText(body);
+        this.textViewWattsMax.setText(OhaHelper.formatNumber(wattsMax, ",##0.00"));
+        final int id = cursor.getInt(EnergyUseBillEntry.INDEX_COLUMN_ID);
+        final long fromDate = cursor.getLong(EnergyUseBillEntry.INDEX_COLUMN_FROM);
+        final long toDate = cursor.getLong(EnergyUseBillEntry.INDEX_COLUMN_TO);
+        final double kwhCost = cursor.getDouble(EnergyUseBillEntry.INDEX_COLUMN_KWH_COST);
+        this.itemView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+
+                if (iOhaMainHolder != null) {
+                    iOhaMainHolder.onEnergyUseBillSelect(id, fromDate, toDate, kwhCost, R.id.action_details);
+                }
+            }
+        });
+
+        this.toolbar.setOnMenuItemClickListener(new Toolbar.OnMenuItemClickListener() {
+            @Override
+            public boolean onMenuItemClick(MenuItem item) {
+                iOhaMainHolder.onEnergyUseBillSelect(id, fromDate, toDate, kwhCost, item.getItemId());
+                return true;
+            }
+        });
+    }
+
+    public static String getEnergyBillTitle(Context context, long fromDate, long toDate) {
+        return context.getString(
+                R.string.energy_use_bill_card_title,
+                OhaHelper.formatDate(fromDate, "yyyy, MMM dd"),
+                OhaHelper.formatDate(toDate, "MMM dd")
+        );
+    }
+}
+Android/library/src/main/java/br/com/brolam/library/helpers/OhaHelper.java
+public class OhaHelper {
+    static String defaultCurrencySymbol;
+    /**
+     * Obter um texto com o Ano, Mês e Dia.
+     *
+     * @param date informar uma data válida.
+     * @return texto no formato yyyyMMdd
+     */
+    public static String getStrDate(Date date) {
+        return new SimpleDateFormat("yyMMdd", Locale.ENGLISH).format(date);
+    }
+
+    /**
+     * Obter um texto com a Hora, Minuto e Segundo.
+     *
+     * @param date informar uma data válida.
+     * @return texto no formato HHmmss.
+     */
+    public static String getStrTime(Date date) {
+        return new SimpleDateFormat("HHmmss", Locale.ENGLISH).format(date);
+    }
+
+    /**
+     * Obter um texto com a hora.
+     *
+     * @param date informar uma data válida.
+     * @return texto no formato HH
+     */
+    public static String getStrHour(Date date) {
+        return new SimpleDateFormat("HH", Locale.ENGLISH).format(date);
+    }
+
+    /**
+     * Obter um texto com a Hora e Minuto
+     *
+     * @param date informar uma data válida.
+     * @return texto no formato HHmm.
+     */
+    public static String getStrTimeHHmm(Date date) {
+        return new SimpleDateFormat("HHmm", Locale.ENGLISH).format(date);
+    }
+
+    /**
+     * Obter um Calendar conforme os paramentos abaixo:
+     *
+     * @param strDate  informar texto com data no formato YYYYMMDD
+     * @param strTime  informar texto com a Hora, Minuto e segundo no formato HHmmss
+     * @param duration informar a duração em milisegundos que será adicionada a data.
+     * @return um Calendar com o resultado da soma da strDate + strTime +  duration
+     * @throws ParseException
+     */
+    public static Calendar getCalendar(String strDate, String strTime, long duration) throws ParseException {
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyMMddHHmmss");
+        Date date = simpleDateFormat.parse(strDate + strTime);
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        while (duration > 0) {
+            calendar.add(Calendar.MILLISECOND, (duration > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) duration));
+            duration = duration - Integer.MAX_VALUE;
+        }
+        return calendar;
+    }
+
+    /**
+     * Obter um Calendar conforme os paramentos abaixo:
+     *
+     * @param strDate informar texto com data no formato YYYYMMDD
+     * @return um Calendar conforme o paramento strDate
+     * @throws ParseException
+     */
+    public static Calendar getCalendar(String strDate) throws ParseException {
+        return getCalendar(strDate, "000000", 0);
+    }
+
+    /**
+     * Obter um Calendar conforme os paramentos abaixo:
+     *
+     * @param strDate informar texto com data no formato YYYYMMDD
+     * @param strHour informar texto com a hora no formato HH
+     * @return um Calendar conforme os paramentos  strDate e strHour
+     * @throws ParseException
+     */
+    public static Calendar getCalendar(String strDate, String strHour) throws ParseException {
+        return getCalendar(strDate, strHour + "0000", 0);
+    }
+
+    /**
+     * Recuperar a quantidade de dias entre duas datas.
+     * @param begin informar a data de inicio
+     * @param end   informar a data final
+     * @return quantidade de dias entre as duas datas.
+     */
+    public static long getAmountDays(long begin, long end) {
+        double days = ((end / (24.00 * 60.00 * 60.00 * 1000.00))
+                - (begin / (24.00 * 60.00 * 60.00 * 1000.00)));
+        return days > 0 && days < 1 ? 1 : Math.round(days);
+
+    }
+
+    /**
+     * Recuperar uma data com hora, minutos e segundos zerados.
+     * @param date informar uma data válida.
+     */
+    public static Date getDateBegin(Date date) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        calendar.set(Calendar.HOUR_OF_DAY, 0);
+        calendar.set(Calendar.MINUTE, 0);
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+        return calendar.getTime();
+    }
+
+    /**
+     * Recuperar uma data com a hora final do dia.
+     * @param date       informar uma data válida.
+     * @param untilToday informar se a hora final não deve ultrapassar a hora atual.
+     * @return uma data com a hora igual a 23:59:59.
+     */
+    public static Date getDateEnd(Date date, boolean untilToday) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        calendar.set(Calendar.HOUR_OF_DAY, 23);
+        calendar.set(Calendar.MINUTE, 59);
+        calendar.set(Calendar.SECOND, 59);
+        calendar.set(Calendar.MILLISECOND, 999);
+        Date dateToday = new Date();
+        if (untilToday && (dateToday.before(calendar.getTime()))) {
+            calendar.setTime(dateToday);
+        }
+        return calendar.getTime();
+    }
+
+    /**
+     * Recuperar uma hora com minutos e segundos zerados.
+     * @param date informar uma data válida.
+     */
+    public static Date getBeginHour(Date date) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        calendar.set(Calendar.MINUTE, 0);
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+        return calendar.getTime();
+
+    }
+
+    /**
+     * Recuperar hora com minutos e segundos iguais a 59.
+     * @param date informar uma data válida.
+     */
+    public static Date getEndHour(Date date, boolean untilToday) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        calendar.set(Calendar.MINUTE, 59);
+        calendar.set(Calendar.SECOND, 59);
+        calendar.set(Calendar.MILLISECOND, 999);
+
+        Date dateToday = new Date();
+        if (untilToday && (dateToday.before(calendar.getTime()))) {
+            calendar.setTime(dateToday);
+        }
+        return calendar.getTime();
+
+    }
+
+    /**
+     * Recuperar uma data formatada conforme o parâmetro date Format.
+     *
+     * @param date       informar uma data válida
+     * @param dateFormat informar um formato conforme o Date and Time Patterns: https://docs.oracle.com/javase/7/docs/api/java/text/SimpleDateFormat.html
+     * @return texto com a data formatada.
+     */
+    public static String formatDate(Date date, String dateFormat) {
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat(dateFormat);
+        return simpleDateFormat.format(date);
+    }
+
+    /**
+     * Recuperar uma data formatada conforme o parâmetro date Format.
+     *
+     * @param longDateTime informar uma data válida
+     * @param dateFormat   informar um formato conforme o Date and Time Patterns{@link SimpleDateFormat} :
+     *                     https://docs.oracle.com/javase/7/docs/api/java/text/SimpleDateFormat.html
+     * @return texto com a data formatada.
+     */
+    public static String formatDate(long longDateTime, String dateFormat) {
+        Date date = new Date(longDateTime);
+        return formatDate(date, dateFormat);
+    }
+
+    //Recuperar o símbolo monentário padrão para o usuário.
+    public static String getDefaultCurrencySymbol(){
+        if ( defaultCurrencySymbol == null){
+            defaultCurrencySymbol = Currency.getInstance(Locale.getDefault()).getSymbol();
+        }
+        return defaultCurrencySymbol;
+    }
+
+    /**
+     * Recuperar um número formatado conforme o decimalFormat.
+     * @param number  informar um número válido
+     * @param pattern informar o formato conforme o {@link DecimalFormat}:
+     *                https://docs.oracle.com/javase/7/docs/api/java/text/DecimalFormat.html
+     * @return texto com o número formatado.
+     */
+    public static String formatNumber(double number, String pattern) {
+        return new DecimalFormat(pattern).format(number);
+    }
+
+    /**
+     * Recuperar um número formatado conforme o decimalFormat mais o símbolo monentário
+     * @param number  informar um número válido
+     * @param pattern informar o formato conforme o {@link DecimalFormat}:
+     *                https://docs.oracle.com/javase/7/docs/api/java/text/DecimalFormat.html
+     * @return texto com o número formatado.
+     */
+    public static String formatMoney(double number, String pattern) {
+        return String.format("%s%s", getDefaultCurrencySymbol(), new DecimalFormat(pattern).format(number));
+    }
+
+    /**
+     * Recuperar um texto para ser editado em um EditText.
+     * @param value informar um valor numérico válido.
+     * @return texto formatado para ser editado em um EditText.
+     */
+    public static String getEditable(double value) {
+        return value == 0.00 ? "" : String.valueOf(value);
+    }
+
+    /**
+     * Recuperar o percentual da precisão do tempo de leitura sobre 24 horas.
+     * @param context  informar um contexto válido.
+     * @param duration duração em segundos da leitura.
+     * @param untilNow informar se o tempo total não deve ser maior do que a hora atual.
+     * @return texto formatado informando o percentual da precisão, EX: Accuracy 99.99%
+     */
+    public static String formatAccuracyDay(Context context, double duration, boolean untilNow) {
+        Date date = new Date();
+        long beginDate = getDateBegin(date).getTime();
+        long endDate = getDateEnd(date, false).getTime();
+        return formatAccuracy(context, beginDate, endDate, duration, untilNow);
+    }
+    
+    /**
+     * Recuperar o percentual da precisão do tempo de leitura sobre um período.
+     * @param context  informar um contexto válido.
+     * @param beginDateTime informar a data e hora inicial.
+     * @param endDateTime informar a data e hora final.
+     * @param duration duração em segundos da leitura.
+     * @param untilNow informar se a data e hora final deve ser menor do que a data e hora atual.
+     * @return texto formatado informando o percentual da precisão, EX: Accuracy 99.99%
+     */
+    public static String formatAccuracy(Context context, long beginDateTime, long endDateTime, double duration, boolean untilNow) {
+        long now = new Date().getTime();
+        //Se o paramentro untilNow for verdadeiro, considerar o hora final a hora atual:
+        double periodInMillis = (((untilNow && now < endDateTime) ? now : endDateTime) - beginDateTime) / 1000.00;
+        double accuracy = duration > 0 ? (duration / periodInMillis) * 100 : 0.00;
+        return String.format(context.getString(R.string.format_accuracy_day), formatNumber(accuracy, "#0.00"));
+    }
+
+    /**
+     * Recuperar um texto com a primeira letra maiúscula.
+     * @param string informar uma string válida.
+     */
+    public static String formatCamelCase(String string) {
+        return string.length() > 0 ? string.replaceFirst(
+                Character.toString(string.charAt(0)),
+                Character.toString(Character.toUpperCase(string.charAt(0)))
+        ) : string;
+    }
+
+    /**
+     * Converter um texto em um valor numérico
+     * @param string texto com um valor numérico válido.
+     * @param ifError valor que deve ser retornado se o texto for inválido.
+     * @return um valor numérico válido.
+     */
+    public static double convertToDouble(String string, double ifError){
+        if ((string  == null ) || string.isEmpty() ) return ifError;
+        try {
+            return Double.parseDouble(string);
+        } catch (Exception e){
+            e.printStackTrace();
+            return ifError;
+        }
+    }
+
+    /**
+     * Converter milisegundos em horas.
+     *
+     * @param millis informar os milisegundos.
+     * @return total em horas.
+     */
+    public static double convertMillisToHours(double millis) {
+        return millis > 0.00 ? millis / DateUtils.HOUR_IN_MILLIS : 0.00;
+    }
+
+    /**
+     * Converter segundos em horas
+     */
+    public static double convertSecondsToHours(double seconds) {
+        return seconds > 0.00 ? (seconds * 1000.00) / DateUtils.HOUR_IN_MILLIS : 0.00;
+    }
+
+    /**
+     * Converter segundos em dias
+     */
+    public static double convertSecondsToDays(double seconds) {
+        return seconds > 0.00 ? (seconds * 1000.00) / DateUtils.DAY_IN_MILLIS : 0.00;
+    }
+
+    /**
+     * Converter o total de Wh em Kwh.
+     *
+     * @param totalWh total de Wh.
+     * @return Kwh
+     */
+    public static double convertWhToKWH(double totalWh) {
+        return totalWh > 0 ? totalWh / 1000.00 : 0.00;
+    }
+
+
+    /**
+     * Informar o processo de compactação ou descompactação de um arquivo.
+     */
+    public interface IZipFile {
+        void progress(long size, long sizeProcessed);
+    }
+
+    /**
+     * Compactar uma arquivo.
+     * @param inputFile informar o arquivo a ser compactado.
+     * @param zipFilePath informar o nome e caminho zip.
+     * @param iZipFile se necessário, informar uma {@link IZipFile}.
+     * @throws IOException
+     */
+    public static void zipFile(File inputFile, String zipFilePath, IZipFile iZipFile) throws IOException {
+        FileOutputStream fileOutputStream = new FileOutputStream(zipFilePath);
+        ZipOutputStream zipOutputStream = new ZipOutputStream(fileOutputStream);
+        ZipEntry zipEntry = new ZipEntry(inputFile.getName());
+        zipOutputStream.putNextEntry(zipEntry);
+        FileInputStream fileInputStream = new FileInputStream(inputFile);
+        FileChannel fileChannel = fileInputStream.getChannel();
+        FileLock fileLock = fileChannel.tryLock(0L, Long.MAX_VALUE, /*shared*/true);
+        long sizeToZip = fileInputStream.available();
+        long sizeCompacted = 0;
+        try {
+            byte[] buf = new byte[1024];
+            int bytesRead;
+            while ((bytesRead = fileInputStream.read(buf)) > 0) {
+                sizeCompacted += bytesRead;
+                zipOutputStream.write(buf, 0, bytesRead);
+                if (iZipFile != null) iZipFile.progress(sizeToZip, sizeCompacted);
+            }
+        } finally {
+            fileLock.release();
+            zipOutputStream.closeEntry();
+            zipOutputStream.close();
+            fileOutputStream.close();
+        }
+    }
+
+    /**
+     * Descompactar um arquivo zip.
+     * @param zipFilePath informar o caminho completo do arquivo zip.
+     * @param fileName se necessário informar o nome do arquivo que deve ser descompactado ou nulo para todos.
+     * @param directory informar o diretório onde os arquivo serão descompactados.
+     * @param iZipFile se necessário, informar uma {@link IZipFile}.
+     * @throws IOException
+     */
+    public static void unZipFile(String zipFilePath, String fileName, String directory, IZipFile iZipFile) throws IOException {
+        FileInputStream streamZipFile = new FileInputStream(zipFilePath);
+        ZipInputStream streamZips = new ZipInputStream(streamZipFile);
+        try {
+            ZipEntry zipEntry = null;
+            while ((zipEntry = streamZips.getNextEntry()) != null) {
+                long sizeZip = zipEntry.getSize();
+                long sizeProcessed = 0;
+                if (!zipEntry.isDirectory()) {
+                    if ( (fileName == null) || zipEntry.getName().contains(fileName)) {
+                        byte[] buf = new byte[1024];
+                        int bytesRead;
+                        String fileOutputName = String.format("%s/%s", directory, zipEntry.getName());
+                        FileOutputStream fileOutputStream = new FileOutputStream(fileOutputName);
+                        while ((bytesRead = streamZips.read(buf)) > 0) {
+                            sizeProcessed += bytesRead;
+                            fileOutputStream.write(buf, 0, bytesRead);
+                            if (iZipFile != null) iZipFile.progress(sizeZip, sizeProcessed);
+                        }
+                    }
+                }
+
+            }
+        } finally {
+            if (streamZipFile != null) streamZipFile.close();
+            if (streamZips != null) streamZips.close();
+        }
+    }
+}
+Android/appSupervisory/src/main/java/br/com/brolam/oha/supervisory/OhaBroadcast.java
+public class OhaBroadcast extends BroadcastReceiver {
+    //Evento para acionar a sincronização dos logs de utilização de energia.
+    public static final String START_SYNC_ENERGY_USE = "br.com.brolam.oha.supervisory.broadcast.START_SYNC_ENERGY_USE";
+
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        switch (intent.getAction()) {
+            case START_SYNC_ENERGY_USE:
+                OhaSyncService.start(context);
+                return;
+            case Intent.ACTION_BOOT_COMPLETED:
+                OhaSyncService.start(context);
+                return;
+            case ConnectivityManager.CONNECTIVITY_ACTION:
+                OhaSyncService.start(context);
+                return;
+
+        }
+    }
+
+    /**
+     * Registrar o agendamento para acionar o serviço de sincronização dos logs
+     * de utilização de energia.
+     * @param context informar um contexto válido.
+     */
+    public static void registerSyncAlarm(Context context) {
+        //Realizar um verificação se o PendingIntent está ativo a cada 5 segundos.
+        int INTERVAL_IMPORT = 5000;
+        Intent intent = new Intent(context, OhaBroadcast.class);
+        intent.setAction(START_SYNC_ENERGY_USE);
+        //Utilizar o parâmetro PendingIntent.FLAG_UPDATE_CURRENT para manter somente um
+        //PendingIntent ativo e evitar o acionamento da sincronização mais de uma vez.
+        PendingIntent sender = PendingIntent.getBroadcast(context, 1, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+        //Agendar o acionamento.
+        AlarmManager alarmManager = (AlarmManager) context
+                .getSystemService(Context.ALARM_SERVICE);
+        alarmManager.setRepeating(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                INTERVAL_IMPORT,
+                INTERVAL_IMPORT,
+                sender);
+    }
+}
+Android/appSupervisory/src/main/java/br/com/brolam/oha/supervisory/ui/fragments/OhaEnergyUseBillFragment.java
+ */public class OhaEnergyUseBillFragment extends DialogFragment implements View.OnClickListener, Toolbar.OnMenuItemClickListener, DatePicker.OnDateChangedListener {
+    public static String TAG = OhaEnergyUseBillFragment.class.getName();
+
+    public interface IOhaEnergyUseBillFragment{
+        void onSaveEnergyUseBill(int id, long fromDate, long toDate, double kwhCost );
+    }
+
+    public static final String PARAM_ID = "param_id";
+    private int id;
+    public static final String PARAM_FROM_DATE = "param_from_date";
+    private long fromDate;
+    public static final String PARAM_TO_DATE = "param_to_date";
+    private long toDate;
+    public static final String PARAM_KWH_COST = "param_kwh_cost";
+    double kwhCost;
+    int amountDays;
+
+    RadioButton radioButtonFromDate;
+    RadioButton radioButtonToDate;
+    EditText editKwhCost;
+    DatePicker datePicker;
+    Toolbar toolbar;
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        Bundle bundle = savedInstanceState != null ? savedInstanceState : this.getArguments();
+        this.id = this.getArguments().getInt(PARAM_ID);
+        this.fromDate = bundle.getLong(PARAM_FROM_DATE);
+        this.toDate = bundle.getLong(PARAM_TO_DATE);
+        this.kwhCost = bundle.getDouble(PARAM_KWH_COST);
+        this.amountDays = (int) OhaHelper.getAmountDays(this.fromDate, this.toDate);
+    }
+
+    @Override
+    public void onViewStateRestored(Bundle savedInstanceState) {
+        super.onViewStateRestored(savedInstanceState);
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putLong(PARAM_FROM_DATE, this.fromDate);
+        outState.putLong(PARAM_TO_DATE, this.toDate);
+        outState.putDouble(PARAM_KWH_COST, this.kwhCost);
+    }
+
+    public static OhaEnergyUseBillFragment getInstance(Activity activity){
+        OhaEnergyUseBillFragment ohaEnergyUseBillFragment = (OhaEnergyUseBillFragment) activity.getFragmentManager().findFragmentByTag(TAG);
+        return (ohaEnergyUseBillFragment == null)? new OhaEnergyUseBillFragment(): ohaEnergyUseBillFragment;
+    }
+
+    public static void add(Activity activity) {
+        OhaEnergyUseBillFragment ohaEnergyUseBillFragment = getInstance(activity);
+        Calendar calendar = Calendar.getInstance();
+        double defaultKwhCost = 0.0;
+        int amountDays = 30;
+        //Recuperar a ultima conta para definir os valores padrão da nova conta de energia:
+        Cursor cursor = activity.getContentResolver().query(CONTENT_URI_BILL, null, null, null, String.format("%s DESC", EnergyUseBillEntry.COLUMN_TO));
+        try {
+            if (cursor.moveToFirst()) {
+                calendar.setTime(new Date(cursor.getLong(EnergyUseBillEntry.INDEX_COLUMN_TO)));
+                calendar.add(Calendar.DATE, 1);
+                defaultKwhCost = cursor.getDouble(EnergyUseBillEntry.INDEX_COLUMN_KWH_COST);
+                amountDays = (int) OhaHelper.getAmountDays(cursor.getLong(EnergyUseBillEntry.INDEX_COLUMN_FROM), cursor.getLong(EnergyUseBillEntry.INDEX_COLUMN_TO));
+            }
+        } finally {
+            cursor.close();
+        }
+
+        Bundle bundle = new Bundle();
+        bundle.putInt(PARAM_ID, -1);
+        bundle.putLong(PARAM_FROM_DATE, OhaHelper.getDateBegin(calendar.getTime()).getTime());
+        calendar.add(Calendar.DATE, amountDays);
+        bundle.putLong(PARAM_TO_DATE, OhaHelper.getDateBegin(calendar.getTime()).getTime());
+        bundle.putDouble(PARAM_KWH_COST, defaultKwhCost);
+        ohaEnergyUseBillFragment.setArguments(bundle);
+        ohaEnergyUseBillFragment.show(activity.getFragmentManager(), TAG);
+    }
+
+
+    public static void update(Activity activity, int id, long fromDate, long toDate, double kwhCost ) {
+        OhaEnergyUseBillFragment ohaEnergyUseBillFragment = getInstance(activity);
+        Bundle bundle = new Bundle();
+        bundle.putInt(PARAM_ID, id);
+        bundle.putLong(PARAM_FROM_DATE, fromDate);
+        bundle.putLong(PARAM_TO_DATE, toDate);
+        bundle.putDouble(PARAM_KWH_COST, kwhCost);
+        ohaEnergyUseBillFragment.setArguments(bundle);
+        ohaEnergyUseBillFragment.show(activity.getFragmentManager(), TAG);
+    }
+
+    @Nullable
+    @Override
+    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState) {
+
+        View view = inflater.inflate(R.layout.fragment_energy_use_bill, container, false);
+        this.radioButtonFromDate = (RadioButton) view.findViewById(R.id.radioButtonFromDate);
+        this.radioButtonToDate = (RadioButton) view.findViewById(R.id.radioButtonToDate);
+        this.editKwhCost = (EditText) view.findViewById(R.id.editKwhCost);
+        this.datePicker = (DatePicker) view.findViewById(R.id.datePicker);
+        this.toolbar = (Toolbar) view.findViewById(R.id.toolbar);
+        this.setTextRadioButtonDate(radioButtonFromDate, this.fromDate);
+        this.setTextRadioButtonDate(radioButtonToDate, this.toDate);
+        this.setCalendarView();
+        this.editKwhCost.setText(OhaHelper.getEditable(this.kwhCost));
+        this.radioButtonFromDate.setOnClickListener(this);
+        this.radioButtonToDate.setOnClickListener(this);
+        this.datePicker.setOnClickListener(this);
+        //Remover o date_picker_header do datePicker se o mesmo existir
+        View viewDayDatePicker = datePicker.findViewById(Resources.getSystem().getIdentifier("date_picker_header", "id", "android"));
+        if (viewDayDatePicker != null) {
+            viewDayDatePicker.setVisibility(View.GONE);
+        }
+        this.toolbar.inflateMenu(R.menu.fragment_energy_use_bill);
+        this.toolbar.setOnMenuItemClickListener(this);
+        return view;
+    }
+
+    @Override
+    public boolean onMenuItemClick(MenuItem item) {
+        switch (item.getItemId()){
+            case R.id.action_save:
+                this.kwhCost = OhaHelper.convertToDouble(this.editKwhCost.getText().toString(), 0.0);
+                //Acionar o evento onSaveEnergyUseBill se a atividade suportar a interface IOhaEnergyUseBillFragment
+                IOhaEnergyUseBillFragment iOhaEnergyUseBillFragment  = getActivity() instanceof IOhaEnergyUseBillFragment? (IOhaEnergyUseBillFragment)getActivity(): null;
+                if ( iOhaEnergyUseBillFragment != null ){
+                    iOhaEnergyUseBillFragment.onSaveEnergyUseBill(this.id, this.fromDate, this.toDate, this.kwhCost);
+                }
+                this.dismiss();
+                return false;
+
+            case R.id.action_cancel:
+                this.dismiss();
+                return false;
+        }
+        return false;
+    }
+
+    private void setCalendarView() {
+        long selectedDate;
+        if (radioButtonFromDate.isChecked()) {
+            selectedDate = this.fromDate;
+        } else if ( radioButtonToDate.isChecked()){
+            selectedDate = this.toDate;
+        } else {
+            selectedDate = this.fromDate;
+            this.radioButtonFromDate.setChecked(true);
+            this.radioButtonToDate.setChecked(false);
+        }
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(new Date(selectedDate));
+        datePicker.init(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH), this);
+    }
+
+    private void setTextRadioButtonDate(RadioButton radioButtonDate, long date) {
+        radioButtonDate.setText(OhaHelper.formatDate(date, "dd, MMM yyyy"));
+    }
+
+    @Override
+    public void onResume() {
+        //Definir o tamanho da janela conforme percentual definido no dimens.xml:
+        Window window = getDialog().getWindow();
+        Point size = new Point();
+        Display display = window.getWindowManager().getDefaultDisplay();
+        display.getSize(size);
+        double percentWidth = getResources().getInteger(R.integer.energy_use_bill_fragment_width_percent) / 100.00;
+        double percentHeight = getResources().getInteger(R.integer.energy_use_bill_fragment_height_percent) / 100.00;
+        window.setLayout((int) (size.x * percentWidth), (int) (size.y * percentHeight));
+        window.setGravity(Gravity.CENTER);
+        super.onResume();
+    }
+
+    @Override
+    public void onClick(View view) {
+        switch (view.getId()) {
+            case R.id.radioButtonFromDate:
+                this.radioButtonToDate.setChecked(false);
+                setCalendarView();
+                return;
+            case R.id.radioButtonToDate:
+                this.radioButtonFromDate.setChecked(false);
+                setCalendarView();
+                return;
+        }
+    }
+
+    @Override
+    public void onDateChanged(DatePicker datePicker, int year, int month, int dayOfMonth) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(year, month, dayOfMonth);
+        if (this.radioButtonFromDate.isChecked()) {
+            this.fromDate = calendar.getTime().getTime();
+            //Corrigir o toDate
+            if (this.fromDate > this.toDate) {
+                calendar.add(Calendar.DATE, this.amountDays);
+                this.toDate = calendar.getTime().getTime();
+            }
+
+        } else if (radioButtonToDate.isChecked()) {
+            //Corrigir o fromDate
+            this.toDate = calendar.getTime().getTime();
+            if (this.fromDate > this.toDate) {
+                calendar.add(Calendar.DATE, this.amountDays * -1);
+                this.fromDate = calendar.getTime().getTime();
+            }
+        }
+        setTextRadioButtonDate(radioButtonFromDate, this.fromDate);
+        setTextRadioButtonDate(radioButtonToDate, this.toDate);
+        this.amountDays = (int) OhaHelper.getAmountDays(this.fromDate, this.toDate);
+    }
+
+}
+Android/appSupervisory/src/main/java/br/com/brolam/oha/supervisory/data/OhaEnergyUseContract.java
+public class OhaEnergyUseContract {
+
+    /*Definir a URL base de acesso:*/
+    public static final String CONTENT_AUTHORITY = "br.com.brolam.oha.supervisory.energy.use";
+    public static final Uri BASE_CONTENT_URI = Uri.parse("content://" + CONTENT_AUTHORITY);
+
+    /*Definir o caminho por recurso:*/
+    public static final String PATH_LOG = "log";
+    public static final String PATH_DAYS = "days";
+    //Parêmetro para informar a data final para consultar a utilização de energia por dia:
+    public static final String PATH_DAYS_PARAM_END_DATE = "endDate";
+    public static final String PATH_BILL = "bill";
+
+    /*Definir as URLs:*/
+    public static final Uri CONTENT_URI_LOG = BASE_CONTENT_URI.buildUpon()
+            .appendPath(PATH_LOG)
+            .build();
+
+    public static final Uri CONTENT_URI_DAYS = BASE_CONTENT_URI.buildUpon()
+            .appendPath(PATH_DAYS)
+            .build();
+
+    /**
+     * Recupear a URI para consultar a utilização de energia por dia {@link br.com.brolam.oha.supervisory.data.cursors.OhaEnergyUseDaysCursor}
+     * @param endDate informar a data final para limitar o curosr até a data informada.
+     */
+    public static Uri getUriDays(Date endDate){
+       return CONTENT_URI_DAYS.buildUpon().appendQueryParameter(PATH_DAYS_PARAM_END_DATE, Long.toString(endDate.getTime())).build();
+    }
+
+    public static final Uri CONTENT_URI_BILL = BASE_CONTENT_URI.buildUpon()
+            .appendPath(PATH_BILL)
+            .build();
+
+    /**
+     * Recuperar a Uri de uma conta de energia por ID para ser utilizada nas operações de Consulta,
+     * alteração e exclusão.
+     * @param id informar uma ID válido.
+     * @return Uri com o parâmetro _id
+     */
+    public static Uri getUriBillById(int id){
+        return CONTENT_URI_BILL.buildUpon().appendQueryParameter(BaseColumns._ID, String.valueOf(id)).build();
+    }
+
+    /**
+     * Armazenar os registros de utilização da energia.
+     */
+    public static final class EnergyUseLogEntry implements BaseColumns {
+        //Definir o nome  da tabela no banco de dados
+        public static final String TABLE_NAME = "energyUserLog";
+
+        //Duração em segundos entre esse log e o log anterior.
+        public static final String COLUMN_DURATION = "duration";
+        //Tensão média na Duração do log.
+        public static final String COLUMN_VOLTAGE = "voltage";
+        //Watts média da fase 1 na Duração do log.
+        public static final String COLUMN_WATTS_1 = "watts1";
+        //Watts média da fase 2 na Duração do log.
+        public static final String COLUMN_WATTS_2 = "watts2";
+        //Watts média da fase 3 na Duração do log.
+        public static final String COLUMN_WATTS_3 = "watts3";
+        //Watts média das fases 1,2 e 3 na Duração do log.
+        public static final String COLUMN_WATTS_TOTAL = "watts_total";
+
+        /*Campos calculado por Watts Horas: */
+        //Recuperar o período de disponibilidade de logs:
+        public static final String[] COLUMNS_CALC_PERIOD = new String[]{
+                String.format("MIN(%s)", _ID),
+                String.format("MAX(%s)", _ID)
+        };
+        //Índices referente a lista de campos COLUMNS_CALC_PERIOD, favor sempre utilizar
+        //esses Índices para acessar as colunas no cursor.
+        public static final byte INDEX_COLUMNS_CALC_PERIOD_BEGIN = 0;
+        public static final byte INDEX_COLUMNS_CALC_PERIOD_END = 1;
+
+        public static final String[] COLUMNS_CALC_TOTAL = new String[]{
+                String.format("SUM(%s)", COLUMN_DURATION),
+                String.format("SUM((%s * %s) / 3600.00)", COLUMN_WATTS_TOTAL, COLUMN_DURATION ),
+                String.format("MAX(%s)", COLUMN_WATTS_TOTAL),
+                //Recuperar o custo por KWH:
+                String.format("(SELECT AVG(%s) FROM %s WHERE %s.%s BETWEEN %s AND %s)", EnergyUseBillEntry.COLUMN_KWH_COST, EnergyUseBillEntry.TABLE_NAME, EnergyUseLogEntry.TABLE_NAME, EnergyUseLogEntry._ID, EnergyUseBillEntry.COLUMN_FROM, EnergyUseBillEntry.COLUMN_TO),
+        };
+
+        //Índices referente a lista de campos COLUMNS_CALC, favor sempre utilizar
+        //esses Índices para acessar as colunas no cursor.
+        public static final byte INDEX_COLUMN_CALC_DURATION_SUN = 0;
+        public static final byte INDEX_COLUMN_CALC_WH_TOTAL_SUN = 1;
+        public static final byte INDEX_COLUMN_CALC_WATTS_MAX = 2;
+        public static final byte INDEX_COLUMN_CALC_KWH_COST = 3;
+        //Somente disponível no {@link OhaEnergyUseDaysCursor}
+        public static final byte INDEX_COLUMN_CALC_DATE = 4;
+
+        /**
+         * Recuperar o SQL para criar a tabela energyUserLog no banco de dados.
+         */
+        public static String getSQLCreate(){
+            return String.format("CREATE TABLE %s ( %s LONG PRIMARY KEY, %s REAL, %s REAL, %s REAL, %s REAL, %s REAL, %s REAL)",
+                    TABLE_NAME,
+                    _ID,
+                    COLUMN_DURATION,
+                    COLUMN_VOLTAGE,
+                    COLUMN_WATTS_1,
+                    COLUMN_WATTS_2,
+                    COLUMN_WATTS_3,
+                    COLUMN_WATTS_TOTAL);
+        }
+
+        /**
+         * Analisar e validar um registro de utilização de energia
+         */
+        public static ContentValues parse(Date dateTime, double duration, double voltage, double watts1, double watts2, double watts3){
+            ContentValues contentValues = new ContentValues();
+            contentValues.put(_ID, dateTime.getTime());
+            contentValues.put(COLUMN_DURATION, duration );
+            contentValues.put(COLUMN_VOLTAGE, voltage );
+            contentValues.put(COLUMN_WATTS_1, watts1 );
+            contentValues.put(COLUMN_WATTS_2, watts2 );
+            contentValues.put(COLUMN_WATTS_3, watts3 );
+            contentValues.put(COLUMN_WATTS_TOTAL, watts1 + watts2 + watts3 );
+            return contentValues;
+        }
+
+        public enum FilterWatts{
+            NONE,
+            PHASE1,
+            PHASE2,
+            PHASE3,
+            TOTAL;
+
+            public String getFieldName(){
+                switch (this){
+                    case PHASE1: return EnergyUseLogEntry.COLUMN_WATTS_1;
+                    case PHASE2: return EnergyUseLogEntry.COLUMN_WATTS_2;
+                    case PHASE3: return EnergyUseLogEntry.COLUMN_WATTS_3;
+                    case TOTAL: return EnergyUseLogEntry.COLUMN_WATTS_TOTAL;
+                    default:return EnergyUseLogEntry.COLUMN_WATTS_TOTAL;
+                }
+            }
+        }
+    }
+
+    /**
+     * Armazenar a conta de utilização da energia.
+     */
+    public static final class EnergyUseBillEntry implements BaseColumns {
+        //Definir o nome  da tabela no banco de dados:
+        public static final String TABLE_NAME = "energyUserBill";
+
+        /*Definir os nomes dos campos na tabela:*/
+        public static final String COLUMN_FROM = "period_from";
+        public static final String COLUMN_TO = "period_to";
+        public static final String COLUMN_KWH_COST = "kwh_cost";
+        public static final String[] COLUMN_ALL = new String[]{
+                _ID,
+                COLUMN_FROM,
+                COLUMN_TO,
+                COLUMN_KWH_COST,
+        };
+
+        //Índices referente a lista de campos COLUMN_ALL, favor sempre utilizar
+        //esses Índices para acessar as colunas no cursor.
+        public static final byte INDEX_COLUMN_ID = 0;
+        public static final byte INDEX_COLUMN_FROM = 1;
+        public static final byte INDEX_COLUMN_TO = 2;
+        public static final byte INDEX_COLUMN_KWH_COST = 3;
+        //Somente disponível no {@link OhaEnergyUseBillCursor}
+        public static final byte INDEX_COLUMN_CALC_DURATION_SUN = 4;
+        public static final byte INDEX_COLUMN_CALC_WH_TOTAL_SUN = 5;
+        public static final byte INDEX_COLUMN_CALC_WATTS_MAX = 6;
+
+        /**
+         * Recuperar o SQL para criar a tabela energyUserBill no banco de dados.
+         */
+        public static String getSQLCreate(){
+            return String.format("CREATE TABLE %s ( %s INTEGER PRIMARY KEY autoincrement, %s LONG, %s LONG, %s REAL)",
+                    TABLE_NAME,
+                    _ID,
+                    COLUMN_FROM,
+                    COLUMN_TO,
+                    COLUMN_KWH_COST
+            );
+        }
+
+        /**
+         * Analisar e validar um conta de utilização de energia
+         */
+        public static ContentValues parse(Date from, Date to, double kwhCost) {
+            ContentValues contentValues = new ContentValues();
+            contentValues.put(COLUMN_FROM, OhaHelper.getDateBegin(from).getTime());
+            contentValues.put(COLUMN_TO, OhaHelper.getDateEnd(to, false).getTime());
+            contentValues.put(COLUMN_KWH_COST, kwhCost);
+            return contentValues;
+        }
+
+    }
+}
+Android/appSupervisory/src/main/java/br/com/brolam/oha/supervisory/ui/adapters/OhaMainAdapter.java
+public class OhaMainAdapter extends RecyclerView.Adapter<OhaMainHolder>  {
+
+    IOhaMainHolder iOhaMainHolder;
+    private Cursor cursor;
+    //Informar o id do NavigationView MenuItem selecionado.
+    private int navId;
+
+    public OhaMainAdapter(IOhaMainHolder iOhaMainHolder) {
+        this.cursor = null;
+        this.iOhaMainHolder  = iOhaMainHolder;
+        this.navId = -1;
+    }
+
+    public void swapCursor(Cursor newCursor,  int navId ) {
+        if (( this.cursor != null) && ( this.cursor != newCursor)){
+            this.cursor.close();
+            this.cursor = newCursor;
+        }
+        this.navId = navId;
+        cursor = newCursor;
+        notifyDataSetChanged();
+    }
+
+    @Override
+    public OhaMainHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+        OhaMainHolder viewHolder = null;
+        if ( this.navId == R.id.nav_energy_use_day){
+            viewHolder = new OhaEnergyUseDayHolder(LayoutInflater.from(this.iOhaMainHolder.getContext()).inflate(R.layout.holder_energy_use_day, parent, false));
+        } else if ( this.navId == R.id.nav_energy_use_bill){
+            viewHolder = new OhaEnergyUseBillHolder( LayoutInflater.from(this.iOhaMainHolder.getContext()).inflate(R.layout.holder_energy_use_bill, parent, false));
+        }
+        return viewHolder;
+    }
+
+    @Override
+    public void onBindViewHolder(OhaMainHolder ohaMainHolder, int position) {
+        this.cursor.moveToPosition(position);
+        ohaMainHolder.bindView(cursor, iOhaMainHolder);
+    }
+
+    @Override
+    public int getItemCount() {
+        return this.cursor == null? 0 : this.cursor.getCount();
+    }
+
+    @Override
+    public int getItemViewType(int position) {
+        return this.navId;
+    }
+}
+Android/appSupervisory/src/main/java/br/com/brolam/oha/supervisory/ui/fragments/OhaRestoreDatabaseFragment.java
+public class OhaRestoreDatabaseFragment extends DialogFragment implements   Toolbar.OnMenuItemClickListener, AdapterView.OnItemClickListener {
+    public static String TAG = OhaRestoreDatabaseFragment.class.getName();
+
+    public interface IOhaRestoreDatabaseFragment{
+        void onRequestRestoreDatabase(File backup);
+    }
+
+    ListView listView;
+    Toolbar toolbar;
+    //Lista de backups disponível.
+    File[] backups;
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        this.backups = OhaSQLHelper.getBackups();
+    }
+
+    public static OhaRestoreDatabaseFragment getInstance(Activity activity){
+        OhaRestoreDatabaseFragment ohaEnergyUseBillFragment = (OhaRestoreDatabaseFragment) activity.getFragmentManager().findFragmentByTag(TAG);
+        return (ohaEnergyUseBillFragment == null)? new OhaRestoreDatabaseFragment(): ohaEnergyUseBillFragment;
+    }
+
+    @Override
+    public void onViewStateRestored(Bundle savedInstanceState) {
+        super.onViewStateRestored(savedInstanceState);
+        //Somente exibir o botão de restore quando um backup for selecionado:
+        parseActionRestoreDatabase();
+
+    }
+
+    public static void show(Activity activity) {
+        OhaRestoreDatabaseFragment ohaEnergyUseBillFragment = getInstance(activity);
+        Bundle bundle = new Bundle();
+        ohaEnergyUseBillFragment.setArguments(bundle);
+        ohaEnergyUseBillFragment.show(activity.getFragmentManager(), TAG);
+    }
+
+    @Nullable
+    @Override
+    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_restore_database, container, false);
+        this.listView = (ListView) view.findViewById(R.id.listView);
+        int amountBackups = this.backups != null?this.backups.length:0;
+        String[] backupsName = new String[amountBackups];
+        for(int index = 0; index <amountBackups; index++ ){
+            backupsName[index] = this.backups[index].getName();
+        }
+        this.listView.setAdapter(new ArrayAdapter<String>(this.getActivity(),  android.R.layout.simple_list_item_checked, backupsName));
+        this.toolbar = (Toolbar) view.findViewById(R.id.toolbar);
+        this.toolbar.inflateMenu(R.menu.fragment_restore_database);
+        this.toolbar.setOnMenuItemClickListener(this);
+        this.listView.setOnItemClickListener(this);
+        //Somente exibir o botão de restore quando um backup for selecionado:
+        parseActionRestoreDatabase();
+
+        return view;
+    }
+
+    @Override
+    public boolean onMenuItemClick(MenuItem item) {
+        switch (item.getItemId()){
+            case R.id.action_restore_database:
+                IOhaRestoreDatabaseFragment iOhaRestoreDatabaseFragment = getActivity() instanceof IOhaRestoreDatabaseFragment? (IOhaRestoreDatabaseFragment) getActivity(): null;
+                if ( iOhaRestoreDatabaseFragment != null){
+                    iOhaRestoreDatabaseFragment.onRequestRestoreDatabase(this.backups[this.listView.getCheckedItemPosition()]);
+                }
+                this.dismiss();
+                return false;
+            case R.id.action_cancel:
+                this.dismiss();
+                return false;
+        }
+        return false;
+    }
+
+    @Override
+    public void onItemClick(AdapterView<?> adapterView, View view, int position, long id) {
+        //Somente exibir o botão de restore quando um backup for selecionado:
+        parseActionRestoreDatabase();
+    }
+
+    /**
+     * Somente exibir o botão de restore quando um backup for selecionado
+     */
+    private void parseActionRestoreDatabase() {
+        MenuItem menuItem = this.toolbar.getMenu().findItem(R.id.action_restore_database);
+        if (menuItem != null)
+            menuItem.setVisible(this.listView.getCheckedItemPosition() >= 0);
+    }
+
+}
+Android/appSupervisory/src/main/java/br/com/brolam/oha/supervisory/ui/adapters/holders/OhaMainHolder.java
+public abstract class OhaMainHolder extends RecyclerView.ViewHolder {
+
+    public OhaMainHolder(View itemView) {
+        super(itemView);
+    }
+
+    public interface IOhaMainHolder {
+        Context getContext();
+        void onEnergyUseDaySelect(long beginDate, double kwhCost, int menuItemId);
+        void onEnergyUseBillSelect(int id, long fromDate, long toDate, double kwhCost, int menuItemId);
+    }
+
+    public void bindView(final Cursor cursor, final OhaMainHolder.IOhaMainHolder iOhaMainHolder) {
+
+    }
+
+
+}
+Android/appSupervisory/src/main/java/br/com/brolam/oha/supervisory/ui/helpers/OhaBackupHelper.java
+public class OhaBackupHelper {
+    public static final String BACKUP_ACTIVATED = "backup_activated";
+    public static final String BACKUP_FREQUENCY = "backup_frequency";
+    public static final String BACKUP_LAST_DATE_TIME = "backup_last_date_time";
+    public static final String BACKUP_RESTORE_FILE_PATH = "backup_restore_file_path";
+
+    SharedPreferences preferences;
+    public OhaBackupHelper(SharedPreferences preferences ) {
+        this.preferences = preferences;
+    }
+
+    public OhaBackupHelper(Context context ) {
+        this.preferences = PreferenceManager.getDefaultSharedPreferences(context);
+    }
+
+    public boolean isActivated() {
+        return preferences.getBoolean(BACKUP_ACTIVATED, true);
+    }
+
+    public String getFrequency() {
+        return preferences.getString(BACKUP_FREQUENCY, "12");
+    }
+
+    public long getLastDateTime() {
+        Long nextDateTime = preferences.getLong(BACKUP_LAST_DATE_TIME, 0);
+        if ( nextDateTime == 0 ){
+            setLastDateTime();
+            return getLastDateTime();
+        }
+        return nextDateTime;
+    }
+
+    public boolean isBackupTime() {
+        if (isActivated() == false) return false;
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(new Date(getLastDateTime()));
+        calendar.add(Calendar.HOUR, Integer.parseInt(getFrequency()));
+        return calendar.getTime().before(new Date());
+    }
+
+    public boolean isRestoreRequest(){
+        return getBackupRestoreFilePath() != null;
+    }
+
+    public String getBackupRestoreFilePath() {
+        return preferences.getString(BACKUP_RESTORE_FILE_PATH, null);
+    }
+
+    public void setActivated(boolean activated) {
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putBoolean(BACKUP_ACTIVATED, activated);
+        editor.commit();
+    }
+
+    public void setLastDateTime() {
+        Date date = new Date();
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putLong(BACKUP_LAST_DATE_TIME, date.getTime());
+        editor.commit();
+    }
+
+    public void setBackupTime(){
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.HOUR, Integer.parseInt(getFrequency()) * -1);
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putLong(BACKUP_LAST_DATE_TIME, calendar.getTime().getTime());
+        editor.commit();
+
+    }
+
+    public void setBackupRestoreFilePath(String backupRestoreFilePath){
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putString(BACKUP_RESTORE_FILE_PATH, backupRestoreFilePath);
+        editor.commit();
+    }
+
+    public void clearBackupRestoreFilePath(){
+        setBackupRestoreFilePath(null);
+    }
+
+}

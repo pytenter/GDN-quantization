@@ -1,0 +1,4200 @@
+mobile/src/main/java/de/unima/ar/collector/controller/SQLDBController.java
+public class SQLDBController
+{
+    private static SQLDBController INSTANCE = null;
+
+    private       DatabaseHelper databaseHelper;
+    private final Object         databaseLock;
+
+    private static final String SERVICENAME = "de.unima.ar.sqlDBCon";
+
+    private static Map<String, List<String[]>> cacheToDB = new HashMap<>();
+    ;
+
+
+    private SQLDBController()
+    {
+        Context context = SensorDataCollectorService.getInstance().getApplicationContext();
+
+        this.databaseLock = new Object();
+        this.databaseHelper = new DatabaseHelper(context);
+    }
+
+
+    public static SQLDBController getInstance()
+    {
+        if(INSTANCE == null) {
+            INSTANCE = new SQLDBController();
+
+            // create tables
+            DatabaseHelper.createTables();
+        }
+
+        return INSTANCE;
+    }
+
+
+    public List<String[]> query(String sql, String[] selectionArgs, boolean header)
+    {
+        List<String[]> result;
+
+        synchronized(databaseLock) {
+            try {
+                SQLiteDatabase database = databaseHelper.getReadableDatabase();
+                Cursor c = database.rawQuery(sql, selectionArgs);
+
+                result = convertCursorToList(c, header);
+            } catch(SQLiteException e) {
+                result = new ArrayList<>(); // table does not exist or invalid query -so the result is empty
+            }
+        }
+
+        return result;
+    }
+
+
+    public int delete(String table, String whereClause, String[] whereArgs)
+    {
+        int result;
+
+        synchronized(databaseLock) {
+            SQLiteDatabase database = databaseHelper.getWritableDatabase();
+            result = database.delete(table, whereClause, whereArgs);
+        }
+
+        return result;
+    }
+
+
+    public long insert(String table, String nullColumnHack, ContentValues values)
+    {
+        long result;
+
+        // TODO
+        //        synchronized(databaseLock) {
+        SQLiteDatabase database = databaseHelper.getWritableDatabase();
+        result = database.insert(table, nullColumnHack, values);
+        //        }
+
+
+        return result;
+    }
+
+
+    public void bulkInsert(String table, List<String[]> values)
+    {
+        String sql = "INSERT OR IGNORE INTO " + table + " (";
+        String qMarks = "";
+        for(String name : values.get(0)) {
+            sql += name + ",";
+            qMarks += "?,";
+        }
+
+        sql = sql.substring(0, sql.length() - 1);
+        sql += ") values (" + qMarks.substring(0, qMarks.length() - 1) + ");";
+
+        String uuid = UUID.randomUUID().toString();
+        cacheToDB.put(uuid, values);
+
+        Context context = SensorDataCollectorService.getInstance().getApplicationContext();
+        Intent insert = new Intent(context, BulkInsertService.class);
+        insert.putExtra("sqlQuery", sql);
+        insert.putExtra("uuid", uuid);
+        context.startService(insert);
+    }
+
+
+    public void bulkInsertFromIntent(String uuid, String sql)
+    {
+        List<String[]> values = cacheToDB.get(uuid);
+        if(values == null) {
+            return;
+        }
+        SQLiteDatabase database = databaseHelper.getWritableDatabase();
+        database.beginTransaction();
+        SQLiteStatement insert = database.compileStatement(sql);
+        for(int i = 1; i < values.size(); i++) {
+            String[] value = values.get(i);
+
+            for(int j = 1; j <= value.length; j++) {
+                insert.bindString(j, value[j - 1]);
+            }
+
+            insert.executeInsert();
+        }
+        database.setTransactionSuccessful();
+        database.endTransaction();
+        cacheToDB.remove(uuid);
+    }
+
+
+    public int update(String table, ContentValues values, String whereClause, String[] whereArgs)
+    {
+        int result;
+
+        synchronized(databaseLock) {
+            SQLiteDatabase database = databaseHelper.getWritableDatabase();
+            result = database.update(table, values, whereClause, whereArgs);
+        }
+
+        return result;
+    }
+
+
+    public void execSQL(String sql)
+    {
+        synchronized(databaseLock) {
+            SQLiteDatabase database = databaseHelper.getWritableDatabase(); // TODO onActivityCreated
+            database.execSQL(sql);
+        }
+    }
+
+
+    public String getPath()
+    {
+        String path;
+
+        synchronized(databaseLock) {
+            SQLiteDatabase database = databaseHelper.getWritableDatabase();
+            path = database.getPath();
+        }
+
+        return path;
+    }
+
+
+    public long getSize()
+    {
+        long size = 0;
+
+        synchronized(databaseLock) {
+            SQLiteDatabase database = databaseHelper.getWritableDatabase();
+
+            File databaseFile = new File(database.getPath());
+            if(databaseFile.exists()) {
+                size = databaseFile.length();
+            } else {
+                Log.w(SERVICENAME, "DB not null, File does not exist!");
+            }
+        }
+
+        return size;
+    }
+
+
+    public boolean deleteDatabase()
+    {
+        synchronized(databaseLock) {
+            SQLiteDatabase database = databaseHelper.getWritableDatabase();
+
+            for(SensorCollector entry : SensorDataCollectorService.getInstance().getSCM().getSensorCollectors().values()) {
+                if(entry.isRegistered) {
+                    return false;
+                }
+            }
+
+            for(CustomCollector entry : SensorDataCollectorService.getInstance().getSCM().getCustomCollectors().values()) {
+                if(entry.isRegistered()) {
+                    return false;
+                }
+            }
+
+            database.close();
+            this.databaseHelper.deleteDatabase();
+
+            // recreate tables
+            Context context = SensorDataCollectorService.getInstance().getApplicationContext();
+            String deviceID = DeviceID.get(context);
+            DatabaseHelper.createTables();
+
+            // local device
+            DatabaseHelper.createDeviceDependentTables(deviceID);
+            SQLDBController.getInstance().registerDevice(deviceID);
+
+            // external devices
+            for(String device : ListenerService.getDevices()) {
+                DatabaseHelper.createDeviceDependentTables(device);
+                SQLDBController.getInstance().registerDevice(device);
+            }
+
+            // inform other devices
+            BroadcastService.getInstance().sendMessage("/database/delete", "");
+        }
+
+        return true;
+    }
+
+
+    public boolean registerDevice(String deviceID)
+    {
+        boolean known = true;
+
+        List<String[]> result = SQLDBController.getInstance().query("SELECT device FROM " + SQLTableName.DEVICES + " WHERE device=?", new String[]{ deviceID }, false);
+        ContentValues newValues = new ContentValues();
+        newValues.put("lastseen", System.currentTimeMillis());
+
+        if(result.size() == 0) {
+            newValues.put("device", deviceID);
+            SQLDBController.getInstance().insert(SQLTableName.DEVICES, null, newValues);
+            known = false;
+        } else {
+            SQLDBController.getInstance().update(SQLTableName.DEVICES, newValues, "device=?", new String[]{ deviceID });
+        }
+
+        return known;
+    }
+
+
+    private List<String[]> convertCursorToList(Cursor c, boolean header)
+    {
+        List<String[]> result = new ArrayList<>();
+
+        if(header) {
+            result.add(c.getColumnNames());
+        }
+
+        c.moveToFirst();
+        while(!c.isAfterLast()) {
+            String[] row = new String[c.getColumnCount()];
+
+            for(int i = 0; i < c.getColumnCount(); i++) {
+                row[i] = c.getString(i);
+            }
+
+            result.add(row);
+            c.moveToNext();
+        }
+
+        return result;
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/CorrectionHistoryAdapter.java
+public class CorrectionHistoryAdapter extends ArrayAdapter<String[]>
+{
+    private Context context;
+
+
+    public CorrectionHistoryAdapter(Context context, int resource, List<String[]> list)
+    {
+        super(context, resource, list);
+
+        this.context = context;
+    }
+
+
+    @Override
+    public View getView(int position, View convertView, ViewGroup parent)
+    {
+        View rowView = convertView;
+
+        if(rowView == null) {
+            LayoutInflater inflater = (LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+            rowView = inflater.inflate(R.layout.activity_correction_historyentry, parent, false);
+        }
+
+        String[] entry = this.getItem((this.getCount() - 1) - position);
+
+        TextView invalid = (TextView) rowView.findViewById(R.id.activity_correction_value);
+        invalid.setText(context.getString(R.string.activity_correction_history_invalid) + ": " + entry[3]);
+
+        Timestamp start = new Timestamp(Long.valueOf(entry[1]));
+        Date startDate = new Date(start.getTime());
+
+        Timestamp stop = new Timestamp(Long.valueOf(entry[2]));
+        Date stopDate = new Date(stop.getTime());
+
+        DateFormat formatter = new SimpleDateFormat();
+        TextView dateText = (TextView) rowView.findViewById(R.id.activity_correction_date);
+        dateText.setText(formatter.format(startDate) + " - " + formatter.format(stopDate));
+
+        return rowView;
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/util/CustomPointFormatter.java
+public class CustomPointFormatter extends LineAndPointFormatter
+{
+    public CustomPointFormatter()
+    {
+        super(Color.RED, Color.GREEN, Color.BLUE, null);
+    }
+
+
+    public CustomPointFormatter(Integer lineColor, Integer vertexColor, Integer fillColor, PointLabelFormatter plf)
+    {
+        super(lineColor, vertexColor, fillColor, plf, FillDirection.BOTTOM);
+    }
+
+
+    public CustomPointFormatter(Integer lineColor, Integer vertexColor, Integer fillColor, PointLabelFormatter plf, FillDirection fillDir)
+    {
+        super(lineColor, vertexColor, fillColor, plf, fillDir);
+    }
+
+
+    @SuppressWarnings ("rawtypes")
+    @Override
+    public SeriesRenderer getRendererInstance(XYPlot plot)
+    {
+        return new CustomPointRenderer(plot);
+    }
+
+
+    @SuppressWarnings ("rawtypes")
+    @Override
+    public Class<? extends SeriesRenderer> getRendererClass()
+    {
+        return CustomPointRenderer.class;
+    }
+}
+wear/src/main/java/de/unima/ar/collector/api/BroadcastService.java
+public class BroadcastService implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, NodeApi.NodeListener
+{
+    private Context  context;
+    private Vibrator vibService;
+
+    private static BroadcastService SERVICE = null;
+    private static GoogleApiClient  gac     = null;
+
+    private static final String TAG = "wear.broadcast";
+
+
+    private BroadcastService(Context context)
+    {
+        this.context = context;
+        this.vibService = (Vibrator) this.context.getSystemService(Context.VIBRATOR_SERVICE);
+
+        gac = new GoogleApiClient.Builder(this.context).addApi(Wearable.API).addConnectionCallbacks(this).addOnConnectionFailedListener(this).build();
+        Wearable.NodeApi.addListener(gac, this);
+    }
+
+
+    public static void initInstance(Context context)
+    {
+        if(SERVICE == null) {
+            SERVICE = new BroadcastService(context);
+        }
+    }
+
+
+    public static BroadcastService getInstance()
+    {
+        return SERVICE;
+    }
+
+
+    //    public static void shutdown()
+    //    {
+    //        gac.disconnect();
+    //    }
+
+
+    public GoogleApiClient getAPIClient()
+    {
+        return gac;
+    }
+
+
+    public void sendMessage(final String path, final String text)
+    {
+        sendMessage(path, text.getBytes());
+    }
+
+
+    public void sendMessage(final String path, final byte[] bytes)
+    {
+        new Thread(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                NodeApi.GetConnectedNodesResult nodes = Wearable.NodeApi.getConnectedNodes(gac).await();
+                while(nodes.getNodes().size() == 0) {
+                    Utils.sleep(500);
+                    nodes = Wearable.NodeApi.getConnectedNodes(gac).await();
+                }
+
+                for(Node node : nodes.getNodes()) {
+                    Wearable.MessageApi.sendMessage(gac, node.getId(), path, bytes).await();
+                }
+            }
+        }).start();
+    }
+
+
+    @Override
+    public void onConnected(Bundle bundle)
+    {
+        Log.d(TAG, "Client connected!");
+    }
+
+
+    @Override
+    public void onConnectionSuspended(int cause)
+    {
+        Log.d(TAG, "Client suspended!");
+    }
+
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult)
+    {
+        Log.d(TAG, "Client failed!");
+    }
+
+
+    @Override
+    public void onPeerConnected(Node node)
+    {
+        Log.d(TAG, "Peer conntected!");
+
+        this.vibService.cancel();
+    }
+
+
+    @Override
+    public void onPeerDisconnected(Node node)
+    {
+        Log.d(TAG, "Peer disconnected!");
+
+        MainActivity main = (MainActivity) ActivityController.getInstance().get("MainActivity");
+        if(main == null) {
+            return;
+        }
+
+        long[] pattern = { 0, 100, 500 };  // start without a delay, vibrate for 100 milliseconds, sleep for 1000 milliseconds
+        this.vibService.vibrate(pattern, 0);  // '0' here means to repeat indefinitely
+
+        Utils.makeToast((Activity) this.context, R.string.broadcast_outofrange, Toast.LENGTH_LONG);
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/dialog/DatabaseSensorDialog.java
+@SuppressLint("InflateParams")
+public class DatabaseSensorDialog extends DialogFragment
+{
+    private MainActivity      context;
+    private PlotConfiguration pc;
+
+
+    public void setContext(MainActivity context)
+    {
+        this.context = context;
+    }
+
+
+    public void setPlotConfig(PlotConfiguration pc)
+    {
+        this.pc = pc;
+    }
+
+
+    /*
+     * (non-Javadoc)
+     * @see android.support.v4.app.DialogFragment#onCreateDialog(android.os.Bundle)
+     */
+    @Override
+    public Dialog onCreateDialog(Bundle savedInstanceState)
+    {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+
+        // Inflate and set the layout for the dialog
+        // Pass null as the parent view because its going in the dialog layout
+        builder.setTitle(getString(R.string.analyze_analyze_database_dialog_title));
+
+        LayoutInflater inflater = getActivity().getLayoutInflater();
+        View view = inflater.inflate(R.layout.databasesensordialog, null);
+
+        builder.setView(view);
+
+        SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy", Locale.ENGLISH);
+        SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.ENGLISH);
+
+        final EditText fromDate = (EditText) view.findViewById(R.id.databasefromdate);
+        fromDate.setInputType(EditorInfo.TYPE_NULL);
+        fromDate.setText(dateFormat.format(new Date(new Date().getTime() - 86400000)));
+        fromDate.setOnClickListener(new DatePickerListener(getActivity(), fromDate));
+
+        final EditText fromTime = (EditText) view.findViewById(R.id.databasefromtime);
+        fromTime.setInputType(EditorInfo.TYPE_NULL);
+        fromTime.setText(timeFormat.format(new Date(new Date().getTime() - 86400000)));
+        fromTime.setOnClickListener(new TimePickerListener(getActivity(), fromTime));
+
+        final EditText toDate = (EditText) view.findViewById(R.id.databasetodate);
+        toDate.setInputType(EditorInfo.TYPE_NULL);
+        toDate.setText(dateFormat.format(new Date(new Date().getTime() + 60000)));
+        toDate.setOnClickListener(new DatePickerListener(getActivity(), toDate));
+
+        final EditText toTime = (EditText) view.findViewById(R.id.databasetotime);
+        toTime.setInputType(EditorInfo.TYPE_NULL);
+        toTime.setText(timeFormat.format(new Date(new Date().getTime() + 60000)));
+        toTime.setOnClickListener(new TimePickerListener(getActivity(), toTime));
+
+        builder.setPositiveButton(R.string.dialog_ok, null);
+
+        builder.setNegativeButton(R.string.dialog_cancel, new DialogInterface.OnClickListener()
+        {
+            public void onClick(DialogInterface dialog, int id)
+            {
+
+            }
+        });
+
+        final AlertDialog d = builder.create();
+
+        final CheckBox showActivities = (CheckBox) view.findViewById(R.id.showActivitiesChkBx);
+        showActivities.setChecked(true);
+
+        final CheckBox showPositions = (CheckBox) view.findViewById(R.id.showPositionsChkBx);
+        showPositions.setChecked(true);
+
+        final CheckBox showPostures = (CheckBox) view.findViewById(R.id.showPosturesChkBx);
+        showPostures.setChecked(true);
+
+        d.setOnShowListener(new DialogInterface.OnShowListener()
+        {
+            @Override
+            public void onShow(DialogInterface arg0)
+            {
+                Button b = d.getButton(AlertDialog.BUTTON_POSITIVE);
+                b.setOnClickListener(new View.OnClickListener()
+                {
+                    public void onClick(View arg0)
+                    {
+                        SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.ENGLISH);
+
+                        String fromString = fromDate.getText().toString() + " " + fromTime.getText().toString();
+                        String toString = toDate.getText().toString() + " " + toTime.getText().toString();
+
+                        long lFromTime = 0;
+                        long lToTime = 0;
+
+                        try {
+                            lFromTime = sdf.parse(fromString).getTime();
+                            lToTime = sdf.parse(toString).getTime();
+
+                            if(lFromTime == lToTime || lFromTime > lToTime) {
+                                Toast.makeText(d.getContext(), getString(R.string.analyze_analyze_database_dialog_notify1), Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                        } catch(ParseException e1) {
+                            Toast.makeText(d.getContext(), getString(R.string.analyze_analyze_database_dialog_notify2), Toast.LENGTH_LONG).show();
+                            return;
+                        }
+
+                        context.showAnalyzeDatabaseData(pc, String.valueOf(lFromTime), String.valueOf(lToTime), showActivities.isChecked(), showPositions.isChecked(), showPostures.isChecked());
+                        d.dismiss();
+                    }
+                });
+
+            }
+        });
+
+        return d;
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/dialog/CreateCorrectionDialog.java
+public class CreateCorrectionDialog extends DialogFragment
+{
+    @Override
+    public Dialog onCreateDialog(Bundle savedInstanceState)
+    {
+        View view = getActivity().getLayoutInflater().inflate(R.layout.activity_correction_dialog, null);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+        builder.setView(view);
+        builder.setTitle(getString(R.string.activity_correction_dialog_add_title));
+
+        SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy", Locale.ENGLISH);
+        SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.ENGLISH);
+
+        long currentTime = new Date().getTime();
+
+        long lastChange = new Date().getTime() - 3600000;
+
+        final EditText fromDate = (EditText) view.findViewById(R.id.correctionfromdate);
+        fromDate.setInputType(EditorInfo.TYPE_NULL);
+        fromDate.setText(dateFormat.format(new Date(lastChange)));
+        fromDate.setOnClickListener(new DatePickerListener(getActivity(), fromDate));
+
+        final EditText fromTime = (EditText) view.findViewById(R.id.correctionfromtime);
+        fromTime.setInputType(EditorInfo.TYPE_NULL);
+        fromTime.setText(timeFormat.format(new Date(lastChange)));
+        fromTime.setOnClickListener(new TimePickerListener(getActivity(), fromTime));
+
+        final EditText toDate = (EditText) view.findViewById(R.id.correctiontodate);
+        toDate.setInputType(EditorInfo.TYPE_NULL);
+        toDate.setText(dateFormat.format(new Date(currentTime)));
+        toDate.setOnClickListener(new DatePickerListener(getActivity(), toDate));
+
+        final EditText toTime = (EditText) view.findViewById(R.id.correctiontotime);
+        toTime.setInputType(EditorInfo.TYPE_NULL);
+        toTime.setText(timeFormat.format(new Date(currentTime)));
+        toTime.setOnClickListener(new TimePickerListener(getActivity(), toTime));
+
+        final CheckBox checkEnvironment = (CheckBox) view.findViewById(R.id.markEnvironmentChkBx);
+        final CheckBox checkPosture = (CheckBox) view.findViewById(R.id.markPosturesChkBx);
+        final CheckBox checkDevicePosition = (CheckBox) view.findViewById(R.id.markDeviceChkBx);
+        final CheckBox checkAcitivity = (CheckBox) view.findViewById(R.id.markActivityChkBx);
+
+        builder.setNegativeButton(R.string.activity_dialog_cancel, new DialogInterface.OnClickListener()
+        {
+            public void onClick(DialogInterface dialog, int id)
+            {
+                // User cancelled the dialog
+            }
+        });
+        builder.setPositiveButton(R.string.activity_dialog_add, new DialogInterface.OnClickListener()
+        {
+            public void onClick(DialogInterface dialog, int id)
+            {
+                MainActivity main = (MainActivity) ActivityController.getInstance().get("MainActivity");
+                SimpleDateFormat timeDateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.ENGLISH);
+
+                try {
+                    long fromTimeNew = timeDateFormat.parse(fromDate.getText().toString() + " " + fromTime.getText().toString()).getTime();
+                    long toTimeNew = timeDateFormat.parse(toDate.getText().toString() + " " + toTime.getText().toString()).getTime();
+
+                    StringBuilder sb = new StringBuilder();
+
+                    if(checkEnvironment.isChecked()) {
+                        sb.append(getString(R.string.activity_correction_dialog_add_environment) + ", ");
+                    }
+                    if(checkPosture.isChecked()) {
+                        sb.append(getString(R.string.activity_correction_dialog_add_posture) + ", ");
+                    }
+                    if(checkDevicePosition.isChecked()) {
+                        sb.append(getString(R.string.activity_correction_dialog_add_device) + ", ");
+                    }
+                    if(checkAcitivity.isChecked()) {
+                        sb.append(getString(R.string.activity_correction_dialog_add_activity) + ", ");
+                    }
+
+                    if(fromTimeNew >= toTimeNew || sb.length() == 0) {
+                        UIUtils.makeToast(main, R.string.activity_correction_dialog_add_invalid, Toast.LENGTH_SHORT);
+                        return;
+                    }
+
+                    sb.setLength(sb.length() - 2);
+
+                    ContentValues cv = new ContentValues();
+                    cv.put("starttime", fromTimeNew);
+                    cv.put("endtime", toTimeNew);
+                    cv.put("log", sb.toString());
+
+                    SQLDBController.getInstance().insert(SQLTableName.ACTIVITYCORRECTION, null, cv);
+
+                    main.refreshActivityCorrectionHistoryScreen();
+                } catch(ParseException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+
+        if(Build.VERSION.SDK_INT <= 16) {   // layout workaround
+            TextView text = (TextView) view.findViewById(R.id.choosetext2);
+            text.setPadding(0, 0, 0, 30);
+            text.setText(R.string.activity_correction_dialog_add_text2);
+            text.setGravity(Gravity.FILL);
+        }
+
+        return builder.create();
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/dialog/GPSDatabaseDialog.java
+@SuppressLint("SimpleDateFormat")
+public class GPSDatabaseDialog extends DialogFragment
+{
+    private MainActivity context;
+
+
+    public void setContext(MainActivity context)
+    {
+        this.context = context;
+    }
+
+
+    /*
+     * (non-Javadoc)
+     * @see android.support.v4.app.DialogFragment#onCreateDialog(android.os.Bundle)
+     */
+    @SuppressLint("SimpleDateFormat")
+    @Override
+    public Dialog onCreateDialog(Bundle savedInstanceState)
+    {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+
+        // Inflate and set the layout for the dialog
+        // Pass null as the parent view because its going in the dialog layout
+        builder.setTitle(getString(R.string.analyze_analyze_database_dialog_title));
+
+        LayoutInflater inflater = getActivity().getLayoutInflater();
+        View view = inflater.inflate(R.layout.databasesensordialog, null);
+
+        builder.setView(view);
+
+        view.findViewById(R.id.showActivitiesLabel).setVisibility(View.GONE);
+        view.findViewById(R.id.showActivitiesChkBx).setVisibility(View.GONE);
+        view.findViewById(R.id.showPositionsLabel).setVisibility(View.GONE);
+        view.findViewById(R.id.showPositionsChkBx).setVisibility(View.GONE);
+        view.findViewById(R.id.showPosturesLabel).setVisibility(View.GONE);
+        view.findViewById(R.id.showPosturesChkBx).setVisibility(View.GONE);
+
+        SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy");
+        SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm");
+
+        final EditText fromDate = (EditText) view.findViewById(R.id.databasefromdate);
+        fromDate.setInputType(EditorInfo.TYPE_NULL);
+        fromDate.setText(dateFormat.format(new Date(new Date().getTime() - 86400000)));
+        fromDate.setOnClickListener(new DatePickerListener(getActivity(), fromDate));
+
+        final EditText fromTime = (EditText) view.findViewById(R.id.databasefromtime);
+        fromTime.setInputType(EditorInfo.TYPE_NULL);
+        fromTime.setText(timeFormat.format(new Date(new Date().getTime() - 86400000)));
+        fromTime.setOnClickListener(new TimePickerListener(getActivity(), fromTime));
+
+        final EditText toDate = (EditText) view.findViewById(R.id.databasetodate);
+        toDate.setInputType(EditorInfo.TYPE_NULL);
+        toDate.setText(dateFormat.format(new Date()));
+        toDate.setOnClickListener(new DatePickerListener(getActivity(), toDate));
+
+        final EditText toTime = (EditText) view.findViewById(R.id.databasetotime);
+        toTime.setInputType(EditorInfo.TYPE_NULL);
+        toTime.setText(timeFormat.format(new Date()));
+        toTime.setOnClickListener(new TimePickerListener(getActivity(), toTime));
+
+        builder.setPositiveButton(R.string.dialog_ok, null);
+
+        builder.setNegativeButton(R.string.dialog_cancel, new DialogInterface.OnClickListener()
+        {
+            public void onClick(DialogInterface dialog, int id)
+            {
+
+            }
+        });
+
+        final AlertDialog d = builder.create();
+
+        d.setOnShowListener(new DialogInterface.OnShowListener()
+        {
+            @Override
+            public void onShow(DialogInterface arg0)
+            {
+                Button b = d.getButton(AlertDialog.BUTTON_POSITIVE);
+                b.setOnClickListener(new View.OnClickListener()
+                {
+                    public void onClick(View arg0)
+                    {
+                        SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+
+                        String fromString = fromDate.getText().toString() + " " + fromTime.getText().toString();
+                        String toString = toDate.getText().toString() + " " + toTime.getText().toString();
+
+                        long lFromTime = 0;
+                        long lToTime = 0;
+
+                        try {
+                            lFromTime = sdf.parse(fromString).getTime();
+                            lToTime = sdf.parse(toString).getTime();
+
+                            if(lFromTime == lToTime || lFromTime > lToTime) {
+                                Toast.makeText(d.getContext(), getString(R.string.analyze_analyze_database_dialog_notify1), Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                        } catch(ParseException e1) {
+                            Toast.makeText(d.getContext(), getString(R.string.analyze_analyze_database_dialog_notify2), Toast.LENGTH_LONG).show();
+                            return;
+                        }
+
+                        long count = Long.parseLong(DatabaseHelper.getStringResultSet("SELECT COUNT(*) FROM " + SQLTableName.PREFIX + DeviceID.get(SensorDataCollectorService.getInstance()) + SQLTableName.GPS + " WHERE attr_time > ? AND attr_time < ?", new String[]{ lFromTime + "", lToTime + "" }).get(0));
+
+                        if(count > 1000) {
+                            Toast.makeText(d.getContext(), getString(R.string.analyze_analyze_database_dialog_notify3), Toast.LENGTH_LONG).show();
+                            return;
+                        }
+
+                        /*
+                         * Handler mainHandler = new Handler(context.getMainLooper());
+                         * final String _ft = ""+ lFromTime;
+                         * final String _tt = ""+ lToTime;
+                         * Runnable myRunnable = new Runnable(){
+                         * @Override
+                         * public void run() {
+                         * context.showAnalyzeDatabaseGPS(_ft + "", _tt + "");
+                         * }
+                         * };
+                         * mainHandler.post(myRunnable);
+                         */
+
+                        context.showAnalyzeDatabaseGPS(lFromTime + "", lToTime + "");
+                        d.dismiss();
+                    }
+                });
+
+            }
+        });
+
+        return d;
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/sensors/SensorCollectorManager.java
+public class SensorCollectorManager
+{
+    private Context                       context;
+    private Map<Integer, SensorCollector> sensorCollectors;
+    private Map<Integer, CustomCollector> customCollectors;
+    private Set<Integer>                  enabledCollectors;
+    private SensorManager                 sensorManager;
+
+    private static final String LOG_TAG = "SensorCollectorManager";
+
+
+    public SensorCollectorManager(Context context)
+    {
+        this.context = context;
+
+        this.sensorCollectors = new HashMap<>();
+        this.customCollectors = new HashMap<>();
+        this.enabledCollectors = new HashSet<>();
+        this.sensorManager = (SensorManager) this.context.getSystemService(Context.SENSOR_SERVICE);
+
+        initSensors();
+    }
+
+
+    private void initSensors()
+    {
+        // Add all sensors
+        SensorManager mSensorManager = (SensorManager) this.context.getSystemService(Activity.SENSOR_SERVICE);
+        List<Sensor> allSensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
+
+        for(Sensor sensor : allSensors) {
+            this.addSensorCollector(sensor.getType(), sensor);
+        }
+
+        for(int type : CollectorConstants.activatedCustomCollectors) {
+            this.addCustomCollector(type, this.context);
+        }
+    }
+
+
+    public int getRunningSensorAmount()
+    {
+        return enabledCollectors.size();
+    }
+
+
+    public float getPowerUsed()
+    {
+        float amount = 0;
+
+        for(Integer type : enabledCollectors) {
+            if(sensorCollectors.containsKey(type)) {
+                amount += sensorCollectors.get(type).getSensor().getPower();
+            } else {
+                Log.d(LOG_TAG, "getPowerUsed for custom collector is not implemented");
+            }
+        }
+
+        return amount;
+    }
+
+
+    public Map<Integer, SensorCollector> getSensorCollectors()
+    {
+        return sensorCollectors;
+    }
+
+
+    public Map<Integer, CustomCollector> getCustomCollectors()
+    {
+        return customCollectors;
+    }
+
+
+    public Set<Integer> getEnabledCollectors()
+    {
+        return this.enabledCollectors;
+    }
+
+
+    public boolean enableCollectors(int type)
+    {
+        if(!this.sensorCollectors.containsKey(type) && !this.customCollectors.containsKey(type)) {
+            return false;
+        }
+        this.enabledCollectors.add(type);
+
+        return true;
+    }
+
+
+    public boolean disableCollectors(int type)
+    {
+        return this.enabledCollectors.remove(type);
+    }
+
+
+    public boolean removeSensor(int type)
+    {
+        boolean result = unregisterSensorCollector(type);
+
+        if(result) {
+            disableCollectors(type);
+        }
+
+        return result;
+    }
+
+
+    private boolean addCustomCollector(int type, Context sensor)
+    {
+        CustomCollector cc = CustomCollectorFactory.getCollector(type, sensor);
+
+        if(cc == null) {
+            return false;
+        }
+
+        if(this.customCollectors.containsKey(cc.getType())) {
+            return true;
+        }
+
+        this.customCollectors.put(cc.getType(), cc);
+
+        return true;
+    }
+
+
+    private boolean addSensorCollector(int type, Sensor sensor)
+    {
+        SensorCollector sc = SensorCollectorFactory.getCollector(type, sensor);
+
+        if(sc == null) {
+            return false;
+        }
+
+        if(this.customCollectors.containsKey(sc.getType())) {
+            return true;
+        }
+
+        this.sensorCollectors.put(sc.getType(), sc);
+
+        return true;
+    }
+
+
+    public void registerSensorCollectors()
+    {
+        for(int type : this.sensorCollectors.keySet()) {
+            registerSensorCollector(type);
+        }
+    }
+
+
+    public void registerSensorCollector(int type)
+    {
+        SensorCollector sel = this.sensorCollectors.get(type);
+
+        if(sel == null || !sel.registerCollector || sel.isRegistered || !enabledCollectors.contains(sel.getType())) {
+            return;
+        }
+
+        if(sel.getSensor() != null) {
+            this.sensorManager.registerListener(sel, sel.getSensor(), sel.getSensorRate());
+            sel.isRegistered = true;
+        } else {    // Fall 2: Es gibt einen Default Sensor für den Sensortyp
+            if(this.sensorManager.getDefaultSensor(sel.getType()) != null) {
+                this.sensorManager.registerListener(sel, this.sensorManager.getDefaultSensor(sel.getType()), sel.getSensorRate());
+                sel.isRegistered = true;
+            } else { // Fall 3: Es existiert kein Default Sensor für den Sensortyp
+                Log.e(LOG_TAG, "Error! There is no default sensor.");
+            }
+        }
+    }
+
+
+    public void registerCustomCollectors()
+    {
+        for(CustomCollector cc : customCollectors.values()) {
+            if(!cc.isRegistered() && enabledCollectors.contains(cc.getType())) {
+                cc.register();
+            }
+        }
+    }
+
+
+    private boolean unregisterSensorCollector(int type)
+    {
+        for(SensorCollector sel : this.sensorCollectors.values()) {
+            if(!(sel.isRegistered && sel.getType() == type && this.enabledCollectors.contains(sel.getType()))) {
+                continue;
+            }
+
+            this.sensorManager.unregisterListener(sel);
+            sel.isRegistered = false;
+            return true;
+        }
+
+        return false;
+    }
+
+
+    public boolean unregisterCustomCollector(int type)
+    {
+        CustomCollector cc = customCollectors.get(type);
+        if(!(cc != null && cc.isRegistered() && this.enabledCollectors.contains(cc.getType()))) {
+            return false;
+        }
+
+        cc.deregister();
+        return true;
+    }
+
+
+    public void unregisterSensorCollectors()
+    {
+        for(SensorCollector sel : this.sensorCollectors.values()) {
+            if(sel.isRegistered) {
+                this.sensorManager.unregisterListener(sel);
+                sel.isRegistered = false;
+            }
+        }
+    }
+
+
+    public boolean isCustomCollectorRegistered(int type)
+    {
+        return this.enabledCollectors.contains(type);
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/OverviewRowAdapter.java
+public class OverviewRowAdapter extends ArrayAdapter<String>
+{
+    private final Activity context;
+
+    static class ViewHolder
+    {
+        public TextView text;
+        public TextView text2;
+        public TextView text3;
+    }
+
+
+    public OverviewRowAdapter(Activity context)
+    {
+        super(context, R.layout.listitemueberblick, new String[]{ "Sensors", "Power", "Database", "SmartWatches" });
+
+        this.context = context;
+    }
+
+
+    @Override
+    public boolean isEnabled(int position)
+    {
+        return false;
+    }
+
+
+    @Override
+    public View getView(int position, View convertView, ViewGroup parent)
+    {
+        View rowView = convertView;
+
+        if(rowView == null) {
+            LayoutInflater inflater = context.getLayoutInflater();
+            rowView = inflater.inflate(R.layout.listitemueberblick, parent, false);
+            ViewHolder viewHolder = new ViewHolder();
+
+            viewHolder.text = (TextView) rowView.findViewById(R.id.list_item_ueberblick_title);
+            viewHolder.text2 = (TextView) rowView.findViewById(R.id.list_item_ueberblick_title_subtitle);
+            viewHolder.text3 = (TextView) rowView.findViewById(R.id.list_item_ueberblick_value);
+
+            rowView.setTag(viewHolder);
+        }
+
+        ViewHolder holder = (ViewHolder) rowView.getTag();
+        SensorCollectorManager scm = SensorDataCollectorService.getInstance().getSCM();
+
+        if(position == 0) {
+            holder.text.setText(context.getString(R.string.main_overview_sensors));
+            holder.text2.setText(context.getString(R.string.main_overview_sensors_description));
+            holder.text3.setText(String.valueOf(scm.getRunningSensorAmount()));
+        } else if(position == 1) {
+            String[] names = SensorDataUtil.getNamesOfEnabledSensors(1);
+            String extDesc = "";
+            if(names.length > 0) {
+                extDesc = Arrays.toString(names);
+                extDesc = extDesc.substring(1, extDesc.length() - 1).trim();
+                extDesc = System.getProperty("line.separator") + "(" + context.getString(R.string.main_overview_power_description2) + ": " + extDesc + ")";
+            }
+
+            holder.text.setText(context.getString(R.string.main_overview_power));
+            holder.text2.setText(context.getString(R.string.main_overview_power_description) + extDesc);
+            holder.text3.setText(scm.getPowerUsed() + " mA");
+        } else if(position == 2) {
+            holder.text.setText(context.getString(R.string.main_overview_database));
+            holder.text2.setText(context.getString(R.string.main_overview_database_description));
+            holder.text3.setText((((int) ((SQLDBController.getInstance().getSize() / 1024) * 10)) / 10) + " KB");
+        } else if(position == 3) {
+            holder.text.setText(context.getString(R.string.main_overview_smartwatch));
+            holder.text2.setText(context.getString(R.string.main_overview_smartwatch_description));
+            holder.text3.setText(String.valueOf(ListenerService.getNumberOfDevices()));
+        }
+
+        return rowView;
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/extended/SensorSelfTest.java
+public class SensorSelfTest implements SensorEventListener
+{
+    private static final double nbElements = 30;
+    private SensorManager sensorManager;
+    private Sensor        sensor;
+    private Activity      context;
+
+    private long now  = 0;
+    private int  temp = 0;
+
+
+    public SensorSelfTest(Activity context, Sensor sensor)
+    {
+        this.context = context;
+        this.sensor = sensor;
+        this.context.setContentView(R.layout.sensorselftest);
+
+        sensorManager = (SensorManager) this.context.getSystemService(Activity.SENSOR_SERVICE);
+
+        boolean accelSupported = sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST);
+        if(!accelSupported) {
+            sensorManager.unregisterListener(this, this.sensor);
+            ((TextView) this.context.findViewById(R.id.acc)).setText(sensor.getName() + " " + context.getString(R.string.sensor_selftest_notdetected));
+        }
+
+        TextView acc = (TextView) context.findViewById(R.id.acc);
+        acc.setText(context.getString(R.string.sensor_selftest_calc) + " (" + sensor.getName() + ") ...");
+
+        String name = SensorDataUtil.getSensorType(sensor.getType()).substring(5).replace("_", "");
+        TextView ssthead = (TextView) context.findViewById(R.id.ssthead);
+        ssthead.setText(context.getString(R.string.sensor_selftest_title) + " (" + name + ")");
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // Nothing to do
+    }
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        try {
+            long tS;
+            long time;
+            // only if the event is from the accelerometer
+            if(event.sensor.getType() == sensor.getType()) {
+                float x, y, z;
+                x = event.values[0];
+                y = event.values[1];
+                z = event.values[2];
+
+                // Get timestamp of the event
+                tS = event.timestamp;
+
+                ((TextView) context.findViewById(R.id.axex)).setText(context.getString(R.string.sensor_selftest_x) + " : " + x);
+                ((TextView) context.findViewById(R.id.axey)).setText(context.getString(R.string.sensor_selftest_y) + " : " + y);
+                ((TextView) context.findViewById(R.id.axez)).setText(context.getString(R.string.sensor_selftest_z) + " : " + z);
+
+                // Get the mean frequency for "nbElements" (=30) elements
+                if(now != 0) {
+                    temp++;
+                    if(temp == nbElements) {
+                        time = tS - now;
+
+                        double hzValue = nbElements * 1000000000 / time;
+
+                        ((TextView) context.findViewById(R.id.acc)).setText(context.getString(R.string.sensor_selftest_frequency) + " : " + hzValue + " Hz");
+                        temp = 0;
+                    }
+                }
+                // To set up now on the first event and do not change it while we do not have "nbElements" events
+                if(temp == 0) {
+                    now = tS;
+                }
+            }
+        } catch(Exception e) {
+            // do nothing
+        }
+    }
+
+
+    public Sensor getSensor()
+    {
+        return sensor;
+    }
+
+
+    public void resumeTest()
+    {
+        sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST);
+    }
+
+
+    public void stopTest()
+    {
+        sensorManager.unregisterListener(this);
+    }
+}
+shared/src/main/java/de/unima/ar/collector/shared/util/DeviceID.java
+public class DeviceID
+{
+    private static String id;
+
+
+    public static String get(Context context)
+    {
+        if((id != null && id.length() > 0) || context == null) {
+            return id;
+        }
+
+        id = getAndroidID(context);   // not unique!!! but should be available on each device
+        if(id != null) {
+            return id;
+        }
+
+        id = getDeviceID(context);     // should be unique but is not available on each device
+        if(id != null) {
+            return id;
+        }
+
+        id = getBuildSerial(context);   // should be unique but is not available on each device
+        if(id != null) {
+            return id;
+        }
+
+        // Further information: http://stackoverflow.com/questions/16078269/android-unique-serial-number/16929647#16929647
+
+        return null;    // this should never happend
+    }
+
+
+    private static String getAndroidID(Context context)
+    {
+        try {
+            return String.valueOf(Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID));
+        } catch(Exception e) {
+            // not available
+        }
+
+        return null;
+    }
+
+
+    private static String getDeviceID(Context context)
+    {
+        try {
+            return ((TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE)).getDeviceId();
+        } catch(Exception e) {
+            // not available
+        }
+
+        return null;
+    }
+
+
+    private static String getBuildSerial(Context context)
+    {
+        try {
+            return android.os.Build.SERIAL;
+        } catch(Exception e) {
+            // not available
+        }
+
+        return null;
+    }
+}
+shared/src/main/java/de/unima/ar/collector/shared/Settings.java
+public class Settings
+{
+    // This file is modified on startup by Android! Check xml.preferences.xml!
+
+    public static double  SENSOR_DEFAULT_FREQUENCY = 50.0d;    // Hz
+    public static long    GPS_DEFAULT_FREQUENCY    = 10000L; // Milliseconds 600000l = 10min
+    public static long    MICRO_DEFAULT_FREQUENCY  = 20L; // Milliseconds 20l = 50hertz
+    public static boolean ACCLOWPASS               = false;
+
+    public static boolean DATABASE_DIRECT_INSERT = false;
+    public static int     DATABASE_CACHE_SIZE    = 10000;   // number of entries
+    public static String  DATABASE_DELIMITER     = "-#~o~#-";
+
+    public static String ACTIVITY_DELIMITER = " - ";
+
+    public static int EXPORT_ATONCE = 10000;
+
+    public static boolean LIVE_PLOTTER_ENABLED = true;
+
+    public static boolean WEARSENSOR           = true;
+    public static boolean WEARTRANSFERDIRECT   = false;
+    public static int     WEARTRANSFERIDLETIME = 120000;   // milliseconds
+    public static int     WEARTRANSFERTIMEOUT  = 5000;    // milliseconds
+    public static int     WEARTRANSFERSIZE     = 5000;  // 1000
+}
+mobile/src/main/java/de/unima/ar/collector/controller/BluetoothController.java
+public class BluetoothController extends BroadcastReceiver
+{
+    private Map<String, Integer>  connectedDevices;  // -1 = lost device, 0 = neutral, 1 = connected
+    private BiMap<String, String> lostDevices; // deviceID, deviceAddress
+
+    private static BluetoothController INSTANCE = null;
+
+
+    private BluetoothController()
+    {
+        this.connectedDevices = new HashMap<>();
+        this.lostDevices = HashBiMap.create();
+
+        for(BluetoothDevice bd : BluetoothAdapter.getDefaultAdapter().getBondedDevices()) {
+            this.connectedDevices.put(bd.getAddress(), 0);
+        }
+    }
+
+
+    public static BluetoothController getInstance()
+    {
+        if(INSTANCE == null) {
+            INSTANCE = new BluetoothController();
+        }
+
+        return INSTANCE;
+    }
+
+
+    public void register(Context context)
+    {
+        IntentFilter blueCon = new IntentFilter(BluetoothDevice.ACTION_ACL_CONNECTED);
+        context.registerReceiver(this, blueCon);
+        IntentFilter blueDis = new IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        context.registerReceiver(this, blueDis);
+        IntentFilter blueState = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
+        context.registerReceiver(this, blueState);
+    }
+
+
+    public void unregister(Context context)
+    {
+        context.unregisterReceiver(this);
+    }
+
+
+    public int getConnectedDevices()
+    {
+        return this.connectedDevices.size();
+    }
+
+
+    @Override
+    public void onReceive(Context context, Intent intent)
+    {
+        String action = intent.getAction();
+        BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+        String deviceAddress = "";
+        if(device != null) {
+            deviceAddress = device.getAddress();
+        }
+
+        switch(action) {
+            case BluetoothDevice.ACTION_ACL_CONNECTED:
+                if(this.connectedDevices.containsKey(deviceAddress) && this.connectedDevices.get(deviceAddress) == -1) {
+                    String deviceID = this.lostDevices.inverse().get(deviceAddress);
+                    ListenerService.addDevice(deviceID, deviceAddress);
+                    this.connectedDevices.put(deviceAddress, 1);
+
+                    MainActivity main = (MainActivity) ActivityController.getInstance().get("MainActivity");
+                    main.refreshMainScreenOverview();
+                    UIUtils.makeToast(main, R.string.app_toast_bluetooth_reestablished, Toast.LENGTH_SHORT);
+                } else {
+                    this.connectedDevices.put(deviceAddress, 0);
+                }
+                break;
+
+            case BluetoothDevice.ACTION_ACL_DISCONNECTED:
+                if(ListenerService.getDevicesAddresses().contains(deviceAddress)) { // bluetooth connection lost but app did not say goodbye
+                    String deviceID = ListenerService.getDeviceID(deviceAddress);
+                    ListenerService.rmDevice(deviceAddress);        // disconnect app connection
+                    this.connectedDevices.put(deviceAddress, -1);   // lost
+                    this.lostDevices.put(deviceID, deviceAddress);  // store deviceID
+
+                    MainActivity main = (MainActivity) ActivityController.getInstance().get("MainActivity");
+                    main.refreshMainScreenOverview();
+                    UIUtils.makeToast(main, R.string.app_toast_bluetooth, Toast.LENGTH_SHORT);
+                } else {
+                    this.connectedDevices.remove(deviceAddress);
+                }
+
+                if(this.getConnectedDevices() < ListenerService.getNumberOfDevices() - 1) {
+                    BluetoothAdapter.getDefaultAdapter().disable();
+                }
+                break;
+
+            case BluetoothAdapter.ACTION_STATE_CHANGED:
+                int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
+
+                if(BluetoothAdapter.STATE_OFF == state) {
+                    BluetoothAdapter.getDefaultAdapter().enable();
+                } else
+                break;
+        }
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/controller/AdapterController.java
+public class AdapterController
+{
+    private static AdapterController INSTANCE;
+
+    private Map<String, BaseAdapter> adapters;
+
+
+    private AdapterController()
+    {
+        this.adapters = new HashMap<>();
+    }
+
+
+    public static AdapterController getInstance()
+    {
+        if(INSTANCE == null) {
+            INSTANCE = new AdapterController();
+        }
+
+        return INSTANCE;
+    }
+
+
+    public void register(String key, BaseAdapter adapter)
+    {
+        this.adapters.put(key, adapter);
+    }
+
+
+    public BaseAdapter get(String key)
+    {
+        return this.adapters.get(key);
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/controller/ActivityController.java
+public class ActivityController
+{
+    private static ActivityController ACTIVITY = null;
+
+    private Map<String, Activity> activities;
+
+
+    private ActivityController()
+    {
+        this.activities = new HashMap<>();
+    }
+
+
+    public static ActivityController getInstance()
+    {
+        if(ACTIVITY == null) {
+            ACTIVITY = new ActivityController();
+        }
+
+        return ACTIVITY;
+    }
+
+
+    public void add(String key, Activity activity)
+    {
+        this.activities.put(key, activity);
+    }
+
+
+    public Activity get(String key)
+    {
+        return this.activities.get(key);
+    }
+
+
+    public void shutdown()
+    {
+        this.activities = new HashMap<>();
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/ActivityOnItemClickListener.java
+public class ActivityOnItemClickListener implements android.widget.AdapterView.OnItemClickListener
+{
+    private FragmentActivity     context;
+    private ArrayAdapter<String> positionAdapter;
+    private ArrayAdapter<String> postureAdapter;
+    private ArrayAdapter<String> devicePositionAdapter;
+    private ArrayAdapter<String> activityAdapter;
+
+
+    public ActivityOnItemClickListener(FragmentActivity ctx, ArrayAdapter<String> positionAdapter, ArrayAdapter<String> postureAdapter, ArrayAdapter<String> devicePositionAdapter, ArrayAdapter<String> activityAdapter)
+    {
+        context = ctx;
+
+        this.positionAdapter = positionAdapter;
+        this.postureAdapter = postureAdapter;
+        this.devicePositionAdapter = devicePositionAdapter;
+        this.activityAdapter = activityAdapter;
+    }
+
+
+    @Override
+    public void onItemClick(AdapterView<?> arg0, View arg1, int arg2, long id)
+    {
+        if(id == 1) {    // Select Position
+            ArrayList<String> positions = DatabaseHelper.getStringResultSet("SELECT name FROM " + SQLTableName.POSITIONS, null);
+            positions.remove(context.getString(R.string.activity_environment_none));
+            Collections.sort(positions);
+            positions.add(0, context.getString(R.string.activity_environment_none));
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this.context);
+            builder.setTitle(context.getString(R.string.activity_environment_select));
+            DialogActivityListAdapter adapter = new DialogActivityListAdapter(this.context, R.layout.dialog_entry_activity, positions);
+            builder.setAdapter(adapter, new ChooseListener(SQLTableName.POSITIONS, SQLTableName.POSITIONDATA, positionAdapter));
+            builder.setNegativeButton(R.string.activity_dialog_cancel, new DialogInterface.OnClickListener()
+            {
+                public void onClick(DialogInterface dialog, int id)
+                {
+                    // User cancelled the dialog
+                }
+            });
+            builder.create().show();
+        } else if(id == 3) { // Select Posture
+            ArrayList<String> postures = DatabaseHelper.getStringResultSet("SELECT name FROM " + SQLTableName.POSTURES, null);
+            postures.remove(context.getString(R.string.activity_posture_none));
+            Collections.sort(postures);
+            postures.add(0, context.getString(R.string.activity_posture_none));
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this.context);
+            builder.setTitle(context.getString(R.string.activity_posture_select));
+            DialogActivityListAdapter adapter = new DialogActivityListAdapter(this.context, R.layout.dialog_entry_activity, postures);
+            builder.setAdapter(adapter, new ChooseListener(SQLTableName.POSTURES, SQLTableName.POSTUREDATA, postureAdapter));
+            builder.setNegativeButton(R.string.activity_dialog_cancel, new DialogInterface.OnClickListener()
+            {
+                public void onClick(DialogInterface dialog, int id)
+                {
+                    // User cancelled the dialog
+                }
+            });
+            builder.create().show();
+        } else if(id == 5) {
+            ArrayList<String> devicePositions = DatabaseHelper.getStringResultSet("SELECT name FROM " + SQLTableName.DEVICEPOSITION, null);
+            devicePositions.remove(context.getString(R.string.activity_devicepositon_none));
+            Collections.sort(devicePositions);
+            devicePositions.add(0, context.getString(R.string.activity_devicepositon_none));
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this.context);
+            builder.setTitle(context.getString(R.string.activity_devicepositon_title));
+            DialogActivityListAdapter adapter = new DialogActivityListAdapter(this.context, R.layout.dialog_entry_activity, devicePositions);
+            builder.setAdapter(adapter, new ChooseListener(SQLTableName.DEVICEPOSITION, SQLTableName.DEVICEPOSITIONDATA, devicePositionAdapter));
+            builder.setNegativeButton(R.string.activity_dialog_cancel, new DialogInterface.OnClickListener()
+            {
+                public void onClick(DialogInterface dialog, int id)
+                {
+                    // User cancelled the dialog
+                }
+            });
+            builder.create().show();
+        } else if(id == 7) {         // Add Activity
+            SelectActivityDialog dialog = new SelectActivityDialog();
+            dialog.setAdapter(activityAdapter);
+            dialog.show(context.getSupportFragmentManager(), "ActivityDialogFragment");
+        }
+    }
+
+
+    /**
+     * Diese Klasse ist der Listener für Position und Posture Dialoge,
+     * sie sorgt dafür das der ArrayAdapter angepasst wird und den
+     * aktuellen Wert übernimmt Außerdem wird ein neuer Eintrag erstellt
+     * in der Datenbank
+     *
+     * @author Fabian Kramm, Timo Sztyler
+     */
+    private class ChooseListener implements DialogInterface.OnClickListener
+    {
+        private String               tableName;
+        private String               dataTableName;
+        private ArrayAdapter<String> adapter;
+
+
+        public ChooseListener(String tableName, String dataTableName, ArrayAdapter<String> adapter)
+        {
+            this.tableName = tableName;
+            this.adapter = adapter;
+            this.dataTableName = dataTableName;
+        }
+
+
+        @Override
+        public void onClick(DialogInterface dialog, int which)
+        {
+            // collect data
+            ListView lw = ((AlertDialog) dialog).getListView();
+            String name = lw.getAdapter().getItem(which).toString();
+
+            // update database
+            boolean result = DBUtils.updateActivity(name, dataTableName, tableName);
+            if(!result) {
+                return;
+            }
+
+            // inform other devices
+            if(tableName.equals(SQLTableName.POSTURES)) {
+                BroadcastService.getInstance().sendMessage("/database/response/currentPosture", name);
+            }
+            if(tableName.equals(SQLTableName.POSITIONS)) {
+                BroadcastService.getInstance().sendMessage("/database/response/currentPosition", name);
+            }
+
+            // update UI
+            adapter.clear();
+            adapter.add(name);
+            adapter.notifyDataSetChanged();
+        }
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/sensors/CustomCollector.java
+abstract public class CustomCollector
+{
+    long sensorRate;  // milliseconds
+    private boolean isRegistered = false;
+
+
+    public CustomCollector()
+    {
+        String queryString = "SELECT freq FROM " + SQLTableName.SENSOROPTIONS + " WHERE sensor = ? ";
+        String[] queryArgs = new String[]{ String.valueOf(getType()) };
+
+        List<String[]> result = SQLDBController.getInstance().query(queryString, queryArgs, false);
+
+        this.sensorRate = (result.size() != 0) ? Long.valueOf(result.get(0)[0]) : -1L; // milliseconds
+    }
+
+
+    void register()
+    {
+        this.isRegistered = true;
+        onRegistered();
+    }
+
+
+    public void setSensorRate(long milliseconds)
+    {
+        this.sensorRate = milliseconds;
+    }
+
+
+    public long getSensorRate()
+    {
+        return this.sensorRate; // milliseconds
+    }
+
+
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    void deregister()
+    {
+        this.isRegistered = false;
+        onDeRegistered();
+    }
+
+
+    public abstract void onRegistered();
+
+    public abstract void onDeRegistered();
+
+    public abstract int getType();
+
+    public abstract Plotter getPlotter(String deviceID);
+}
+mobile/src/main/java/de/unima/ar/collector/util/SensorDataUtil.java
+public class SensorDataUtil
+{
+    /**
+     * Sets up a plot for the specific plot style
+     * which is used for showing activities etc.
+     */
+    public static void setUpDatabasePlot(XYPlot plot, float displayedSeriesCount)
+    {
+        if(displayedSeriesCount == 0) {
+            displayedSeriesCount = 1;
+        }
+
+        plot.getRangeLabelWidget().setVisible(false);
+        plot.getRangeLabelWidget().setSize(new SizeMetrics(0, SizeLayoutType.ABSOLUTE, 0, SizeLayoutType.ABSOLUTE));
+        plot.getGraphWidget().setWidth(1, SizeLayoutType.RELATIVE);
+
+        plot.getGraphWidget().setRangeLabelWidth(0f);
+        plot.getGraphWidget().setTicksPerDomainLabel(2);
+
+        plot.getGraphWidget().setTicksPerRangeLabel(1);
+        plot.setRangeStep(XYStepMode.INCREMENT_BY_VAL, 1);
+        plot.setDomainStep(XYStepMode.SUBDIVIDE, 7);
+        // Immer nur leere Strings anzeigen
+        plot.getGraphWidget().setRangeValueFormat(new Format()
+        {
+            private static final long serialVersionUID = 1L;
+
+
+            @Override
+            public StringBuffer format(Object arg0, StringBuffer toAppendTo, FieldPosition arg2)
+            {
+                return toAppendTo.append("");
+            }
+
+
+            @Override
+            public Object parseObject(String arg0, ParsePosition arg1)
+            {
+                return null;
+            }
+        });
+        plot.getGraphWidget().setDomainValueFormat(new DateFormat());
+
+        // Calc height and table model for count of series
+        plot.getTitleWidget().position(10, XLayoutStyle.ABSOLUTE_FROM_LEFT, 0f, YLayoutStyle.ABSOLUTE_FROM_TOP, AnchorPosition.LEFT_TOP);
+        plot.getLegendWidget().position(0f, XLayoutStyle.RELATIVE_TO_RIGHT, 0f, YLayoutStyle.ABSOLUTE_FROM_TOP, AnchorPosition.RIGHT_TOP);
+        plot.getGraphWidget().position(0f, XLayoutStyle.RELATIVE_TO_RIGHT, PixelUtils.dpToPix((int) ((displayedSeriesCount + 1) / 2) * 17), YLayoutStyle.ABSOLUTE_FROM_TOP, AnchorPosition.RIGHT_TOP);
+
+        plot.getGraphWidget().setHeight(PixelUtils.dpToPix((int) ((displayedSeriesCount + 1) / 2) * 17), SizeLayoutType.FILL);
+
+        plot.getLegendWidget().setWidth(0.8f, SizeLayoutType.RELATIVE);
+        plot.getLegendWidget().setHeight(PixelUtils.dpToPix((int) ((displayedSeriesCount + 1) / 2) * 17), SizeLayoutType.ABSOLUTE);
+
+        plot.setRangeBoundaries(0, displayedSeriesCount + 1, BoundaryMode.FIXED);
+
+        plot.getLegendWidget().setDrawIconBackgroundEnabled(false);
+        plot.getLegendWidget().setDrawIconBorderEnabled(false);
+        plot.getLegendWidget().setTableModel(new DynamicTableModel(2, (int) ((displayedSeriesCount + 1) / 2)));
+        plot.getLegendWidget().setPadding(5, 5, 5, 5);
+
+        Paint bgPaint = new Paint();
+        bgPaint.setColor(Color.BLACK);
+        bgPaint.setStyle(Paint.Style.FILL);
+        bgPaint.setAlpha(40);
+
+        plot.getLegendWidget().setBackgroundPaint(bgPaint);
+    }
+
+
+    /**
+     * Returns a color from
+     * a predefined color array
+     */
+    public static int getColor(int id)
+    {
+        int Colors[] = new int[]{ Color.rgb(100, 100, 250), Color.rgb(250, 100, 100), Color.rgb(100, 250, 100), Color.rgb(250, 100, 250), Color.rgb(250, 250, 100), Color.rgb(100, 250, 250), Color.rgb(50, 150, 250), Color.rgb(250, 100, 50), Color.rgb(10, 250, 10), Color.rgb(200, 250, 50), Color.rgb(50, 100, 250), Color.rgb(30, 60, 180), Color.rgb(200, 50, 140), Color.rgb(100, 40, 150), Color.rgb(40, 140, 40), };
+
+        if(id >= Colors.length) {
+            return Color.rgb(50, 200, 50);
+        } else {
+            return Colors[id];
+        }
+    }
+
+
+    /**
+     * Checks if new location is
+     * remarkably diffrent from
+     * the new location
+     */
+    public static boolean isRemarkableChange(Location oldLocation, Location newLocation)
+    {
+        if(oldLocation == null || newLocation == null) {
+            return true;
+        }
+
+        long m = 10000;
+
+        double diffLong = (oldLocation.getLatitude() - newLocation.getLatitude()) * m;
+        double diffLat = (oldLocation.getLatitude() - newLocation.getLatitude()) * m;
+
+        double diff = Math.sqrt(diffLong * diffLong + diffLat * diffLat);
+
+        return diff > 7;
+    }
+
+
+    /**
+     * @param name String der �berpr�ft werden soll
+     * @return Fehler meldung, falls alles okay dann null
+     */
+    public static String checkName(String name)
+    {
+        // Zu lang?
+        if(name.length() > 32) {
+            return "Name too long";
+        }
+
+        if(name.length() == 0) {
+            return "Empty name!";
+        }
+
+        // Sonderzeichen
+        int spaces = 0;
+
+        for(int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+
+            // Erlaubte Zeichen
+            if(c >= 'a' && c <= 'z') {
+                continue;
+            }
+            if(c >= 'A' && c <= 'Z') {
+                continue;
+            }
+            if(c >= '0' && c <= '9') {
+                continue;
+            }
+            if(c == ' ') {
+                spaces++;
+                continue;
+            }
+
+            return "Character " + c + " not permitted!";
+        }
+
+        if(spaces == name.length()) {
+            return "Only spaces are not allowed!";
+        }
+
+        return null;
+    }
+
+
+    /**
+     * Returns the type in string from int value
+     */
+    public static String getSensorType(int type)
+    {
+        switch(type) {
+            case 1:
+                return "TYPE_ACCELEROMETER";
+            case 13:
+                return "TYPE_AMBIENT_TEMPERATURE";
+            case 15:
+                return "TYPE_GAME_ROTATION_VECTOR";
+            case 20:
+                return "TYPE_GEOMAGNETIC_ROTATION_VECTOR";
+            case 9:
+                return "TYPE_GRAVITY";
+            case 4:
+                return "TYPE_GYROSCOPE";
+            case 16:
+                return "TYPE_GYROSCOPE_UNCALIBRATED";
+            case 5:
+                return "TYPE_LIGHT";
+            case 10:
+                return "TYPE_LINEAR_ACCELERATION";
+            case 2:
+                return "TYPE_MAGNETIC_FIELD";
+            case 14:
+                return "TYPE_MAGNETIC_FIELD_UNCALIBRATED";
+            case 3:
+                return "TYPE_ORIENTATION";
+            case 6:
+                return "TYPE_PRESSURE";
+            case 8:
+                return "TYPE_PROXIMITY";
+            case 12:
+                return "TYPE_RELATIVE_HUMIDITY";
+            case 11:
+                return "TYPE_ROTATION_VECTOR";
+            case 17:
+                return "TYPE_SIGNIFICANT_MOTION";
+            case 19:
+                return "TYPE_STEP_COUNTER";
+            case 18:
+                return "TYPE_STEP_DETECTOR";
+            case 7:
+                return "TYPE_TEMPERATURE";
+            case -2:
+                return "TYPE_MICROPHONE";
+            case -3:
+                return "TYPE_GPS";
+            case -4:
+                return "TYPE_VIDEO";
+            default:
+                return "TYPE_" + type;
+        }
+    }
+
+
+    /**
+     * Returns the int from an string type
+     */
+    public static int getSensorTypeInt(String type)
+    {
+        switch(type) {
+            case "TYPE_ACCELEROMETER":
+                return 1;
+            case "TYPE_AMBIENT_TEMPERATURE":
+                return 13;
+            case "TYPE_GAME_ROTATION_VECTOR":
+                return 15;
+            case "TYPE_GEOMAGNETIC_ROTATION_VECTOR":
+                return 20;
+            case "TYPE_GRAVITY":
+                return 9;
+            case "TYPE_GYROSCOPE":
+                return 4;
+            case "TYPE_GYROSCOPE_UNCALIBRATED":
+                return 16;
+            case "TYPE_LIGHT":
+                return 5;
+            case "TYPE_LINEAR_ACCELERATION":
+                return 10;
+            case "TYPE_MAGNETIC_FIELD":
+                return 2;
+            case "TYPE_MAGNETIC_FIELD_UNCALIBRATED":
+                return 14;
+            case "TYPE_ORIENTATION":
+                return 3;
+            case "TYPE_PRESSURE":
+                return 6;
+            case "TYPE_PROXIMITY":
+                return 8;
+            case "TYPE_RELATIVE_HUMIDITY":
+                return 12;
+            case "TYPE_ROTATION_VECTOR":
+                return 11;
+            case "TYPE_SIGNIFICANT_MOTION":
+                return 17;
+            case "TYPE_STEP_COUNTER":
+                return 19;
+            case "TYPE_STEP_DETECTOR":
+                return 18;
+            case "TYPE_TEMPERATURE":
+                return 7;
+            case "TYPE_MICROPHONE":
+                return -2;
+            case "TYPE_GPS":
+                return -3;
+            case "TYPE_VIDEO":
+                return -4;
+            default:
+                return -1;
+        }
+    }
+
+
+    public static void flushSensorDataCache(final int type, final String deviceID)
+    {
+        if(type == 1 || type == 0) {
+            AccelerometerSensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 2 || type == 0) {
+            MagneticFieldSensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 3 || type == 0) {
+            OrientationSensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 4 || type == 0) {
+            GyroscopeSensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 5 || type == 0) {
+            LightSensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 6 || type == 0) {
+            PressureSensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 8 || type == 0) {
+            ProximitySensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 9 || type == 0) {
+            GravitySensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 10 || type == 0) {
+            LinearAccelerationSensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 11 || type == 0) {
+            RotationVectorSensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 12 || type == 0) {
+            RelativeHumiditySensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 13 || type == 0) {
+            AmbientTemperatureSensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 18 || type == 0) {
+            StepDetectorSensorCollector.flushDBCache(deviceID);
+        }
+        if(type == 19 || type == 0) {
+            StepCounterSensorCollector.flushDBCache(deviceID);
+        }
+    }
+
+
+    public static String[] getNamesOfEnabledSensors(int type)   // 0 = SensorCollector, 1 = CustomCollector, 2 = beide
+    {
+        SensorCollectorManager scm = SensorDataCollectorService.getInstance().getSCM();
+
+        if(scm == null) {
+            return new String[]{};
+        }
+
+        Set<Integer> enabledCollectors = scm.getEnabledCollectors();
+        Set<String> names = new TreeSet<>();
+        for(Integer collector : enabledCollectors) {
+            String sensorName = StringUtils.formatSensorName(SensorDataUtil.getSensorType(collector));
+
+            if((type >= 1) && collector < 0) {
+                names.add(sensorName);
+            }
+
+            if(type != 1 && collector > 0) {
+                names.add(sensorName);
+            }
+        }
+
+        return names.toArray(new String[names.size()]);
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/util/DBUtils.java
+public class DBUtils
+{
+    public static boolean updateActivity(String name, String dataTableName, String tableName)
+    {
+        // query and verify current values
+        List<String[]> result = SQLDBController.getInstance().query("SELECT B.name FROM " + dataTableName + " AS A, " + tableName + " AS B WHERE A.id=(SELECT max(id) FROM " + dataTableName + ") AND A.pid=B.id;", null, false);
+        if(result.size() > 0 && result.get(0)[0].equalsIgnoreCase(name)) {
+            return false;
+        }
+
+        List<String[]> result2 = SQLDBController.getInstance().query("SELECT id FROM " + tableName + " WHERE name = ?;", new String[]{ name }, false);
+        int id = Integer.valueOf(result2.get(0)[0]);
+
+        // time
+        long currentTime = System.currentTimeMillis();
+
+        // update old value
+        ContentValues args = new ContentValues();
+        args.put("endtime", currentTime);
+        SQLDBController.getInstance().update(dataTableName, args, "endtime = 0", null);
+
+        // add new value
+        ContentValues newValues = new ContentValues();
+        newValues.put("pid", id);
+        newValues.put("starttime", currentTime);
+        newValues.put("endtime", 0);
+        SQLDBController.getInstance().insert(dataTableName, null, newValues);
+
+        return true;
+    }
+
+
+    public static List<String[]> manageCache(String deviceID, Map<String, List<String[]>> cache, ContentValues newValues, int cacheSize)
+    {
+        if(!cache.containsKey(deviceID)) {
+            cache.put(deviceID, new ArrayList<String[]>());
+
+            Set<String> keys = newValues.keySet();
+            String[] header = keys.toArray(new String[keys.size()]);
+            cache.get(deviceID).add(header);
+        }
+
+        String[] keys = cache.get(deviceID).get(0);
+        String[] entry = new String[keys.length];
+        for(int i = 0; i < keys.length; i++) {
+            entry[i] = newValues.getAsString(keys[i]);
+        }
+        cache.get(deviceID).add(entry);
+
+        if(cache.get(deviceID).size() <= cacheSize) {
+            return null;
+        }
+
+        List<String[]> clone = cache.get(deviceID).subList(0, cacheSize + 1);
+
+        if(cache.get(deviceID).size() > cacheSize + 1) {
+            cache.put(deviceID, cache.get(deviceID).subList(cacheSize + 1, cache.get(deviceID).size()));
+        } else {
+            cache.put(deviceID, new ArrayList<String[]>());
+        }
+        cache.get(deviceID).add(0, keys);
+
+        return clone;
+    }
+
+
+    public static void flushCache(String sqlTableName, Map<String, List<String[]>> cache, String deviceID)
+    {
+        if(cache.keySet().size() == 0) {
+            return;
+        }
+
+        String[] deviceIDs = deviceID == null ? cache.keySet().toArray(new String[cache.keySet().size()]) : new String[]{ deviceID };
+
+        for(String entry : deviceIDs) {
+            List<String[]> values = cache.get(entry);
+            if(values.size() <= 1) {
+                continue;
+            }
+
+            String tableName = SQLTableName.PREFIX + entry + sqlTableName;
+            SQLDBController.getInstance().bulkInsert(tableName, values);
+
+            cache.remove(entry);
+        }
+    }
+
+
+    public static void updateSensorStatus(int type, int frequency, int enabled)
+    {
+        ContentValues values = new ContentValues();
+        values.put("enabled", enabled);
+        values.put("freq", frequency);
+        int affectedRows = SQLDBController.getInstance().update(SQLTableName.SENSOROPTIONS, values, "sensor = ?", new String[]{ String.valueOf(type) });
+
+        if(affectedRows == 0 && enabled == 1) {
+            SQLDBController.getInstance().execSQL("INSERT OR IGNORE INTO " + SQLTableName.SENSOROPTIONS + " (sensor, freq, enabled) VALUES (" + type + "," + frequency + "," + enabled + ")");
+        }
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/util/DateFormat.java
+@SuppressLint ("SimpleDateFormat")
+public class DateFormat extends Format
+{
+    private static final long serialVersionUID = 1L;
+
+
+    /*
+     * (non-Javadoc)
+     * @see java.text.Format#format(java.lang.Object, java.lang.StringBuffer, java.text.FieldPosition)
+     */
+    @Override
+    public StringBuffer format(Object obj, StringBuffer toAppendTo, FieldPosition pos)
+    {
+        Number num = (Number) obj;
+
+        // Wir haben die Zahl vorher bereits
+        // subtrahiert also wieder draufaddieren
+        // sonst k�nnen komische Daten entstehen
+        long time = num.longValue() + 1388534400000l;
+
+        SimpleDateFormat sdf = new SimpleDateFormat("dd.MM HH:mm:ss");
+
+        return toAppendTo.append(sdf.format(new Date(time)));
+    }
+
+
+    /*
+     * (non-Javadoc)
+     * @see java.text.Format#parseObject(java.lang.String, java.text.ParsePosition)
+     */
+    @Override
+    public Object parseObject(String arg0, ParsePosition arg1)
+    {
+        return null;
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/SensorenRowAdapter.java
+public class SensorenRowAdapter extends ArrayAdapter<String>
+{
+    private final Activity            context;
+    private       Map<String, Sensor> sensors;
+
+
+    public SensorenRowAdapter(Activity context)
+    {
+        super(context, 0, new ArrayList<String>());
+
+        this.context = context;
+        this.sensors = new TreeMap<>();
+
+        // Add all sensors
+        SensorManager mSensorManager = (SensorManager) this.context.getSystemService(Activity.SENSOR_SERVICE);
+        List<Sensor> allSensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
+
+        for(Sensor sensor : allSensors) {
+            sensors.put(StringUtils.formatSensorName(SensorDataUtil.getSensorType(sensor.getType())), sensor);
+        }
+
+        for(int i : CollectorConstants.activatedCustomCollectors) {
+            sensors.put(StringUtils.formatSensorName(SensorDataUtil.getSensorType(i)), null);
+        }
+
+        this.addAll(sensors.keySet());
+    }
+
+
+    static class ViewHolder
+    {
+        public TextView text1;
+        public TextView text2;
+        public Button   btn;
+        public Button   selfTest;
+        public CheckBox checkBx;
+    }
+
+
+    /*
+     * (non-Javadoc)
+     * @see android.widget.ArrayAdapter#getView(int, android.view.View, android.view.ViewGroup)
+     */
+    @Override
+    public View getView(int position, View convertView, ViewGroup parent)
+    {
+        View rowView = convertView;
+
+        if(rowView == null) {   // TODO - Irgendwas ist in diesem Abschnitt langsam!!!
+            LayoutInflater inflater = context.getLayoutInflater();
+            rowView = inflater.inflate(R.layout.listitemsensoren, parent, false);
+
+            final ViewHolder viewHolder = new ViewHolder();
+            viewHolder.text1 = (TextView) rowView.findViewById(R.id.sensortextview1);
+            viewHolder.text2 = (TextView) rowView.findViewById(R.id.sensortextview2);
+            viewHolder.btn = (Button) rowView.findViewById(R.id.sensorfreqbutton);
+            viewHolder.selfTest = (Button) rowView.findViewById(R.id.sensorselftest);
+            viewHolder.checkBx = (CheckBox) rowView.findViewById(R.id.sensorcheckBox1);
+
+            viewHolder.checkBx.setOnClickListener(new OnClickListener()
+            {
+                @Override
+                public void onClick(View v)
+                {
+                    viewHolder.checkBx.setChecked(!viewHolder.checkBx.isChecked());
+
+                    final ListView lv = (ListView) context.findViewById(R.id.mainlist);
+
+                    int pos = lv.getPositionForView((RelativeLayout) viewHolder.checkBx.getParent());
+                    int id = ((RelativeLayout) viewHolder.checkBx.getParent()).getId();
+
+                    lv.performItemClick((RelativeLayout) viewHolder.checkBx.getParent(), pos, id);
+                }
+            });
+
+            viewHolder.selfTest.setOnClickListener(new OnClickListener()
+            {
+                @Override
+                public void onClick(View v)
+                {
+                    if(!(context instanceof MainActivity)) {       // TODO why?
+                        return;
+                    }
+
+                    try {
+                        ListView lv = (ListView) context.findViewById(R.id.mainlist);
+                        int pos = lv.getPositionForView((RelativeLayout) v.getParent());
+
+                        List<String> names = new ArrayList<>(sensors.keySet());
+                        Sensor s = sensors.get(names.get(pos - 1));
+
+                        if(s == null) {
+                            throw new Exception();
+                        }
+
+                        if(SensorDataCollectorService.getInstance().getSCM().getEnabledCollectors().contains(s.getType())) {
+                            Toast.makeText(context, context.getString(R.string.sensor_selftest_notify1), Toast.LENGTH_LONG).show();
+                            return;
+                        }
+
+                        MainActivity ma = (MainActivity) context;
+                        ma.showSensorSelftest(s);
+                    } catch(Exception e) {
+                        Toast.makeText(context, context.getString(R.string.sensor_selftest_notify2), Toast.LENGTH_LONG).show();
+                    }
+                }
+            });
+
+            rowView.setTag(viewHolder);
+        }
+
+        ViewHolder holder = (ViewHolder) rowView.getTag();
+
+        List<String> names = new ArrayList<>(sensors.keySet());
+        final Sensor sensor = sensors.get(names.get(position));
+
+        // First there are the custom collectors then come the sensor collectors
+        if(sensor == null) {
+            String nameID = names.get(position).toUpperCase(Locale.ENGLISH).replace(" ", "_");
+            final int type = SensorDataUtil.getSensorTypeInt("TYPE_" + nameID);
+
+            holder.text1.setText(names.get(position));
+            holder.text2.setText(nameID);
+
+            // Add button click listener
+            holder.btn.setOnClickListener(new View.OnClickListener()
+            {
+                public void onClick(View v)
+                {
+                    // Check if sensor running
+                    if(SensorDataCollectorService.getInstance().getSCM().getEnabledCollectors().contains(type)) {
+                        Toast.makeText(context, context.getString(R.string.sensor_frequency_notify), Toast.LENGTH_LONG).show();
+                        return;
+                    }
+
+                    AlertDialog.Builder alert = new AlertDialog.Builder(context);
+
+                    alert.setTitle(context.getString(R.string.sensor_frequency_dialog_title));
+                    alert.setMessage(context.getText(R.string.sensor_frequency_dialog_text2));
+
+                    // Set an EditText view to get user input
+                    final EditText input = new EditText(context);
+
+                    // Query and get the entry if there is any for the sensor id
+                    String queryString = "SELECT freq FROM " + SQLTableName.SENSOROPTIONS + " WHERE sensor = ? ";
+                    String[] queryArgs = new String[]{ String.valueOf(type) };
+                    List<String[]> result = SQLDBController.getInstance().query(queryString, queryArgs, false);
+
+                    long milliseconds = (result.size() != 0) ? Long.valueOf(result.get(0)[0]) : SensorDataCollectorService.getInstance().getSCM().getCustomCollectors().get(type).getSensorRate();
+                    input.setText(String.valueOf(milliseconds));    // TODO
+
+                    alert.setView(input);
+
+                    alert.setPositiveButton(context.getString(R.string.sensor_frequency_dialog_button_ok), new DialogInterface.OnClickListener()
+                    {
+                        public void onClick(DialogInterface dialog, int whichButton)
+                        {
+                            try {
+                                long millisecondsNew = Long.parseLong(input.getText().toString());
+                                DBUtils.updateSensorStatus(type, (int) millisecondsNew, 0);
+
+                                CustomCollector sc = SensorDataCollectorService.getInstance().getSCM().getCustomCollectors().get(type);
+                                sc.setSensorRate(millisecondsNew);
+
+                                String hertz = String.valueOf(millisecondsNew);
+                                Toast.makeText(context, context.getString(R.string.sensor_frequency_changed_success) + " (" + hertz + "ms)", Toast.LENGTH_LONG).show();
+                            } catch(NumberFormatException e) {
+                                Toast.makeText(context, context.getString(R.string.sensor_frequency_changed_failed), Toast.LENGTH_LONG).show();
+                            }
+                        }
+                    });
+
+                    alert.setNegativeButton(context.getString(R.string.sensor_frequency_dialog_button_cancel), new DialogInterface.OnClickListener()
+                    {
+                        public void onClick(DialogInterface dialog, int whichButton)
+                        {
+                        }
+                    });
+
+                    alert.show();
+                }
+            });
+            SensorDataCollectorService service = SensorDataCollectorService.getInstance();
+            holder.checkBx.setChecked(service.getSCM().getEnabledCollectors().contains(type));
+        }
+        // sensor collectors
+        else {
+            // position = position - CollectorConstants.activatedCustomCollectors.length;
+
+            // Skip TYPE_
+            String s = SensorDataUtil.getSensorType(sensor.getType());
+            holder.text1.setText(StringUtils.formatSensorName(s));
+            holder.text2.setText(sensor.getName());
+
+            // Add button click listener
+            holder.btn.setOnClickListener(new View.OnClickListener()
+            {
+                public void onClick(View v)
+                {
+                    // Check if sensor running
+                    if(SensorDataCollectorService.getInstance().getSCM().getEnabledCollectors().contains(sensor.getType())) {
+                        Toast.makeText(context, context.getString(R.string.sensor_frequency_notify), Toast.LENGTH_LONG).show();
+                        return;
+                    }
+
+                    AlertDialog.Builder alert = new AlertDialog.Builder(context);
+
+                    alert.setTitle(context.getString(R.string.sensor_frequency_dialog_title));
+                    alert.setMessage(context.getText(R.string.sensor_frequency_dialog_text));
+
+                    // Set an EditText view to get user input
+                    final EditText input = new EditText(context);
+
+                    // Query and get the entry if there is any for the sensor id
+                    String queryString = "SELECT freq FROM " + SQLTableName.SENSOROPTIONS + " WHERE sensor = ? ";
+                    String[] queryArgs = new String[]{ String.valueOf(sensor.getType()) };
+                    List<String[]> result = SQLDBController.getInstance().query(queryString, queryArgs, false);
+
+                    double frequency = (result.size() != 0) ? Double.valueOf(result.get(0)[0]) : Settings.SENSOR_DEFAULT_FREQUENCY;
+
+                    input.setText(String.format(Locale.ENGLISH, "%.2f", frequency));
+                    alert.setView(input);
+
+                    alert.setPositiveButton(context.getString(R.string.sensor_frequency_dialog_button_ok), new DialogInterface.OnClickListener()
+                    {
+                        public void onClick(DialogInterface dialog, int whichButton)
+                        {
+                            try {
+                                double frequencyNew = Double.parseDouble(input.getText().toString());
+                                DBUtils.updateSensorStatus(sensor.getType(), (int) frequencyNew, 0);
+
+                                SensorCollector sc = SensorDataCollectorService.getInstance().getSCM().getSensorCollectors().get(sensor.getType());
+                                sc.setSensorRate(frequencyNew);
+
+                                String hertz = String.format(Locale.ENGLISH, "%.2f", (frequencyNew));
+                                Toast.makeText(context, context.getString(R.string.sensor_frequency_changed_success) + " (" + hertz + "Hz)", Toast.LENGTH_LONG).show();
+                            } catch(NumberFormatException e) {
+                                Toast.makeText(context, context.getString(R.string.sensor_frequency_changed_failed), Toast.LENGTH_LONG).show();
+                            }
+                        }
+                    });
+
+                    alert.setNegativeButton(context.getString(R.string.sensor_frequency_dialog_button_cancel), new DialogInterface.OnClickListener()
+                    {
+                        public void onClick(DialogInterface dialog, int whichButton)
+                        {
+                        }
+                    });
+
+                    alert.show();
+                }
+            });
+
+            SensorDataCollectorService service = SensorDataCollectorService.getInstance();
+            holder.checkBx.setChecked(service.getSCM().getEnabledCollectors().contains(sensors.get(names.get(position)).getType()));
+        }
+
+        return rowView;
+    }
+}
+wear/src/main/java/de/unima/ar/collector/database/DatabaseHelper.java
+public class DatabaseHelper extends SQLiteOpenHelper
+{
+    private Context context;
+
+    private static final String sqlTableActivityData       = "CREATE TABLE IF NOT EXISTS " + SQLTableName.ACTIVITYDATA + " (id INTEGER PRIMARY KEY AUTOINCREMENT, activityid INT NOL NULL, subactivityid INT, starttime INT, endtime INT)";
+    private static final String sqlTablePostureData        = "CREATE TABLE IF NOT EXISTS " + SQLTableName.POSTUREDATA + " (id INTEGER PRIMARY KEY AUTOINCREMENT, pid INT NOL NULL, starttime INT, endtime INT)";
+    private static final String sqlTablePositionData       = "CREATE TABLE IF NOT EXISTS " + SQLTableName.POSITIONDATA + " (id INTEGER PRIMARY KEY AUTOINCREMENT, pid INT NOL NULL, starttime INT, endtime INT)";
+    private static final String sqlTableDevicePositionData = "CREATE TABLE IF NOT EXISTS " + SQLTableName.DEVICEPOSITIONDATA + " (id INTEGER PRIMARY KEY AUTOINCREMENT, pid INT NOL NULL, starttime INT, endtime INT)";
+    private static final String sqlTableTansferLog         = "CREATE TABLE IF NOT EXISTS " + SQLTableName.TRANSFERLOG + "(id INTEGER PRIMARY KEY AUTOINCREMENT, transfer INT NOT NULL, entries int NOT NULL)";
+
+    private static final String DATABASE_NAME    = "sensordata.db";
+    private static final int    DATABASE_VERSION = 3;
+
+
+    public DatabaseHelper(Context cxt)
+    {
+        super(cxt, DATABASE_NAME, null, DATABASE_VERSION);
+
+        this.context = cxt;
+    }
+
+
+    @Override
+    public void onCreate(SQLiteDatabase db)
+    {
+        // nothing
+    }
+
+
+    @Override
+    public void onUpgrade(SQLiteDatabase database, int oldVersion, int newVersion)
+    {
+        // nothing
+    }
+
+
+    public static void createDeviceDependentTables(String deviceID)
+    {
+        AccelerometerCollector.createDBStorage(deviceID);
+        GravityCollector.createDBStorage(deviceID);
+        GyroscopeCollector.createDBStorage(deviceID);
+        LinearAccelerationCollector.createDBStorage(deviceID);
+        MagnetometerCollector.createDBStorage(deviceID);
+        OrientationCollector.createDBStorage(deviceID);
+        PressureCollector.createDBStorage(deviceID);
+        RotationVectorCollector.createDBStorage(deviceID);
+        StepDetectorCollector.createDBStorage(deviceID);
+        StepCounterCollector.createDBStorage(deviceID);
+    }
+
+
+    void deleteDatabase()
+    {
+        this.context.deleteDatabase(DATABASE_NAME);
+    }
+
+
+    static void createTables()
+    {
+        SQLDBController.getInstance().execSQL(sqlTableActivityData);
+        SQLDBController.getInstance().execSQL(sqlTablePostureData);
+        SQLDBController.getInstance().execSQL(sqlTablePositionData);
+        SQLDBController.getInstance().execSQL(sqlTableDevicePositionData);
+        SQLDBController.getInstance().execSQL(sqlTableTansferLog);
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/SeparatedListAdapter.java
+public class SeparatedListAdapter extends BaseAdapter
+{
+    private final Map<String, Adapter> sections = new LinkedHashMap<>();
+    private final ArrayAdapter<String> headers;
+    private final static int             TYPE_SECTION_HEADER = 0;
+    private              DataSetObserver observer            = new DataSetObserver()
+    {
+        public void onChanged()
+        {
+            notifyDataSetChanged();
+        }
+
+
+        public void onInvalidated()
+        {
+            notifyDataSetInvalidated();
+        }
+    };
+
+    private int maxPosition = 0;
+
+
+    public SeparatedListAdapter(Context context, int maxPosition)
+    {
+        headers = new ArrayAdapter<>(context, R.layout.listheader);
+        this.maxPosition = maxPosition;
+    }
+
+
+    public void addSection(String section, Adapter adapter)
+    {
+        this.headers.add(section);
+        this.sections.put(section, adapter);
+        adapter.registerDataSetObserver(observer);
+    }
+
+
+    public Object getItem(int position)
+    {
+        for(String section : this.sections.keySet()) {
+            Adapter adapter = sections.get(section);
+            int size = adapter.getCount() + 1;
+
+            // check if position inside this section
+            if(position == 0)
+                return section;
+            if(position < size)
+                return adapter.getItem(position - 1);
+
+            // otherwise jump into next section
+            position -= size;
+        }
+        return null;
+    }
+
+
+    public int getCount()
+    {
+        // total together all sections, plus one for each section header
+        int total = 0;
+        for(Adapter adapter : this.sections.values())
+            total += adapter.getCount() + 1;
+        return total;
+    }
+
+
+    /*
+     * (non-Javadoc)
+     * @see android.widget.BaseAdapter#getViewTypeCount()
+     */
+    @Override
+    public int getViewTypeCount()
+    {
+        // assume that headers count as one, then total all sections
+        int total = 1;
+        for(Adapter adapter : this.sections.values())
+            total += adapter.getViewTypeCount();
+        return total;
+    }
+
+
+    /*
+     * (non-Javadoc)
+     * @see android.widget.BaseAdapter#getItemViewType(int)
+     */
+    @Override
+    public int getItemViewType(int position)
+    {
+        int type = 1;
+        for(String section : this.sections.keySet()) {
+            Adapter adapter = sections.get(section);
+            int size = adapter.getCount() + 1;
+
+            // check if position inside this section
+            if(position == 0)
+                return TYPE_SECTION_HEADER;
+            if(position < size)
+                return type + adapter.getItemViewType(position - 1);
+
+            // otherwise jump into next section
+            position -= size;
+            type += adapter.getViewTypeCount();
+        }
+        return -1;
+    }
+
+
+    //    public boolean areAllItemsSelectable()
+    //    {
+    //        return false;
+    //    }
+
+
+    /*
+     * (non-Javadoc)
+     * @see android.widget.BaseAdapter#isEnabled(int)
+     */
+    @Override
+    public boolean isEnabled(int position)
+    {
+        return (getItemViewType(position) != TYPE_SECTION_HEADER) && position >= maxPosition;
+    }
+
+
+    /*
+     * (non-Javadoc)
+     * @see android.widget.Adapter#getView(int, android.view.View, android.view.ViewGroup)
+     */
+    @Override
+    public View getView(int position, View convertView, ViewGroup parent)
+    {
+        int sectionnum = 0;
+        for(String section : this.sections.keySet()) {
+            Adapter adapter = sections.get(section);
+            int size = adapter.getCount() + 1;
+
+            // check if position inside this section
+            if(position == 0)
+                return headers.getView(sectionnum, convertView, parent);
+            if(position < size)
+                return adapter.getView(position - 1, convertView, parent);
+
+            // otherwise jump into next section
+            position -= size;
+            sectionnum++;
+        }
+        return null;
+    }
+
+
+    /*
+     * (non-Javadoc)
+     * @see android.widget.Adapter#getItemId(int)
+     */
+    @Override
+    public long getItemId(int position)
+    {
+        return position;
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/util/PlotConfiguration.java
+public class PlotConfiguration implements Comparable<PlotConfiguration>
+{
+    public XYPlot plot;
+
+    public String plotName   = "DefaultName";
+    public String tableName  = "";
+    public String sensorName = "";
+
+    public String rangeName = "RangeName";
+    public int    rangeMin  = 0;
+    public int    rangeMax  = 100;
+
+    public String   domainName       = "DomainName";
+    public int      domainMin        = 0;
+    public int      domainMax        = 100;
+    public String[] domainValueNames = { };
+
+    public String   SeriesName       = "SeriesName";
+    public String[] seriesValueNames = { };
+
+    public String deviceID;
+
+    public BoundaryMode rangeBoundary  = BoundaryMode.FIXED;
+    public BoundaryMode domainBoundary = BoundaryMode.FIXED;
+
+
+    @Override
+    public int compareTo(PlotConfiguration another)
+    {
+        String self = this.sensorName.concat(this.deviceID);
+        String other = another.sensorName.concat(another.deviceID);
+
+        return self.compareTo(other);
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/sensors/GPSCollector.java
+public class GPSCollector extends CustomCollector implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, OnMapReadyCallback
+{
+    private static final int      type       = -3;
+    private static final String[] valueNames = new String[]{ "attr_lat", "attr_lng", "attr_time" };
+
+    private Context               context;
+    private LocationManager       locationManager;
+    private Location              lastKnownLocation;
+    private Set<LocationListener> locationListeners;
+    private GoogleMap             map;
+    private Timer                 timer;
+    private GoogleApiClient       mGoogleApiClient;
+
+
+    private Location lastKnownGPSLocation = null; // workaround
+    private boolean  CameraMoved          = false;    // TODO?
+
+    private static Marker myPositionMarker;
+    private static Map<String, Plotter> plotters = new HashMap<>();
+
+
+    GPSCollector(Context context)
+    {
+        super();
+
+        this.context = context;
+        this.locationListeners = new HashSet<>();
+
+        if(this.sensorRate < 0) {
+            this.sensorRate = Settings.GPS_DEFAULT_FREQUENCY;
+        }
+
+        // create new plotter
+        List<String> devices = DatabaseHelper.getStringResultSet("SELECT device FROM " + SQLTableName.DEVICES, null);
+        for(String device : devices) {
+            GPSCollector.createNewPlotter(device);
+        }
+
+        // check if google play services are installed
+        GoogleApiAvailability googleAPI = GoogleApiAvailability.getInstance();
+        int status = googleAPI.isGooglePlayServicesAvailable(this.context);
+        if(status == ConnectionResult.SUCCESS) {
+            this.mGoogleApiClient = new GoogleApiClient.Builder(this.context).addConnectionCallbacks(this).addOnConnectionFailedListener(this).addApi(LocationServices.API).build();
+        }
+
+        // backup
+        this.locationManager = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+    }
+
+
+    @Override
+    public void onRegistered()
+    {
+        if(mGoogleApiClient != null) {
+            mGoogleApiClient.connect();
+        } else {
+            searchLocationWithoutGoogleService();
+        }
+
+        this.timer = new Timer();
+        this.timer.scheduleAtFixedRate(new TimerTask()
+        {
+            @Override
+            public void run()
+            {
+                Log.d("GPSCollector", "New Data Available?");
+
+                Location location = null;
+                if(mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
+                    if(!(Build.VERSION.SDK_INT >= 23 &&
+                            !(ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                            ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED))) {
+
+                        location = LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
+                    }
+                }
+
+                if(location == null || (lastKnownLocation != null && location.getTime() <= lastKnownLocation.getTime())) {
+                    location = getBestLocation();
+                }
+
+                if(location != null && (lastKnownLocation == null || location.getTime() > lastKnownLocation.getTime())) {
+                    lastKnownLocation = location;
+                    doLocationUpdate(lastKnownLocation);
+                }
+            }
+        }, 0, getSensorRate());
+    }
+
+
+    private void searchLocationWithoutGoogleService()
+    {
+        if(Build.VERSION.SDK_INT >= 23 &&
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+
+        for(String provider : locationManager.getAllProviders()) {
+            LocationListener ll = new LocationListener()
+            {
+                @Override
+                public void onStatusChanged(String provider, int status, Bundle extras)
+                {
+                }
+
+
+                @Override
+                public void onProviderEnabled(String provider)
+                {
+                }
+
+
+                @Override
+                public void onProviderDisabled(String provider)
+                {
+                }
+
+
+                @Override
+                public void onLocationChanged(Location location)
+                {
+                    if(location.getProvider().equals(LocationManager.GPS_PROVIDER)) {
+                        Log.d("GPSCollector", "+++DATA: " + location.getLatitude() + " - " + location.getLongitude() + " - " + location.getTime() + " - " + location.getProvider() + " - " + System.currentTimeMillis());
+                        lastKnownGPSLocation = location;
+                    }
+                }
+            };
+            this.locationManager.requestLocationUpdates(provider, getSensorRate(), 0, ll);
+            this.locationListeners.add(ll);
+        }
+    }
+
+
+    @Override
+    public void onDeRegistered()
+    {
+        if(this.mGoogleApiClient != null) {
+            mGoogleApiClient.disconnect();
+        }
+
+        if(Build.VERSION.SDK_INT >= 23 && !(ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)) {
+            for(LocationListener ll : this.locationListeners) {
+                this.locationManager.removeUpdates(ll);
+            }
+        }
+        this.timer.cancel();
+        this.map = null;
+        this.lastKnownLocation = null;
+    }
+
+
+    private void doLocationUpdate(final Location location)
+    {
+        Log.d("GPSCollector", "DATA: " + location.getLatitude() + " - " + location.getLongitude() + " - " + location.getTime() + " - " + location.getProvider() + " - " + System.currentTimeMillis());
+        ContentValues newValues = new ContentValues();
+        newValues.put(valueNames[0], location.getLatitude());
+        newValues.put(valueNames[1], location.getLongitude());
+        newValues.put(valueNames[2], location.getTime());
+
+        // upload/store your location here
+        String deviceID = DeviceID.get(SensorDataCollectorService.getInstance());
+        GPSCollector.writeDBStorage(deviceID, newValues);
+
+        Log.d("GPSCollector", "MAP: " + map);
+        if(map != null) {
+            refreshMap();
+        }
+    }
+
+
+    private Location getBestLocation()
+    {
+        Location gpsLocation = getLocationByProvider(LocationManager.GPS_PROVIDER);
+        Location networkLocation = getLocationByProvider(LocationManager.NETWORK_PROVIDER);
+
+        if(gpsLocation == null) {
+            gpsLocation = lastKnownGPSLocation; // workaround - some devices doesn't support getLastKnownLocation
+        }
+
+        if(gpsLocation == null && networkLocation == null) {
+            return this.lastKnownLocation;
+        } else if(this.lastKnownLocation == null && gpsLocation != null && networkLocation != null) {
+            return gpsLocation.getTime() > networkLocation.getTime() ? gpsLocation : networkLocation;
+        } else if(this.lastKnownLocation == null && gpsLocation == null && networkLocation != null) {
+            return networkLocation;
+        } else if(this.lastKnownLocation == null && gpsLocation != null && networkLocation == null) {
+            return gpsLocation;
+        }
+
+        if(gpsLocation != null && gpsLocation.getTime() > this.lastKnownLocation.getTime()) {
+            return gpsLocation;
+        } else if(networkLocation != null && networkLocation.getTime() > this.lastKnownLocation.getTime()) {
+            return networkLocation;
+        }
+
+        return this.lastKnownLocation;
+    }
+
+
+    private Location getLocationByProvider(String provider)
+    {
+        if(Build.VERSION.SDK_INT >= 23 &&
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return null;
+        }
+
+        try {
+            if(this.locationManager.isProviderEnabled(provider)) {
+                return this.locationManager.getLastKnownLocation(provider);
+            }
+        } catch(IllegalArgumentException e) {
+            Log.d("GPSCollector", "Cannot access Provider " + provider);
+        }
+        return null;
+    }
+
+
+    private void refreshMap()
+    {
+        // Get a handler that can be used to post to the main thread
+        Handler mainHandler = new Handler(context.getMainLooper());
+        Runnable myRunnable = new Runnable()
+        {
+
+            @Override
+            public void run()
+            {
+                if(lastKnownLocation == null) {
+                    return;
+                }
+
+                LatLng myPos = new LatLng(lastKnownLocation.getLatitude(), lastKnownLocation.getLongitude());
+
+                if(myPositionMarker == null) {
+                    myPositionMarker = map.addMarker(new MarkerOptions().title("Current Position").position(myPos));
+                } else {
+                    myPositionMarker.setPosition(myPos);
+                }
+
+                if(!CameraMoved) {
+                    map.moveCamera(CameraUpdateFactory.newLatLngZoom(myPos, 15));
+                    CameraMoved = true;
+                }
+            }
+
+        };
+        mainHandler.post(myRunnable);
+    }
+
+
+    @Override
+    public Plotter getPlotter(String deviceID)
+    {
+        if(!plotters.containsKey(deviceID)) {
+            GPSCollector.createNewPlotter(deviceID);
+        }
+
+        return plotters.get(deviceID);
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    public static void createNewPlotter(String deviceID)
+    {
+        PlotConfiguration levelPlot = new PlotConfiguration();
+        levelPlot.domainValueNames = new String[]{};
+        levelPlot.tableName = SQLTableName.GPS;
+        levelPlot.sensorName = "GPS";
+
+        PlotConfiguration historyPlot = new PlotConfiguration();
+        levelPlot.tableName = SQLTableName.GPS;
+        levelPlot.sensorName = "GPS";
+
+
+        Plotter plotter = new Plotter(deviceID, levelPlot, historyPlot);
+        plotters.put(deviceID, plotter);
+    }
+
+
+    public static void updateLivePlotter(String deviceID, float[] values)
+    {
+        Plotter plotter = plotters.get(deviceID);
+        if(plotter == null) {
+            GPSCollector.createNewPlotter(deviceID);
+            plotter = plotters.get(deviceID);
+        }
+
+        plotter.setDynamicPlotData(values);
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.GPS + " (id INTEGER PRIMARY KEY, " + valueNames[2] + " INTEGER, " + valueNames[0] + " REAL, " + valueNames[1] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        SQLDBController.getInstance().insert(SQLTableName.PREFIX + deviceID + SQLTableName.GPS, null, newValues);
+    }
+
+
+    @Override
+    public void onConnected(Bundle bundle)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public void onConnectionSuspended(int i)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult)
+    {
+        searchLocationWithoutGoogleService();
+    }
+
+
+    @Override
+    public void onMapReady(GoogleMap googleMap)
+    {
+        this.map = googleMap;
+
+        refreshMap();
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/SettingActivity.java
+public class SettingActivity extends PreferenceActivity implements SharedPreferences.OnSharedPreferenceChangeListener
+{
+
+    @Override
+    public void onCreate(Bundle savedInstanceState)
+    {
+        super.onCreate(savedInstanceState);
+
+        // init view
+        ViewGroup root = (ViewGroup) findViewById(android.R.id.content);
+        ScrollView toolbarContainer = (ScrollView) View.inflate(this, R.layout.preferences, null);
+        root.removeAllViews();
+        root.addView(toolbarContainer);
+
+        // init toolbar
+        Toolbar mToolBar = (Toolbar) toolbarContainer.findViewById(R.id.pref_toolbar);
+        mToolBar.setTitle(getTitle());
+        mToolBar.setNavigationIcon(android.R.drawable.ic_menu_revert); //TODO
+        mToolBar.setNavigationOnClickListener(new View.OnClickListener()
+        {
+            @Override
+            public void onClick(View v)
+            {
+                finish();
+            }
+        });
+
+        // start transaction
+        getFragmentManager().beginTransaction().replace(R.id.pref_content_frame, new Prefs1Fragment()).commit();
+    }
+
+
+    @Override
+    public void onResume()
+    {
+        super.onResume();
+
+        // register settings listener
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        prefs.registerOnSharedPreferenceChangeListener(this);
+    }
+
+
+    @Override
+    public void onPause()
+    {
+        super.onPause();
+
+        // unregister settings listener
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        prefs.unregisterOnSharedPreferenceChangeListener(this);
+    }
+
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key)
+    {
+        switch(key) {
+            case "watch_collect":
+                boolean oldState = Settings.WEARSENSOR;
+                Settings.WEARSENSOR = sharedPreferences.getBoolean(key, true);
+                BroadcastService.getInstance().sendMessage("/settings", "[WEARSENSOR, " + sharedPreferences.getBoolean(key, true) + "]");
+                if(!oldState) {
+                    Toast.makeText(this, R.string.preferences_watch_sensorenabled_hint, Toast.LENGTH_LONG).show();
+                }
+                break;
+            case "watch_direct":
+                Settings.WEARTRANSFERDIRECT = sharedPreferences.getBoolean(key, false);
+                BroadcastService.getInstance().sendMessage("/settings", "[WEARTRANSFERDIRECT, " + sharedPreferences.getBoolean(key, false) + "]");
+                break;
+            case "sensor_lowpass":
+                Settings.ACCLOWPASS = sharedPreferences.getBoolean(key, false);
+                break;
+            case "sensor_frequency":
+                String sensor_frequency = sharedPreferences.getString(key, "50.0f");
+                setDefaultFrequency(sensor_frequency);
+                break;
+            case "live_plotter":
+                Settings.LIVE_PLOTTER_ENABLED = sharedPreferences.getBoolean(key, true);
+                break;
+            case "database_direct_insert":
+                // check if sensors are enabled TODO -not implemented (UI)
+                Settings.DATABASE_DIRECT_INSERT = sharedPreferences.getBoolean(key, true);
+                break;
+            case "database_delete":
+                deleteDatabase();
+                break;
+            case "database_save":
+                copyDatabase();
+                break;
+            case "database_csv":
+                databaseToCSV();
+                break;
+            default:
+        }
+    }
+
+
+    public static class Prefs1Fragment extends PreferenceFragment implements Preference.OnPreferenceChangeListener
+    {
+        @Override
+        public void onCreate(Bundle savedInstanceState)
+        {
+            super.onCreate(savedInstanceState);
+
+            // Load the preferences from an XML resource
+            addPreferencesFromResource(R.xml.preferences);
+
+            // register listener
+            CheckBoxPreference watchDirectBox = (CheckBoxPreference) findPreference("watch_direct");
+            watchDirectBox.setOnPreferenceChangeListener(this);
+        }
+
+
+        @Override
+        public boolean onPreferenceChange(Preference preference, Object newValue)
+        {
+            // TODO Check if this is the watch_direct preference
+
+            for(SensorCollector entry : SensorDataCollectorService.getInstance().getSCM().getSensorCollectors().values()) {
+                if(entry.isRegistered) {
+                    Toast.makeText(getActivity(), R.string.preferences_watch_directenabled_error, Toast.LENGTH_LONG).show();
+                    return false;
+                }
+            }
+
+            for(CustomCollector entry : SensorDataCollectorService.getInstance().getSCM().getCustomCollectors().values()) {
+                if(entry.isRegistered()) {
+                    Toast.makeText(getActivity(), R.string.preferences_watch_directenabled_error, Toast.LENGTH_LONG).show();
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
+
+    private void setDefaultFrequency(String sensor_frequency)
+    {
+        try {
+            double frequency = Double.parseDouble(sensor_frequency);
+            if(frequency < 1 || frequency > 250) {
+                throw new NumberFormatException();
+            }
+
+            Settings.SENSOR_DEFAULT_FREQUENCY = frequency;
+        } catch(NumberFormatException e) {
+            Toast.makeText(this, R.string.preferences_frequency_input_invalid, Toast.LENGTH_LONG).show();
+        }
+
+        Toast.makeText(this, R.string.preferences_frequency_input_valid, Toast.LENGTH_LONG).show();
+    }
+
+
+    private void deleteDatabase()
+    {
+        DatabaseDeleteDialog dialog = new DatabaseDeleteDialog();
+        try {
+            dialog.show(this.getFragmentManager(), "database_delete");
+        } catch(Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    private void copyDatabase()
+    {
+        DatabaseExportSQL task = new DatabaseExportSQL(this);
+        task.execute();
+    }
+
+
+    private void databaseToCSV()
+    {
+        DatabaseExportCSVDialog dialog = new DatabaseExportCSVDialog();
+        try {
+            dialog.show(this.getFragmentManager(), "database_export_csv");
+        } catch(Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/AnalyzeRowAdapter.java
+public class AnalyzeRowAdapter extends ArrayAdapter<Triple<String, String, String>>
+{
+    private Context context;
+
+
+    public AnalyzeRowAdapter(Context context, int resource, List<Triple<String, String, String>> values)
+    {
+        super(context, resource, values);
+
+        this.context = context;
+    }
+
+
+    @Override
+    public View getView(int position, View convertView, ViewGroup parent)
+    {
+        View v = convertView;
+
+        if(v == null) {
+            LayoutInflater vi;
+            vi = LayoutInflater.from(getContext());
+            v = vi.inflate(R.layout.listitemueberblick, parent, false);
+
+        }
+
+        Triple<String, String, String> entry = this.getItem(position);
+
+        if(entry != null) {
+            TextView title = (TextView) v.findViewById(R.id.list_item_ueberblick_title);
+            title.setText(entry.getValue()[0].toString());
+
+            TextView value = (TextView) v.findViewById(R.id.list_item_ueberblick_value);
+            if(!entry.getValue()[1].toString().equals(context.getString(R.string.analyze_analyzelive_collecting))) {
+                value.setText(context.getString(R.string.analyze_analyze_database_values) + ": " + entry.getValue()[1].toString());
+            } else {
+                value.setText(entry.getValue()[1].toString());
+            }
+
+            TextView subTitle = (TextView) v.findViewById(R.id.list_item_ueberblick_title_subtitle);
+            subTitle.setText(context.getString(R.string.analyze_analyzelive_device) + ": " + entry.getValue()[2].toString());
+        }
+
+        return v;
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/sensors/SensorCollector.java
+abstract public class SensorCollector implements SensorEventListener
+{
+    public boolean isRegistered = false;
+    boolean registerCollector = true;
+    protected Sensor sensor;
+    private   double sensorRate;
+
+
+    public SensorCollector(Sensor sensor)
+    {
+        this.sensor = sensor;
+
+        String queryString = "SELECT freq FROM " + SQLTableName.SENSOROPTIONS + " WHERE sensor = ? ";
+        String[] queryArgs = new String[]{ String.valueOf(this.getType()) };
+
+        List<String[]> result = SQLDBController.getInstance().query(queryString, queryArgs, false);
+        double hertz = (result.size() != 0) ? Double.valueOf(result.get(0)[0]) : Settings.SENSOR_DEFAULT_FREQUENCY;
+        sensorRate = (1000.0d / hertz) * 1000.0d; // hertz -> microseconds
+    }
+
+
+    @Override
+    public synchronized void onSensorChanged(SensorEvent se)
+    {
+        float[] clone = se.values.clone();
+        long time = System.currentTimeMillis();
+        SensorChanged(clone, time);
+    }
+
+
+    public void setSensorRate(double hertz)
+    {
+        sensorRate = (1000.0d / hertz) * 1000.0d; // hertz -> microseconds
+    }
+
+
+    public int getSensorRate()
+    {
+        return (int) sensorRate;    // microseconds
+    }
+
+
+    /**
+     * @return Wenn es einen Sensor gibt dann gebe diesen zurück
+     */
+    public Sensor getSensor()
+    {
+        return (sensor == null) ? null : sensor;
+    }
+
+
+    // Gibt den TYPE des Sensors zurück
+    public abstract int getType();
+
+    public abstract void SensorChanged(float[] values, long time);
+
+    public abstract Plotter getPlotter(String deviceID);
+
+
+    public static void updateLivePlotter(String deviceID, float[] values)
+    {
+        throw new IllegalStateException("Method hasn't been set up in the subclass (" + deviceID + ", " + Arrays.toString(values) + ")");
+    }
+
+
+    public static void createDBStorage()
+    {
+        throw new IllegalStateException("Method hasn't been set up in the subclass");
+    }
+
+
+    public static void writeDBStorage()
+    {
+        throw new IllegalStateException("Method hasn't been set up in the subclass");
+    }
+
+
+    public static void flushDBCache(String deviceID)
+    {
+        throw new IllegalStateException("Method hasn't been set up in the subclass");
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/DrawPointsMap.java
+public class DrawPointsMap implements OnMapReadyCallback
+{
+    private ArrayList<Marker> positionMarkers;
+
+    private Context context;
+
+    private String   start;
+    private String   end;
+    private Polyline polyline;
+
+
+    public DrawPointsMap(Context context, String start, String end)
+    {
+        this.positionMarkers = new ArrayList<>();
+        this.start = start;
+        this.end = end;
+        this.context = context;
+    }
+
+
+    public void cleanUp()
+    {
+        if(polyline != null) {
+            polyline.remove();
+
+            polyline = null;
+        }
+
+        if(positionMarkers != null) {
+            for(int i = 0; i < positionMarkers.size(); i++) {
+                positionMarkers.get(i).remove();
+            }
+
+            positionMarkers = null;
+        }
+    }
+
+
+    @Override
+    public void onMapReady(GoogleMap googleMap)
+    {
+        PolylineOptions polyOptions = new PolylineOptions();
+        List<String[]> result = SQLDBController.getInstance().query("SELECT attr_time, attr_lat, attr_lng FROM " + SQLTableName.PREFIX + DeviceID.get(this.context) + SQLTableName.GPS + " WHERE attr_time > ? AND attr_time < ?", new String[]{ String.valueOf(this.start), String.valueOf(this.end) }, false);
+
+        LatLng pos = null;
+        for(String[] row : result) {
+            pos = new LatLng(Float.valueOf(row[1]), Float.valueOf(row[2]));
+            SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
+
+            polyOptions.add(pos);
+
+            positionMarkers.add(googleMap.addMarker(new MarkerOptions().title(sdf.format(new Date(Long.valueOf(row[0])))).position(pos)));
+        }
+
+        if(pos == null) {
+            return;
+        }
+
+        polyline = googleMap.addPolyline(polyOptions);
+        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(pos, 15));
+    }
+}
+shared/src/main/java/de/unima/ar/collector/shared/database/SQLTableName.java
+public class SQLTableName
+{
+    public static final String PREFIX = "SDC_";
+
+    public static final String ACTIVITIES         = PREFIX + "Activity";
+    public static final String SUBACTIVITIES      = PREFIX + "SubActivity";
+    public static final String POSTURES           = PREFIX + "Posture";
+    public static final String POSITIONS          = PREFIX + "Position";
+    public static final String DEVICEPOSITION     = PREFIX + "DevicePosition";
+    public static final String OPTIONS            = PREFIX + "Options";
+    public static final String SENSOROPTIONS      = PREFIX + "SensorOptions";
+    public static final String DEVICES            = PREFIX + "Devices";
+    public static final String ACTIVITYCORRECTION = PREFIX + "ActivityCorrection";
+    public static final String TRANSFERLOG        = PREFIX + "TransferLog";
+
+    public static final String ACTIVITYDATA       = PREFIX + "ActivityData";
+    public static final String POSTUREDATA        = PREFIX + "PostureData";
+    public static final String POSITIONDATA       = PREFIX + "PositionData";
+    public static final String DEVICEPOSITIONDATA = PREFIX + "DevicePositionData";
+
+    public static final String ACCELEROMETER = "SensorAccelerometerData";
+    public static final String AMBIENT       = "SensorAmbientTemperatureData";
+    public static final String GPS           = "SensorGPSData";
+    public static final String GRAVITY       = "SensorGravityData";
+    public static final String GYROSCOPE     = "SensorGyroscopeData";
+    public static final String LIGHT         = "SensorLightData";
+    public static final String LINEAR        = "SensorLinearAccelerationData";
+    public static final String MAGNETIC      = "SensorMagneticFieldData";
+    public static final String MICROPHONE    = "SensorMicrophoneData";
+    public static final String ORIENTATION   = "SensorOrientationData";
+    public static final String PRESSURE      = "SensorPressureData";
+    public static final String PROXIMITY     = "SensorProximityData";
+    public static final String RELATIVE      = "SensorRelativeHumidityData";
+    public static final String ROTATION      = "SensorRotationVectorData";
+    public static final String STEP          = "SensorStepDetectorData";
+    public static final String STEPCOUNTER   = "SensorStepCounterData";
+    public static final String VIDEO         = "SensorVideoData";
+
+}
+mobile/src/main/java/de/unima/ar/collector/api/ListenerService.java
+public class ListenerService extends WearableListenerService
+{
+    private static BiMap<String, String> devices = HashBiMap.create();
+
+
+    public static int getNumberOfDevices()
+    {
+        return devices.size();
+    }
+
+
+    public static void addDevice(String deviceID, String deviceMAC)
+    {
+        devices.put(deviceID, deviceMAC);
+    }
+
+
+    public static void rmDevice(String key)
+    {
+        devices.remove(key);
+        devices.inverse().remove(key);
+    }
+
+
+    public static Set<String> getDevices()
+    {
+        return devices.keySet();
+    }
+
+
+    public static Set<String> getDevicesAddresses()
+    {
+        return devices.values();
+    }
+
+
+    public static String getDeviceID(String deviceAddress)
+    {
+        return devices.inverse().get(deviceAddress);
+    }
+
+
+    @Override
+    public void onMessageReceived(MessageEvent messageEvent)
+    {
+        String path = messageEvent.getPath();
+
+        if(path.equalsIgnoreCase("/activity/started")) {
+            Tasks.informThatWearableHasStarted(messageEvent.getData(), this);
+            return;
+        }
+
+        if(path.equalsIgnoreCase("/activity/destroyed")) {
+            Tasks.informThatWearableHasDestroyed(messageEvent.getData());
+            return;
+        }
+
+        if(path.equalsIgnoreCase("/posture/update")) {
+            Tasks.updatePostureValue(messageEvent.getData());
+            return;
+        }
+
+        if(path.equalsIgnoreCase("/position/update")) {
+            Tasks.updatePositionValue(messageEvent.getData());
+            return;
+        }
+
+        if(path.equalsIgnoreCase("/activity/update")) {
+            Tasks.updateActivityValue(messageEvent.getData());
+            return;
+        }
+
+        if(path.equalsIgnoreCase("/activity/delete")) {
+            Tasks.deleteActivityValue(messageEvent.getData());
+            return;
+        }
+
+        if(path.startsWith("/database/request")) {
+            Tasks.processDatabaseRequest(path, messageEvent.getData());
+            return;
+        }
+
+        if(path.startsWith("/sensor/data")) {
+            Tasks.processIncomingSensorData(path, messageEvent.getData());
+            return;
+        }
+
+        if(path.startsWith("/sensor/blob")) {
+            Tasks.processIncomingSensorBlob(path, messageEvent.getData());
+            return;
+        }
+
+        super.onMessageReceived(messageEvent);
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/util/Triple.java
+public class Triple<A extends Comparable<? super A>, B extends Comparable<? super B>, C> implements Comparable<Triple<A, B, C>>
+{
+    private A a;
+    private B b;
+    private C c;
+
+
+    public Triple(A a, B b, C c)
+    {
+        this.a = a;
+        this.b = b;
+        this.c = c;
+    }
+
+
+    public Object[] getValue()
+    {
+        return new Object[]{ a, b, c };
+    }
+
+
+    public A getA()
+    {
+        return a;
+    }
+
+
+    public B getB()
+    {
+        return b;
+    }
+
+
+    public C getC()
+    {
+        return c;
+    }
+
+
+    @Override
+    public int compareTo(Triple<A, B, C> another)
+    {
+        if(this.getA().compareTo(another.getA()) == 0) {
+            return this.getB().compareTo(another.getB());
+        }
+
+        return this.getA().compareTo(another.getA());
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/extended/Plotter.java
+public class Plotter
+{
+    private PlotConfiguration levelPlot;
+    private PlotConfiguration historyPlot;
+    private SimpleXYSeries    levelsValues;
+    private SimpleXYSeries[]  historyValues;
+    private String            deviceID;
+    private boolean           isPlotting;
+
+
+    public Plotter(String deviceID, PlotConfiguration levelPlot, PlotConfiguration historyPlot)
+    {
+        this.deviceID = deviceID;
+        this.levelPlot = levelPlot;
+        this.historyPlot = historyPlot;
+
+        this.levelPlot.deviceID = deviceID;
+        this.historyPlot.deviceID = deviceID;
+
+        this.isPlotting = false;
+    }
+
+
+    public void setDynamicPlotData(float[] values)
+    {
+        if(!isPlotting()) {
+            return;
+        }
+
+        // update instantaneous data:
+        Number[] series1Numbers = new Number[levelPlot.domainValueNames.length];
+
+        for(int i = 0; i < levelPlot.domainValueNames.length; i++) {
+            series1Numbers[i] = values[i];
+        }
+
+        levelsValues.setModel(Arrays.asList(series1Numbers), SimpleXYSeries.ArrayFormat.Y_VALS_ONLY);
+
+        if(historyPlot == null || historyValues == null || historyValues.length == 0) {
+            return;
+        }
+
+        // get rid the oldest sample in history:
+        if(historyValues[0].size() > historyPlot.domainMax - historyPlot.domainMin) {
+            for(SimpleXYSeries historyValue : historyValues) {
+                historyValue.removeFirst();
+            }
+        }
+
+        for(int i = 0; i < historyValues.length; i++) {
+            historyValues[i].addLast(null, values[i]);
+        }
+
+        // redraw the Plots:
+        levelPlot.plot.redraw();
+        historyPlot.plot.redraw();
+    }
+
+
+    public void startPlotting(XYPlot levelXYPlot, XYPlot historyXYPlot)
+    {
+        levelPlot.plot = levelXYPlot;
+        historyPlot.plot = historyXYPlot;
+
+        levelsValues = new SimpleXYSeries(levelPlot.SeriesName);
+        levelsValues.useImplicitXVals();
+        levelPlot.plot.addSeries(levelsValues, new BarFormatter(Color.argb(180, 0, 200, 0), Color.rgb(0, 100, 0)));
+        levelPlot.plot.addSeries(new SimpleXYSeries(Arrays.asList(-10, 0, 10, 0), SimpleXYSeries.ArrayFormat.XY_VALS_INTERLEAVED, "0"), new LineAndPointFormatter(Color.argb(140, 200, 80, 80), Color.BLACK, null, null));
+        levelPlot.plot.setTitle(levelPlot.plotName);
+
+        levelPlot.plot.setDomainStepValue(levelPlot.domainValueNames.length);
+        levelPlot.plot.setTicksPerRangeLabel(3);
+
+        // per the android documentation, the minimum and maximum readings we can get from
+        // any of the orientation sensors is -180 and 359 respectively so we will fix our plot's
+        // boundaries to those values. If we did not do this, the plot would auto-range which
+        // can be visually confusing in the case of dynamic plots.
+        levelPlot.plot.setRangeBoundaries(levelPlot.rangeMin, levelPlot.rangeMax, levelPlot.rangeBoundary);
+
+        levelPlot.plot.setDomainBoundaries(0, levelPlot.domainValueNames.length - 1, BoundaryMode.FIXED);
+
+        // use our custom domain value formatter:
+        levelPlot.plot.setDomainValueFormat(new BarPlotFormat(levelPlot.domainValueNames));
+
+        // update our domain and range axis labels:
+        levelPlot.plot.setDomainLabel(levelPlot.domainName);
+        levelPlot.plot.getDomainLabelWidget().pack();
+        levelPlot.plot.setRangeLabel(levelPlot.rangeName);
+        levelPlot.plot.getRangeLabelWidget().pack();
+        levelPlot.plot.setGridPadding(15, 0, 15, 0);
+
+        // History Plot
+        historyPlot.plot.setTitle(historyPlot.plotName);
+        historyPlot.plot.setDomainStepValue(5);
+        historyPlot.plot.setTicksPerRangeLabel(3);
+
+        historyValues = new SimpleXYSeries[historyPlot.seriesValueNames.length];
+
+        int Colors[] = new int[6];
+
+        Colors[0] = Color.rgb(100, 100, 250);
+        Colors[1] = Color.rgb(250, 100, 100);
+        Colors[2] = Color.rgb(100, 250, 100);
+        Colors[3] = Color.rgb(250, 100, 250);
+        Colors[4] = Color.rgb(250, 250, 100);
+        Colors[5] = Color.rgb(100, 250, 250);
+
+        for(int i = 0; i < historyPlot.seriesValueNames.length; i++) {
+            historyValues[i] = new SimpleXYSeries(historyPlot.seriesValueNames[i].replace("attr_", ""));
+            historyValues[i].useImplicitXVals();
+
+            if(i > 5) {
+                historyPlot.plot.addSeries(historyValues[i], new LineAndPointFormatter(Color.rgb(100, 100, 200), Color.BLACK, null, null));
+            } else {
+                historyPlot.plot.addSeries(historyValues[i], new LineAndPointFormatter(Colors[i], Color.BLACK, null, null));
+            }
+        }
+
+        historyPlot.plot.setRangeBoundaries(historyPlot.rangeMin, historyPlot.rangeMax, historyPlot.rangeBoundary);
+        historyPlot.plot.setDomainBoundaries(historyPlot.domainMin, historyPlot.domainMax, historyPlot.domainBoundary);
+        historyPlot.plot.setDomainStepValue(5);
+        historyPlot.plot.setTicksPerRangeLabel(3);
+        historyPlot.plot.setDomainLabel(historyPlot.domainName);
+        historyPlot.plot.getDomainLabelWidget().pack();
+        historyPlot.plot.setRangeLabel(historyPlot.rangeName);
+        historyPlot.plot.getRangeLabelWidget().pack();
+
+        // get a ref to the BarRenderer so we can make some changes to it:
+        @SuppressWarnings( "rawtypes" ) BarRenderer barRenderer = (BarRenderer) levelPlot.plot.getRenderer(BarRenderer.class);
+        if(barRenderer != null) {
+            // make our bars a little thicker than the default so they can be seen better:
+            // barRenderer.setBarWidth(300);
+            barRenderer.setBarWidthStyle(BarRenderer.BarWidthStyle.VARIABLE_WIDTH);
+            barRenderer.setBarGap(20);
+        }
+    }
+
+    // TODO
+    //    public void stopPlotting()
+    //    {
+    //        levelPlot = null;
+    //        historyPlot = null;
+    //        levelsValues = null;
+    //        historyValues = null;
+    //    }
+
+
+    public boolean isPlotting()
+    {
+        return isPlotting;
+    }
+
+
+    public void setPlotting(boolean state)
+    {
+        this.isPlotting = state;
+    }
+
+
+    public PlotConfiguration getPlotConfiguration()
+    {
+        return this.levelPlot;
+    }
+
+
+    public String getDeviceID()
+    {
+        return this.deviceID;
+    }
+
+
+    public boolean plottingEnabled()
+    {
+        return !this.levelPlot.sensorName.equals("GPS");
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/DataPlotZoomListener.java
+public class DataPlotZoomListener implements View.OnTouchListener
+{
+    private XYPlot            plot;
+    private PlotConfiguration pc;
+
+    private String start;
+    private String end;
+
+    public XYPlot ActivityPlot;
+    public XYPlot PositionPlot;
+    public XYPlot PosturePlot;
+
+    public PointF minXY;
+    public PointF maxXY;
+
+    private double maxY = 0;
+    private double minY = 0;
+
+    private Map<String, List<Double>> valueData;
+
+    private SimpleXYSeries[] series;
+
+    // Definition of the touch states
+    static final int NONE             = 0;
+    static final int ONE_FINGER_DRAG  = 1;
+    static final int TWO_FINGERS_DRAG = 2;
+    int mode = NONE;
+
+    PointF firstFinger;
+    float  lastScrolling;
+    float  distBetweenFingers;
+    float  lastZooming;
+
+
+    public DataPlotZoomListener(XYPlot plot, PlotConfiguration pc, String start, String end)
+    {
+        this.plot = plot;
+        this.pc = pc;
+        this.start = start;
+        this.end = end;
+        this.valueData = new HashMap<>();
+    }
+
+
+    public void start()
+    {
+        series = new SimpleXYSeries[pc.domainValueNames.length];
+
+        MainActivity main = (MainActivity) ActivityController.getInstance().get("MainActivity");
+        main.refreshGraphBuilderProgressBar(R.string.analyze_analyzelive_loading2, 5);
+
+        String tableName = SQLTableName.PREFIX + pc.deviceID + pc.tableName;
+        DatabaseHelper.streamData(tableName, pc.domainValueNames, start, end, valueData);
+
+        main.refreshGraphBuilderProgressBar(R.string.analyze_analyzelive_loading4, 20);
+
+        for(int i = 0; i < pc.domainValueNames.length; i++) {
+            series[i] = new SimpleXYSeries(valueData.get("attr_time"), valueData.get(pc.domainValueNames[i]), pc.domainValueNames[i].replace("attr_", ""));
+            plot.addSeries(series[i], new LineAndPointFormatter(SensorDataUtil.getColor(i), Color.BLACK, null, null));
+        }
+
+        plot.calculateMinMaxVals();
+
+        minXY = new PointF(plot.getCalculatedMinX().floatValue(), plot.getCalculatedMinY().floatValue());
+        maxXY = new PointF(plot.getCalculatedMaxX().floatValue(), plot.getCalculatedMaxY().floatValue());
+
+        maxY = plot.getCalculatedMaxY().doubleValue() + 1;
+        minY = plot.getCalculatedMinY().doubleValue() - 1;
+
+        plot.setRangeBoundaries(minY, maxY, BoundaryMode.FIXED);
+        plot.setDomainBoundaries(minXY.x, maxXY.x, BoundaryMode.FIXED);
+
+        main.refreshGraphBuilderProgressBar(R.string.analyze_analyzelive_loading5, 80);
+
+        plot.redraw();
+    }
+
+
+    private void refreshSeries()
+    {
+        for(int i = 0; i < pc.domainValueNames.length; i++) {
+            plot.removeSeries(series[i]);
+        }
+
+        // New zoom
+        double zoomStart = (((double) minXY.x) + 1388534400000d);
+        double zoomEnd = (((double) maxXY.x) + 1388534400000d);
+
+        //        DatabaseHelper.streamData(pc.tableName, "SELECT " + values + " FROM " + pc.tableName, start, "" + zoomStart, timeData, valueData, 150);
+        //        DatabaseHelper.streamData(pc.tableName, "SELECT " + values + " FROM " + pc.tableName, "" + zoomStart, "" + zoomEnd, timeData, valueData, 400);
+        //        DatabaseHelper.streamData(pc.tableName, "SELECT " + values + " FROM " + pc.tableName, "" + zoomEnd, end, timeData, valueData, 150);
+
+        for(int i = 0; i < pc.domainValueNames.length; i++) {
+            series[i] = new SimpleXYSeries(valueData.get("attr_time"), valueData.get(pc.domainValueNames[i]), pc.domainValueNames[i].replace("attr_", ""));
+
+            plot.addSeries(series[i], new LineAndPointFormatter(SensorDataUtil.getColor(i), Color.BLACK, null, null));
+        }
+
+        plot.calculateMinMaxVals();
+
+        if(plot.getCalculatedMaxY().doubleValue() > maxY || plot.getCalculatedMinY().doubleValue() < minY) {
+            maxY = (plot.getCalculatedMaxY().doubleValue() > maxY) ? plot.getCalculatedMaxY().doubleValue() + 1 : maxY;
+            minY = (plot.getCalculatedMinY().doubleValue() < minY) ? plot.getCalculatedMinY().doubleValue() - 1 : minY;
+
+            plot.setRangeBoundaries(minY, maxY, BoundaryMode.FIXED);
+            plot.setDomainBoundaries(minXY.x, maxXY.x, BoundaryMode.FIXED);
+        }
+
+        plot.redraw();
+    }
+
+
+    @Override
+    public boolean onTouch(View arg0, MotionEvent event)
+    {
+        switch(event.getAction() & MotionEvent.ACTION_MASK) {
+            case MotionEvent.ACTION_DOWN: // Start gesture
+                firstFinger = new PointF(event.getX(), event.getY());
+                mode = ONE_FINGER_DRAG;
+                break;
+            case MotionEvent.ACTION_UP:
+                arg0.performClick();
+            case MotionEvent.ACTION_POINTER_UP:
+                if(mode != NONE) {
+                    refreshSeries();
+                }
+
+                mode = NONE;
+                break;
+
+            case MotionEvent.ACTION_POINTER_DOWN: // second finger
+                distBetweenFingers = spacing(event);
+                // the distance check is done to avoid false alarms
+                if(distBetweenFingers > 5f) {
+                    mode = TWO_FINGERS_DRAG;
+                }
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if(mode == ONE_FINGER_DRAG) {
+                    PointF oldFirstFinger = firstFinger;
+                    firstFinger = new PointF(event.getX(), event.getY());
+                    lastScrolling = oldFirstFinger.x - firstFinger.x;
+                    scroll(lastScrolling);
+                    lastZooming = (firstFinger.y - oldFirstFinger.y) / plot.getHeight();
+                    if(lastZooming < 0) {
+                        lastZooming = 1 / (1 - lastZooming);
+                    } else {
+                        lastZooming += 1;
+                    }
+                    zoom(lastZooming);
+                } else if(mode == TWO_FINGERS_DRAG) {
+                    float oldDist = distBetweenFingers;
+                    distBetweenFingers = spacing(event);
+
+                    if(distBetweenFingers == 0) {
+                        break;
+                    }
+
+                    lastZooming = oldDist / distBetweenFingers;
+
+                    zoom(lastZooming);
+                    plot.setDomainBoundaries(minXY.x, maxXY.x, BoundaryMode.FIXED);
+                    ActivityPlot.setDomainBoundaries(minXY.x, maxXY.x, BoundaryMode.FIXED);
+                    PositionPlot.setDomainBoundaries(minXY.x, maxXY.x, BoundaryMode.FIXED);
+                    PosturePlot.setDomainBoundaries(minXY.x, maxXY.x, BoundaryMode.FIXED);
+                    PositionPlot.redraw();
+                    plot.redraw();
+                    ActivityPlot.redraw();
+                    PosturePlot.redraw();
+                }
+                break;
+        }
+        return true;
+    }
+
+
+    private void zoom(float scale)
+    {
+        float domainSpan = maxXY.x - minXY.x;
+        float domainMidPoint = maxXY.x - domainSpan / 2.0f;
+        float offset = domainSpan * scale / 2.0f;
+        minXY.x = domainMidPoint - offset;
+        maxXY.x = domainMidPoint + offset;
+    }
+
+
+    private void scroll(float pan)
+    {
+        float domainSpan = maxXY.x - minXY.x;
+        float step = domainSpan / plot.getWidth();
+        float offset = pan * step;
+        minXY.x += offset;
+        maxXY.x += offset;
+    }
+
+
+    private float spacing(MotionEvent event)
+    {
+        if(event.getPointerCount() < 2) {
+            return 0;
+        }
+
+        float x = event.getX(0) - event.getX(1);
+        float y = event.getY(0) - event.getY(1);
+        return (float) Math.sqrt(x * x + y * y);
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/util/StringUtils.java
+public class StringUtils
+{
+    public static String formatSensorName(String s)
+    {
+        StringBuilder result = new StringBuilder();
+
+        s = s.substring(5).toLowerCase(Locale.ENGLISH).trim();
+        s = s.replace("_", " ");
+
+        s = s.substring(0, 1).toUpperCase(Locale.ENGLISH) + s.substring(1);
+
+        if(s.toUpperCase(Locale.ENGLISH).equals("GPS")) {
+            return s.toUpperCase(Locale.ENGLISH);
+        }
+
+        for(int i = 0; i < s.length(); i++) {
+            if((i - 1) >= 0 && s.charAt(i - 1) == ' ') {
+                result.append(String.valueOf(s.charAt(i)).toUpperCase(Locale.ENGLISH));
+                continue;
+            }
+            result.append(s.charAt(i));
+        }
+
+        return result.toString();
+    }
+
+
+    public static String convertByteArrayToString(byte[] data)
+    {
+        try {
+            return new String(data, "UTF-8");
+        } catch(UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+
+    public static String[] split(String s)
+    {
+        List<String> result = new ArrayList<>();
+
+        int counter = 0;
+
+        while(counter <= s.length()) {
+            int pos = s.indexOf(";", counter);
+
+            if(pos == -1) {
+                pos = s.length();
+            }
+
+            String fragment = s.substring(counter, pos);
+            result.add(fragment);
+
+            counter += fragment.length() + 1;
+        }
+
+        return result.toArray(new String[result.size()]);
+    }
+}
+mobile/src/main/java/de/unima/ar/collector/ui/ActivityListRowAdapter.java
+public class ActivityListRowAdapter extends ArrayAdapter<String>
+{
+    private Activity context;
+    private Typeface symbol;
+
+    static class Holder
+    {
+        public int    id;
+        public String name;
+    }
+
+
+    public ActivityListRowAdapter(Activity context, ArrayList<String> list)
+    {
+        super(context, R.layout.activitylistitem, list);
+        this.context = context;
+
+        reinitialize();
+
+        this.symbol = Typeface.createFromAsset(context.getAssets(), "fonts/Symbola613.ttf");
+    }
+
+
+    static class ViewHolder
+    {
+        public TextView text1;
+        public Button   btn;
+    }
+
+
+    /*
+     * (non-Javadoc)
+     * @see android.widget.ArrayAdapter#getView(int, android.view.View, android.view.ViewGroup)
+     */
+    @Override
+    public View getView(int position, View convertView, ViewGroup parent)
+    {
+        View rowView = convertView;
+
+        if(rowView == null) {
+            LayoutInflater inflater = context.getLayoutInflater();
+            rowView = inflater.inflate(R.layout.activitylistitem, parent, false);
+            ViewHolder viewHolder = new ViewHolder();
+            viewHolder.text1 = (TextView) rowView.findViewById(R.id.activity_list_item_textview);
+            viewHolder.btn = (Button) rowView.findViewById(R.id.activity_list_item_delete);
+            rowView.setTag(viewHolder);
+        }
+
+        ViewHolder holder = (ViewHolder) rowView.getTag();
+
+        holder.text1.setText(getItem(position));
+
+        if(position == 0) {
+            holder.btn.setVisibility(View.GONE);
+        } else {
+            holder.btn.setVisibility(View.VISIBLE);
+            holder.btn.setTypeface(symbol);
+            holder.btn.setText("\u2718");
+
+            final ActivityListRowAdapter that = this;
+            final int pos = position;
+            final String itemText = getItem(position);
+
+            holder.btn.setOnClickListener(new View.OnClickListener()
+            {
+                public void onClick(View v)
+                {
+                    // Set activity to completed in database
+                    String Activity;
+                    String SubActivity = null;
+
+                    if(itemText.indexOf('-') == -1) {
+                        Activity = itemText;
+                    } else {
+                        Activity = itemText.substring(0, itemText.indexOf(" -"));
+                        SubActivity = itemText.substring(itemText.indexOf("- ") + 2);
+                    }
+
+                    int aId = Integer.parseInt(DatabaseHelper.getStringResultSet("SELECT id FROM " + SQLTableName.ACTIVITIES + " WHERE name = ? ", new String[]{ Activity }).get(0));
+                    int sId = -1;
+
+                    if(SubActivity != null) {
+                        sId = Integer.parseInt(DatabaseHelper.getStringResultSet("SELECT id FROM " + SQLTableName.SUBACTIVITIES + " WHERE name = ? AND activityid = ? ", new String[]{ SubActivity, aId + "" }).get(0));
+                    }
+
+                    ContentValues args = new ContentValues();
+                    args.put("endtime", System.currentTimeMillis());
+
+                    if(sId != -1) {
+                        SQLDBController.getInstance().update(SQLTableName.ACTIVITYDATA, args, "activityid = ? AND subactivityid = ? AND endtime = 0", new String[]{ String.valueOf(aId), String.valueOf(sId) });
+                    } else {
+                        SQLDBController.getInstance().update(SQLTableName.ACTIVITYDATA, args, "activityid = ? AND endtime = 0", new String[]{ String.valueOf(aId) });
+                    }
+
+                    // Remove from UI
+                    that.remove(itemText);
+                    that.notifyDataSetChanged();
+                    BroadcastService.getInstance().sendMessage("/database/response/deleteActivity", itemText);
+                }
+            });
+        }
+
+        return rowView;
+    }
+
+
+    public void reinitialize()
+    {
+        // Add the running activities
+        String statement = "SELECT a.name, s.name FROM " + SQLTableName.ACTIVITYDATA + " as d," + SQLTableName.ACTIVITIES + " as a LEFT JOIN " + SQLTableName.SUBACTIVITIES + " as s ON s.activityid = a.id WHERE d.activityid = a.id AND d.endtime = 0 AND (d.subactivityid IS NULL OR d.subactivityid = s.id)";
+        List<String[]> result = SQLDBController.getInstance().query(statement, null, false);
+
+        for(String[] row : result) {
+            String activityString = row[0];
+
+            if(row[1] != null) {
+                activityString += Settings.ACTIVITY_DELIMITER + row[1];
+            }
+
+            add(activityString);
+        }
+    }
+}

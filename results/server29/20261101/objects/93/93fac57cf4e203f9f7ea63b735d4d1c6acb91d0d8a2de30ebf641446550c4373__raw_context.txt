@@ -1,0 +1,466 @@
+leapfrog/poll/flickr.py
+def account_for_flickr_id(nsid, person=None):
+    try:
+        # TODO: update flickr avatar pictures (but that requires fetching their people info speculatively)
+        return Account.objects.get(service='flickr.com', ident=nsid)
+    except Account.DoesNotExist:
+        pass
+
+    try:
+        result = call_flickr('flickr.people.getInfo', user_id=nsid)
+    except leapfrog.poll.embedlam.RequestError:
+        return
+    persondata = result['person']
+
+    if person is None:
+        if int(persondata['iconfarm']) == 0:
+            avatar = None
+        else:
+            avatar = Media(
+                image_url='http://farm%s.static.flickr.com/%s/buddyicons/%s.jpg'
+                    % (persondata['iconfarm'], persondata['iconserver'], nsid),
+                width=48,
+                height=48,
+            )
+            avatar.save()
+
+        namenode = persondata.get('realname', persondata.get('username'))
+
+        person = Person(
+            display_name=namenode['_content'],
+            permalink_url=persondata['profileurl']['_content'],
+            avatar=avatar,
+        )
+        person.save()
+
+    try:
+        display_name = persondata['realname']['_content']
+    except KeyError:
+        display_name = None
+
+    acc = Account(
+        service='flickr.com',
+        ident=nsid,
+        display_name=display_name or nsid,
+        person=person,
+    )
+    acc.save()
+    return acc
+leapfrog/poll/vimeo.py
+def account_for_vimeo_id(user_id, person=None):
+    try:
+        # TODO: update vimeo avatar pictures (but that requires fetching their people info speculatively)
+        return Account.objects.get(service='vimeo.com', ident=user_id)
+    except Account.DoesNotExist:
+        pass
+
+    # get vimeo data
+    log.debug('Getting info on user %r', user_id)
+    userdata = call_vimeo('vimeo.people.getInfo', user_id=user_id)
+    persondata = userdata['person']
+
+    if person is None:
+        portraits = persondata.get('portraits', {}).get('portrait')
+        avatar = None
+        if portraits is not None:
+            portraits = sorted([portrait for portrait in portraits if int(portrait['height']) >= 75], key=lambda x: int(x['height']))
+            if portraits:
+                portrait = portraits[0]
+                avatar = Media(
+                    image_url=portrait['_content'],
+                    width=int(portrait['width']),
+                    height=int(portrait['height']),
+                )
+                avatar.save()
+
+        person = Person(
+            display_name=persondata['display_name'],
+            permalink_url=persondata['profileurl'],
+            avatar=avatar,
+        )
+        person.save()
+
+    acc = Account(
+        service='vimeo.com',
+        ident=user_id,
+        display_name=persondata.get('display_name', persondata.get('username', user_id)),
+        person=person,
+    )
+    acc.save()
+
+    return acc
+leapfrog/models.py
+class Object(models.Model):
+
+    RENDER_MODE_CHOICES = (
+        ('mixed', 'mixed'),
+        ('status', 'status'),
+        ('image', 'image'),
+        ('link', 'link'),
+    )
+
+    service = models.CharField(max_length=20, blank=True)
+    foreign_id = models.CharField(max_length=255, blank=True)
+    public = models.BooleanField(blank=True, default=True)
+
+    title = models.CharField(max_length=255, blank=True, null=True)
+    body = models.TextField(blank=True)
+    image = models.ForeignKey(Media, null=True, blank=True, related_name="represented_objects")
+    author = models.ForeignKey(Account, null=True, blank=True, related_name="authored_objects")
+
+    render_mode = models.CharField(max_length=15, blank=True, default='', choices=RENDER_MODE_CHOICES)
+
+    time = models.DateTimeField(db_index=True, default=datetime.utcnow)
+    permalink_url = models.CharField(max_length=255, blank=True, null=True)
+
+    in_reply_to = models.ForeignKey("Object", related_name='replies', null=True, blank=True)
+
+    def __repr__(self):
+        return '<Object: %s>' % (unicode(self).encode('ascii', 'replace'),)
+
+    def __unicode__(self):
+        if self.title:
+            return self.title
+        return u'%s by %s' % (self.render_mode, unicode(self.author))
+
+    def save(self, **kwargs):
+        if self.body:
+            soup = BeautifulSoup(self.body)
+            for script_node in soup.findAll('script'):
+                script_node.extract()
+            self.body = str(soup).decode('utf8').strip()
+        return super(Object, self).save(**kwargs)
+
+    @property
+    def permalink_host(self):
+        return urlparse(self.permalink_url).netloc
+
+    @property
+    def permalink_root(self):
+        return urljoin(self.permalink_url, '/')
+
+    class Meta:
+        unique_together = (('service', 'foreign_id'),)
+        db_table = 'leapfrog_object'
+leapfrog/models.py
+class UserSetting(models.Model):
+
+    user = models.ForeignKey(User)
+    key = models.CharField(max_length=50)
+    value = models.CharField(max_length=250)
+
+    class Meta:
+        unique_together = (('user', 'key'),)
+        db_table = 'leapfrog_usersetting'
+leapfrog/poll/typepad.py
+def account_for_typepad_user(tp_user, person=None):
+    try:
+        account = Account.objects.get(service='typepad.com', ident=tp_user.url_id)
+    except Account.DoesNotExist:
+        if person is None:
+            if tp_user.avatar_link.url_template:
+                avatar = Media(
+                    width=50,
+                    height=50,
+                    image_url=tp_user.avatar_link.url_template.replace('{spec}', '50si'),
+                )
+            else:
+                avatar = Media(
+                    width=tp_user.avatar_link.width,
+                    height=tp_user.avatar_link.height,
+                    image_url=tp_user.avatar_link.url,
+                )
+            avatar.save()
+            person = Person(
+                display_name=tp_user.display_name or tp_user.preferred_username,
+                avatar=avatar,
+                permalink_url=tp_user.profile_page_url,
+            )
+            person.save()
+        account = Account(
+            service='typepad.com',
+            ident=tp_user.url_id,
+            display_name=tp_user.display_name or tp_user.preferred_username,
+            person=person,
+        )
+        account.save()
+    else:
+        person = account.person
+        if not person.avatar_source or person.avatar_source == 'typepad.com':
+            if tp_user.avatar_link.url_template:
+                tp_avatar_url = tp_user.avatar_link.url_template.replace('{spec}', '50si')
+            else:
+                tp_avatar_url = tp_user.avatar_link.url
+
+            if not person.avatar or person.avatar.image_url != tp_avatar_url:
+                if tp_user.avatar_link.url_template:
+                    avatar = Media(
+                        width=50,
+                        height=50,
+                        image_url=tp_avatar_url,
+                    )
+                else:
+                    avatar = Media(
+                        width=tp_user.avatar_link.width,
+                        height=tp_user.avatar_link.height,
+                        image_url=tp_avatar_url,
+                    )
+                avatar.save()
+                person.avatar = avatar
+                person.avatar_source = 'typepad.com'
+                person.save()
+            elif not person.avatar_source:
+                person.avatar_source = 'typepad.com'
+                person.save()
+
+    return account
+leapfrog/poll/mlkshk.py
+def account_for_mlkshk_userinfo(userinfo, person=None):
+    account_id = str(userinfo['id'])
+    try:
+        return Account.objects.get(service='mlkshk.com', ident=account_id)
+    except Account.DoesNotExist:
+        pass
+
+    username = userinfo['name']
+    if person is None:
+        # TODO: use mlkshk profile images when we get stabler urls for them
+        person = Person(
+            display_name=username,
+            permalink_url='http://mlkshk.com/user/%s' % username,
+        )
+        person.save()
+
+    account = Account(
+        service='mlkshk.com',
+        ident=account_id,
+        display_name=username,
+        person=person,
+    )
+    account.save()
+
+    return account
+leapfrog/models.py
+class Person(models.Model):
+
+    user = models.OneToOneField(User, null=True, blank=True)
+    display_name = models.CharField(max_length=100)
+    avatar = models.ForeignKey(Media, blank=True, null=True)
+    avatar_source = models.CharField(max_length=20, blank=True)
+    permalink_url = models.CharField(max_length=100, blank=True)
+    last_viewed_home = models.DateTimeField(default=datetime.utcnow)
+
+    def __unicode__(self):
+        return unicode(self.display_name)
+
+    class Meta:
+        db_table = 'leapfrog_person'
+leapfrog/poll/facebook.py
+def account_for_facebook_user(fb_user, person=None):
+    try:
+        account = Account.objects.get(service='facebook.com', ident=fb_user["id"])
+    except Account.DoesNotExist:
+        if person is None:
+            avatar = Media(
+                width=50,
+                height=50,
+                image_url='http://graph.facebook.com/%s/picture' % fb_user["id"]
+            )
+            avatar.save()
+            person = Person(
+                display_name=fb_user["name"],
+                avatar=avatar,
+                permalink_url=fb_user["link"],
+            )
+            person.save()
+        account = Account(
+            service='facebook.com',
+            ident=fb_user["id"],
+            display_name=fb_user["name"],
+            person=person,
+        )
+        account.save()
+
+    return account
+leapfrog/models.py
+class Account(models.Model):
+
+    service = models.CharField(max_length=20)
+    ident = models.CharField(max_length=100)
+    display_name = models.CharField(max_length=100)
+    last_updated = models.DateTimeField(default=datetime(year=2000, month=1, day=1))
+    last_success = models.DateTimeField(default=datetime.utcnow)
+    authinfo = models.CharField(max_length=600, blank=True)
+    person = models.ForeignKey(Person, related_name='accounts')
+
+    status_background_color = models.CharField(max_length=6, blank=True)
+    status_background_image_url = models.CharField(max_length=150, blank=True)
+    status_background_tile = models.BooleanField(blank=True)
+
+    def __unicode__(self):
+        return u'%s at %s' % (self.display_name, self.service)
+
+    class Meta:
+        unique_together = (('service', 'ident'),)
+        db_table = 'leapfrog_account'
+leapfrog/poll/flickr.py
+def call_flickr(method, sign=False, **kwargs):
+    query = dict(kwargs)
+    query['api_key'] = settings.FLICKR_KEY[0]
+    query['method'] = method
+    query['format'] = 'json'
+    query['nojsoncallback'] = 1
+
+    if sign:
+        sign_flickr_query(query)
+
+    url = urlunparse(('http', 'api.flickr.com', 'services/rest/', None, urlencode(query), None))
+
+    h = leapfrog.poll.embedlam.EmbedlamUserAgent()
+    resp, cont = h.request(url)
+    if resp.status != 200:
+        raise ValueError("Unexpected response querying Flickr method %s: %d %s" % (method, resp.status, resp.reason))
+
+    result = json.loads(cont)
+    if result.get('stat') != 'ok':
+        if result.get('message') == 'Photo not found':
+            raise leapfrog.poll.embedlam.RequestError("Photo tried to do method %s about doesn't exist" % (method,))
+        raise ValueError("Error making Flickr request with method %s: %s" % (method, result.get('message')))
+
+    return result
+leapfrog/poll/vimeo.py
+def call_vimeo(method, token=None, **kwargs):
+    csr = oauth.Consumer(*settings.VIMEO_CONSUMER)
+
+    http_url = 'http://vimeo.com/api/rest/v2?format=json&method=%s' % method
+    if kwargs:
+        http_url = '&'.join((http_url, urlencode(kwargs)))
+    oauth_request = oauth.Request.from_consumer_and_token(csr, token,
+        http_method='GET', http_url=http_url)
+    oauth_sign_method = oauth.SignatureMethod_HMAC_SHA1()
+    oauth_request.sign_request(oauth_sign_method, csr, token)
+    oauth_signing_base = oauth_sign_method.signing_base(oauth_request, csr, token)
+    oauth_header = oauth_request.to_header()
+
+    h = httplib2.Http()
+    h.follow_redirects = 0
+    normal_url = oauth_request.to_url()
+    log.debug('Making request to URL %r', normal_url)
+    try:
+        resp, content = h.request(normal_url, method=oauth_request.method,
+            headers=oauth_header)
+    except socket.error, exc:
+        raise leapfrog.poll.embedlam.RequestError("Request to %s could not complete: %s" % (uri, str(exc)))
+
+    if resp.status == 502:
+        raise leapfrog.poll.embedlam.RequestError("502 Bad Gateway making Vimeo request %s" % normal_url)
+    if resp.status == 503:
+        raise leapfrog.poll.embedlam.RequestError("503 Service Unavailable making Vimeo request %s" % normal_url)
+    if resp.status == 500:
+        raise leapfrog.poll.embedlam.RequestError("500 Server Error making Vimeo request %s" % normal_url)
+    if resp.status == 404:
+        raise leapfrog.poll.embedlam.RequestError("404 Not Found making Vimeo request %s, wtf" % normal_url)
+    if resp.status != 200:
+        raise ValueError("Unexpected response making Vimeo request %s: %d %s" % (normal_url, resp.status, resp.reason))
+
+    data = json.loads(content)
+    if data['stat'] != 'fail':
+        return data
+
+    err = data['err']
+    if method == 'vimeo.videos.getSubscriptions' and err['msg'] == 'Internal error.':
+        raise leapfrog.poll.embedlam.RequestError("Internal error getting Vimeo subscriptions (try again later?)")
+
+    raise ValueError("Error retrieving data for %s call: %s: %s" % (method, err['msg'], err['expl']))
+leapfrog/poll/flickr.py
+def sign_flickr_query(query):
+    sign_base = ''.join('%s%s' % (k, v) for k, v in sorted(query.items(), key=lambda i: i[0]))
+
+    signer = md5()
+    signer.update(settings.FLICKR_KEY[1])
+    signer.update(sign_base)
+
+    query['api_sig'] = signer.hexdigest()
+leapfrog/poll/mlkshk.py
+def call_mlkshk(uri, method='GET', body=None, headers=None, authtoken=None, authsecret=None):
+    if headers is None:
+        headers = {}
+
+    if authtoken is not None:
+        headers['Authorization'] = sign(uri, method, authtoken, authsecret)
+        log.debug("Mlkshk authentication header: %r", headers['Authorization'])
+
+    h = httplib2.Http(disable_ssl_certificate_validation=True)
+    try:
+        resp, cont = h.request(uri, method, body, headers)
+    except httplib.BadStatusLine:
+        raise leapfrog.poll.embedlam.RequestError("Bad status line requesting %s (is Mlkshk down?)" % uri)
+    except ssl.SSLError, exc:
+        raise leapfrog.poll.embedlam.RequestError("SSL error requesting %s: %s (is Mlkshk down?)" % (uri, str(exc)))
+    if resp.status == 500:
+        raise leapfrog.poll.embedlam.RequestError("500 Server Error requesting %s (is Mlkshk down?)" % uri)
+    if resp.status == 502:
+        raise leapfrog.poll.embedlam.RequestError("502 Bad Gateway requesting %s (is Mlkshk down?)" % uri)
+    if resp.status == 401:
+        raise leapfrog.poll.embedlam.RequestError("401 Unauthorized requesting %s (probably an expired token?)" % uri)
+    if resp.status != 200:
+        raise ValueError("Unexpected HTTP response %d %s requesting %s" % (resp.status, resp.reason, uri))
+
+    try:
+        return json.loads(cont)
+    except ValueError, exc:
+        raise ValueError("Invalid JSON response requesting %s: %s" % (uri, str(exc)))
+leapfrog/poll/tumblr.py
+def account_for_tumblr_userinfo(userinfo, person=None):
+    username = userinfo['name']
+    try:
+        account = Account.objects.get(service='tumblr.com', ident=username)
+    except Account.DoesNotExist:
+        pass
+    else:
+        person = account.person
+        if not person.avatar_source or person.avatar_source == 'tumblr.com':
+            (primary_blog,) = [blog for blog in userinfo['blogs'] if blog.get('primary', False)]
+            tumblr_avatar_url = 'http://api.tumblr.com/v2/blog/%s.tumblr.com/avatar/64' % primary_blog['name']
+            if not person.avatar or person.avatar.image_url != tumblr_avatar_url:
+                avatar = Media(
+                    image_url=tumblr_avatar_url,
+                    width=64,
+                    height=64,
+                )
+                avatar.save()
+                person.avatar = avatar
+                person.avatar_source = 'tumblr.com'
+                person.save()
+            elif not person.avatar_source:
+                person.avatar_source = 'tumblr.com'
+                person.save()
+        return account
+
+    (primary_blog,) = [blog for blog in userinfo['blogs'] if blog.get('primary', False)]
+    display_name = primary_blog.get('title', username)
+    if person is None:
+        tumblr_avatar_url = 'http://api.tumblr.com/v2/blog/%s.tumblr.com/avatar/64' % primary_blog['name']
+        avatar = Media(
+            image_url=tumblr_avatar_url,
+            width=64,
+            height=64,
+        )
+        avatar.save()
+
+        person = Person(
+            display_name=display_name,
+            permalink_url=primary_blog['url'],
+            avatar=avatar,
+        )
+        person.save()
+
+    account = Account(
+        service='tumblr.com',
+        ident=account_name,
+        display_name=display_name,
+        person=person,
+    )
+    account.save()
+
+    return account

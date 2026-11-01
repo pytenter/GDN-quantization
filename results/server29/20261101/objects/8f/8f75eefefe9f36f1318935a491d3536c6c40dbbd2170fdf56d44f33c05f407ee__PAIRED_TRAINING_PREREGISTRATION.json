@@ -1,0 +1,185 @@
+{
+  "TASK_ID": "QWEN_GDN_DUALM_AWARE_ROTATION_TRAINING_READINESS_V1",
+  "status": "DRAFT_BLOCKED_PENDING_CPU_QUALIFICATION_AND_DATA",
+  "frozen": false,
+  "authorization": {
+    "CPU_PREPARATION": true,
+    "LOCAL_RTX3090_MICRO_QUALIFICATION": true,
+    "MAX_LOCAL_GPU_HOURS": 1.0,
+    "A800_RENTAL_AUTHORIZED": false,
+    "A800_GPU_EXECUTION": false,
+    "A800_FULL_TRAINING_AUTHORIZED": false,
+    "FULL_ROTATION_TRAINING": false,
+    "FORMAL_32K_EVALUATION": false,
+    "AIME_EVALUATION": false,
+    "NO_AUTOMATIC_NEXT_TASK": true,
+    "NO_GIT_PUSH": true
+  },
+  "common": {
+    "model": "Qwen3.5-9B",
+    "model_dtype": "bfloat16_frozen",
+    "rotation_dtype": "float32",
+    "state_carrier": "float32_persistent_QDQ",
+    "base_model_trainable": false,
+    "initialization": "theta=0; Delta=I; final key-side rotation=H128",
+    "parameterization": "exact original PerLayerCayleyRotations",
+    "rotation_layers": [
+      0,
+      1,
+      2,
+      4,
+      5,
+      6,
+      8,
+      9,
+      10,
+      12,
+      13,
+      14,
+      16,
+      17,
+      18,
+      20,
+      21,
+      22,
+      24,
+      25,
+      26,
+      28,
+      29,
+      30
+    ],
+    "parameters_per_layer": 8128,
+    "total_trainable_parameters": 195072,
+    "head_shared": true,
+    "batch_size": 1,
+    "optimizer_updates": 125,
+    "tokens_per_document": 1024,
+    "captures_per_document": 8,
+    "target_exposures": 1000,
+    "gradient_horizon": 64,
+    "optimizer": {
+      "name": "Adam",
+      "lr": 0.001,
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "eps": 1e-08,
+      "weight_decay": 0.0,
+      "gradient_clip_global_norm": 1.0
+    },
+    "loss": {
+      "functional": "exact original out_proj output relative-MSE, after readout/gated RMSNorm",
+      "state": "exact original previous-state recovery relative-MSE per B/head",
+      "lambda_state": 0.1,
+      "epsilon": 1e-12,
+      "source_sha256": "48bd12d252c827ae57c48b2228d95e30de9f92baad47ebc2e8b64405b49e516e",
+      "layer_weight": "equal24",
+      "capture_weight": "1/8"
+    },
+    "seed": 0,
+    "document_sampling": "random.Random(0),125 replacement draws from frozen TRAIN file order; identical A/D",
+    "capture_rule": "sorted Random(int(raw_text_sha256[:16],16)^20260921).sample(range(128,1024),8)",
+    "detach_policy": "backward perH64 segment if captures; detach graph for all cache components each64, numerical QDQ state continuous; one optimizer step after whole1024 document",
+    "teacher": "clean FP no rotation/QDQ, identical detached targets for both arms; each own student starts token0; no FP state resets",
+    "numeric_flags": {
+      "cuda_matmul_allow_tf32": false,
+      "cudnn_benchmark": false,
+      "cudnn_deterministic": false,
+      "torch_deterministic_algorithms": false
+    },
+    "safety": {
+      "finite_required": true,
+      "orthogonality_max_abs": 0.0001,
+      "catastrophic_gradient_norm": 1000000.0,
+      "memory_creep_bytes": 268435456,
+      "on_first_failure": "preserve and STOP; no automatic GPU retry"
+    }
+  },
+  "arms": {
+    "A": {
+      "training_codec": "CANONICAL_C128",
+      "backward": "exact original C128 identity STE, legacy hard-forward arithmetic preserved",
+      "loss_selector": "C6R",
+      "output_name": "R_A"
+    },
+    "D": {
+      "training_codec": "FROZEN_DUAL_M_INT8_ALL8_ONES_FP16_SCALES_NO_PIVOTS",
+      "backward": "true frozen hard forward; Python identity autograd; scale/LS/FP16/round/clamp detached",
+      "loss_selector": "C6R",
+      "output_name": "R_D"
+    }
+  },
+  "data": {
+    "manifest": "DATA_SPLIT_MANIFEST.json",
+    "leakage_audit": "DATA_LEAKAGE_AUDIT.json",
+    "status": "NOT_QUALIFIED_PENDING_DIAGNOSIS",
+    "TRAIN_documents": 64,
+    "DEVELOPMENT_VALIDATION_documents": 16,
+    "FUTURE_32K_TEST_documents": 2,
+    "PROJECT_INDEPENDENCE": "UNKNOWN",
+    "data_source_change": "historical WikiText2 raw -> new cached RepoBench-P/P_e if qualified; shared for A/D; not an exact retraining of old C6R",
+    "document_order": null,
+    "document_order_sha256": null
+  },
+  "backward_policy": {
+    "path": "DUAL_M_BACKWARD_POLICY.md",
+    "sha256": null,
+    "status": "DRAFT_PENDING_CPU_QUALIFICATION"
+  },
+  "export": {
+    "primary_checkpoint": "FINAL_UPDATE_125_ONLY_BOTH_ARMS",
+    "validation": "same frozen DEV16 final step; no per-arm loss-based selection; no future-test selection",
+    "save_checkpoints_at_updates": [
+      0,
+      125
+    ],
+    "complete_resume_fields": [
+      "rotation parameters",
+      "optimizer state",
+      "Python RNG",
+      "Torch CPU RNG",
+      "all CUDA RNG states",
+      "completed update/document cursor",
+      "source/config/data/model hashes"
+    ],
+    "resume_boundary": "completed optimizer step after document; detach/capture empty; no unsaved BPTT graph continuity claim",
+    "micro_exports": "ENGINEERING_QUALIFICATION_ONLY_NOT_SCIENTIFIC_CHECKPOINTS"
+  },
+  "future_evaluation": {
+    "protocol": "FUTURE_32K_EVALUATION_PROTOCOL.md",
+    "Primary": "G_specific=K(R_A,DualM)-K(R_D,DualM)",
+    "Secondary": [
+      "G_adapt=K(C6R,DualM)-K(R_D,DualM)",
+      "G_H=K(H,DualM)-K(R_D,DualM)"
+    ],
+    "N": 2,
+    "statistical_unit": "document",
+    "scores": 384,
+    "vocabulary": 248320,
+    "evaluation_status": "NOT_RUN",
+    "old_C6R_comparison_confounds": [
+      "different training corpus",
+      "new symmetric final125 checkpoint rule versus historical selected94",
+      "any newly qualified hardware/runtime differences"
+    ]
+  },
+  "source": {
+    "training_commit": "ad1b9fc19bd5fd5cc9014b7473f31edce22976a3",
+    "engine_sha256": "0f85e40100070c051a01d05125341c1863b5c9808247803a725b1b218f54412d",
+    "core_sha256": "48bd12d252c827ae57c48b2228d95e30de9f92baad47ebc2e8b64405b49e516e",
+    "cayley_sha256": "62e769dfad73170279daf0bdb56855b7d7e4aaf77478de897958fa87b2608067",
+    "old_C6R_export_sha256": "a886588b3613f66e6635e5874dbfaeaee26b850e05b4a1524da0bef952d22da6",
+    "new_source_diff_manifest": "SOURCE_DIFF_MANIFEST.json"
+  },
+  "A800": {
+    "gpu_count": 1,
+    "memory_class_GB": 80,
+    "proposed_billed_hours_cap": 8.0,
+    "cost_model": "A800_TRAINING_COST_MODEL.json",
+    "full_model_admission": "NOT_TESTED",
+    "entry_implementation": "PENDING_OR_BLOCKED",
+    "default_mode": "DRY_RUN"
+  }
+}

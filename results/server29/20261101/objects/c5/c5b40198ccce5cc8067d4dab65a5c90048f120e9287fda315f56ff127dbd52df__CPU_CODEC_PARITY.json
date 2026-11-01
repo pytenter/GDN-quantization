@@ -1,0 +1,160 @@
+{
+  "task_id": "LING_KDA_ROTATION_DUAL_AXIS_FUNCTIONAL_V1",
+  "status": "PASS_CPU_CODEC_ONLY",
+  "CPU_ONLY": true,
+  "CUDA_initialized": false,
+  "GPU_model_forward": false,
+  "test_count": 8,
+  "all8_ones_pivots0": true,
+  "official_reference_access": "ACTUAL_PINNED_SOURCE_AST_VERIFIED",
+  "physical_packed_INT8_runtime": "NOT_QUALIFIED",
+  "tests": [
+    {
+      "test": "1_shape_axis_and_invalid_input",
+      "status": "PASS",
+      "seconds": 0.12907198898028582,
+      "details": {
+        "native_axis": "B,H,Key,Value",
+        "non_square_shape": [
+          2,
+          3,
+          7,
+          11
+        ],
+        "transpose_performed": false
+      }
+    },
+    {
+      "test": "2_signed_INT8_range",
+      "status": "PASS",
+      "seconds": 0.0015933989780023694,
+      "details": {
+        "min": -127,
+        "max": 127,
+        "bitwidth": 8,
+        "pivots": 0
+      }
+    },
+    {
+      "test": "3_FP16_row_column_scales_and_payload",
+      "status": "PASS",
+      "seconds": 0.0015550019452348351,
+      "details": {
+        "row_dtype": "float16",
+        "column_dtype": "float16",
+        "tensor_payload_bytes": 678,
+        "metadata_layout": "rows Key, columns Value; shared shape/header not included",
+        "functional_FP32_carrier_is_physical_packed_INT8": false
+      }
+    },
+    {
+      "test": "4_zero_outlier_ties_extreme_scale",
+      "status": "PASS",
+      "seconds": 0.007394516025669873,
+      "details": {
+        "panels": [
+          "random",
+          "zeros",
+          "tiny",
+          "large",
+          "outlier"
+        ],
+        "rounding": "torch.round ties-to-even",
+        "codes_clamp": [
+          -127,
+          127
+        ],
+        "scale_floor": 5.960464477539063e-08,
+        "scale_ceiling": 65504.0,
+        "row_mean_floor": 1e-20,
+        "LS_den_floor": 1e-30,
+        "large_state_accuracy_claim": false
+      }
+    },
+    {
+      "test": "5_qualified_and_official_all8_ones_parity",
+      "status": "PASS",
+      "seconds": 0.0988720590248704,
+      "details": {
+        "official_commit": "f2deac58131219e6aecff274f8eabe88e08d2e3c",
+        "architecture": "kda",
+        "bits": "all8",
+        "impact": "ones",
+        "pivots": 0,
+        "equal_semantics": "torch.equal, signed-zero differences separately reported",
+        "observations": [
+          {
+            "panel": "random",
+            "torch_equal_codes_scales_dequant": true,
+            "signed_zero_dequant_differences": 25
+          },
+          {
+            "panel": "zeros",
+            "torch_equal_codes_scales_dequant": true,
+            "signed_zero_dequant_differences": 0
+          },
+          {
+            "panel": "tiny",
+            "torch_equal_codes_scales_dequant": true,
+            "signed_zero_dequant_differences": 0
+          },
+          {
+            "panel": "large",
+            "torch_equal_codes_scales_dequant": true,
+            "signed_zero_dequant_differences": 0
+          },
+          {
+            "panel": "outlier",
+            "torch_equal_codes_scales_dequant": true,
+            "signed_zero_dequant_differences": 0
+          }
+        ],
+        "direct_equation_reference_exact": true
+      }
+    },
+    {
+      "test": "6_every_token_persistent_QDQ_simulation",
+      "status": "PASS",
+      "seconds": 0.008712179958820343,
+      "details": {
+        "writes": 16,
+        "next_step_consumed": 15,
+        "hidden_high_precision_state_for_next_step": false,
+        "scope": "CPU synthetic persistent recurrence only; not real model next-kernel proof"
+      }
+    },
+    {
+      "test": "7_128_step_nonuniform_gate_synthetic_recurrence",
+      "status": "PASS",
+      "seconds": 0.6004613500554115,
+      "details": {
+        "steps": 128,
+        "nonuniform_Key_gate": true,
+        "adapter_vs_official_every_step_exact": true,
+        "digest": "7b7341674f5c766af4ffb55b2815932a48f385529df31512b0bd5af521733938",
+        "scope": "codec recurrence reference, no KDA model execution"
+      }
+    },
+    {
+      "test": "8_fresh_process_deterministic_digest",
+      "status": "PASS",
+      "seconds": 3.405468927929178,
+      "details": {
+        "fresh_processes": 2,
+        "digest": "f2a0a50e6822957aa1cc86379e550954c765ac45485fa9bdf8beedb3e7eb36e4",
+        "exact": true,
+        "CUDA_initialized": false
+      }
+    }
+  ],
+  "started_unix": 1792153239.1936817,
+  "completed_unix": 1792153243.4473822,
+  "python": "3.11.16 (main, Sep  2 2026, 23:39:52) [GCC 15.3.0]",
+  "torch": "2.7.1+cu128",
+  "source_sha256": {
+    "codec_adapter.py": "d02566ea9002fc46e9e9c16902e49b628d7183a23d46c2b0bcf0c2aed3226239",
+    "cpu_codec_tests.py": "8e390429478078c224c7feb1f9ff1ebc7d9f56ca1d7489217048d9592d21c9d0",
+    "reference_sources/qualified_dual_axis_codec.py": "cd494824c242b2ce967dc470b50160aff25cf1776e1d45344d547a30fb6253e6",
+    "reference_sources/stepquant_quantization.py": "0c39fe6da2b5ad68e2a081471b1ec22465a9c9f914c367ed984a78ad3717ee69"
+  }
+}

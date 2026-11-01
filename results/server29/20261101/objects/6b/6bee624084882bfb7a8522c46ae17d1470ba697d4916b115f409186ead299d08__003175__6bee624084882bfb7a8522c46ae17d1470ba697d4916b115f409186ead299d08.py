@@ -1,0 +1,5 @@
+def __create_fn__(_type_count_per_thread, _type_bytes_per_thread, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_count_per_thread, _dflt_bytes_per_thread, _return_type):
+ def __init__(self,count_per_thread:_type_count_per_thread=_dflt_count_per_thread,bytes_per_thread:_type_bytes_per_thread=_dflt_bytes_per_thread)->_return_type:
+  self.count_per_thread=count_per_thread
+  self.bytes_per_thread=bytes_per_thread
+ return __init__

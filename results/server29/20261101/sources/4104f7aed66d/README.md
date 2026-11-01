@@ -1,0 +1,50 @@
+# qwen_gdn_pace48_aime26_seed1_60_v1_4gpu_lifecycle_repair_20261026
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/qwen_gdn_pace48_aime26_seed1_60_v1_4gpu_lifecycle_repair_20261026`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`README.md`](../../objects/ea/eafb9187a7eaccf8593c6644b96dc6174185eca546be1c3cc18a5fa84dbaa4b3__README.md)
+- [`final_verdict.json`](../../objects/ce/ce07bfcb3b3a39f162f1b23afb0f6d3598ed60925daf70cad4e4a3f39205aee1__final_verdict.json)
+- [`scripts/finalize_cpu.py`](../../objects/c6/c6d812bd62caa9de600c65afd46b96ff516a38d407c9763cdbfaad7afd7795b6__finalize_cpu.py)
+- [`vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`calibration/head_scores.csv`](../../objects/31/31f07da9517d3d4bebf77189f64a77e7df1cc3623ea15aa7a98857b0b9a2b63d__head_scores.csv)
+- [`protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`scripts/finalize_four_gpu_cpu.py`](../../objects/63/631db34b8d95140a12456df8e57f3480f2026641b91b9264d23a9727a0d8e465__finalize_four_gpu_cpu.py)
+- [`engineering/gate_scope_gpu0/README.md`](../../objects/cb/cbe633298ae69bdef80c7c455f85da43e84df220a28fbfba804e35d09b329a04__README.md)
+- [`engineering/gate_scope_gpu1/README.md`](../../objects/cb/cbe633298ae69bdef80c7c455f85da43e84df220a28fbfba804e35d09b329a04__README.md)
+- [`engineering/gate_scope_gpu2/README.md`](../../objects/cb/cbe633298ae69bdef80c7c455f85da43e84df220a28fbfba804e35d09b329a04__README.md)
+- [`engineering/gate_scope_gpu3/README.md`](../../objects/cb/cbe633298ae69bdef80c7c455f85da43e84df220a28fbfba804e35d09b329a04__README.md)
+- [`FINAL_IDENTITY_RELEASE_VERIFICATION.json`](../../objects/fb/fb3e5b0caf3bcbf20e73517c4c8febae8a96dba29431432251ff2f0f35291f0b__FINAL_IDENTITY_RELEASE_VERIFICATION.json)
+- [`operations/run_scale_repair_final_cpu.py`](../../objects/49/490a4468ed4e4e1da814cdd98b3ce5f2c725c0d0d3d47277bd71b9d182742103__run_scale_repair_final_cpu.py)
+- [`operations/run_exit_fix_final_cpu_once.py`](../../objects/d5/d5b67da175a45a7649975c0e89989d3d917a19fbb085e2aed9d395e06938fef8__run_exit_fix_final_cpu_once.py)
+- [`provenance/PRIOR_PACE_TRUE_STOP/README.md`](../../objects/4f/4fddbff831fae9273f50cf577ef8de4d7666806d8aa9d2b8669688e174a7d834__README.md)
+- [`operations/run_lifecycle_final_cpu_once.py`](../../objects/30/3012a7a9a6ac100a5e2c2dd441ca0e9c59f20878de281bb0ae57a71cb0f38ad2__run_lifecycle_final_cpu_once.py)
+- [`operations/FINAL_CPU_ADMISSION_CLOSURE.json`](../../objects/da/da5d1847005fa1081cf1f0fb798e28f2e302bf3ae8de114a8f243d2865c81acc__FINAL_CPU_ADMISSION_CLOSURE.json)
+- [`operations/run_exponent_repair_final_cpu.py`](../../objects/48/48ac884f57a20a58d9d0b0fc27881b2ce7ee6ea0b7acba41087df6d6c904c787__run_exponent_repair_final_cpu.py)
+- [`operations/FOUR_GPU_FINAL_CPU_ADMISSION.json`](../../objects/71/7190d4054238e96587e374175ee1ee4c6d700ea59d22044b741975758f62d956__FOUR_GPU_FINAL_CPU_ADMISSION.json)
+- [`operations/CONTROL_V2_FINAL_SOURCE_REVIEW.json`](../../objects/c0/c0b2f1c02f50b17086db513d5d7bc8553233f8323cd2ebfc76aa252861bd0c2e__CONTROL_V2_FINAL_SOURCE_REVIEW.json)
+- [`operations/SCALE_REPAIR_FINAL_CPU_ADMISSION.json`](../../objects/3e/3e65380bac60d352c44704b6d15eb23cf241a28b53803aac5dc2c1a081ca6033__SCALE_REPAIR_FINAL_CPU_ADMISSION.json)
+- [`operations/FINAL_CPU_METADATA_READONLY_FETCH.json`](../../objects/31/31ad91726871d0a2c6dffb2739c0c2588a8330b4ad8d907e4f187eb133dee695__FINAL_CPU_METADATA_READONLY_FETCH.json)
+- [`provenance/PRIOR_PACE_TRUE_STOP/final_verdict.json`](../../objects/76/76a8dce78a3169ac743b4e996d6ddd2fe97fd0965cce22d12677af5bfc13af57__final_verdict.json)
+- [`engineering/gate_scope_gpu0/scripts/finalize_cpu.py`](../../objects/c6/c6d812bd62caa9de600c65afd46b96ff516a38d407c9763cdbfaad7afd7795b6__finalize_cpu.py)
+- [`engineering/gate_scope_gpu1/scripts/finalize_cpu.py`](../../objects/c6/c6d812bd62caa9de600c65afd46b96ff516a38d407c9763cdbfaad7afd7795b6__finalize_cpu.py)
+- [`engineering/gate_scope_gpu2/scripts/finalize_cpu.py`](../../objects/c6/c6d812bd62caa9de600c65afd46b96ff516a38d407c9763cdbfaad7afd7795b6__finalize_cpu.py)
+- [`engineering/gate_scope_gpu3/scripts/finalize_cpu.py`](../../objects/c6/c6d812bd62caa9de600c65afd46b96ff516a38d407c9763cdbfaad7afd7795b6__finalize_cpu.py)
+- [`operations/EXPONENT_REPAIR_FINAL_CPU_ADMISSION.json`](../../objects/db/db1245033373dd2415e207d910ff8d1c8cf0a04b027b63e2dfd2b979db9f66e1__EXPONENT_REPAIR_FINAL_CPU_ADMISSION.json)
+- [`operations/FINAL_NUMERIC_SOURCE_IDENTITY_REVIEW.json`](../../objects/fb/fb7bca8f062a55a8436084ece63e8cf986de0613b542011a730cc43f793d83d9__FINAL_NUMERIC_SOURCE_IDENTITY_REVIEW.json)
+- [`protocol/INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json`](../../objects/45/458041afe7011c5055d92bed1f97bc95b21f081a480a31092495c33e7e521094__INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json)
+- [`engineering/gate_scope_gpu0/vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`engineering/gate_scope_gpu1/vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`engineering/gate_scope_gpu2/vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`engineering/gate_scope_gpu3/vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`operations/CPU_FINAL_FIXTURE_EXCEPTION_CORRECTION.json`](../../objects/02/02bb854a6cd3de6ee7173d317ccd21c1123c5aadf9660aaefbb06ea78f1fd3e0__CPU_FINAL_FIXTURE_EXCEPTION_CORRECTION.json)
+- [`operations/GROUP64_FINAL_INDEPENDENT_STOP_CLOSURE.json`](../../objects/36/36843d01b03513950fbaf646153d8b62b622f0bce84c622fefdf7654f46af261__GROUP64_FINAL_INDEPENDENT_STOP_CLOSURE.json)
+- [`operations/TARGET_TWO_FRESH_FINAL_CPU_INTEGRATION.json`](../../objects/b9/b993ad76ea3695003ad5efac96326b538017ef3a92d21719407401b0a59cad9c__TARGET_TWO_FRESH_FINAL_CPU_INTEGRATION.json)
+- [`engineering/gate_scope_gpu0/calibration/head_scores.csv`](../../objects/31/31f07da9517d3d4bebf77189f64a77e7df1cc3623ea15aa7a98857b0b9a2b63d__head_scores.csv)
+- [`engineering/gate_scope_gpu1/calibration/head_scores.csv`](../../objects/31/31f07da9517d3d4bebf77189f64a77e7df1cc3623ea15aa7a98857b0b9a2b63d__head_scores.csv)
+- [`engineering/gate_scope_gpu2/calibration/head_scores.csv`](../../objects/31/31f07da9517d3d4bebf77189f64a77e7df1cc3623ea15aa7a98857b0b9a2b63d__head_scores.csv)

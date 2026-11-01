@@ -1,0 +1,50 @@
+# remote_source
+
+原始相对目录：`remote_source`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`GDN-quantization/runs/ling_kda_aime24_int8_rc_end_to_end_smoke_v1/final_report.md`](../../objects/80/803665dca7fb65da187fb6b385daf0b858a36599b0108b81d3ff17ba98be9db7__final_report.md)
+- [`GDN-quantization/runs/ling_kda_aime24_int8_rc_end_to_end_formal_v1_distributed4/final_report.md`](../../objects/4e/4e8b89b0391284e3bf389605d55f72a6453e4fc4c7c2bdc67328551b35894fea__ling_kda_aime24_int8_rc_end_to_end_formal_v1_distributed4.md)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/report.md`](../../objects/4e/4e51ccb318993e18134b9581ea845c362cdce11cdb1332248fc76ccce3727d92__report.md)
+- [`GDN-quantization/runs/ling_kda_aime24_int8_rc_end_to_end_smoke_v1/protocol.json`](../../objects/10/104194a32259d6bb6b9c0059ba9e2b85bf8a2e224623567fe27d8a50d23e21dd__protocol.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/horizon.csv`](../../lossless_compressed_tables/9adb73ac142c7a794793f850b042cb02e0d7bad1f82e54ddbc0df24f64512686__horizon.csv.gz)
+- [`GDN-quantization/runs/ling_kda_persistent_error_decomposition_causal_v1/report.md`](../../../../mechanism/ling_kda/ling_kda_persistent_error_decomposition_causal_v1/report.md)
+- [`GDN-quantization/runs/ling_kda_aime24_int8_rc_end_to_end_smoke_v1/final_summary.json`](../../objects/46/46ac8d8835615ac75bcc59e3885435c7c66903e4d132fdde4a9883de935e9866__final_summary.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/source_error.csv`](../../objects/58/58fbf56e17f2a6744011a48278beadc9d0b5843d9aa28433555f0516ce3d05fc__source_error.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/unit_summary.csv`](../../objects/30/3024c979a0b7a189f621c65f3273eadc79cc02ab4ec08697a7aa9ffa689701ed__unit_summary.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/horizon_pilot.csv`](../../objects/13/13daa291de2511ed25246549c7d25e4e98200bc0e2c6f76385201592ab9dd258__horizon_pilot.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/horizon_smoke.csv`](../../objects/6d/6de155862754bd01036040e3f1940fa1fc2e95842eb1387ca626e0b92f7169cf__horizon_smoke.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/horizon_formal.csv`](../../lossless_compressed_tables/9adb73ac142c7a794793f850b042cb02e0d7bad1f82e54ddbc0df24f64512686__horizon.csv.gz)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/horizon_stage0.csv`](../../objects/67/67a2125a96aecd6a27626e6bbfa9d7cb18fe7d5914a76b9cc8506a8ecb1fddca__horizon_stage0.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/aggregate_summary.json`](../../objects/ab/aba83318eb8c6b0053a2cad4f8c53d7ba93b7c764633263a69d8b8e081d0b0ec__ling_kda_int8_rc_granularity_phase_diagram_v1_final_summary.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/pilot_run_summary.json`](../../objects/12/123146ea77d1b1337220d1563620b69c2ebc0c33341722176657cb99d4ecb70c__pilot_run_summary.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/smoke_run_summary.json`](../../objects/6c/6cb93af2bf91046e89bdbd032ddbe88fd8f04e8e9c7b0b2e5a6677a59421aae9__smoke_run_summary.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/source_error_pilot.csv`](../../objects/65/65f22d30bc6ec5dc13cdda60edb2ecc7a4067ab58ec99ee441eaaba59facb6dd__source_error_pilot.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/source_error_smoke.csv`](../../objects/a1/a17629bc09ef25dc21820efec6927603d1207352df131228fbd309eabd70e6f8__source_error_smoke.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/unit_summary_pilot.csv`](../../objects/2b/2b73d493e0bb53febf43be6a35e9f137c88f05ff62a295a32198fa9551a66cf4__unit_summary_pilot.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/unit_summary_smoke.csv`](../../objects/bc/bcf6fd42951e670dc70816a2772dd29daf6d479bcab41ed3c260005ccc09e37c__unit_summary_smoke.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/formal_run_summary.json`](../../objects/3b/3b9a3bc9377944bbb45a381e8983e6604edde345cae05d07354f082b758932b2__formal_run_summary.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/source_error_formal.csv`](../../objects/58/58fbf56e17f2a6744011a48278beadc9d0b5843d9aa28433555f0516ce3d05fc__source_error.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/source_error_stage0.csv`](../../objects/10/10debd10046e5aa461d649edf5560edce5dd5f791dab0ab240c2d74190597fb3__source_error_stage0.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/stage0_run_summary.json`](../../objects/e8/e8f8255fe8efcae1ef23247a24b9a326ecf75f2b59bd4daefa26de73fed97f5b__stage0_run_summary.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/unit_summary_formal.csv`](../../objects/30/3024c979a0b7a189f621c65f3273eadc79cc02ab4ec08697a7aa9ffa689701ed__unit_summary.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/unit_summary_stage0.csv`](../../objects/05/058b4ed8eae24cfd21b931001e0cc3be6e6bbad29bc996237e309fdc4cba377e__unit_summary_stage0.csv)
+- [`GDN-quantization/runs/ling_kda_aime24_int8_rc_end_to_end_formal_v1_distributed4/protocol.json`](../../objects/f8/f8caa8b08eb1e9576fe92d2cb91981ec61a928ab6eee4e874e8526eb537ed18a__protocol.json)
+- [`GDN-quantization/results/ling/ling_kda_int8_rc_granularity_phase_diagram_v1_final_summary.json`](../../objects/ab/aba83318eb8c6b0053a2cad4f8c53d7ba93b7c764633263a69d8b8e081d0b0ec__ling_kda_int8_rc_granularity_phase_diagram_v1_final_summary.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/state_error_trajectory.csv`](../../objects/38/381bfc6fb1336f9adb6cf72079152ddac8f55e250419645ca1e4a9c902ab19bf__state_error_trajectory.csv)
+- [`GDN-quantization/runs/ling_kda_persistent_error_decomposition_causal_v1/pilot_run_summary.json`](../../objects/0f/0f24690ab25b004de9c04d42e166daaf8b3ab709e1b8c6fca668686f5e71201f__pilot_run_summary.json)
+- [`GDN-quantization/runs/ling_kda_persistent_error_decomposition_causal_v1/smoke_run_summary.json`](../../objects/45/45124bef91a3e724b4fbddfcf598177bdf7cffe2f70d07db82bfced053a55259__smoke_run_summary.json)
+- [`GDN-quantization/runs/ling_kda_persistent_error_decomposition_causal_v1/formal_run_summary.json`](../../objects/a4/a433a2395e62bc5a2559497de61fe1864d090aa9fef98d74b1ccf47d6878c38c__formal_run_summary.json)
+- [`GDN-quantization/runs/ling_kda_persistent_error_decomposition_causal_v1/stage0_run_summary.json`](../../objects/65/65f66cc526c9a0a527466d23b2edc04cab40479b8a5c57638159a8b471c6cedf__stage0_run_summary.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/protocol_snapshot_pilot.json`](../../objects/34/342f7214e9e31a96bb0f100d85b117c1a12d90ee1590649c94d903ba9d4636cd__protocol_snapshot_pilot.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/protocol_snapshot_smoke.json`](../../objects/6e/6e0fbe336918ac4e83ea96cc9b036b037f621386d5c9243ff185b51a407cbf8a__protocol_snapshot_smoke.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/granularity_phase_diagram.csv`](../../objects/e6/e6606e3881ebae029133519ed2fe63278e11766c2728aac01202e8cc1c394cb9__granularity_phase_diagram.csv)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/protocol_snapshot_stage0.json`](../../objects/f3/f3db085039bfd2ad2ef10105373f69093ba8177f05ae3bd13914f595a7e8b0b6__protocol_snapshot_stage0.json)
+- [`GDN-quantization/runs/ling_kda_aime24_int8_rc_end_to_end_formal_v1_distributed4/final_summary.json`](../../objects/96/9677ede6b9314cea9cea3ad7df5cd1a4a02685fddcf17a06699aadd40f54070a__ling_kda_aime24_int8_rc_end_to_end_formal_v1_distributed4_final_summary.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/formal_run_summary_shard0.json`](../../objects/15/15b7ff3ac5a4b2b95d7af621217bc3ae75eecf36bbc402303829cc8c431de641__formal_run_summary_shard0.json)
+- [`GDN-quantization/runs/ling_kda_int8_rc_granularity_phase_diagram_v1/formal_run_summary_shard1.json`](../../objects/e8/e8d58d6d846ceaac444365814238ca8a3daa2e378bf1737914c27adbd2f6f5e5__formal_run_summary_shard1.json)

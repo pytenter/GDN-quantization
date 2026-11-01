@@ -1,0 +1,45 @@
+{
+  "task": "QWEN_C5_C6_AIME26_CANONICAL60_V1_OFFLINE_POSTPROCESS",
+  "frozen_before_C5_C6_completion": true,
+  "execution_order": [
+    "wait_for_four_worker_exitcodes",
+    "require_all_exit_zero",
+    "validate_60_C5_and_60_C6_identities",
+    "freeze_and_hash_outputs",
+    "run_Frozen_V4_once",
+    "paired_exact_two_sided_binomial_and_Holm",
+    "frozen_trajectory_metrics",
+    "final_report_and_artifact_hashes"
+  ],
+  "postprocess_script_sha256": "e31d2d1354759e2800b323c6007702242eb7e111143913c7a52a3d80fb108d83",
+  "watcher_script_sha256": "8ae1a447f8ba82a0c178df79d8fa62e5e89e1eeb7340873d1c787e2770a31871",
+  "frozen_v4_scorer_sha256": "fa5dd904c7d1887df4b8c23613f37b8d438ea494cb72607b89be8e07d55a343b",
+  "baseline_csv_sha256": "001cf56d9c76ee72cf7d48aa75f0889e218d89dd1db0764cc2e69aac0ff2b44f9",
+  "formal_config_sha256": "557ac6670fe6e88606be226ccf0dea289ebd34dd4c2be54e7e54b9b6ee9e0836",
+  "hardware_assignment_sha256": "75b5df954f64f606f30143df3bf5329e238a6eabe8253bfc287141b0443c475a",
+  "self_test": {
+    "baseline": "Hadamard60",
+    "records": 60,
+    "mismatches": 0,
+    "gate": "PASS"
+  },
+  "paired_tests": ["C5_vs_H", "C6_vs_H", "C6_vs_C5"],
+  "statistical_method": "two-sided exact paired binomial (exact McNemar) with Holm correction across three frozen comparisons",
+  "trajectory_definitions": {
+    "ngram_repeated_fraction": "sum(count-1)/number_of_ngrams over generated token IDs for n=4,8,16",
+    "ngram_unique_ratio": "unique ngrams/number_of_ngrams over generated token IDs for n=4,8,16",
+    "claim_events": "Frozen V4 enumerate_claim_events; only committed, unrejected, integer-normalized events form the claim sequence",
+    "post_commit_fraction": "characters after first committed claim end divided by total response characters",
+    "answer_changes": "number of adjacent value changes in the committed integer claim sequence",
+    "retractions": "number of Frozen V4 events flagged retracted",
+    "oscillation_proxy": "answer_changes + committed A-B-A count + retractions"
+  },
+  "endpoint_signal_rule": {
+    "negative_net": "NEGATIVE_OR_MIXED",
+    "zero_net": "NOT_CONFIRMED",
+    "positive_net_and_Holm_p_le_0.05": "SUPPORTIVE",
+    "positive_net_and_Holm_p_gt_0.05": "SUPPORTIVE_BUT_UNDERPOWERED"
+  },
+  "no_correctness_seen_when_frozen": true,
+  "no_checkpoint_or_protocol_change": true
+}

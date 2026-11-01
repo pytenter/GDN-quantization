@@ -1,0 +1,648 @@
+# Codex科研工程任务：Qwen/GDN 历史高吞吐 Runtime 恢复与新科研协议资格验证 V1
+
+## 一、任务定义
+
+任务名称：
+
+`QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1`
+
+目标模型：Qwen3.5-9B / GDN。
+
+目标服务器：原Qwen服务器，优先使用单张可独占RTX3090 24GB。
+
+### 1.1 核心目标
+
+本任务不是继续优化当前低速Runtime，也不是研究新的CUDA Kernel。
+
+**真正的目标是恢复用户此前已经实际使用过、FP推理吞吐达到约13.742 token/s的历史Runtime，并判断其是否适合后续全新的量化科研实验。**
+
+历史实测：
+
+| 条件 | OLD Runtime | NEW Runtime |
+|---|---:|---:|
+| FP | 13.742036 TPS | 7.776711 TPS |
+| Hadamard+C128 | 9.064610 TPS | 6.650598 TPS |
+
+这些数字来自同GPU、同固定输入、128-token warmup + 128-token测量窗口下的历史实验。
+
+本次希望恢复的主要目标是：
+
+**FP Runtime在相同短窗口下重新达到约13 token/s。**
+
+但13.742是历史实测值，不是当前服务器能够保证达到的速度。
+
+不要把历史FP吞吐误称为INT8吞吐。
+
+### 1.2 任务方向
+
+优先选择：
+
+**恢复历史OLD Runtime的真实执行环境与数学路径。**
+
+不要继续采用下面的方向：
+
+- 反复调整NEW Runtime的cuBLAS配置。
+- 为NEW Runtime不断添加性能补丁。
+- 仅关闭deterministic开关后宣称恢复了OLD。
+- 为了加速删除数值安全检查。
+- 大量尝试不同PyTorch线程、CUDA配置或Kernel组合。
+- 把NEW Runtime改得“看起来类似OLD”，然后直接宣称历史恢复成功。
+
+必须首先搞清楚OLD Runtime实际是什么，再恢复它。
+
+---
+
+## 二、与此前高速Runtime研究的区别
+
+前序任务：
+
+1. `QWEN_GDN_HISTORICAL_THROUGHPUT_RECONCILIATION_V1`
+2. `QWEN_GDN_RUNTIME_THROUGHPUT_ROOT_CAUSE_V1`
+3. `QWEN_GDN_FAST_RUNTIME_QUALIFICATION_V1`
+
+已经提供以下证据：
+
+- OLD_FP 13.742 TPS。
+- NEW_FP 7.777 TPS。
+- NEW中249次`aten::mm`调用存在广泛的首次GPU launch前主机区间增长。
+- NEW每token额外847个GPU Kernel。
+- 单独关闭global deterministic仅使NEW_FP达到约7.997 TPS。
+- deterministic fill全局关闭的内存安全性尚未得到证明。
+- 将NEW的cuBLAS Workspace改为`:16:8`，在GPU3首token产生真实Strict byte-parity失败。
+- 上述cuBLAS候选没有得到合法吞吐结果，也没有Fast使用资格。
+- 当前没有经过验证的新版Fast Runtime。
+
+**本次禁止重新执行此前已经完成的广泛根因调查。**
+
+只有遇到恢复OLD Runtime所必需的环境或执行障碍时，才开展针对性的审计。
+
+### 2.1 特别重要的科学原则
+
+本任务**不要求OLD Runtime与NEW_STRICT Runtime逐字节相等**。
+
+两者可能采用不同的：
+
+- CUDA确定性配置。
+- cuBLAS环境。
+- CPU线程配置。
+- GDN数值实现。
+- Kernel调度路径。
+- Prefill或Cache处理协议。
+
+但必须满足：
+
+1. OLD Runtime的数学计算路径能够真实恢复和验证。
+2. 恢复版自身具备可接受的数值正确性。
+3. 恢复版的可重复性经过实际检查。
+4. 新的量化方法能够使用同一个恢复版协议进行公平对照。
+5. 不把不同Runtime下的结果冒充严格匹配实验。
+
+例如，以后若研究Sym128、Sym32、Asym32，必须在相同恢复版Runtime下分别运行，而不是拿历史NEW_STRICT的Sym128结果直接比较。
+
+---
+
+# 三、阶段A：CPU-only恢复历史OLD Runtime
+
+**这是本任务首要工作。**
+
+当前默认：
+
+`ALLOW_GPU_RESTORE=NO`
+
+不授权自动使用GPU。
+
+## A1. 恢复历史实际执行身份
+
+优先定位原任务：
+
+`QWEN_GDN_HISTORICAL_THROUGHPUT_RECONCILIATION_V1`
+
+以及该任务引用的旧AIME、旧FP与旧H+C128执行资产。
+
+通过历史manifest、源码SHA、launch脚本、依赖清单、Profiler和原始日志恢复OLD Runtime。
+
+必须核验：
+
+| 类别 | 需要恢复的信息 |
+|---|---|
+| 模型 | Qwen3.5-9B权重、配置、Tokenizer |
+| Runtime | OLD真实模型forward入口 |
+| GDN | recurrent更新、cumsum、state与cache路径 |
+| Attention/MLP | 实际使用的模块与后端 |
+| PyTorch | 版本、安装来源及关键动态库 |
+| CUDA | CUDA/cuBLAS/cuDNN环境 |
+| 确定性 | global deterministic与相关开关 |
+| CPU | intraop、interop、OMP、MKL配置 |
+| 数值 | BF16/FP32、TF32、计算和存储dtype |
+| Benchmark | 输入token、warmup、测量窗口 |
+| 环境 | 启动脚本、环境变量、线程与设备约束 |
+
+历史已知OLD配置具有以下特征：
+
+- global deterministic=False。
+- intraop/interop约24/24。
+- `CUBLAS_WORKSPACE_CONFIG`历史为unset。
+- OMP/MKL环境与NEW不同。
+- matmul TF32=False。
+
+这些只作为查找线索。
+
+**必须以历史实际执行记录为准，不能因为这些设置看起来能够加速，就直接应用到NEW。**
+
+尤其要区分：
+
+- 配置实际unset。
+- 某个默认值已经通过其他路径设置。
+- 历史环境没有保存，因此UNKNOWN。
+
+不得用猜测填补缺失的环境事实。
+
+## A2. 恢复OLD的完整执行路径
+
+重点恢复：
+
+1. 原始FP model_step。
+2. Prefill和cached decode。
+3. GDN recurrent state更新。
+4. GDN历史数值实现。
+5. 原始CUDA/Torch算子调用路径。
+6. Attention和MLP执行。
+7. 模型缓存与状态生命周期。
+8. 原Benchmark运行入口。
+
+不要只复制几个环境变量。
+
+如果历史OLD使用的计算路径与NEW不同，首先恢复原始OLD计算路径，并记录差异。
+
+如果OLD依赖历史PyTorch/CUDA组件，优先在隔离环境中恢复或复用已核验依赖，不允许覆盖当前正式环境。
+
+### 特别检查GDN数值风险
+
+此前研究曾发现GDN部分数值实现存在跨环境确定性或长程数值资格问题。
+
+因此需要核查：
+
+- OLD是否使用历史native cumsum。
+- OLD是否存在与NEW不同的recurrent累积实现。
+- OLD的数学输出是否依赖非确定性CUDA操作。
+- OLD的FP32 state是否真正按原协议更新。
+- OLD的long-horizon数值稳定性是否有历史证据。
+
+**即使OLD速度更快，也不能跳过这些检查。**
+
+历史OLD能够完成AIME，不等于现在已经证明它在全部未来Group32、32K或81K运行中满足所需数值合同。
+
+---
+
+# 四、阶段B：建立独立的历史Runtime恢复副本
+
+新实验root：
+
+`QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1`
+
+禁止修改：
+
+- 旧Runtime封存目录。
+- NEW_STRICT Runtime。
+- 历史AIME结果。
+- 历史Future-KL。
+- 历史GPU资源账本。
+- 历史seal。
+- 已完成的吞吐根因报告。
+
+## B1. 恢复方式
+
+优先采用两种明确区分的方式。
+
+### 模式A：EXACT_HISTORICAL_REPLAY
+
+如果历史源码、必要依赖、模型身份和关键配置足够完整，则建立尽可能忠实的OLD恢复副本。
+
+必须核验实际执行源码与历史冻结身份。
+
+如关键动态库或历史运行环境缺失，不能宣称完全复现历史二进制环境。
+
+### 模式B：HISTORICAL_PORT
+
+如果OLD源码能够恢复，但某些历史依赖无法直接执行，需要少量兼容性修改：
+
+- 只允许必要的接口/路径适配。
+- 记录全部源代码差异。
+- 不改变模型数学。
+- 不改变GDN state更新。
+- 不改变输出读取行为。
+- 不引入新的量化算法。
+- 对所有兼容性修改执行明确的数值资格。
+
+**模式B应当标记为旧版移植协议，而不是原始历史Runtime逐字节复现。**
+
+如果某个兼容补丁改变了数值语义，应明确建立一个新协议身份，不能继续使用EXACT_HISTORICAL_REPLAY标签。
+
+## B2. 启动入口
+
+准备隔离的：
+
+`historical_runtime_candidate.sh`
+
+该脚本默认只允许：
+
+- `--help`
+- `--check`
+- `--print-env`
+
+真正启动GPU工作必须由独立授权控制器接管。
+
+CPU身份检查成功不等于GPU Runtime合格。
+
+不得提前生成标记为正式可用的恢复版启动入口。
+
+---
+
+# 五、阶段C：最小GPU恢复资格
+
+本阶段需要用户明确授权：
+
+`ALLOW_GPU_RESTORE=YES`
+
+如果未授权，完成全部CPU工作、恢复副本和GPU预登记后停止。
+
+## C1. GPU资源要求
+
+优先只使用一张RTX3090 24GB。
+
+不允许因为服务器有四张GPU，就自动进行四卡并行验证。
+
+必须：
+
+- 核验实际GPU UUID。
+- 核验模型和依赖身份。
+- 检查设备是否被其他任务使用。
+- 检查自有PID和监控一致性。
+- 记录首次执行与首次释放事件。
+- 保留独立资源账本。
+- 资源准入失败立即STOP。
+
+不得杀死其他用户进程。
+
+建议首次恢复任务硬预算不超过0.5 GPUh；其中应明确冻结保护停止时间、清理预留和每个dispatch上限。
+
+预算只能根据实际资格及预登记执行，不得自动扩大。
+
+## C2. 第一关：OLD FP数学与执行资格
+
+首先仅运行OLD恢复版FP。
+
+不要在第一轮就加入Hadamard、Dual-M或Group32。
+
+使用历史已经冻结的固定输入和seed。
+
+检查：
+
+1. 模型能否正确加载。
+2. FP logits是否finite。
+3. 所有GDN层是否实际执行。
+4. GDN state是否正确更新。
+5. Cache形状、dtype和位置是否正确。
+6. 下一token是否消费前一token更新后的state。
+7. 是否出现非法Tensor别名或未初始化读取。
+8. GDN计算结果是否满足恢复版冻结数学合同。
+9. 运行是否正常退出并释放GPU。
+10. 如存在原OLD保存的逐token数值参考，检查实际恢复结果与该参考的一致性。
+
+**如果历史数值参考缺失，只能完成当前运行正确性检查，不能凭空宣称与原OLD逐字节相等。**
+
+## C3. 第二关：恢复版自身可重复性
+
+使用相同GPU和相同冻结输入，至少执行两次独立fresh process。
+
+逐token比较：
+
+- FP logits。
+- 关键GDN state。
+- Cache。
+- 输入token位置。
+- 更新状态。
+- Nonfinite。
+- 最早数值分歧。
+
+如果历史OLD使用非确定性算子，必须如实观察它的影响。
+
+不能要求它与NEW_STRICT逐字节一致，但必须判定：
+
+- 自身是否逐字节可重复。
+- 若不逐字节可重复，差异大小与位置是什么。
+- 是否违反新科研计划要求的确定性与数值稳定性。
+
+**若恢复版不满足用户既定的科学数值要求，不得仅因吞吐较高就批准它用于正式Future-KL或AIME。**
+
+可以将它标记为独立探索性Runtime候选，但前提仍是数学正确、数值安全和可重复性边界清晰；不能使用不稳定结果建立正式科学结论。
+
+---
+
+# 六、阶段D：验证能否恢复历史13 TPS
+
+这才是本任务的主要性能验收。
+
+必须使用与历史相同口径：
+
+- 单RTX3090。
+- 相同固定输入token。
+- 相同缓存上下文位置。
+- 128-token warmup。
+- 128-token正式测量。
+- 计时前后采用正确的CUDA同步边界。
+- 测量时不启用Profiler。
+- 测量时不额外进行逐tokenTensor导出或hash。
+- 相同BF16模型与FP32 GDN state合同。
+- fresh process。
+- 优先三次重复，若预算不足则记录实际重复数并降低结论等级。
+
+重点避免把：
+
+- prefill耗时；
+- 模型加载；
+- tensor保存；
+- Profiler开销；
+- GPU等待其他任务；
+- AIME自由生成的不同token数量；
+
+混入原固定短窗口TPS。
+
+## D1. 性能目标
+
+历史参考：
+
+\[
+TPS_{\mathrm{OLD}}=13.742036
+\]
+
+希望达到：
+
+\[
+\boxed{TPS_{\mathrm{restored}}\geq13.0}
+\]
+
+13.0 TPS是本任务的工程目标，不是科学显著性阈值。
+
+如果恢复版达到12–13 TPS，仍然记录为部分性能恢复，而不是为了满足目标修改实验参数。
+
+若恢复版没有接近历史值，不得通过连续搜索数值开关制造一个表面上更快的配置。
+
+应审计最重要且有现成证据的环境差异，无法解释时报告UNKNOWN。
+
+## D2. 当前NEW_STRICT参考
+
+在预算许可时，使用相同GPU和相同输入窗口补测一次当前NEW_STRICT短窗口对照。
+
+如果预算不足，可以保留历史7.776711 TPS作为参考，但必须明确标记为历史实测，不能冒称本轮同环境配对测量。
+
+性能报告至少包括：
+
+| 项目 | OLD恢复版 | 当前NEW_STRICT |
+|---|---|---|
+| TPS | 实测 | 当前实测或历史参考 |
+| ms/token | 实测 | 当前实测或历史参考 |
+| FP logits | PASS/FAIL | 对应参考 |
+| GDN state | PASS/FAIL | 对应参考 |
+| fresh重复性 | PASS/FAIL | 对应参考 |
+| Runtime环境身份 | 已核验 | 已核验或历史 |
+| GPU显存峰 | 实测 | 实测或NOT_RUN |
+
+不要求两个Runtime逐字节相等。
+
+如果数学路径不同，需要在报告中明确说明其影响以及不能直接复用的历史科学结果。
+
+---
+
+# 七、阶段E：判断OLD恢复版能否支持未来INT8科研
+
+只有FP恢复资格与性能结果足够可信后，才考虑此阶段。
+
+本阶段首先做CPU-only适配审计。
+
+研究目标是以后能够使用恢复版Runtime执行：
+
+- Hadamard+C128 Sym。
+- Hadamard+C32 Sym。
+- Hadamard+C32 Asym。
+- 后续其他新的INT8 Codec。
+
+注意，本任务不能因为OLD_FP达到13 TPS，就声称所有INT8 Codec都会自动恢复历史速度。
+
+历史OLD_H+C128约为9.065 TPS，这才是与Hadamard INT8更相关的吞吐参考。
+
+## E1. INT8协议兼容性
+
+检查恢复版OLD能否支持：
+
+1. 固定Hadamard。
+2. 与历史科学合同一致的量化轴。
+3. 每token真实QDQ。
+4. 每token写回已量化重建状态。
+5. 下一token消费对应的QDQ缓存。
+6. 无未量化的高精度persistent shadow。
+7. 合法的scale、codes及zero-point。
+8. 真实数值资格与fresh过程复现。
+
+如果OLD与NEW的QDQ插入时序不同，不能简单地将旧Codec文件接入后直接与NEW的KL比较。
+
+## E2. 未来量化实验必须重新建立匹配基线
+
+例如，未来Qwen Group32研究应采用：
+
+| 方法 | Runtime |
+|---|---|
+| FP Native | 同一个恢复版协议 |
+| H+C128 Sym | 同一个恢复版协议 |
+| H+C32 Sym | 同一个恢复版协议 |
+| H+C32 Asym | 同一个恢复版协议 |
+
+所有条件必须共享：
+
+- 模型与输入。
+- 旋转定义。
+- Prefill语义。
+- GDN更新语义。
+- QDQ注入位置。
+- 缓存生命周期。
+- 数值和采样协议。
+- Future-KL评分器。
+
+不允许直接把历史NEW_STRICT下的KL值代入，声称是完全匹配的Group32比较。
+
+本任务只需要验证这种未来适配在工程和科学协议上是否可行。
+
+**不允许自动运行新Group32、AIME26或32K Future-KL。**
+
+如果真正的INT8 GPU资格还未执行，应报告`FP_ONLY_QUALIFIED`，不能把FP资格推广到量化Runtime。
+
+---
+
+# 八、什么时候应该直接停止？
+
+为了避免再次陷入大量工程修补，本任务采用以下停止策略。
+
+### Stop 1：无法恢复真实OLD身份
+
+如果原源码、执行入口或关键依赖不足以建立可信历史恢复：
+
+- 不通过猜测补齐。
+- 不通过NEW参数拼接伪造OLD。
+- 输出缺失清单。
+- CPU证据完成后停止。
+
+### Stop 2：恢复版数学或数值不合格
+
+如果恢复版违反基本模型数学、状态更新、内存安全或冻结数值资格：
+
+- 停止性能候选晋级。
+- 保存首个失败点。
+- 不为了速度跳过检查。
+- 不无限次修补。
+
+### Stop 3：吞吐未恢复
+
+如果严格短窗口下明显达不到原有速度：
+
+- 记录真实速度。
+- 对已观察的主要环境差异做有限审计。
+- 不自动增加cuBLAS搜索、Kernel开发或线程数网格搜索。
+
+### Stop 4：FP快，但INT8无法直接兼容
+
+如果恢复版FP表现合格，但对INT8 QDQ语义的适配尚不可信：
+
+- 保留FP恢复成果。
+- INT8资格标记NOT_QUALIFIED。
+- 不修改原Codec以迁就速度。
+- 不执行长程科学任务。
+
+### Stop 5：资源或身份问题
+
+任何GPU独占、显存、依赖身份、数值或资源审计不合格：
+
+`FAIL_CLOSED_STOP`
+
+禁止隐式重试、抢占其他任务或变更冻结门槛。
+
+---
+
+# 九、交付文件
+
+建立独立root：
+
+`QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1`
+
+建议至少生成：
+
+1. `EXECUTION_PLAN.md`  
+   冻结任务范围、性能目标、运行门禁和停止条件。
+
+2. `HISTORICAL_RUNTIME_IDENTITY.md`  
+   原OLD执行源码、数学实现、环境和依赖恢复证据。
+
+3. `OLD_VS_NEW_PROTOCOL_DIFF.md`  
+   旧新Runtime在数学、环境、Prefill、Cache和确定性方面的差异。
+
+4. `RESTORATION_MODE.json`  
+   明确EXACT_HISTORICAL_REPLAY或HISTORICAL_PORT及UNKNOWN项。
+
+5. `RUNTIME_NUMERICAL_QUALIFICATION.md`  
+   恢复版数学正确性、FP State、logits、fresh重复性及风险。
+
+6. `RESTORED_FP_BENCHMARK.csv`  
+   合法实际测量的TPS、wall、窗口身份及重复次数。
+
+7. `INT8_COMPATIBILITY_AUDIT.md`  
+   H+C128及未来Group32的QDQ/writeback兼容性边界。
+
+8. `GPU_RESOURCE_LEDGER.json`  
+   实际GPU dispatch、首次退出与资源释放事件。
+
+9. `RUNTIME_RESTORATION_DECISION.json`  
+   最终是否恢复历史速度，以及允许用于什么科研任务。
+
+10. `FINAL_REPORT.md`  
+    实验结果、未解决问题、使用范围与明确下一步。
+
+11. `SHA256_MANIFEST.json`  
+    新源码、配置、输入与科学输出的身份核验。
+
+12. `FINAL_SEAL_RECEIPT.json`  
+    新实验封存与历史资产不变证明。
+
+可用启动脚本只能在真实资格通过后生成。
+
+---
+
+# 十、最终状态分类
+
+必须使用准确的状态：
+
+- `HISTORICAL_RUNTIME_RESTORED_AND_QUALIFIED`  
+  原OLD执行身份可信、数值资格通过、恢复到预定速度范围且使用边界清晰。
+
+- `HISTORICAL_RUNTIME_PARTIALLY_RESTORED`  
+  执行成功，但速度或历史身份恢复不完全。
+
+- `HISTORICAL_PORT_QUALIFIED`  
+  必要兼容移植已通过新协议资格，但不能冒称历史二进制精确复现。
+
+- `FP_ONLY_QUALIFIED_INT8_NOT_RUN`  
+  FP恢复成功，INT8适用性尚未验证。
+
+- `RUNTIME_REPRODUCIBILITY_FAIL`  
+  恢复版不满足本任务冻结的自身数值重复性或科学要求。
+
+- `HISTORICAL_ASSETS_INSUFFICIENT`  
+  缺失关键历史恢复证据。
+
+- `CPU_ONLY_COMPLETE_GPU_NOT_AUTHORIZED`  
+  CPU恢复与审计完成，但未获得新GPU授权。
+
+- `FAIL_CLOSED_STOP`  
+  GPU身份、资源、内存安全或数值资格失败。
+
+不能把“旧配置跑起来”直接等同于“历史Runtime完整恢复成功”。
+
+---
+
+# 十一、实际执行要求
+
+请按如下顺序完成本任务。
+
+**Step 1：** 查找历史OLD真正的执行源码、依赖、launch配置和benchmark身份。
+
+**Step 2：** 对照已有吞吐报告，恢复完整OLD Runtime，而非拼接NEW配置。
+
+**Step 3：** 建立隔离副本，完成必要CPU-only数值和启动检查。
+
+**Step 4：** 确认是否满足历史恢复模式A或B；不能恢复则给出明确缺口。
+
+**Step 5：** 准备最小GPU数学、fresh重复性及性能资格程序。
+
+**Step 6：** 检查`ALLOW_GPU_RESTORE`。
+
+- NO：完成CPU工作并封存，GPU NOT_RUN。
+- YES：在独立预算、源码身份和资源准入通过后执行单卡短程资格。
+
+**Step 7：** 首先验证恢复版FP数学与状态更新，再验证fresh-process重复性。
+
+**Step 8：** 数值资格合格后，执行历史128+128固定窗口TPS测试。
+
+**Step 9：** 如果恢复版接近历史13 TPS，完成INT8 Runtime兼容性审计，不自动开展长程GPU任务。
+
+**Step 10：** 输出恢复结果、合法使用边界和后续科研协议要求。
+
+不要反复修补工程，优先获得明确结论。
+
+## 最终必须回答的六个问题
+
+1. 历史13.742 TPS的真实OLD Runtime是否成功恢复？
+2. 如果恢复不完整，缺失的是哪些源码、依赖或环境条件？
+3. 恢复版FP在当前服务器、相同短窗口下实测多少TPS？
+4. 恢复版自身是否具有可接受的数学正确性和重复性？
+5. 恢复版能否用于以后的Hadamard、Group32 Sym和Asym量化研究？
+6. 如果能用，哪些历史实验必须重新建立同协议基线？
+
+**最终目标：以最少的新GPU资源，恢复用户此前已经实际拥有的Qwen/GDN推理性能，并建立一套数值边界清晰、能够供后续新科研任务使用的运行环境。**

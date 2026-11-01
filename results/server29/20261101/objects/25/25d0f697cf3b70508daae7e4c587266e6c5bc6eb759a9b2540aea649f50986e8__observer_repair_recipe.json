@@ -1,0 +1,41 @@
+{
+  "replacements": [
+    [
+      "import argparse,ast,gc,hashlib,importlib.util,json,os,platform,subprocess,sys,time,traceback",
+      "import argparse,ast,gc,hashlib,importlib.util,json,os,platform,subprocess,sys,time,traceback,weakref"
+    ],
+    [
+      " require(os.environ.get('CUDA_VISIBLE_DEVICES')==str(gpu),'fixed GPU mapping mismatch')",
+      " require(gpu==0 and repeat==1 and os.environ.get('CUDA_VISIBLE_DEVICES')=='0','only physical GPU0 repaired repeat1 authorized')\n require(cmd(['nvidia-smi','-i','0','--query-gpu=uuid','--format=csv,noheader'])=='GPU-a78176ed-f97f-c54f-6201-5a01b570f422','physical GPU0 UUID mismatch')\n verify_repair_freeze()\n save('logs/observer_repair_gpu_attempt_started.json',dict(attempt=1,gpu=0,repeat=1,pid=os.getpid(),time=time.time(),retry=False))"
+    ],
+    [
+      " device=torch.device('cuda:0');memory=[]",
+      " device=torch.device('cuda:0');memory=[]\n model_ref=observer_ref=bank_ref=None;allresults={}\n rotation_hashes={a:read(ROOT/'configs'/f'{a.lower()}_rotation_manifest.json')['file_sha256'] for a in ARMS}\n def flush_diagnostics():\n  diagnostic_atomic('analysis/gpu0_repaired_smoke_runtime_diagnostics.json',dict(status='DIAGNOSTIC_ONLY_NOT_DEPLOYMENT_PASS',memory=memory,condition_completion={a:r['status'] for a,r in allresults.items()},input_hash=cfg['input_token_sha256'],rotation_hashes=rotation_hashes,GPU_uuid='GPU-a78176ed-f97f-c54f-6201-5a01b570f422',attempt=1))\n def mark(point,condition=None):\n  r=mem(point);r.update(condition=condition,model_alive=None if model_ref is None else model_ref() is not None,observer_alive=None if observer_ref is None else observer_ref() is not None,rotation_bank_alive=None if bank_ref is None else bank_ref() is not None);flush_diagnostics();return r"
+    ],
+    [
+      " mem('before_model');started=time.time();model,tok=g.load_model_and_tokenizer()",
+      " mem('before_model');mark('M0');started=time.time();model,tok=g.load_model_and_tokenizer();model_ref=weakref.ref(model);mark('M1')"
+    ],
+    [
+      "  with torch.inference_mode(),patch:",
+      "  observer_ref=weakref.ref(patch);bank_ref=None if bank is None else weakref.ref(bank);mark('M2',arm)\n  with torch.inference_mode(),patch:"
+    ],
+    [
+      "  del patch,bank,cache,out,previous,qdq_rows,hidden,kwargs;hidden={};gc.collect();torch.cuda.empty_cache();mem(arm+'_post_cache_cleanup')",
+      "  diagnostic_atomic('analysis/gpu0_repaired_smoke_output_fingerprints.json',dict(status='DIAGNOSTIC_ONLY_NOT_DEPLOYMENT_PASS',conditions=allresults,input_hash=cfg['input_token_sha256'],rotation_hashes=rotation_hashes,old_attempt_fingerprints_available=False,no_numeric_parity_claim_against_unsaved_old_outputs=True))\n  mark({'Hadamard':'M3','C6R':'M4','C7':'M5'}[arm],arm)\n  # Lifecycle-only repair: drop the wrapped callable closure after use/restoration.\n  del original,observed\n  del patch,bank\n  mark('M6',arm)\n  del cache,out,previous,qdq_rows,hidden,kwargs;hidden={}\n  mark('M7',arm)\n  gc.collect();torch.cuda.empty_cache();mem(arm+'_post_cache_cleanup');flush_diagnostics()"
+    ],
+    [
+      " del model,tok;gc.collect();torch.cuda.empty_cache();end=mem('post_model_cleanup');require(end['allocated']<1024*1024,'unexpected memory retention')",
+      " del model,tok\n mark('M8')\n gc.collect();torch.cuda.empty_cache()\n mark('M9')\n end=mem('post_model_cleanup');mark('M10')\n require(end['allocated']<1024*1024,'unexpected memory retention')"
+    ],
+    [
+      " save(f'analysis/gpu{gpu}_repeat{repeat}_smoke.json',",
+      " save('analysis/gpu0_repaired_smoke.json',"
+    ],
+    [
+      " print(f'GPU{gpu}_REPEAT{repeat}=PASS',flush=True)",
+      " print('GPU0_REPAIRED_REPEAT1=PASS_STOP',flush=True)"
+    ]
+  ],
+  "new_diagnostic_entrypoint": "def diagnostic_atomic(relative,data):\n p=ROOT/relative;tmp=p.with_name(p.name+'.tmp')\n with tmp.open('w') as f:json.dump(data,f,sort_keys=True,indent=2,allow_nan=False);f.write('\\n');f.flush();os.fsync(f.fileno())\n os.replace(tmp,p)\ndef verify_repair_freeze():\n manifest=ROOT/'manifests/observer_repair_pre_gpu_sha256.txt'\n for line in manifest.read_text().splitlines():\n  digest,path=line.split('  ',1);require(sha(path)==digest,'pre-GPU repair freeze drift '+path)\n require(read(ROOT/'analysis/observer_repair_scientific_path_identity.json')['status']=='PASS','scientific path gate')\n require(read(ROOT/'analysis/observer_reference_graph_after_repair.json')['status']=='PASS','static repair gate')\n require(read(ROOT/'provenance/observer_repair_pre_gpu_identity.json')['status']=='PASS','pre-GPU protected gate')\n require(not (ROOT/'logs/observer_repair_gpu_attempt_started.json').exists(),'one attempt already consumed')\ndef main():\n p=argparse.ArgumentParser();p.add_argument('--phase',choices=('smoke',),required=True);p.add_argument('--gpu',type=int,choices=(0,),required=True);p.add_argument('--repeat',type=int,choices=(1,),required=True);a=p.parse_args()\n require(not (ROOT/'analysis/gpu0_repaired_smoke.error.json').exists() and not (ROOT/'analysis/gpu0_repaired_smoke.json').exists(),'prior repaired evidence present; no retry')\n try:smoke(a.gpu,a.repeat)\n except BaseException as e:save('analysis/gpu0_repaired_smoke.error.json',dict(status='FAIL',error=str(e),traceback=traceback.format_exc(),retry=False));raise\nif __name__=='__main__':main()\n"
+}

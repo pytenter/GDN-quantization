@@ -1,0 +1,48 @@
+{
+  "INT8_C128": {
+    "axis": "column",
+    "bits": 8,
+    "canonical_meaning": "C128 = full 128-element Key-axis column group",
+    "config": "INT8_C128",
+    "expected_scale_shape_suffix": "1xV",
+    "grouped_values": "for each fixed [B,H,V], group all K values",
+    "ling_semantic_axis": "Value-side / recurrent-state column orientation",
+    "ling_state_shape": "[B,H,K,V]",
+    "qmax": 127,
+    "scale_amax_dims": [
+      -2
+    ]
+  },
+  "INT8_R128": {
+    "axis": "row",
+    "bits": 8,
+    "canonical_meaning": "R128 = full 128-element Value-axis row group",
+    "config": "INT8_R128",
+    "expected_scale_shape_suffix": "Kx1",
+    "grouped_values": "for each fixed [B,H,K], group all V values",
+    "ling_semantic_axis": "Key-side / recurrent-state row orientation",
+    "ling_state_shape": "[B,H,K,V]",
+    "qmax": 127,
+    "scale_amax_dims": [
+      -1
+    ]
+  },
+  "canonical_formula": {
+    "dequantization": "codes * scale",
+    "qrange": [
+      -127,
+      127
+    ],
+    "rounding": "torch.round",
+    "scale": "amax(abs(group)).clamp_min(1e-12) / 127",
+    "signed_symmetric": true,
+    "zero_point": 0
+  },
+  "canonical_source_files": [
+    "docs/PROTOCOL.md",
+    "experiments/orientation/run_end2end_bit_axis_screening.py",
+    "experiments/orientation/run_int8_orientation_state_change_mechanism.py"
+  ],
+  "ling_state_layout": "[B,H,K,V]",
+  "task": "LING_KDA_AIME24_INT8_RC_END_TO_END_SMOKE_V1"
+}

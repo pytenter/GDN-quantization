@@ -1,0 +1,10 @@
+def __create_fn__(_type_split_batches, _type_dispatch_batches, _type_even_batches, _type_use_seedable_sampler, _type_data_seed, _type_non_blocking, _type_use_stateful_dataloader, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_split_batches, _dflt_dispatch_batches, _dflt_even_batches, _dflt_use_seedable_sampler, _dflt_data_seed, _dflt_non_blocking, _dflt_use_stateful_dataloader, _return_type):
+ def __init__(self,split_batches:_type_split_batches=_dflt_split_batches,dispatch_batches:_type_dispatch_batches=_dflt_dispatch_batches,even_batches:_type_even_batches=_dflt_even_batches,use_seedable_sampler:_type_use_seedable_sampler=_dflt_use_seedable_sampler,data_seed:_type_data_seed=_dflt_data_seed,non_blocking:_type_non_blocking=_dflt_non_blocking,use_stateful_dataloader:_type_use_stateful_dataloader=_dflt_use_stateful_dataloader)->_return_type:
+  self.split_batches=split_batches
+  self.dispatch_batches=dispatch_batches
+  self.even_batches=even_batches
+  self.use_seedable_sampler=use_seedable_sampler
+  self.data_seed=data_seed
+  self.non_blocking=non_blocking
+  self.use_stateful_dataloader=use_stateful_dataloader
+ return __init__

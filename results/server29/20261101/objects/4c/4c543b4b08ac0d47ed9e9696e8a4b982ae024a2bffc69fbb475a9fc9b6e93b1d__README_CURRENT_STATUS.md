@@ -1,0 +1,1 @@
+当前结果以本目录TASK_RESULT、FINAL_SCIENTIFIC_REPORT及新execution为准。inputs/parent_gpu_delivery是原预算停止交付，所有旧报告/STOP/seal保持原样。SOURCE_FREEZE中的执行前CPU/协议状态不回写。independent_analysis为只读分析和交付工具，不参与模型计算。

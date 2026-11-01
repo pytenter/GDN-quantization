@@ -1,0 +1,1 @@
+lambda _cls, plain_tensor_trace_fn, plain_tensor_args, maybe_subclass_meta: _tuple_new(_cls, (plain_tensor_trace_fn, plain_tensor_args, maybe_subclass_meta))

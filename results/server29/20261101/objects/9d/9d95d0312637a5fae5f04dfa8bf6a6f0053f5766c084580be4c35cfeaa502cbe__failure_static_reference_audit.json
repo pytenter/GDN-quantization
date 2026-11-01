@@ -1,0 +1,32 @@
+{
+  "evidence_limit": "No in-process memory byte counts or per-condition fingerprints were persisted before the final cleanup assertion. Reached assertion implies preceding checks did not raise, but is not a saved successful smoke unit.",
+  "failure": {
+    "error": "unexpected memory retention",
+    "retry": false,
+    "status": "FAIL",
+    "traceback": "Traceback (most recent call last):\n  File \"/data/zypan/worktrees/qwen-gdn-c6r-c7-4x3090-deployment-v1/experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/scripts/deployment_closure_gpu.py\", line 176, in main\n    try:prepare() if a.phase=='prepare' else smoke(a.gpu,a.repeat)\n  File \"/data/zypan/worktrees/qwen-gdn-c6r-c7-4x3090-deployment-v1/experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/scripts/deployment_closure_gpu.py\", line 169, in smoke\n    del model,tok;gc.collect();torch.cuda.empty_cache();end=mem('post_model_cleanup');require(end['allocated']<1024*1024,'unexpected memory retention')\n  File \"/data/zypan/worktrees/qwen-gdn-c6r-c7-4x3090-deployment-v1/experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/scripts/deployment_closure_gpu.py\", line 20, in require\n    if not v:raise RuntimeError(m)\nRuntimeError: unexpected memory retention\n"
+  },
+  "formal_source": {
+    "bytes": 34744,
+    "mtime_ns": 1790569617574038923,
+    "path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/qwen_gdn/QWEN_C5_C6_AIME26_CANONICAL60_V1/scripts/run_qwen_c5_c6_formal.py",
+    "sha256": "77b1e1f6dad8a0dd53a27cf5a47c02be86c26d2cf30732604ba6d3747e178f69"
+  },
+  "model_runtime_fault_proven": false,
+  "observer_reference_cause_verified_by_new_GPU_run": false,
+  "observer_source": {
+    "bytes": 17588,
+    "mtime_ns": 1791005531017609050,
+    "path": "/data/zypan/worktrees/qwen-gdn-c6r-c7-4x3090-deployment-v1/experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/scripts/deployment_closure_gpu.py",
+    "sha256": "077f9f2905b5984c69656484bed5b1c25db38874c9eb253d3dffa527d38c210b"
+  },
+  "patch_applied_after_failure": false,
+  "reference_chain": [
+    "smoke local original = patched torch_recurrent_gated_delta_rule",
+    "QwenKeyHadamardPatch._wrap.wrapped captures self",
+    "self.model retains loaded model; C7 patch also retains bank",
+    "local original and observed survive del patch/model until smoke returns"
+  ],
+  "retry": false,
+  "status": "HYPOTHESIS_NOT_GPU_VERIFIED"
+}

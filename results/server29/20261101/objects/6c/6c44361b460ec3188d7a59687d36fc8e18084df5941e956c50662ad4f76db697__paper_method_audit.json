@@ -1,0 +1,65 @@
+{
+  "status": "PAPER_VERIFIED_CONSISTENT_REIMPLEMENTATION_POSSIBLE_WITH_DECLARED_CONVENTIONS",
+  "formal_execution_decision": "Parent must require all numerical/full-model gates; source omissions alone do not prove a method conflict.",
+  "official_implementation_status": "NOT_LOCATED_AS_OF_2026_10_25",
+  "source": "https://arxiv.org/html/2610.29545v1",
+  "confirmed_against_user_method": {
+    "mixed_state": "75% INT4 / 25% INT8 per layer",
+    "grouping": "one column, 32 consecutive key coordinates",
+    "side_information": "FP16 scale plus b-bit integer zero point per group",
+    "rounding": "nearest; ties unspecified",
+    "head_score": "E_h=e_h/(1-a_h^(2*dP)); selection dP=8 from user",
+    "calibration": "8 held-out 2048-token windows; exact aggregation unspecified",
+    "buffer": "INT4 keys; BF16 values; decay higher precision",
+    "prefill_period": 256,
+    "key_normalization_quote": "the kernel L2-normalizes the buffered keys after rounding",
+    "memory_bpv_state_payload_only": 5.0,
+    "memory_bpv_scale_and_zp": 0.65625,
+    "memory_bpv_state_total": 5.65625
+  },
+  "citations": {
+    "recurrence": "https://arxiv.org/html/2610.29545v1#S2.E2",
+    "delta_value": "https://arxiv.org/html/2610.29545v1#S2.E3",
+    "chunk_state": "https://arxiv.org/html/2610.29545v1#S2.E4",
+    "score": "https://arxiv.org/html/2610.29545v1#S3.E5",
+    "prefill": "https://arxiv.org/html/2610.29545v1#S3.SS1",
+    "buffer_memory": "https://arxiv.org/html/2610.29545v1#S5.SS1",
+    "key_grouping_and_rounding": "https://arxiv.org/html/2610.29545v1#S5.SS2",
+    "head_allocation_and_calibration": "https://arxiv.org/html/2610.29545v1#S5.SS3",
+    "key_normalization": "https://arxiv.org/html/2610.29545v1#A4",
+    "integer_zero_point": "https://arxiv.org/html/2610.29545v1#A5"
+  },
+  "declared_conventions_consistent_but_not_verified_official": [
+    "Nearest-even tie breaking.",
+    "Affine zero-inclusive min/max interval with integer-zero-point clamp.",
+    "Use the stored FP16 scale consistently for both encoding and decoding; explicitly define underflow/overflow handling.",
+    "Calibration e is mean single-Q4 rounding SSE of original FP states at 256-token write boundaries; no quantization carry in measuring e.",
+    "Calibration a is arithmetic mean of native decay coefficients, after converting native log-decays to a=exp(g).",
+    "Compute score from aggregate e and a, rather than average per-window scores; use a numerically stable denominator.",
+    "Stable head-index tie breaking and exact per-layer 25% allocation.",
+    "Preserve native beta separately with declared precision and actual memory accounting.",
+    "Buffer raw v in BF16, not precomputed u; use post-quantization normalized keys for both state prediction and update.",
+    "Output from updated unrounded state, then quantize persistent state at flush.",
+    "Flush short prefill chunk at its boundary before decoding; declare decode counter origin.",
+    "Checkpoint EOS/length tail exactly once, or retain packed base plus tail; do not double apply."
+  ],
+  "explicit_contradictions_to_declared_conventions_found": [],
+  "important_reproducibility_gaps": [
+    "Paper gives no affine scale formula, integer clamp range, tie rule, FP16 rounding placement, or constant/extreme-group policy.",
+    "Paper does not identify calibration corpus, window seeds/selection, sampled state positions, SSE normalization, or aggregation order.",
+    "Paper does not distinguish arithmetic versus geometric mean decay.",
+    "Paper does not specify buffered-key quantization axis/group/scales/zero points.",
+    "Buffer memory equation names only a/k/v and a 32-bit scalar despite beta-dependent recurrence; do not omit beta or hide storage.",
+    "No formal prefill-tail, EOS, output/writeback order, or resumable-tail convention is specified."
+  ],
+  "memory_inference_not_a_paper_claim": {
+    "formula": "resident=5.65625+dP*(4*dk/gamma+16*dv+32_decay+beta_bits+key_side_bits)/(dk*dv), plus allocation/padding/scratch",
+    "if_dk128_dv128_gamma2_beta32_and_no_key_side_bits": {
+      "dp1_bpv": 5.80078125,
+      "dp8_bpv": 6.8125,
+      "difference_bpv": 1.01171875
+    },
+    "warning": "Native dimensions and physical buffer formats must be verified. FP scratch and QDQ containers are not packed payload."
+  },
+  "scope": "CPU/read-only audit; no model, GPU, compiler, remote mutation, old science modification, or formal generation was performed."
+}

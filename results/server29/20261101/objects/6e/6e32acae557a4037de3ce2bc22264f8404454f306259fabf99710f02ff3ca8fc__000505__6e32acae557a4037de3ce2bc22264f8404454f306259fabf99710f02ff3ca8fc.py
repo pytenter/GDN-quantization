@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __hash__(self):
+  return hash((self.id,self.ndim,self.dtype,self.device,self.size,self.dynamo_dynamic_indices,self.layout,self.is_inference,self.is_leaf,self.requires_grad,self.is_sparse,self.is_mkldnn,self.is_functorch_wrapped,self.is_batchedtensor,self.is_legacy_batchedtensor,self.is_gradtrackingtensor,self.is_view,self.is_nested,self.nested_int,self.is_traceable_wrapper_subclass,self.is_functional,self.is_conj,self.is_neg,self.is_parameter,self.stride,self.storage_offset,self.storage,self.sparse_dim,self.dense_dim,self.is_coalesced,self.crow_indices,self.col_indices,self.ccol_indices,self.row_indices,self.values,self.unwrapped,self.bdim,self.base,self.attrs,self.creation_meta,self.grad,self.ctx,self.type,self.fake_mode,self.view_func,self.level,self.current_level,self.functorch_stack,self.autograd_meta_from,self.data,))
+ return __hash__

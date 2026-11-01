@@ -1,0 +1,98 @@
+# GDN_INT8_FUNCTIONAL_RESIDUAL_GEOMETRY_PRINCIPLE_EXTRACTION_V1
+
+## Gate Summary
+
+- PROTOCOL_GATE: PASS
+- TENSOR_SEMANTICS_GATE: PASS
+- HOOK_IDENTITY_GATE: PASS
+- METRIC_IMPLEMENTATION_GATE: PASS
+- SAME_NORM_CONTROL_GATE: PASS
+- DIRECTION_MAGNITUDE_INTERVENTION_GATE: PASS
+- DENOMINATOR_GENERALIZATION_GATE: PASS
+- STATE_TO_READOUT_ATTRIBUTION_GATE: PASS
+- TRAJECTORY_ANALYSIS_GATE: PASS
+- GENERALIZATION_GATE: PARTIAL
+- FINAL_METRIC_GATE: PARTIAL
+
+## Main Result
+
+Valid units: 9.
+
+Best functional metric: `M4_abs_cosine`.
+
+Best future-KL Spearman: -0.5724581724581724.
+
+Baseline reconstruction metric: `M1_state_error`.
+
+Baseline future-KL Spearman: 0.01287001287001287.
+
+Interpretation: Functional geometry metrics outperform raw state reconstruction magnitude for the inherited future-KL association, but the association is signed and trajectory-dependent; this supports principle extraction, not a universal single-scalar risk rule.
+
+Direction: negative_spearman: lower M4_abs_cosine is associated with higher future KL in this aggregate.
+
+Immediate-KL caveat: Immediate per-layer full-logit KL was not newly rerun in this task; local immediate functional proxy uses post-core/out-projection distortion, while future KL is inherited from prior formal transfer runs on identical units.
+
+## Required Conclusions
+
+- DIRECTION_MAGNITUDE_INTERVENTION_RESULT: CLEAN_CONTEXT_INTERACTION_DOMINANT
+- DENOMINATOR_GENERALIZATION_RESULT: HARMFULNESS_FOLLOWS_RMS_DENOMINATOR
+- STATE_TO_READOUT_ATTRIBUTION: VALUE_GEOMETRY_DOMINANT
+- TRAJECTORY_ACCUMULATION_RESULT: FUNCTIONAL_ALIGNMENT_ACCUMULATION_SUPPORTED
+- FUNCTIONAL_RISK_GENERALIZATION: PROMPT_OR_TRAJECTORY_DEPENDENT
+- FINAL_SCIENTIFIC_CLASSIFICATION: HYBRID_MAGNITUDE_GEOMETRY_SUPPORTED
+- METHOD_PRINCIPLE_EXTRACTION_READY: YES
+- METHOD_DESIGN_READY: NO
+
+The result supports a mechanism-derived functional residual geometry principle, but not a final quantization method. The supported principle is hybrid magnitude-geometry risk, with clean-context and RMS-denominator interaction as validated mechanisms. Cross-prompt/layer/head behavior remains prompt or trajectory dependent, so this is not yet a universal monotone risk metric.
+
+## Same-Norm Control Summary
+
+- R > C future-KL units: 9 / 9
+- R > C state-magnitude units: 0 / 9
+- R > C denominator-shift units: 0 / 9
+
+## Metric Correlations
+
+|metric|definition|future_KL_pearson|future_KL_spearman|out_proj_pearson|out_proj_spearman|
+|---|---|---|---|---|---|
+|M1_state_error|state reconstruction magnitude|-0.03030013778909917|0.01287001287001287|0.5509662227122889|0.6362934362934363|
+|M2_readout_error|readout error magnitude|-0.17720027941024302|-0.20205920205920205|-0.3542687843885744|-0.28906048906048903|
+|M3_abs_dot|absolute clean-context interaction|-0.18812313768698655|-0.49935649935649934|-0.4947061575692096|-0.6082368082368083|
+|M4_abs_cosine|absolute cosine interaction|-0.2096804420679765|-0.5724581724581724|-0.4632173787127033|-0.3804375804375804|
+|M5_abs_den_shift|RMS denominator shift|-0.15144311906026597|-0.5268983268983269|-0.14790084733960135|0.04607464607464608|
+|M6_first_order_den_predictor|first-order denominator predictor|-0.19629122235131585|-0.5508365508365508|-0.3527397342470948|0.022136422136422137|
+|M7_orth_ratio|orthogonal residual ratio|0.2039022308664203|0.5531531531531532|0.428080274761623|0.40051480051480054|
+|M8a_M2rel_cosabs|hybrid readout-relative cosine|-0.19624250883569255|-0.5287001287001287|-0.3629789772124994|0.011325611325611325|
+|M8b_M5abs|hybrid denominator shift|-0.15144311906026597|-0.5268983268983269|-0.14790084733960135|0.04607464607464608|
+|M8c_M1rel_cosabs|hybrid state-relative cosine|-0.20848756470519425|-0.5585585585585585|-0.43775162726744743|-0.35032175032175034|
+
+## Direction Magnitude Intervention
+
+|intervention|median_D_out_proj|mean_D_out_proj|
+|---|---|---|
+|C_direction_FP_relative_scale|0.08700214185546429|0.349963075774075|
+|C_direction_R_magnitude|0.0255481332982761|0.04479733838937404|
+|R_direction_C_magnitude|0.04966485498415096|0.12038451603338185|
+|R_direction_FP_relative_scale|0.14335033699623922|0.2257859673317887|
+
+## Horizon Accumulation
+
+|horizon|R_gt_C_M5_units|R_gt_C_Dout_units|
+|---|---|---|
+|1|0|0|
+|16|0|1|
+|64|0|0|
+|128|0|1|
+
+## Files
+
+- `stage1_candidate_metrics_per_event.csv`
+- `stage1_candidate_metrics_per_unit.csv`
+- `stage2_metric_correlation_summary.csv`
+- `stage3_same_norm_rc_comparison.csv`
+- `stage4_direction_magnitude_intervention.csv`
+- `stage4_direction_magnitude_intervention_summary.csv`
+- `stage6_state_to_readout_attribution.csv`
+- `stage7_horizon_accumulation.csv`
+- `stage7_horizon_summary.csv`
+- `final_summary.json`

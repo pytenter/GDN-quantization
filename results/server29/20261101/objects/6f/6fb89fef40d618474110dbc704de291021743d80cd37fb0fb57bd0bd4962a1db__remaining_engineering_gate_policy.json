@@ -1,0 +1,110 @@
+{
+  "COUNTERFACTUAL_DECOMPOSITION_GATE": {
+    "common_denominator": "FP native state squared Frobenius norm accumulated in FP64 +1e-12 per layer/token",
+    "conditions": [
+      "Native",
+      "H",
+      "C6R",
+      "C7"
+    ],
+    "energy_accumulator": "FP64; signed alignment retained",
+    "energy_relative_bound": "16*gamma_N_FP64*max(1,ACC,HISTORY,PATH_INJECTION,abs(ALIGNMENT)); N=32*128*128",
+    "normalized_window": "inclusive1024..T for science; inclusive1..T for short engineering checks only",
+    "steps": 256,
+    "vector": "FP64 E=SQ-FP; H=F(SQ)-F(FP); I_PATH=SQ-F(SQ); I_REF=Q(FP)-F(FP); INTERACTION=I_PATH-I_REF",
+    "vector_absolute_bound": "8*2^-53*max(1,max_abs(original FP32 states converted to FP64))"
+  },
+  "FP_REPLAY_PARITY_GATE": {
+    "criterion": "Exact tensor SHA across all24 layers at every replay token, inherited parent FP exact check",
+    "lengths": [
+      32,
+      256
+    ],
+    "no_posthoc_fallback": true,
+    "numerical_policy_for_reporting_only": {
+      "comparison": "max_abs_residual <= 8*gamma128*max(1,max_abs_of_compared_inputs_and_outputs)",
+      "exact_checks": [
+        "FP production helper vs model captured FP final states",
+        "repeat deterministic operator",
+        "rotation file and per-layer tensor SHA"
+      ],
+      "fp32_unit_roundoff": 5.960464477539063e-08,
+      "frozen_before_full_parity_panel": true,
+      "gamma128": 7.629452739355006e-06,
+      "invariance": "exact tensor equality; FAIL allowed, then condition-specific production transition must be used",
+      "rationale": "FP32 128-coordinate reductions plus separate H/Delta and inverse mapping reductions; conservative dtype-derived absolute forward-error bound. Difference cancellation is scaled to original operands, not tiny residual.",
+      "reduction_width": 128,
+      "roundoff_multiplier": 8
+    }
+  },
+  "NO_QDQ_ROTATION_INVARIANCE_GATE": {
+    "comparison_operands": "condition-specific unquantized native state and native FP state; max(1,abs operands)",
+    "conditions": [
+      "Native",
+      "H",
+      "C6R",
+      "C7"
+    ],
+    "criterion": "max_abs_residual <= 8*gamma128*max(1,max_abs_of_compared_inputs_and_outputs)",
+    "exact_arithmetic_invariance_not_claimed": true,
+    "gamma128": 7.629452739355006e-06,
+    "layers": 24,
+    "multiplier": 8,
+    "steps": 256
+  },
+  "REPLAY_DETERMINISM_GATE": {
+    "all_conditions": true,
+    "criterion": "All key state hashes and metric hashes byte-exact",
+    "fixture2048": "First2048 tokens of already frozen Doc1 captured once only after short gates PASS; engineering only",
+    "length2048_fresh_processes": 2,
+    "length256_fresh_processes": 3,
+    "strict_algorithms": true,
+    "unsupported_operator": "FAIL_AND_STOP; do not patch"
+  },
+  "REPLAY_ISOLATION_GATE": {
+    "blocked_cumsum_call_count": 0,
+    "full_model_forward_count": 0,
+    "instrument": "Fail-closed torch.cumsum/Tensor.cumsum and torch.nn.Module.__call__ guards; only original helper and formal transform/QDQ allowed"
+  },
+  "STREAMING_REDUCER_PARITY_GATE": {
+    "criterion": "All six normalized terms and six raw energy means match within16*gamma_256_FP64*max(1,abs values)",
+    "full_materialization": "All per-token per-layer FP64 energy/normalized observations; not full hidden/state trajectory",
+    "no_changed_reduction_or_metric_definition": true,
+    "short_length": 256
+  },
+  "any_new_failure": "FAIL_AND_STOP; preserve input/results; no retry, no threshold change, no failed drive deletion",
+  "clean_reference_Q": "Separate condition-specific inverse-map of FP state then original helper, formal quantizer/writeback and physical map",
+  "epsilon": 1e-12,
+  "frozen_before_GPU_capture_results": true,
+  "gate_order": [
+    "CAPTURE_EMPIRICAL_REPRODUCIBILITY_GATE",
+    "DRIVE_FACTORIZATION_GATE",
+    "CAPTURE_SCHEMA_GATE",
+    "FP_REPLAY_PARITY_GATE",
+    "NO_QDQ_ROTATION_INVARIANCE_GATE",
+    "COUNTERFACTUAL_DECOMPOSITION_GATE",
+    "REPLAY_ISOLATION_GATE",
+    "REPLAY_DETERMINISM_GATE",
+    "STREAMING_REDUCER_PARITY_GATE"
+  ],
+  "horizons": [
+    2048,
+    8192,
+    32768
+  ],
+  "no_inverse_remapping_of_persistent_path": true,
+  "parent_J_INJ_denominator_not_relabelled_as_FD": true,
+  "parent_metric_source_sha256": "6499c64b08a6637b54ec42be0b28dffad525063bc28fa904cbdaee2aeaf06ad3",
+  "persistent_state": "Production stored basis across all tokens; physical state is a derived read-only separate H/Delta mapping",
+  "scientific_first_token": 1024,
+  "scientific_metric_names": [
+    "J_ACC_FD",
+    "J_HISTORY_FD",
+    "J_INJ_PATH_FD",
+    "J_INJ_REF_FD",
+    "J_ALIGN_FD",
+    "J_INTERACTION_FD"
+  ],
+  "source_transition": "Unchanged original torch_recurrent_gated_delta_rule reused, no copied recurrence formula",
+  "weighting": "Equal layer weight; per-layer per-token Frobenius norm includes all32 heads and128x128 coordinates; equal token weight"
+}

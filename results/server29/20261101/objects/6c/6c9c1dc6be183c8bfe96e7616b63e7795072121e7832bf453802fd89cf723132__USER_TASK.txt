@@ -1,0 +1,718 @@
+
+你现在是我的 Ling/KDA recurrent-state INT8 quantization 科研执行 Agent。
+
+本次任务是一个全新的科学实验，不是对旧 P1 vs Original L7 四文档32K实验的续跑，也不是继续修补旧 GPU launcher。
+
+请优先追求明确、可证伪、可复现的科学结果，避免将科研时间消耗在无限的工程修复上。
+
+执行原则：
+先审计科学实现与实验可行性，再冻结数据和指标，再进行最小GPU资格验证，最后在全部门禁PASS时开展正式实验。
+
+==================================================
+0. 任务身份与资源授权
+==================================================
+
+TASK_ID:
+LING_KDA_ROTATION_DUAL_AXIS_FUNCTIONAL_V1
+
+SCIENTIFIC_GOAL:
+Evaluate the interaction between learned orthogonal rotation and all-INT8 dual-axis recurrent-state quantization in Ling/KDA.
+
+MODEL:
+Ling-3.0-tiny / KDA
+
+GPU_EXECUTION_AUTHORIZED = YES
+仅当用户将本完整提示词明确提交给Codex时授权本任务的有界GPU执行。
+
+GPU_COUNT = 1
+GPU_TYPE = RTX3090_24GB
+MAX_NEW_GPU_HOURS = 16.0
+
+本任务与历史Ling 36 GPUh预算独立记账，不追溯重置、合并或修改旧任务账本。
+
+TARGET_DOCUMENTS = 6
+TOKENS_PER_TRAJECTORY = 8448
+EVALUATION_POSITIONS_PER_DOC = 256
+
+正式条件：
+1. FP_NATIVE
+2. H_R128
+3. H_DUAL_M
+4. L6_R128
+5. L6_DUAL_M
+
+计划正式轨迹总数：
+6 documents × 5 conditions = 30 trajectories。
+
+NO_NEW_ROTATION_TRAINING = YES
+NO_AIME = YES
+NO_SGLANG = YES
+NO_32K_EXECUTION = YES
+NO_P1_SELECTOR = YES
+NO_L8_L9_TRAINING = YES
+
+严禁因为旧实验已花费时间而继续修补旧执行链。
+
+==================================================
+1. 恢复历史科学基线
+==================================================
+
+必须首先恢复并核验以下历史资产：
+
+A. Ling/KDA原量化与旋转实现
+- 原R128 INT8量化器
+- Hadamard rotation
+- 已冻结的L6 learned rotation
+- KDA model step及FLA kernel
+- 原persistent QDQ/writeback实现
+- 原full-model FP32 KL计算路径
+
+B. 最新GPU6资格报告
+
+LING_KDA_P1_L7_4DOC_CLEANROOM_FINAL_V1_GPU6_SINGLE_V1
+
+已知状态：
+- FLA Conv BD8/warps8 PASS
+- Gated RMSNorm BT16/warps8 PASS
+- 4 FP + 8 INT8的8192+fresh64资格12/12 PASS
+- persistent QDQ与next-kernel consumption 8/8 PASS
+- 正式32K轨迹0/12
+- 有效科学文档0/4
+
+历史正式任务在12K附近因冻结的2GiB显存余量门禁STOP。
+
+首STOP时：
+NVML free = 2025193472 bytes
+Required free = 2147483648 bytes
+Deficit = 116.625 MiB
+
+不得将其重新描述为CUDA OOM或外部GPU抢占。
+
+C. Qwen/GDN已经完成的Dual-M实验
+
+QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1
+
+已有结果：
+- Doc1 Future-KL相对改善23.57%
+- Doc2 Future-KL相对改善42.32%
+- 2/2文档支持Hadamard+Dual-M
+- 科学分类POSITIVE_EXPLORATORY
+
+本次借鉴已经资格的Dual-M codec，不继承Qwen的科学结论、门禁PASS或真实运行时性能。
+
+历史文件和SHA必须根据实际服务器manifest核验。
+如果路径不同，先从现有manifest定位，不虚构路径。
+
+不要修改旧模型、旧checkpoint、旧seal、旧科学结果或历史失败记录。
+
+在新worktree和独立输出目录执行。
+
+==================================================
+2. 本次真正需要回答的科学问题
+==================================================
+
+我们不再研究：
+P1选出的旋转是否在32K上优于Original L7。
+
+本次研究两个核心问题：
+
+Q1:
+在冻结L6 learned rotation的条件下，
+将原R128量化器替换为Dual-M，
+能否改善8192-token量化历史之后的真实full-model Future-KL？
+
+Q2:
+Dual-M的收益是否依赖旋转矩阵？
+L6是否相对Hadamard表现出更强的codec收益？
+
+实验是2×2 factorial design：
+
+                   R128          Dual-M
+Hadamard           H_R128        H_DUAL_M
+L6 Learned         L6_R128       L6_DUAL_M
+
+统一FP_NATIVE作为full-model KL参考。
+
+选择L6的依据是历史冻结AIME26：
+FP = 44/60
+Hadamard = 35/60
+L6 = 36/60
+L7 = 33/60
+
+L6是已评测Ling learned rotation中分数最高者。
+但1/60的差异不证明L6显著优于Hadamard。
+
+本次L6矩阵必须保持原冻结值，不重新训练、插值或筛选。
+
+==================================================
+3. Phase 0A：KDA旋转数学资格
+==================================================
+
+这一阶段CPU-only，禁止GPU运行。
+
+这是整个实验的重要前置门禁。
+
+Ling/KDA的状态矩阵具有Key与Value两个轴。
+必须从真实源码确认：
+- State tensor的实际shape与轴定义
+- R128量化粒度
+- Key-side rotation作用位置
+- Hadamard和L6的矩阵方向
+- State写回后如何被下一token消费
+- Gate、K、Q、Value update与readout路径
+
+KDA可能具有逐Key维的非均匀gate。
+
+对于一般正交旋转R：
+R diag(g) R^{-1} 不等于 diag(g)。
+
+因此不能仅凭R是正交矩阵，就断言旋转后的递归动力学与FP原生模型等价。
+
+必须核验旧H/L6实现属于以下哪类：
+
+A. 只在量化codec坐标中旋转State，
+   QDQ后正确逆变换回原生递归坐标；
+
+或者
+
+B. 在旋转坐标中执行数学等价的完整递归变换，
+   包括所需的gate/update/readout变换。
+
+不得将普通对角gate直接保留在任意旋转坐标中，然后声称是等价旋转。
+
+完成：
+- 公式推导
+- 源码路径审计
+- 小矩阵CPU参考
+- 不量化FP结构一致性验证
+- 使用真实冻结H和L6矩阵的测试
+
+在正式实验前冻结相关数值资格规则。
+如果已有合格的历史容差合同，优先复用。
+
+如果发现旧实现事实上改变了未量化递归动力学：
+不得直接开展原计划中的纯量化互补性解释。
+
+如果没有可复用的数学等价实现，并且需要大幅修改FLA kernel才能实现，则STOP。
+
+禁止为跑通实验而静默修改KDA gate数学、模型权重、dtype或递归公式。
+
+还应记录FP_NATIVE与未量化H/L6路径在真实canary上的logits差异。
+
+如果结构正确但有限精度差异不可忽略，必须说明后续比较属于有限精度实际系统的operational codec effect，而非严格的纯量化误差分解。
+
+不能照搬Qwen的FP_NATIVE/FP_H阈值，也不能事后根据结果放宽新阈值。
+
+==================================================
+4. Phase 0B：移植Dual-M到Ling/KDA
+==================================================
+
+优先复用Qwen已经通过CPU/GPU资格的Dual-M算法定义。
+
+目标：
+在KDA真实State矩阵上实现固定all-INT8的row×column separable scaling。
+
+形式：
+
+S_hat[i,j] = r[i] * c[j] * z[i,j]
+
+其中：
+z[i,j]为signed INT8整数code。
+r[i]与c[j]使用FP16 scale元数据。
+
+配置：
+- all INT8
+- 8 bits per state element
+- importance/readout weight w_i = 1
+- no FP16 pivots
+- no mixed bitwidth
+- no online learned parameters
+- 使用已资格的column least-squares与最终re-encode
+- 不引入Dual-W
+
+必须按KDA实际Key-row/Value-column语义正确映射，不允许盲目复制Qwen的tensor维度、stride或scale索引。
+
+禁止：
+- 改为INT4/INT6
+- FP16重要行保护
+- delayed requantization
+- 跨token未量化persistent state
+- 跨token误差补偿buffer
+- 静默改变scale floor与clipping策略
+
+任何KDA特定scale安全适配，必须在科学运行之前根据数学与数值范围预注册，不允许看结果后调参。
+
+CPU-only测试：
+1. shape与axis测试
+2. signed INT8 code范围
+3. row/column FP16 scale正确性
+4. zeros、outlier、ties、极端scale测试
+5. encode/decode reference parity
+6. 每token QDQ模拟
+7. 128-step synthetic recurrence
+8. fresh-process deterministic digest
+
+如果官方STEPQuant参考实现及固定版本可访问，验证对应all8/ones/pivots0的行为；若无法访问，则明确记录独立参考的来源及证据边界，不能伪称官方exact parity。
+
+必须明确：
+FP32 tensor存放已经QDQ的state，不代表physical packed INT8。
+
+==================================================
+5. Phase 0C：前瞻数据冻结
+==================================================
+
+优先使用Ling历史RepoBench-P合法长文档数据池。
+
+本次选择6篇全新、未见文档。
+
+要求：
+- 每篇至少8449个tokens
+- 排除原P1四篇冻结文档
+- 排除历史P1 vs L7两篇正式文档
+- 排除已有训练、选择、调参和诊断中可识别的样本
+- 排除相关canary与正式测试已使用的输入
+- raw SHA及canonical token SHA不能重复
+- 不依据任何新方法的预测误差选样
+
+尽可能恢复repository/project身份，优先选择来自不同项目的文档。
+
+如果项目元数据不存在：
+PROJECT_INDEPENDENCE = UNKNOWN
+
+不能把不同raw SHA当作独立项目证明。
+
+使用事前固定seed及确定性候选选择算法。
+冻结候选列表、排除表、样本身份与顺序。
+
+在任何正式GPU forward之前生成：
+PREREGISTRATION.json
+FROZEN_DOCUMENTS.json
+DATA_SELECTION_AUDIT.csv
+
+如果不足6篇合法文档：
+STOP，不擅自改为历史四篇或者少于6篇的正式实验。
+
+L6冻结身份、所有metric、显存规则与统计分析计划必须在读取新科学结果前锁定。
+
+==================================================
+6. Phase 1：最短真实GPU资格
+==================================================
+
+只使用一张合格RTX3090 24GB。
+优先选择能够核验原有数值profile的设备，但绝不假定其他GPU与GPU6 exact等价。
+
+实际GPU UUID与运行环境必须固定。
+不得跨设备复用未通过资格的checkpoint。
+
+核验：
+- 模型及权重SHA
+- Python/Torch/FLA及kernel身份
+- 原固定FLA配置
+- CUBLAS/PYTHONHASHSEED等确定性环境
+- H/L6矩阵SHA
+- R128 GPU parity
+- Dual-M GPU parity
+- next-token真实QDQ/writeback
+- next-kernel只消费量化写回状态
+- fresh-process数值重复性
+- scale/clamp/overflow安全
+- 实际模型FP/INT8资源占用
+
+必须避免双重persistent state：
+不能同时隐藏保留一份高精度state用于下一token。
+
+对4个学生条件都要验证量化写回路径。
+fresh-process重复资格使用独立的未见正式样本canary。
+
+特别增加8448-token最坏情况内存资格。
+使用不属于6篇正式文档的历史或专门冻结canary进行。
+
+验证实际5条件的显存峰值和2GiB余量：
+至少覆盖可能显存最大的正式实现。
+不能只用128-token估算8448-token内存。
+
+此前GPU6正式运行中已经触发2GiB余量不足。
+因此新实验绝对不能省略长canary资源测试。
+
+保持原2GiB安全余量。
+不得把门槛降低至1GiB或直接关闭检查。
+
+可使用明确安全且已证明不影响科学数学的CPU流式评分、日志offload和临时tensor释放。
+
+不允许因为显存不足：
+- 改模型dtype
+- 关闭QDQ
+- 使用低精度logits代替原KL参考
+- 修改KDA数学
+- 跳过token
+- 隐式增加GPU
+- 降低预注册的安全门槛
+
+若需要对底层FLA或quantization kernel进行多轮开发才能跑通，停止，不进入无限工程修补。
+
+==================================================
+7. GPU预算和执行准入
+==================================================
+
+MAX_NEW_GPU_HOURS = 16.0
+
+包括：
+- canary
+- qualification
+- model loading
+- forward
+- scoring
+- checkpoint
+- GPU占用期间IO
+- cleanup前的实际设备占用
+
+必须先根据真实资格测得吞吐进行预算预测。
+
+历史GPU6的12条8192-token parent合计约3.9657 GPUh，只可用作粗略规划参考。
+
+新Dual-M与256个完整词表评分位置可能增加成本。
+
+要求：
+- 在正式运行前预测30条轨迹总成本
+- 保留GPU退出与波动余量
+- 保守预测可以完成全部实验才启动
+- 实际预算到达15.5 GPUh进入保护性STOP
+- 绝对不能突破16 GPUh
+
+如预算不足：
+BUDGET_FEASIBILITY_STOP
+
+不能静默缩短长度、减少文档、删去某个实验条件或换GPU。
+
+==================================================
+8. Phase 2：正式前瞻实验
+==================================================
+
+只有Phase 0与Phase 1全部PASS且预算可行，才运行正式科学实验。
+
+每篇5条轨迹：
+N: FP_NATIVE
+A: H_R128
+B: H_DUAL_M
+C: L6_R128
+D: L6_DUAL_M
+
+共6篇，30条。
+
+所有student：
+从token0建立自身真实的persistent QDQ历史。
+
+不允许在8192插入FP state来替代INT8历史。
+不允许跨不同旋转/codec共享不匹配的state cache。
+不允许跳过中间token。
+不允许从别的科学条件借用student prefix。
+
+如果确有可复用checkpoint，必须同文档、同旋转、同codec、同设备资格、同数学身份、同token cursor，并通过原fresh64合同。
+
+不能跨codec、跨设备或跨文档借用cache。
+
+评分使用：
+t = 8192 + j
+j = 0,...,255
+
+消费ids[t]后使用当前logits预测下一个token。
+
+最后评分位置t=8447。
+每条轨迹consumed tokens=8448。
+
+完整token序列至少8449项，以便保留下一token身份与可选sanity audit。
+
+评分对象：
+完整词表FP32 KL(FP_NATIVE || student)
+
+每篇每条件256个位置。
+
+定义：
+
+K[R,Q] =
+  (1/256) * sum_t KL(P_FP_NATIVE(t) || P_R,Q(t))
+
+使用数值可靠的FP32 KL加CPU高精度reducer，并在实验前冻结算法。
+
+不得把logits KL替换为hidden MSE、state MSE或只看目标token NLL。
+
+不能把256个位置当作256个统计独立样本。
+
+为控制显存：
+logits和诊断数据尽量及时offload到CPU或磁盘。
+不得在GPU长期保留256位置×完整词表×多条件的额外tensor。
+
+保存独立原始评分、运行日志、checkpoint身份及资源账本。
+
+所有正式条件按冻结顺序执行，不根据前几篇结果好坏做科学性提前停止或追加样本。
+
+非预期worker退出时保留first failure，不自动隐藏失败并无限重试。
+
+离线进程管理必须不依赖SSH stdout连接持续存在。
+
+==================================================
+9. Primary与Secondary科学指标
+==================================================
+
+实验前冻结以下估计目标。
+
+Primary：
+
+Delta_L6 =
+K[L6,R128] - K[L6,DualM]
+
+Delta_L6 > 0：
+Dual-M在L6下产生更低Future-KL。
+
+Key Secondary：
+
+Delta_H =
+K[H,R128] - K[H,DualM]
+
+Interaction =
+Delta_L6 - Delta_H
+
+Interaction > 0：
+Dual-M在L6条件下的绝对KL收益大于在H条件下的收益。
+
+另需报告：
+
+LearnedGain_R128 =
+K[H,R128] - K[L6,R128]
+
+LearnedGain_DualM =
+K[H,DualM] - K[L6,DualM]
+
+LearnedGain_DualM > 0：
+在Dual-M量化器下L6比Hadamard具有更低KL。
+
+注意：
+Delta_L6>0只证明codec对L6的增量收益。
+
+Interaction>0是正向交互的方向性证据，但若L6+DualM仍劣于H+DualM，不能宣称组合已经优于Hadamard方案。
+
+严格区分：
+1. Codec main effect
+2. Learned rotation effect
+3. Rotation × codec interaction
+4. Actual best performing condition
+
+对每个指标保留完整精度及算术分辨范围。
+
+算术分辨须基于本轮实际reducer、FP32和独立CPU参考计算，不能直接套用Qwen或旧Ling某个固定阈值。
+
+若差异处于合法算术分辨范围内：
+NUMERICALLY_UNRESOLVED
+
+FP32算术分辨不能被描述为full-model forward的完整数值误差上界。
+
+==================================================
+10. 统计与科学结论
+==================================================
+
+统计单位是独立文档或可验证的独立项目，不是token、layer、head、row或评分位置。
+
+至少输出：
+- 每篇5条件完整KL
+- 每篇Delta_L6
+- 每篇Delta_H
+- 每篇Interaction
+- 两种LearnedGain
+- mean、median和方向计数
+- 每篇relative gain
+- 算术分辨与unresolved标签
+
+主判据：
+6篇均有完整配对且Delta_L6可分辨为正：
+PRIMARY_DIRECTIONALLY_REPLICATED
+
+但是否能进一步称为confirmatory，需要检查项目独立性、预注册完整性和统计假设。
+
+在6个真正独立且满足公平符号检验假设的单位全部正向时，单侧sign test名义p=0.015625。
+
+如果项目独立性UNKNOWN，不得用这个p值声称已确认统计显著性。
+
+Interaction属于预注册关键Secondary，不因为方向有利就自动升格为Primary。
+若需要正式检验多个假设，必须事前处理多重比较问题。
+
+如果仅4/6或5/6正向，报告完整方向与效应，不自行改写为6/6确认。
+
+如果存在任何缺失：
+INCOMPLETE，并报告完整配对的真实n；不能把缺失当0或平局。
+
+本次只对8192量化历史后256-token功能质量作出结论。
+
+不得声称：
+- 32K长程获益
+- AIME提升
+- reasoning准确率提升
+- 可部署物理packed INT8
+- learned rotation新训练Loss有效
+- KDA与GDN具有相同误差机制
+
+==================================================
+11. 轻量机制诊断
+==================================================
+
+在不显著增加GPU显存和成本的前提下记录：
+
+1. 每层/每head local-QDQ relative MSE
+2. Dual-M的row/column scale范围
+3. effective scale范围
+4. unrounded overflow与rounded clamp
+5. KDA gate/retention轻量摘要
+6. 选择性readout相关误差摘要
+7. post-warmup每token耗时
+8. 实际wall-time和GPUh
+9. CUDA allocated/reserved及NVML owned memory
+10. metadata与实际state payload成本
+
+重要：
+A与D在各自历史状态上的local-QDQ MSE不能直接当作同一输入state的codec因果效应。
+
+如果要比较局部重建机制，可以使用预冻结的相同输入state快照分别执行R128和Dual-M，仅作为Secondary matched-state诊断。
+
+不得为了机制分析而长时间保留FP32/FP16高精度persistent state作为student下一token输入。
+
+KDA gate/readout机制解释只能列为探索性。
+没有对应因果干预，不得称已识别唯一中介。
+
+==================================================
+12. 结果判定与决策
+==================================================
+
+完成后按照真实结果判断：
+
+A.
+Dual-M在H和L6下均降低KL：
+支持KDA Dual-Axis codec收益的方向性证据。
+
+B.
+Dual-M在L6下改善，而且Interaction为正：
+支持进一步研究learned rotation与codec交互。
+
+C.
+L6+DualM不仅胜过L6+R128，也胜过H+DualM：
+说明组合方案在受测条件下取得更好的绝对功能表现。
+
+D.
+Dual-M改善local MSE但没有改善Future-KL：
+支持研究state重建误差与功能误差的不一致性。
+
+E.
+Dual-M不改善L6，也不改善H：
+说明Qwen的正向结果不能直接迁移到本次KDA条件，应暂停该codec组合路线。
+
+F.
+数学资格、资源安全或预算无法满足：
+保留STOP，不把工程失败解释成科学阴性。
+
+不要根据结果自动发起L8训练、AIME或新32K实验。
+
+==================================================
+13. 工程止损纪律
+==================================================
+
+本任务必须避免重演旧Ling项目中的多轮工程修补。
+
+硬性规定：
+
+- 优先复用已合格FLA数学worker
+- 不重新实现KDA递归kernel
+- 不重新训练L6
+- 不更改原R128 baseline
+- 不调整Hadamard或L6的冻结参数
+- 不修改其他任务的checkpoint
+- 不自动切换GPU
+- 不杀其他用户进程
+- 不降低2GiB显存安全门槛
+- 不修改原始历史STOP
+- 不做长期first-divergence修补链
+
+新codec允许必要的有界集成与测试。
+
+如果出现需要大规模重写FLA、无法证明KDA旋转数学等价、反复数值不确定或资源不可满足，应立即停止本次实验，而非不断推出V2/V3/V4。
+
+禁止在没有明确科学价值的情况下继续工程补丁。
+
+==================================================
+14. 最终交付
+==================================================
+
+不论成功或失败，都要生成可核验的最终报告。
+
+至少包含：
+
+PREREGISTRATION.json
+FROZEN_DOCUMENTS.json
+SOURCE_MANIFEST.json
+MATH_EQUIVALENCE_AUDIT.md
+CPU_CODEC_PARITY.json
+GPU_QUALIFICATION.json
+GPU_RESOURCE_LEDGER.json
+SCIENCE_RESULTS.csv
+SCIENCE_RESULTS.json
+INTERACTION_ANALYSIS.csv
+RUNTIME_COST.json
+FIRST_FAILURE.json（如发生）
+GATE_STATUS_FINAL.json
+FINAL_SCIENTIFIC_REPORT.md
+SHA256_MANIFEST.json
+
+科学结果未产生时，不生成假科学数值或空壳PASS。
+
+报告必须明确：
+- 实际完成多少doc
+- 实际完成多少条正式轨迹
+- Primary是否支持Dual-M
+- Interaction的方向与证据强度
+- L6+DualM是否为绝对最佳条件
+- 局部MSE与Future-KL是否一致
+- 是否可作为后续新rotation loss研究基础
+- 当前结果有哪些统计和工程局限
+- 真实GPUh和最大GPU显存
+- physical packed INT8是否验证
+- 所有未运行项目
+
+最后给出：
+FINAL_EXECUTION_STATUS
+SCIENTIFIC_CLASSIFICATION
+GPU_HOURS_USED
+ABSOLUTE_REPORT_PATH
+
+完成后STOP。
+
+不得自动：
+- 启动新实验
+- 训练L8/L9
+- 运行AIME
+- 扩展到16K/32K
+- 开始新GPU任务
+- git push
+
+==================================================
+15. 最终执行要求
+==================================================
+
+先输出简洁执行计划，明确：
+
+1. 已找到的历史可信科学资产
+2. H/L6在KDA中的旋转数学是否可保持等价
+3. Dual-M移植所需最小代码改动
+4. 6篇样本能否前瞻冻结
+5. GPU资源与16GPUh预算是否可行
+6. 有哪些真正阻止科学执行的硬门禁
+
+然后按Phase 0 → Phase 1 → Phase 2 → Analysis → Seal执行。
+
+在所有必要资格PASS时，不需要反复向用户确认常规执行细节。
+
+但不能擅自扩大研究范围、放松科学合同或越过GPU预算。
+
+任务最终目标不是让代码跑通，而是通过一次成本受控的前瞻实验回答：
+
+Does all-INT8 Dual-Axis quantization improve Ling/KDA functional accuracy under frozen learned orthogonal rotation, and is the codec benefit enhanced by the learned rotation?
+
+最终只接受真实完整的full-model Future-KL证据，或者明确可复核的FAIL_CLOSED_STOP。
+
+不要用工程PASS代替科学结论。

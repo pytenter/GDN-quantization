@@ -1,0 +1,1 @@
+lambda _cls, id, user_time, system_time: _tuple_new(_cls, (id, user_time, system_time))

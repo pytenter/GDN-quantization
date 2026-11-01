@@ -1,0 +1,37 @@
+{
+  "task": "QWEN_HADAMARD_ERROR_INJECTION_FUNCTIONAL_ANALYSIS_V1",
+  "version": "v1-pre-pilot",
+  "execution_order": ["audit_and_feasibility", "zero_injection_parity", "local_functional_damage", "full_logits_feasibility", "clean59_rescue_statistics"],
+  "source": "frozen AIME26 Qwen3.5-9B teacher-forced trajectories used by QWEN_HADAMARD_FUNCTIONAL_ERROR_GEOMETRY_ANALYSIS_V1",
+  "source_trajectories": 60,
+  "primary_panel": "pre-existing clean59, excluding only the previously frozen aime26_28 seed2 pair",
+  "gdn_layers": [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16, 17, 18, 20, 21, 22, 24, 25, 26, 28, 29, 30],
+  "injection": {
+    "site": "post recurrent update and post-QDQ state, before recomputed FP-query readout",
+    "fp_reference_state": "FP branch recurrent state at the same token and layer",
+    "identity_error": "native INT8 state minus FP state",
+    "hadamard_error": "Hadamard INT8 state pulled back to native basis minus FP state",
+    "common_downstream": "FP query, FP gate z, frozen RMSNormGated and out_proj weights; no quantizer/model/scorer changes",
+    "interpretation_limit": "Observed INT8 state errors include accumulated trajectory differences, not only one-step quantizer noise"
+  },
+  "local_damage": {
+    "stages": ["state", "readout", "rmsnorm", "gate", "output_projection"],
+    "metric": "relative L2 of injected-minus-FP stage output, with denominator max(FP L2,1e-12)",
+    "secondary": "absolute L2, FP denominator distribution and near-zero counts",
+    "primary_endpoint": "output_projection relative L2",
+    "benefit": "Identity damage minus Hadamard damage; positive favors Hadamard",
+    "aggregation": "per-trajectory median over all available token-layer observations, then equal-weight clean59 trajectory analysis",
+    "uncertainty": "trajectory bootstrap 95% percentile CI, 10000 fixed-seed resamples",
+    "paired_test": "two-sided paired sign test, zeros excluded and counted",
+    "group_test": "two-sided 10000-permutation rescue versus stable-failure benefit comparison, Cliff's delta, Holm correction across preregistered stages",
+    "stable_correct": "retain as control",
+    "nonfinite": "report all counts; never silently remove clean59 rows or select layers/tokens based on outcome"
+  },
+  "pilot": {
+    "selection": "first frozen clean59 trajectory by canonical index and seed, first 128 generated tokens",
+    "gates": ["source/hash pairing", "FP zero-error readout parity", "FP zero-error module-output parity", "repeat determinism", "finite primary local metrics", "GPU headroom"],
+    "full_logits_feasibility": "separate fixed first-trajectory, first-token, first-GDN-layer test of exact downstream logits; report memory, time and parity before any scale-up"
+  },
+  "prohibitions": ["new generation", "training", "model modification", "quantizer modification", "scorer modification", "persistent full state/logit tensors", "outcome-selected filtering"],
+  "output_policy": "all new remote files inside this experiment directory; preserve prior artifacts"
+}

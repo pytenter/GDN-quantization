@@ -1,0 +1,61 @@
+{
+  "task": "QWEN_GDN_C5_C6_EVIDENCE_GUIDED_DIAGNOSIS_V1",
+  "frozen_at_utc": "2026-10-01T05:20:00Z",
+  "full_density_full60": "CANCELLED_BY_USER",
+  "hypotheses": [
+    {
+      "id": "H1",
+      "statement": "Relative to Hadamard, learned rotations may accumulate larger FP-relative recurrent drift and downstream output perturbation on learned-regression units even when their one-step local QDQ error is not larger.",
+      "existing_support": ["Learned-vs-H endpoint results contain more regressions than rescues", "Historical FP/Native/H replay links late state-error summaries to failure, but does not include C5/C6"],
+      "counterevidence": ["No C5/C6 recurrent state or logits existed before this task", "Matrix distance from Hadamard has no causal interpretation"],
+      "decision_change": "If supported, prioritize an inference-aligned persistent stability constraint rather than minimizing one-step state reconstruction alone."
+    },
+    {
+      "id": "H2",
+      "statement": "The learned deficit may be chiefly a downstream decision/trajectory-stability mismatch rather than a uniformly worse local quantization error.",
+      "existing_support": ["Regression outputs are descriptively longer and more post-commit/repetitive/retractive; rescue outputs show the opposite direction", "C6 improves over C5 by only 3/60 with substantial paired churn"],
+      "counterevidence": ["Behavior associations are descriptive and endpoint-selected", "No causal intervention has been run"],
+      "decision_change": "If persistent function/logit metrics separate regression from rescue better than local QDQ error, move the development objective downstream."
+    },
+    {
+      "id": "H3",
+      "statement": "Checkpoint selection may be misaligned because C5 and C6 use different validation-primary objectives and the retained host lacks a shared cross-objective table.",
+      "existing_support": ["C5 and C6 were selected at different exposures under different primary metrics"],
+      "counterevidence": ["The final H64 logs are unavailable locally, so overfitting or validation degradation is not established"],
+      "decision_change": "Future training must select on one frozen, inference-aligned development matrix; no claim about overfitting is made here."
+    }
+  ],
+  "selection": {
+    "seed": 20261001,
+    "algorithm": "Use seed1 only; take deterministic lexicographic representatives of distinct formal FP/H/C5/C6 endpoint patterns, prioritizing C5/H and C6/H regressions and rescues, plus all-correct and all-wrong anchors; no internal diagnostic metric or trajectory length is used.",
+    "sample_ids": ["aime26_08_seed1", "aime26_02_seed1", "aime26_14_seed1", "aime26_11_seed1", "aime26_13_seed1", "aime26_01_seed1", "aime26_10_seed1", "aime26_25_seed1"],
+    "selection_bias": "Targeted endpoint-stratified panel; not an estimator of Full60 prevalence or accuracy."
+  },
+  "sparse_protocol": {
+    "semantic": "FP_PATH_PERSISTENT_REPLAY",
+    "token_source": "existing canonical FP generated_token_ids; no sampling or free generation",
+    "conditions": ["FP", "H", "C5", "C6"],
+    "qdq_timing": "canonical outer C128 QDQ/writeback after each recurrent decode output; its new state affects the following step",
+    "common_physical_state": "FP native; H recovered by H128; C5/C6 recovered by Delta then H128 on key axis",
+    "model_output_metrics": "full-vocabulary KL(P_FP||P_condition) at temperature 1, fixed existing-FP-next-token delta NLL, fixed FP-top1 margin degradation, top1 agreement",
+    "layer_output_site": "complete linear_attn.out_proj output at the current decode call; cumulative upstream differences are included",
+    "smoke": {
+      "sample_ids": ["aime26_08_seed1"],
+      "max_decode_steps": 64,
+      "capture_positions": [0, 7, 31, 63],
+      "gpu_hour_cap": 2.0
+    },
+    "main": {
+      "sample_ids": ["aime26_08_seed1", "aime26_02_seed1", "aime26_14_seed1", "aime26_11_seed1", "aime26_13_seed1", "aime26_01_seed1", "aime26_10_seed1", "aime26_25_seed1"],
+      "max_decode_steps": 2048,
+      "capture_positions": [0, 7, 31, 127, 255, 511, 1023, 2047],
+      "gpu_hour_cap": 8.0,
+      "resource_only_fallback_order": [[8, 1024], [6, 1024], [4, 1024]]
+    },
+    "stop_rules": ["Any identity, nonfinite, canonical-path, cache, or measurement failure stops the dependent GPU phase without semantic retry", "Projected or actual sparse GPU use above 8 GPU-hours stops expansion", "No sample substitution after viewing internal metrics", "No late-history claim beyond 2048 recurrent updates"]
+  },
+  "intervention": {
+    "status": "NOT_PREAUTHORIZED_BY_EVIDENCE",
+    "rule": "At most one intervention, only if sparse results identify a directional and decision-changing candidate before inspecting intervention outcomes."
+  }
+}

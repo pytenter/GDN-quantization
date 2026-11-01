@@ -1,0 +1,8 @@
+def __create_fn__(_type_ban_if_used_far_apart, _type_ban_if_long_fusible_chains, _type_ban_if_materialized_backward, _type_ban_if_not_in_allowlist, _type_ban_if_reduction, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,ban_if_used_far_apart:_type_ban_if_used_far_apart,ban_if_long_fusible_chains:_type_ban_if_long_fusible_chains,ban_if_materialized_backward:_type_ban_if_materialized_backward,ban_if_not_in_allowlist:_type_ban_if_not_in_allowlist,ban_if_reduction:_type_ban_if_reduction)->_return_type:
+  self.ban_if_used_far_apart=ban_if_used_far_apart
+  self.ban_if_long_fusible_chains=ban_if_long_fusible_chains
+  self.ban_if_materialized_backward=ban_if_materialized_backward
+  self.ban_if_not_in_allowlist=ban_if_not_in_allowlist
+  self.ban_if_reduction=ban_if_reduction
+ return __init__

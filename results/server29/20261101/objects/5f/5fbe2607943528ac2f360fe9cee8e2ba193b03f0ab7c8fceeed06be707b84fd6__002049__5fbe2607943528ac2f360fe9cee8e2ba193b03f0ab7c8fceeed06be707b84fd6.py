@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(addresses={self.addresses!r}, artifacts={self.artifacts!r}, conversion={self.conversion!r}, driver={self.driver!r}, extensions={self.extensions!r}, externalized_properties={self.externalized_properties!r}, graphs={self.graphs!r}, guid={self.guid!r}, invocations={self.invocations!r}, logical_locations={self.logical_locations!r}, policies={self.policies!r}, properties={self.properties!r}, results={self.results!r}, run_guid={self.run_guid!r}, schema={self.schema!r}, taxonomies={self.taxonomies!r}, thread_flow_locations={self.thread_flow_locations!r}, translations={self.translations!r}, version={self.version!r}, web_requests={self.web_requests!r}, web_responses={self.web_responses!r})"
+ return __repr__

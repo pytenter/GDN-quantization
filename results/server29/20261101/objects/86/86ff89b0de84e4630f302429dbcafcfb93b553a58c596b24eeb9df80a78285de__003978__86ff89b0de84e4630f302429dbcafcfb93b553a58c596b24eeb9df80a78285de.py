@@ -1,0 +1,8 @@
+def __create_fn__(_type_config, _type_module_filter_func, _type_pad_inner_dim, _type_enable_fsdp_float8_all_gather, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_config, _dflt_module_filter_func, _dflt_pad_inner_dim, _dflt_enable_fsdp_float8_all_gather, _return_type):
+ def __init__(self,config:_type_config=_dflt_config,module_filter_func:_type_module_filter_func=_dflt_module_filter_func,pad_inner_dim:_type_pad_inner_dim=_dflt_pad_inner_dim,enable_fsdp_float8_all_gather:_type_enable_fsdp_float8_all_gather=_dflt_enable_fsdp_float8_all_gather)->_return_type:
+  self.config=config
+  self.module_filter_func=module_filter_func
+  self.pad_inner_dim=pad_inner_dim
+  self.enable_fsdp_float8_all_gather=enable_fsdp_float8_all_gather
+  self.__post_init__()
+ return __init__

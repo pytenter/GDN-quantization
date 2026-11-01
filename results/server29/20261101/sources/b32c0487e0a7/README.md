@@ -1,0 +1,50 @@
+# pace48_leap_unroll_dp8_dp16_v1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/pace48_leap_unroll_dp8_dp16_v1`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`README.md`](../../objects/34/34fae2721e24fdf6b5e78c866eda19590050d86deade9013e2e92ffc36d2a26d__README.md)
+- [`THROUGHPUT_REPORT.md`](../../objects/4b/4bbc4971aa94516d96a473ef4aa5b426f30a3f2b78230e9f55d2985224086a90__THROUGHPUT_REPORT.md)
+- [`scripts/score_cpu.py`](../../objects/43/439a48719cd40cac6d10f4d8b86d0a39a2050f17a37088bba882dabe85b682cc__score_cpu.py)
+- [`EXPERIMENT_SUMMARY.md`](../../objects/9c/9c86ee3587839811dd12d6fc0453e268d1db6597f4aeba94ecf8613cd62922e2__EXPERIMENT_SUMMARY.md)
+- [`IMPLEMENTATION_AUDIT.md`](../../objects/49/49480f24e44a4b755a6fff832e982e76495a0f6c2faf204e10f0c8dc204f5b29__IMPLEMENTATION_AUDIT.md)
+- [`NUMERICAL_PARITY_REPORT.md`](../../objects/fd/fde09c6b1f9dc8574ccc61a1f56e87cb356168a809eb01d403fe09800f7eb256__NUMERICAL_PARITY_REPORT.md)
+- [`vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`DIRECT_READ_KERNEL_REPORT.md`](../../objects/31/31928da25f9c5c7ee4a8ef6c64e6d563df8f58aaec25a0ff9cb159b64b809454__DIRECT_READ_KERNEL_REPORT.md)
+- [`protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`releases/FORMAL_V2/README.md`](../../objects/85/856de7665896e2424a1ecf6eef0efad8deece656f6c16665d3f15c0543d298e9__README.md)
+- [`analysis/PAPER_MECHANISM_REVIEW.md`](../../objects/7b/7b551c17a68007bde8baec6d78c502bacddb300e1ea4ad45716077625a00c101__PAPER_MECHANISM_REVIEW.md)
+- [`operations/CONTINUATION_HANDOFF.md`](../../objects/a9/a96878f6910497ea0bfcdd235f97d19b4700ccc4b653bbe13552bd4c70e49e24__CONTINUATION_HANDOFF.md)
+- [`baseline/vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`baseline/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`releases/FORMAL_V2/paired_results.csv`](../../objects/c1/c1abf5fd4eecd078e1d97a654afc575b7bcbeeab75d5d57bbbbac73b9b61b4a3__paired_results.csv)
+- [`releases/FORMAL_V2/SCORED_RESULTS.json`](../../objects/bb/bbe670d443f6fd74c76a859ce1c70b3a92efe1a4e3e65a09f03f0171acc45fa3__SCORED_RESULTS.json)
+- [`releases/FORMAL_V2/THROUGHPUT_REPORT.md`](../../objects/4b/4bbc4971aa94516d96a473ef4aa5b426f30a3f2b78230e9f55d2985224086a90__THROUGHPUT_REPORT.md)
+- [`releases/FORMAL_V2/scripts/score_cpu.py`](../../objects/43/439a48719cd40cac6d10f4d8b86d0a39a2050f17a37088bba882dabe85b682cc__score_cpu.py)
+- [`operations/PRE_FORMAL_CPU_SCOPE_NOTES.md`](../../objects/44/448b9df0c5f78d8198c39ca85f6d5a83cf8c1603baa0765b12b39a5bf4759862__PRE_FORMAL_CPU_SCOPE_NOTES.md)
+- [`releases/FORMAL_V2/EXPERIMENT_SUMMARY.md`](../../objects/9c/9c3c0232876cea6a51d407906da8e6c28e88f11499284f4730ae222977fc3c3c__EXPERIMENT_SUMMARY.md)
+- [`releases/FORMAL_V2/IMPLEMENTATION_AUDIT.md`](../../objects/49/49480f24e44a4b755a6fff832e982e76495a0f6c2faf204e10f0c8dc204f5b29__IMPLEMENTATION_AUDIT.md)
+- [`releases/FORMAL_V2/runtime/SCORE_PASS1.json`](../../objects/bb/bbe670d443f6fd74c76a859ce1c70b3a92efe1a4e3e65a09f03f0171acc45fa3__SCORED_RESULTS.json)
+- [`releases/FORMAL_V2/runtime/SCORE_PASS2.json`](../../objects/bb/bbe670d443f6fd74c76a859ce1c70b3a92efe1a4e3e65a09f03f0171acc45fa3__SCORED_RESULTS.json)
+- [`releases/FORMAL_V2/FINAL_MANIFEST_SCOPE.json`](../../objects/d1/d1e2a26f082568b38b9cb86fa8ddc8635ea510237e7362ec7eee5d9dec688222__FINAL_MANIFEST_SCOPE.json)
+- [`releases/FORMAL_V2/NUMERICAL_PARITY_REPORT.md`](../../objects/fd/fde09c6b1f9dc8574ccc61a1f56e87cb356168a809eb01d403fe09800f7eb256__NUMERICAL_PARITY_REPORT.md)
+- [`releases/FORMAL_V2/vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`releases/FORMAL_V2/DIRECT_READ_KERNEL_REPORT.md`](../../objects/31/31928da25f9c5c7ee4a8ef6c64e6d563df8f58aaec25a0ff9cb159b64b809454__DIRECT_READ_KERNEL_REPORT.md)
+- [`releases/FORMAL_V2/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`releases/FORMAL_V2/runtime/FINAL_ARCHIVE29.json`](../../objects/64/64bf9b96f14722355a317bcb3dde74e6ca42678c7bc415c9c513dc4d8b278958__FINAL_ARCHIVE29.json)
+- [`configs/NUMERICAL_ADMISSION_PREREGISTRATION.json`](../../objects/aa/aaa0154fb9f95bb9b595749de2ab4d0428976aa77981ce82998f5e9af32fc230__NUMERICAL_ADMISSION_PREREGISTRATION.json)
+- [`protocol/INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json`](../../objects/45/458041afe7011c5055d92bed1f97bc95b21f081a480a31092495c33e7e521094__INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json)
+- [`releases/FORMAL_V2/analysis/PAPER_MECHANISM_REVIEW.md`](../../objects/7b/7b551c17a68007bde8baec6d78c502bacddb300e1ea4ad45716077625a00c101__PAPER_MECHANISM_REVIEW.md)
+- [`releases/FORMAL_V2/operations/CONTINUATION_HANDOFF.md`](../../objects/f7/f797d15cf4b422f0cb045e638d121d817abc2605fac0f19b70fc4c0ccf747a44__CONTINUATION_HANDOFF.md)
+- [`validation/FINAL_NUMERICAL_AND_RUNTIME_ADMISSION.json`](../../objects/63/63d4bf9885809fc4242d79b627df9cf01fc179b19171f26b342cbe9591f97d41__REJECTED_V1_FINAL_ADMISSION_COPY.json)
+- [`releases/FORMAL_V2/baseline/vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`releases/FORMAL_V2/runtime/FINAL_OWNED_GPU_RELEASE.json`](../../objects/53/53308533b1a02a22c7bd9fc43bb4579e4bf4c5dc9083e539388899bd5ef6e43e__FINAL_OWNED_GPU_RELEASE.json)
+- [`releases/FORMAL_V2/baseline/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`releases/FORMAL_V2/operations/human_partial_score_cpu.py`](../../objects/96/9620631f618e1820e91435e2728402b6931a91a80f0b114167d62b878cea8ec4__human_partial_score_cpu.py)
+- [`releases/FORMAL_V2/operations/PRE_FORMAL_CPU_SCOPE_NOTES.md`](../../objects/44/448b9df0c5f78d8198c39ca85f6d5a83cf8c1603baa0765b12b39a5bf4759862__PRE_FORMAL_CPU_SCOPE_NOTES.md)
+- [`baseline/protocol/INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json`](../../objects/45/458041afe7011c5055d92bed1f97bc95b21f081a480a31092495c33e7e521094__INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json)

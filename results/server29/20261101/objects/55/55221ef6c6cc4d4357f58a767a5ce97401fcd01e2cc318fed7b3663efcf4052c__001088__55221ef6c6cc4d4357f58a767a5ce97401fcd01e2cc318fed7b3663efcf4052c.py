@@ -1,0 +1,1 @@
+lambda _cls, sign, logabsdet, LU, pivots: _tuple_new(_cls, (sign, logabsdet, LU, pivots))

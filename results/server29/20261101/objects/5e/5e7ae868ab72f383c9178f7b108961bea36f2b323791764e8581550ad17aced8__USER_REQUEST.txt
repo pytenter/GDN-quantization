@@ -1,0 +1,733 @@
+
+# QWEN_GDN_SCALE_SURROGATE_INPUT_RECOVERY_AND_VALIDATION_V2
+
+你现在继续 Qwen3.5-9B / GDN 的科研工作。
+
+研究主线：
+
+Persistent Recurrent-State INT8 Quantization
++ Learnable Orthogonal Rotation
+
+本轮目标：
+
+在严格维持原有 INT8 recurrent-state semantics
+的前提下，恢复或重新生成科学资格合格的
+short-horizon surrogate 测量输入，
+完成 H32/H64 Signed Scale Inflation 的
+探索性验证。
+
+必须先规划、后执行，所有阶段使用
+fail-closed 科学门禁。
+
+优先高效解决实际问题，
+禁止重复已经完成且可以合法复用的工作。
+
+==================================================
+一、上一轮真实状态
+==================================================
+
+上一轮任务：
+
+QWEN_GDN_SHORT_HORIZON_SCALE_INFLATION_SURROGATE_VALIDATION_V1
+
+结果：
+
+P0 = AUDIT_BLOCKED
+P1 = NOT_STARTED
+PRIMARY_STATUS = ENGINEERING_OR_BUDGET_STOP
+
+S1 / S2 = NOT_MEASURED
+GPU SCIENCE UNITS = 0
+
+这是工程输入缺失和人为预算阻断，
+不是 Scale Inflation surrogate 的科学否定。
+
+旧 Scale Direction：
+
+32/32 COMPLETE/PASS
+
+Parent H/C6R/C7 12/12 explosive
+
+NO_SCALE_INFLATION 0/12 explosive
+
+NO_SCALE_DEFLATION 12/12 explosive
+
+支持：
+
+SCALE_INFLATION_FEEDBACK_SUPPORTED
+
+但是不证明短程 S1 可以预测自然旋转排名，
+也不证明优化 S1 能提升 reasoning。
+
+==================================================
+二、本次资源政策
+==================================================
+
+用户没有设置固定 GPUh 上限。
+
+上一轮 Codex 提示词中的 4 GPUh
+是人为规划预算，不是用户的硬性要求。
+
+本轮：
+
+FIXED_GPU_HOURS_CAP = NONE
+
+不得因为预计 GPU 时间超过4小时而直接STOP。
+
+不设置任意固定85%显存门槛。
+
+但必须保留实际物理资源安全检查：
+
+- 真实可用VRAM
+- memory allocated / reserved
+- CUDA OOM risk
+- recurrent cache growth
+- disk available
+- scratch/temp growth
+- device availability
+- no-progress/hang detection
+- numerical and deterministic qualification
+
+必须记录真实GPU-hours、wall-clock、
+峰值显存、吞吐量和磁盘占用。
+
+不得擅自删除、覆盖旧资产，
+不得清理其他任务GPU进程。
+
+四张RTX3090可以用于按文档分配任务，
+但先验证当前GPU UUID、环境和占用情况。
+
+四卡并行缩短wall-clock，
+不等于降低总GPU-hours。
+
+不允许修改科学定义以节省资源。
+
+==================================================
+三、首先读取并复用V1审计成果
+==================================================
+
+从真实实验目录和manifest定位：
+
+QWEN_GDN_SHORT_HORIZON_SCALE_INFLATION_SURROGATE_VALIDATION_V1
+
+QWEN_GDN_FD_SCALE_FEEDBACK_DIRECTION_V1
+
+QWEN_GDN_FD_CLEAN_QPARAM_CAUSAL_INTERVENTION_V1
+
+QWEN_GDN_FROZEN_DRIVE_ANCHOR_MECHANISM_V1
+
+以及C5R/C6R/C7训练和部署资产。
+
+不要猜测路径。
+从真实run manifest和git身份定位。
+
+V1已完成：
+
+- model identity PASS
+- quantizer identity PASS
+- helper identity PASS
+- document identity PASS
+- Direction POSTFINAL 269 entries PASS
+- original Parent G finite and not truncated
+
+除非发现实际新变动或需要新增资格，
+不要重复执行冗余的完整CPU审计。
+
+重点检查：
+
+1. 哪些中间状态实际释放？
+2. 原8292附近是否存在可合法复用的快照？
+3. 哪些FP drive和student anchor可直接重建？
+4. 是否存在其他已核验snapshot或checkpoint？
+5. 原始capture/replay source identities是什么？
+6. 旧Parent G的定义和聚合如何实现？
+7. 原functional baseline需要哪些真实teacher tensors？
+8. 如何在不改变原科学定义的条件下
+   最小化重复forward与storage？
+
+注意：
+不要将旧SHA记录当成仍存在的张量文件。
+
+==================================================
+四、冻结的长期标签
+==================================================
+
+原Parent：
+
+G =
+J_ACC_FD(32768) / J_ACC_FD(8192)
+
+J：
+
+每层、每token物理空间relative error，
+24层等权，1024到T按原定义等权，
+FP64 accumulator。
+
+必须从原正式源码确认时间索引、
+归约方式和数值定义。
+
+历史4篇文档中，
+H/C6R/C7从低风险到高风险的G排序：
+
+Doc1：
+H < C6R < C7
+
+Doc2：
+H < C6R < C7
+
+Doc3：
+C6R < C7 < H
+
+Doc4：
+H < C7 < C6R
+
+这些是已有观察，
+不是新surrogate预测成功。
+
+旧G的numerator包含短程预测窗口，
+且没有精确first-onset记录。
+
+因此：
+
+不得仅靠旧G宣称严格未来预测或pre-onset。
+
+如需要严格future-only指标，
+必须通过新的匹配观测获取合法边界，
+并在测量前冻结数学定义。
+
+已有4篇文档的G排序已经被研究者看到，
+因此这批文档只能提供discovery，
+不能包装成独立confirmatory验证。
+
+==================================================
+五、先修复输入重建的确定性问题
+==================================================
+
+旧正式capture：
+deterministic_enforcement=False
+
+旧replay：
+deterministic_enforcement=True
+
+这是重要的历史runtime差异。
+
+禁止静默忽略该差异。
+
+正式新运行原则：
+
+- deterministic algorithms ON
+- TF32 OFF
+- frozen numerical policy
+- fixed-order deterministic cumsum closure
+  仅在原验证资格允许的条件下使用
+- formal INT8 quantizer不改变
+- same-GPU/same-runtime pairing
+- no clean-state reset
+- every-token QDQ/writeback
+
+若旧Torch/cumsum存在非确定性，
+不能通过关闭正式deterministic规避。
+
+也不得未验证就切换CUDA/Torch/FLA或算法。
+
+将输入恢复分为两种路径。
+
+PATH A：HISTORICAL-EQUIVALENT RECONSTRUCTION
+
+从原始token/model/rotation/source身份重建。
+
+优先尝试恢复：
+
+- frozen drive
+- clean FP anchor
+- student INT8 anchor
+- H32/H64 short-window inputs
+
+然后与历史已保存的合法SHA、
+cumulative J边界、shape/dtype和状态身份比较。
+
+精确字节哈希一致是最强证据。
+
+若采用数值容差等价，
+容差必须在测量前冻结且有旧协议依据，
+并证明满足将新短程指标与旧G配对的资格。
+
+单纯在2048/8192的J数值接近，
+不能自动证明整个未来parent trajectory等价。
+
+PATH B：NEW SELF-CONSISTENT MATCHED PANEL
+
+若历史capture不能合法恢复，
+则建立新的隔离数据面板。
+
+在同一已验证的确定性运行体系中
+匹配生成：
+
+- FP clean reference
+- true persistent INT8 student
+- short S1/S2
+- original C5/C6 baseline
+- new matched long-horizon G（如确有必要）
+
+新面板必须重新冻结独立run identity。
+
+禁止把旧runtime下的G无资格拼入新面板。
+
+路径B即使采用原4篇文档，
+也只能是matched reconstruction/discovery，
+不能视为独立样本确认。
+
+如果需要重算完整32768 G，
+必须先通过小规模qualification、
+显存/运行稳定性及存储检查。
+
+不设任意GPUh硬限制，
+但禁止无门禁地直接重算完整面板。
+
+==================================================
+六、先做最小工程试验
+==================================================
+
+新建干净工作树和新实验目录。
+
+先只用：
+
+1篇旧文档
+Hadamard + C6R
+
+完成最小重建与parity检查。
+
+这是engineering qualification，
+不得计入正式surrogate排名统计。
+
+需要验证：
+
+- clean FP state身份
+- student quantized state身份
+- rotation SHA
+- formal quantizer
+- next-token consumption
+- recurrent state writeback
+- frozen-drive parity
+- finite numerical results
+- process repeatability
+- H32/H64 window indexing
+- scale tensor shape
+- no observation-side mutation
+
+原8192 anchor定义：
+
+已消费1-based第8192个token后的state。
+
+接下来0-based：
+
+[8192,8224) 对应H32
+[8192,8256) 对应H64
+
+不得出现off-by-one错误。
+
+如果确定性或量化资格失败，
+保存第一个失败gate，STOP。
+
+不能靠删除断言或放宽容差继续。
+
+==================================================
+七、正式S1/S2定义
+==================================================
+
+对同rotation、同token、同layer、
+同quantizer group的paired scales：
+
+r = log(s_student / s_clean)
+
+PRIMARY：
+
+S1 = mean(relu(r)^2)
+
+SECONDARY：
+
+s_cap = min(s_student,s_clean)
+
+S2 =
+mean(
+  ||QDQ(u;s_student)-QDQ(u;s_cap)||²
+  /
+  (||u||²+epsilon)
+)
+
+u必须是同一份student pre-QDQ state。
+
+S2观察分支：
+
+- 不得写回recurrent state
+- 不得改变主轨迹
+- 不得修改quantizer
+- 不得触发额外模型状态变化
+
+正式quantizer：
+
+zero_point=0
+qrange=[-127,127]
+rounding=torch.round
+scale=amax(...).clamp_min(1e-12)/127
+
+其完整维度和归约使用原正式实现。
+
+S1按token、layer及scale元素等权汇总，
+先冻结确切维度与mask，避免层规模偏置。
+
+S2先进行同layer的relative normalization，
+再按layer/token等权汇总。
+
+epsilon采用经审计的原helper数值约定；
+如果没有直接适用的原约定，
+在首个科学score前固定为1e-12，
+并单独记录该新设计选择。
+
+同时记录S2两套网格的clipping/saturation
+比例，避免将网格差异误解为必然的损伤改善。
+
+控制项：
+
+D1 = mean(relu(-r)^2)
+D2 = mean(r²)
+
+基线：
+
+B0 = original C5 State relative-MSE
+
+B1 = original C6 local Functional relative-MSE
+
+B2 = B1 + 0.1*B0
+
+B0必须使用原每head矩阵relative-MSE，
+分母clamp_min(1e-12)，再按层汇总。
+
+B1必须使用真正的out_proj output
+与matched teacher output，
+global relative-MSE后再按层汇总。
+
+不能用drive内q/k/v/g/beta或out_proj权重
+构造近似functional loss来冒充B1。
+
+所有指标须由正式helper和匹配forward计算。
+
+==================================================
+八、Track B：短文档先行资格
+==================================================
+
+优先完成小规模、成本较低的Track B测试，
+确认S1/S2和C5/C6 matched helper
+可以在真实文档上同时计算。
+
+Track B：
+
+TRAINING_ACCESSIBLE_H32_H64
+
+保持训练可用的：
+
+- 1024-token document geometry
+- 8 capture positions
+- H32/H64
+- true recurrent INT8 writeback
+- 与原C5/C6相同的forward语义
+
+与长期G比较时，
+使用同一RepoBench-P文档身份和
+明确匹配的token context。
+
+不能把WikiText训练teacher的分数
+与RepoBench-P的G当作同一文档配对。
+
+如果另外测原WikiText训练分布，
+它是独立的distribution-shift诊断，
+不能算入RepoBench G的paired Spearman。
+
+Track B的inference-only指标测量
+不等于STE/Cayley梯度资格。
+
+本阶段只验证前向指标及其潜在风险排序。
+
+==================================================
+九、Track A：History-Conditioned H32/H64
+==================================================
+
+通过输入恢复资格后，测量：
+
+8192-anchor -> H32
+8192-anchor -> H64
+
+正式自然旋转：
+
+Hadamard
+C6R
+C7
+
+Native作为独立negative control。
+
+所有rotation必须来自冻结checkpoint。
+
+四篇历史文档都应使用预冻结roster，
+不得根据既有G排名选择有利子集。
+
+同document内必须保证：
+
+- exact token stream pairing
+- correct rotation coordinate
+- clean FP scale pairing
+- identical observation windows
+- source/checkpoint identity
+- no counterfactual hook writeback
+- no artificial state reset
+- same reduction definition
+
+如果历史G具备合法配对资格，
+允许做探索性关联分析。
+
+如果配对资格失败，
+只能使用新自洽标签，
+不能继续引用旧G作为正式paired outcome。
+
+==================================================
+十、必要时构建新long-horizon标签
+==================================================
+
+只有在旧标签无法合法配对、
+且新运行的persistent/capture资格全部PASS后，
+才执行新匹配G的重建。
+
+先冻结：
+
+- code and runtime
+- candidate roster
+- 4 documents
+- exact metric definitions
+- short-score outputs and hashes
+- teacher/student pairing
+- long-label schema
+- stopping and retry rules
+
+如需要完整32768运行，
+使用相同的确定性模型、
+输入、rotation和QDQ语义。
+
+长程积分应保存足够的边界累计信息，
+支持至少：
+
+8192
+8224
+8256
+32768
+
+并记录能够区分预测窗口
+和之后未来时间段的合法统计量。
+
+如果能定义严格未来窗口损伤，
+在不改变原G定义的同时作为
+单独的secondary label。
+
+不得通过改变旧G定义制造更高相关性。
+
+如果没有pre-onset证据，
+只能报告short-long association，
+不能宣称early-warning confirmed。
+
+长程标签测量不得回头改变S1/S2、
+aggregation、候选rotation或窗口。
+
+==================================================
+十一、科学统计
+==================================================
+
+全部分析只作为Discovery。
+
+主要分析：
+
+1. 各document H/C6R/C7的S1排名
+2. 各document长期G排名
+3. pairwise concordance
+4. document-level Spearman
+5. H32 vs H64
+6. Track A vs Track B
+7. S1 vs C5/B0
+8. S1 vs C6/B2
+9. S2相对S1的增量
+10. signed deflation / unsigned控制项
+
+重点报告：
+
+S1与B2是否存在不同的rotation ranking。
+
+如有discordant pairs，保留完整名单，
+但不得用已知旧G重新挑选
+最有利于S1的对照来宣称前瞻成功。
+
+已知4篇doc的长程G本身是discovery标签。
+
+不得以：
+
+- token数
+- layer数
+- group数
+- rotation-pair数
+
+代替独立document数计算显著性。
+
+只有4篇文档，主要报告描述性效应，
+不宣称稳定统计确认。
+
+若后续要验证预测分歧，
+必须另外设计独立文档的前瞻性实验。
+
+==================================================
+十二、停止门禁
+==================================================
+
+真正必须STOP的条件：
+
+- source/checkpoint identity failure
+- frozen quantizer semantic failure
+- deterministic/replay qualification failure
+- student/FP pairing invalid
+- true persistent writeback failure
+- unexplained numerical instability
+- confirmed CUDA OOM
+- uncontrollable memory growth
+- insufficient physical storage
+- unbounded no-progress execution
+- invalid label pairing
+- unrecoverable engineering dependency
+
+以下情况不是自动STOP理由：
+
+- GPU hours >4
+- GPU用时超过早期估算
+- 显存超过任意固定85%比例
+- S1与原有C6排序相近
+- 某篇文档短程指标没有明显差异
+
+这些属于资源观测或科学结果，
+不是可以随意修改的工程门禁。
+
+如果出现真正新的工程失败，
+保留完整原始证据，不能隐式重复修复
+直至得到满意结果。
+
+==================================================
+十三、最终结果标签
+==================================================
+
+允许：
+
+INPUT_RECOVERY_QUALIFIED
+HISTORICAL_G_PAIRING_QUALIFIED
+NEW_MATCHED_PANEL_QUALIFIED
+SHORT_SCALE_SURROGATE_DISCOVERY_SUPPORTED
+HISTORY_CONDITIONED_ONLY
+NO_STABLE_ROTATION_DISCRIMINATION
+NO_ELIGIBLE_INCREMENTAL_DISCORDANCE
+ENGINEERING_OR_NUMERICAL_STOP
+INVALID_LONG_LABEL_PAIRING_STOP
+
+不得将：
+
+NO_ELIGIBLE_INCREMENTAL_DISCORDANCE
+
+解释为S1没有任何预测价值。
+
+不得将：
+
+DISCOVERY_SUPPORTED
+
+解释为已经验证AIME或者新rotation性能。
+
+如果部分实验未执行，
+明确报告NOT_RUN及原因。
+
+==================================================
+十四、交付
+==================================================
+
+建立新的V2结果目录。
+
+输出真实执行过的：
+
+RECOVERY_PLAN.md
+SOURCE_AND_ARTIFACT_AUDIT.json
+RESOURCE_POLICY_V2.json
+DETERMINISM_AND_CUMSUM_GATE.json
+CAPTURE_RECONSTRUCTION_REPORT.json
+ANCHOR_IDENTITY_GATE.json
+FP_STUDENT_PAIRING_GATE.json
+PERSISTENT_QDQ_PARITY_GATE.json
+QUANTIZER_HOOK_PARITY_GATE.json
+GPU_COST_AND_MEMORY_LEDGER.json
+FROZEN_SURROGATE_SPEC.json
+
+科学测量实际发生后：
+
+TRACK_A_SCORES.csv
+TRACK_B_SCORES.csv
+PARENT_G_PAIRING_REPORT.json
+ROTATION_RANKING_ANALYSIS.csv
+C5_C6_INCREMENTAL_COMPARISON.csv
+LONG_HORIZON_LABEL_REPORT.json
+SCIENTIFIC_DISCOVERY_VERDICT.json
+
+最终：
+
+FINAL_SCIENTIFIC_REPORT.md
+RESULT_AND_DELIVERY_HASHES.json
+SHA256SUMS.txt
+
+没有执行的正式科学输出不得创建空壳CSV。
+
+每个科学单元记录：
+
+document SHA
+rotation SHA
+model SHA
+source commit
+runtime identity
+GPU UUID
+quantizer identity
+FP reference identity
+measurement interval
+actual execution receipt
+
+==================================================
+十五、最终中文报告
+==================================================
+
+请回答：
+
+1. V1究竟缺少哪些输入？
+2. 是否找到可复用的历史anchor/drive？
+3. 旧deterministic capture/replay差异如何处理？
+4. 是否实现合法的历史输入重建？
+5. 若无法恢复，是否建立了新匹配面板？
+6. Track B是否完成？
+7. Track A是否完成？
+8. H32/H64 S1/S2的真实分数是什么？
+9. H/C6R/C7自然旋转能否被区分？
+10. S1能否预测合法的长期G？
+11. S1相对原C6/B2是否有增量信息？
+12. 是否有pre-onset资格？
+13. 本次总GPUh/显存/磁盘消耗是多少？
+14. 是否值得进入独立full-model persistent KL验证？
+
+本轮不授权：
+
+- 新C8 training
+- 新rotation optimization
+- AIME26
+- free generation
+- S1/S2 gradient optimization
+- 独立full-model KL prospective pilot
+
+如果工程与数值资格PASS，
+应完成本次规定的matched surrogate Discovery，
+而不是因为人为4 GPUh预算提前停止。
+
+所有新失败必须保留，
+不得改写旧实验的COMPLETE/PASS/FAIL身份。

@@ -1,0 +1,66 @@
+{
+  "TASK_ID": "LING_KDA_ROTATION_DUAL_AXIS_FUNCTIONAL_V1",
+  "TLS_policy": {
+    "check_hostname": true,
+    "create_default_context": true,
+    "global_CA_or_environment_modified": false,
+    "passed_explicitly_to_both_urlopen_calls": true,
+    "verify_mode": "CERT_REQUIRED"
+  },
+  "application_retries": 0,
+  "candidate_objects": 50,
+  "cause_evidence": {
+    "/data/zypan/envs/ling-kda/bin/python": {
+      "default_verify_paths": {
+        "cafile": null,
+        "capath": null,
+        "openssl_cafile": "/data01/user2/.conda/envs/ling-kda/ssl/cert.pem",
+        "openssl_cafile_env": "SSL_CERT_FILE",
+        "openssl_capath": "/data01/user2/.conda/envs/ling-kda/ssl/certs",
+        "openssl_capath_env": "SSL_CERT_DIR"
+      },
+      "python": "3.11.16 (main, Sep  2 2026, 23:39:52) [GCC 15.3.0]"
+    },
+    "/usr/bin/python3": {
+      "default_verify_paths": {
+        "cafile": "/usr/lib/ssl/cert.pem",
+        "capath": "/usr/lib/ssl/certs",
+        "openssl_cafile": "/usr/lib/ssl/cert.pem",
+        "openssl_cafile_env": "SSL_CERT_FILE",
+        "openssl_capath": "/usr/lib/ssl/certs",
+        "openssl_capath_env": "SSL_CERT_DIR"
+      },
+      "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]"
+    }
+  },
+  "corrected_source": {
+    "path": "/data/zypan/worktrees/ling-kda-rotation-dual-axis-functional-v1/dual_axis_task/data_select.py",
+    "sha256": "bea1004cb9c43b70a048d0cb5482450eb9251c20c0a05c68bd9c3af076783635"
+  },
+  "declared_raw_cap_bytes": 536870912,
+  "diff": "--- before_explicit_CA\n+++ after_explicit_CA\n@@ -12,6 +12,7 @@\n import os\n import re\n import struct\n+import ssl\n import sys\n import time\n import unicodedata\n@@ -26,6 +27,11 @@\n TRAIN=Path('/data/zypan/experiments/LING_RECURRENT_DENSE_L6_L7_V1/source_traces/CALIBRATION_RAW_TEXTS.jsonl')\n FRESH=Path('/data/zypan/worktrees/ling-long-horizon-propagation-confirm-v1/inherited/data01/user2/worktrees/ling-l6-l7-objective-horizon-diagnosis-v1/experiments/LING_L7R_L8_LAYER_AWARE_MATCHED_TRAINING_V3_CONTEMPORARY/protocol/fresh_b_selection_manifest.json')\n TOTAL_CAP=512*1024**2\n+SYSTEM_CA=Path('/etc/ssl/certs/ca-certificates.crt')\n+SYSTEM_CA_SHA256='6602a85a36afc2e51c66a0df5ae3d383c5b7c2fed93339ccef7d37e01faf09e8'\n+assert hashlib.sha256(SYSTEM_CA.read_bytes()).hexdigest()==SYSTEM_CA_SHA256, 'SYSTEM_CA_IDENTITY_CHANGED'\n+TLS_CONTEXT=ssl.create_default_context(cafile=str(SYSTEM_CA))\n+assert TLS_CONTEXT.check_hostname and TLS_CONTEXT.verify_mode==ssl.CERT_REQUIRED\n EXPECTED={OLD/'PG19_TEST_GCS_LISTING.json':'2aa8c57a6d0d17156bb10f3455f3e2bc4301d19a6cdc5754de3b40ed5932581d',OLD/'PROSPECTIVE_FULL_POOL_INPUT_IDENTITY_AUDIT.json':'6ea30dae0a79ccb4b540e9fc670c23a2996ee29345a5956e390f6befaa204f67',OLD/'historical_path_identity_inventory.json':'4bc1da0da22a6b43185ba6a5507b0d4ade95b3a9bad2b3c51e015e34c023bf97',TRAIN:'37f38795847da8daa776be9d7dd3b6083442dd7a27e0d14f0dedbeaa3d4884d0',FRESH:'97b19570b1a615a7e6301a9f74eab50b176395adf0d3c28d62d4c9b00ca69adf'}\n \n def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()\n@@ -39,8 +45,9 @@\n def event(v):print(json.dumps(v,ensure_ascii=False),flush=True)\n def main():\n  assert os.environ.get('CUDA_VISIBLE_DEVICES')=='','CPU_ONLY_VISIBLE_DEVICE_BOUNDARY'\n- for x in ['FROZEN_DOCUMENTS.json','DATA_SELECTION_AUDIT.csv','audits/DATA_SELECTION_PROTOCOL.json','audits/DATA_SELECTION_MANIFEST.json','audits/DATA_SELECTION_FIRST_FAILURE.json']:\n+ for x in ['FROZEN_DOCUMENTS.json','DATA_SELECTION_AUDIT.csv','audits/DATA_SELECTION_PROTOCOL.json','audits/DATA_SELECTION_MANIFEST.json','audits/CPU_DATA_TLS_SECOND_FAILURE.json']:\n   assert not (D/x).exists(),('NO_OVERWRITE_OR_RETRY',x)\n+ assert sha(D/'audits/DATA_SELECTION_FIRST_FAILURE.json')=='3d72ca22569ce9a36365c964a6d3dcbbeaec2f7b73a99a4c2106eb5bf472fe1d','ORIGINAL_TLS_FAILURE_CHANGED'\n  assert not (D/'inputs').exists(),'NO_EXISTING_SELECTION_INPUTS'\n  started=time.time()\n  sources=[]\n@@ -91,7 +98,7 @@\n  assert metadata_scanned<=100000,'BOUNDED_HISTORY_SCAN'\n  q=urllib.parse.urlencode({'prefix':'validation/','maxResults':'100','fields':'items(name,size,generation,md5Hash),nextPageToken'})\n  listing_url='https://storage.googleapis.com/storage/v1/b/deepmind-gutenberg/o?'+q\n- with urllib.request.urlopen(listing_url,timeout=30) as response:listing=json.load(response)\n+ with urllib.request.urlopen(listing_url,timeout=30,context=TLS_CONTEXT) as response:listing=json.load(response)\n  assert 'nextPageToken' not in listing and len(listing['items'])==50,'OFFICIAL_FULL_VALIDATION50_REQUIRED'\n  objects=sorted(listing['items'],key=lambda x:x['name'])\n  assert len({x['name'] for x in objects})==50\n@@ -117,7 +124,7 @@\n   name=obj['name'];book_id=Path(name).stem;doc='pg19-validation-'+book_id\n   request_url='https://storage.googleapis.com/download/storage/v1/b/deepmind-gutenberg/o/'+urllib.parse.quote(name,safe='')+'?'+urllib.parse.urlencode({'alt':'media','generation':obj['generation']})\n   before=time.time()\n-  with urllib.request.urlopen(request_url,timeout=60) as response:\n+  with urllib.request.urlopen(request_url,timeout=60,context=TLS_CONTEXT) as response:\n    generation=response.headers.get('x-goog-generation')\n    if generation is not None:assert generation==obj['generation'],'GENERATION_HEADER_MISMATCH'\n    raw=response.read(int(obj['size'])+1)\n",
+  "failure_behavior": "any new error STOP; original first failure preserved; independent correction outcome recorded separately",
+  "inverse_control_diff_restores_original_source_byte_exact": true,
+  "original_failure": {
+    "path": "/data/zypan/experiment_runs/LING_KDA_ROTATION_DUAL_AXIS_FUNCTIONAL_V1/audits/DATA_SELECTION_FIRST_FAILURE.json",
+    "preserved": true,
+    "sha256": "3d72ca22569ce9a36365c964a6d3dcbbeaec2f7b73a99a4c2106eb5bf472fe1d"
+  },
+  "original_source": {
+    "path": "/data/zypan/experiment_runs/LING_KDA_ROTATION_DUAL_AXIS_FUNCTIONAL_V1/source/data_select_before_explicit_system_ca.py",
+    "sha256": "c586aff0e72b149713c2f2fd9af0a752f98be257df1d1aea4bddc99ae5f94e3e"
+  },
+  "previous_GPU_forward": 0,
+  "previous_raw_object_requests": 0,
+  "raw_requests_per_object": 1,
+  "remaining_correction_attempts_after_this": 0,
+  "root_authorization": "one bounded mechanical correction explicitly using existing trusted system CA; no TLS weakening; no scientific/GPU retry",
+  "scientific_selection_seed_candidates_algorithm_changed": false,
+  "status": "AUTHORIZED_SINGLE_CPU_TLS_CA_PATH_CORRECTION_BEFORE_ANY_PAYLOAD_OR_MODEL_FORWARD",
+  "system_CA": {
+    "bytes": 182140,
+    "path": "/etc/ssl/certs/ca-certificates.crt",
+    "sha256": "6602a85a36afc2e51c66a0df5ae3d383c5b7c2fed93339ccef7d37e01faf09e8"
+  },
+  "utc": "2026-10-16T12:27:05.898684+00:00"
+}

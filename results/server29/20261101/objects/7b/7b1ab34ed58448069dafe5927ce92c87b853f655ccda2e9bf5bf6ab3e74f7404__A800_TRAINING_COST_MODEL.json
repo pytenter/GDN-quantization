@@ -1,0 +1,58 @@
+{
+  "TASK_ID": "QWEN_GDN_DUALM_AWARE_ROTATION_TRAINING_READINESS_V1",
+  "status": "PREPARED_HISTORICAL_SCENARIOS_NOT_NEW_A800_MEASUREMENT",
+  "A800_RENTAL_AUTHORIZED": false,
+  "A800_FULL_TRAINING_AUTHORIZED": false,
+  "PROPOSED_A800_BILLED_HOURS_CAP": 8.0,
+  "Actual_Instance_Hourly_Price": null,
+  "price_status": "UNKNOWN",
+  "Estimated_Billed_Time": null,
+  "Estimated_Money": null,
+  "billed_time_formula": "Setup + Admission + T_A + T_D + Validation + Export + Safety_Margin; T_A and T_D use equal updates/exposure/horizon, not equal wall-time stopping",
+  "money_formula": "Estimated_Billed_Time * Actual_Instance_Hourly_Price",
+  "required_device": "one genuine NVIDIA A800 80GB class; capacity and usable memory NOT_TESTED",
+  "historical_A800_C6R": {
+    "updates": 125,
+    "tokens_per_update": 1024,
+    "H": 64,
+    "captures_per_update": 8,
+    "sum_train_document_seconds": 12365.375844005495,
+    "sum_train_document_hours": 3.43482662333486,
+    "train_phase_including_20_validation_rounds_seconds": 33532.51159002632,
+    "mean_nontraining_seconds_per_validation_checkpoint_includes_guards_exports_IO": 1058.356787301041,
+    "teacher_80_documents_seconds": 491.17906718701124,
+    "source": "authoritative completed A800 clean-room train_log/summary/readiness and teacher completion; exact paths in FROZEN_C6R_PROVENANCE.json"
+  },
+  "scenario_not_prediction": {
+    "label": "neutral assumed future A and D each cost historical C6R train_document sum; no GPU speedup assumed; D not measured",
+    "T_A_hours": 3.43482662333486,
+    "T_D_hours": 3.43482662333486,
+    "Setup_hours_assumption": 0.25,
+    "Admission_hours_assumption": 0.25,
+    "Validation_hours_assumption": 0.5879759929450229,
+    "Export_hours_assumption": 0.1,
+    "Teacher_preparation_hours_historical_proxy": 0.1364386297741698,
+    "Safety_Margin_fraction_assumption": 0.25,
+    "subtotal_hours": 8.194067869388913,
+    "Safety_Margin_hours": 2.0485169673472283,
+    "total_hours": 10.242584836736143,
+    "exceeds_proposed_8h": true
+  },
+  "unknowns": [
+    "new Dual-M full-model forward/backward step time and memory",
+    "new training data effects",
+    "target A800 runtime/kernel parity",
+    "actual instance setup/storage/network costs",
+    "actual hourly price",
+    "whether complete paired work can fit authorized paid cap"
+  ],
+  "budget_rule": "At future full-model admission, pessimistic remaining BOTH matched arms + validation/export + safety must fit authorized remaining billable time, else STOP before either formal arm. Never finish only one formal arm and claim a paired comparison.",
+  "release_checklist": [
+    "Human verifies all own processes ended and checkpoint/export hashes before stopping instance",
+    "Human stops/releases paid compute in rental provider console",
+    "Human confirms billing stopped and checks separately billed storage",
+    "No automated provider API or rental action is included"
+  ],
+  "current_cost_gate": "NOT_QUALIFIED_FOR_8H_FULL_PAIRED_TRAINING",
+  "current_recommendation": "Do not rent on a promise of completing both arms within8h. Local qualification and full runnable package prerequisites remain separate gates; any future paid admission requires explicit human authorization."
+}

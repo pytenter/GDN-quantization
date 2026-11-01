@@ -1,0 +1,1 @@
+lambda _cls, shape, stride, dtype: _tuple_new(_cls, (shape, stride, dtype))

@@ -1,0 +1,1 @@
+lambda _cls, const, src: _tuple_new(_cls, (const, src))

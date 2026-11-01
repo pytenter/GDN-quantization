@@ -1,0 +1,1 @@
+lambda _cls, reduce_scatter_input, event: _tuple_new(_cls, (reduce_scatter_input, event))

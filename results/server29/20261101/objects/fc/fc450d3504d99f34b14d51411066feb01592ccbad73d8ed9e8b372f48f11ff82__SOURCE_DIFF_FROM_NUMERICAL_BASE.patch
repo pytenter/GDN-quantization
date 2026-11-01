@@ -1,0 +1,1144 @@
+diff --git a/execution04_launcher.py b/execution04_launcher.py
+new file mode 100644
+index 0000000..8eeac62
+--- /dev/null
++++ b/execution04_launcher.py
+@@ -0,0 +1,129 @@
++"""Strict environment launch and diagnostic canaries; no science formula changes."""
++import argparse
++import ast
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++import traceback
++import types
++
++sys.dont_write_bytecode=True
++W=Path(__file__).resolve().parent
++D=Path(os.environ.get('LING_PROSPECTIVE_RESULTS','/data/zypan/experiment_runs/LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1/execution_04'))
++os.environ['LING_PROSPECTIVE_RESULTS']=str(D)
++from recovery_state import atomic_json,lock,sha,complete
++
++ENV_KEYS=['PYTHONHASHSEED','CUBLAS_WORKSPACE_CONFIG','LING_GATED_RMSNORM_FIXED_CONFIG','CUDA_VISIBLE_DEVICES','LING_TARGET_GPU_UUID','LING_EXECUTION_LANE','PYTHONDONTWRITEBYTECODE','LING_PROSPECTIVE_RESULTS']
++def selected_environment(env):return {k:env.get(k) for k in ENV_KEYS}
++
++def worker_environment(base,seed,uuid,index):
++    assert seed==0,'FROZEN_SEED_CHANGED'
++    env=dict(base)
++    env.update(PYTHONHASHSEED=str(seed),CUBLAS_WORKSPACE_CONFIG=':4096:8',LING_GATED_RMSNORM_FIXED_CONFIG='BT16_W8',PYTHONDONTWRITEBYTECODE='1',CUDA_VISIBLE_DEVICES=str(index),LING_TARGET_GPU_UUID=uuid)
++    env.pop('LING_EXECUTION_LANE',None)
++    return env
++
++def actual_lane_environment(base,uuid,index):
++    # Evaluate the exact unchanged expression used by the real master.
++    tree=ast.parse((W/'qualified_completion.py').read_text())
++    calls=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='dict' and {k.arg for k in n.keywords}=={'LING_EXECUTION_LANE','LING_TARGET_GPU_UUID','CUDA_VISIBLE_DEVICES'}]
++    assert len(calls)==1,'MASTER_ENVIRONMENT_BOUNDARY_CHANGED'
++    expression=ast.Expression(calls[0]);ast.fix_missing_locations(expression)
++    return eval(compile(expression,'unchanged_master_lane_environment','eval'),{'dict':dict,'str':str,'os':types.SimpleNamespace(environ=base),'uuid':uuid,'index':index})
++
++def process_observation():
++    return dict(environment=selected_environment(os.environ),hash_randomization=sys.flags.hash_randomization,hash_probe=hash('Ling-KDA execution04 launch chain'),pid=os.getpid())
++
++def cpu_chain_hop(role,intent):
++    value=json.loads(intent.read_text());base=Path(value['base'])
++    atomic_json(str(base)+'.'+role.upper()+'_ENV.json',process_observation())
++    if role=='master':
++        env=actual_lane_environment(dict(os.environ),value['unit_identity']['target_gpu_uuid'],'')
++        return subprocess.run([sys.executable,'-B',str(__file__),'--cpu-hop','lane','--intent',str(intent)],env=env).returncode
++    return subprocess.run([sys.executable,'-B',str(W/'unit_runner.py'),str(intent)]).returncode
++
++def readiness():
++    def read(p):return json.loads(p.read_text())
++    assert not (D/'STOP.json').exists(),'FIRST_FAILURE_NO_RETRY'
++    f=read(D/'SOURCE_CODE_FREEZE.json')
++    assert subprocess.check_output(['git','-C',str(W),'rev-parse','HEAD'],text=True).strip()==f['source_commit']
++    assert subprocess.check_output(['git','-C',str(W),'status','--porcelain'],text=True)==''
++    for n,h in f['files'].items():assert sha(W/n)==h,('SOURCE_CHANGED',n)
++    for n,k in [('CALIBRATION_CONFIG.json','config_sha256'),('EXECUTION_ROUTING.json','routing_sha256'),('FROZEN_SPEC.json','scientific_spec_sha256')]:assert sha(D/n)==f[k]
++    audit=read(D/'FROZEN_RUNTIME_ENVIRONMENT_AUDIT.json')
++    assert audit['required_environment']=={k:worker_environment({},0,'',0)[k] for k in ENV_KEYS[:3]}
++    assert sha(W/'v2_runtime.py')==audit['runtime_sha256']
++    assert sha(audit['runtime_qualified_path'])==audit['runtime_qualified_sha256']
++    tests=read(D/'CPU_LAUNCH_CHAIN_REGRESSION.json')
++    assert tests['status']=='PASS_CPU_TRUE_LAUNCH_CHAIN'
++    for n,h in tests['source_sha256'].items():assert sha(W/n)==h,('TESTED_LAUNCH_SOURCE_CHANGED',n)
++    return f
++
++def run_canary(uuid,index,routing,freeze):
++    from prospective_common import verify
++    from gpu_admission import admit
++    from gpu_telemetry import sample
++    os.environ['LING_TARGET_GPU_UUID']=uuid
++    cfg=verify();tag='gpu'+str(index)+'__runtime_canary';base=D/'runtime_canary'/tag;base.parent.mkdir(exist_ok=True)
++    admit(cfg,D/'admission'/(tag+'.window.jsonl'))
++    env=worker_environment(os.environ,cfg['seed'],uuid,index)
++    expected=base.with_name(tag+'.EXPECTED_ENV.json');atomic_json(expected,selected_environment(env))
++    document=next(d for d,u in routing['document_devices'].items() if u==uuid)
++    identity=dict(document=document,rotation='RUNTIME_CANARY_ONLY',stage='runtime_canary',source_commit=freeze['source_commit'],execution=str(D),config_sha256=freeze['config_sha256'],target_gpu_uuid=uuid,scientific_trajectory=False)
++    intent=base.with_name(tag+'.INTENT.json')
++    command=[sys.executable,'-B','-u',str(W/'runtime_launch_probe.py'),'--mode','gpu','--stage','runtime_canary','--result',str(base)+'.json','--expected',str(expected)]
++    atomic_json(intent,dict(command=command,base=str(base),unit_identity=identity,source_commit=freeze['source_commit'],tag=tag,stage='runtime_canary'))
++    p=subprocess.Popen([sys.executable,'-B','-u',str(W/'unit_runner.py'),str(intent)],env=env)
++    rc=p.wait(timeout=900)
++    assert rc==0,('GPU_RUNTIME_CANARY_FAILED',uuid,rc)
++    result=complete(Path(str(base)+'.json'),Path(str(base)+'.NATURAL_EXIT.json'),identity)
++    assert result['science_trajectory_count']==0 and result['numerical_qualification'] is False and result['gpu_uuid']==uuid
++    current=sample(uuid)
++    atomic_json(base.with_name(tag+'.POST_EXIT_TELEMETRY.json'),current)
++    return dict(uuid=uuid,index=index,status='PASS',result_path=str(base)+'.json',result_sha256=sha(str(base)+'.json'),natural_exit_sha256=sha(str(base)+'.NATURAL_EXIT.json'),scientific_trajectory_count=0,numerical_qualification=False)
++
++def launch():
++    freeze=readiness();held=lock(D/'launch.lock');test=lock(D/'controller.lock');test.close()
++    read=lambda p:json.loads(p.read_text())
++    routing=read(D/'EXECUTION_ROUTING.json');devices=sorted(routing['authorized_devices'].items(),key=lambda x:x[1])
++    for b in read(D/'REUSED_PARENT_BINDINGS.json')['units'].values():assert sha(b['original_manifest_path'])==b['original_manifest_sha256']
++    for p in (D/'runs').glob('*__parent.json'):
++        r=read(p);assert sha(D/'runs'/p.name.replace('__parent.json','__8192.pt'))==r['checkpoint_sha256']
++    from gpu_telemetry import observe
++    from gpu_admission import classify,classify_window
++    ready=False
++    for number in [1,2,3]:
++        path=D/f'GPU_PREFLIGHT_WINDOW_{number:02d}.jsonl';assert not path.exists(),'PREFLIGHT_ALREADY_EXISTS_NO_RETRY'
++        rows=observe([u for u,_ in devices],path,60,5)
++        results=[]
++        for u,_ in devices:
++            values=[r for r in rows if r['uuid']==u];results.append(dict(uuid=u,status=classify_window(values),states=[classify(r) for r in values],sample_count=len(values)))
++        atomic_json(D/f'GPU_PREFLIGHT_RESULT_{number:02d}.json',dict(epoch=time.time(),window_sha256=sha(path),results=results,maximum_windows=3))
++        if all(r['status']=='AVAILABLE_VERIFIED' for r in results):ready=True;break
++    assert ready,'RESOURCE_UNRESOLVED_STOP'
++    (D/'admission').mkdir(exist_ok=True)
++    units=[run_canary(u,i,routing,freeze) for u,i in devices]
++    atomic_json(D/'GPU_RUNTIME_CANARY.json',dict(status='PASS_BOTH_AUTHORIZED_DEVICES',units=units,scientific_trajectory_count=0,numerical_qualification=False,epoch=time.time()))
++    uuid,index=devices[0];env=worker_environment(os.environ,0,uuid,index)
++    atomic_json(D/'USER_AUTHORIZED_RUN_LAUNCH.json',dict(epoch=time.time(),source_commit=freeze['source_commit'],launcher_sha256=sha(__file__),runtime_canary='PASS',actual_master_environment=selected_environment(env),formal_order_unchanged=True))
++    os.set_inheritable(held.fileno(),True)
++    os.execve(sys.executable,[sys.executable,'-B','-u',str(W/'recovery_controller.py')],env)
++
++def main():
++    parser=argparse.ArgumentParser();parser.add_argument('--run-authorized',action='store_true');parser.add_argument('--cpu-hop',choices=['master','lane']);parser.add_argument('--intent',type=Path);a=parser.parse_args()
++    if a.cpu_hop:return cpu_chain_hop(a.cpu_hop,a.intent)
++    if not a.run_authorized:
++        readiness();print('READY_CPU_CHAIN_PASS_GPU_NOT_STARTED');return 0
++    try:launch()
++    except BlockingIOError:print('EXISTING_LAUNCH_NO_DUPLICATE');return 0
++    except BaseException as e:
++        if not (D/'STOP.json').exists():atomic_json(D/'STOP.json',dict(status='STOP',stage='EXECUTION04_LAUNCH_OR_CANARY',reason=repr(e),traceback=traceback.format_exc(),epoch=time.time(),no_retry=True))
++        env=worker_environment(os.environ,0,'',0);env['CUDA_VISIBLE_DEVICES']=''
++        rc=subprocess.run([sys.executable,'-B','-u',str(W/'finalize_cpu.py')],env=env).returncode
++        assert rc==0,'CPU_DELIVERY_ERROR_PRESERVE_SCIENCE'
++        return 1
++
++if __name__=='__main__':sys.exit(main())
+diff --git a/finalize_cpu.py b/finalize_cpu.py
+index 17dc528..1bbfc74 100644
+--- a/finalize_cpu.py
++++ b/finalize_cpu.py
+@@ -13,7 +13,7 @@ import time
+ 
+ D=pathlib.Path(os.environ['LING_PROSPECTIVE_RESULTS'])
+ OLD=pathlib.Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_MIXED_OUTCOME_RESOLUTION_V1')
+-WT=pathlib.Path('/data/zypan/worktrees/ling-kda-prospective-engineering-recovery')
++WT=pathlib.Path(__file__).resolve().parent
+ TASK='LING_KDA_P1_L7_PROSPECTIVE_EXTENSION_4DOC_V1'
+ sys.dont_write_bytecode=True
+ 
+@@ -39,72 +39,54 @@ def main():
+     from gpu_admission import proc_identity
+     for launch in D.rglob('*.LAUNCH.json'):
+         ident=read(launch)['worker']
+-        try: actual=proc_identity(ident['pid'])
+-        except (OSError,ValueError): actual=None
++        try:actual=proc_identity(ident['pid'])
++        except (OSError,ValueError):actual=None
+         assert actual!=ident,'SCIENTIFIC_WORKER_STILL_ACTIVE'
+-    imported=read(D/'CONTROLLER_RESUME_AUDIT.json')
+-    freeze=read(D/'SOURCE_CODE_FREEZE.json');head=freeze['source_commit']
++    freeze=read(D/'SOURCE_CODE_FREEZE.json');head=freeze['source_commit'];routing=read(D/'EXECUTION_ROUTING.json')
+     assert subprocess.check_output(['git','-C',str(WT),'rev-parse','HEAD'],text=True).strip()==head
+     assert subprocess.check_output(['git','-C',str(WT),'status','--porcelain'],text=True)==''
+     for n,h in freeze['files'].items():assert sha(WT/n)==h,n
++    phase0=read(D/'PHASE0_HISTORICAL_ASSET_AUDIT.json');assert phase0['status']=='PASS'
++    for historical in phase0['manifests']:
++        base=pathlib.Path(historical['path']);assert sha(base/'RESULT_AND_DELIVERY_HASHES.json')==historical['manifest_sha256']
++        for n,v in read(base/'RESULT_AND_DELIVERY_HASHES.json')['files'].items():assert sha(base/n)==v['sha256'],n
++    assert sha(D/'FROZEN_SPEC.json')==routing['original_checkpoint_contract_sha256']
+     a=read(D/'PREREGISTRATION_RECONCILIATION.json');assert a['status']=='PASS'
+     for n,h in a['frozen_protocol_files'].items():assert sha(OLD/n)==h,n
+     for name,h in a['historical_STOP_preserved'].items():assert sha(pathlib.Path(name))==h,name
+-    old_failure=read(D.parent/'CPU_AUDIT_CORRECTION.json')
+-    assert sha(pathlib.Path(old_failure['first_failure_path']))==old_failure['first_failure_sha256']
+-    for target,source in [('CPU_AUDIT_CORRECTION.json',D.parent/'CPU_AUDIT_CORRECTION.json'),
+-                          ('INITIAL_PHASE0_AUDITOR_STOP.json',D.parent/'STOP.json')]:
+-        text(D/target,source.read_text())
+-    receipts=[];all_results={};failed=[]
++    receipts=[];failed=[];samples=[]
+     for f in sorted(D.rglob('*.NATURAL_EXIT.json')):
+-        r=read(f);assert r['natural_exit']
+-        imported_unit=str(f.relative_to(D)) in imported['imported_files_sha256']
+-        assert r['source_commit']==(imported['original_source_commit'] if imported_unit else head)
+-        if imported_unit:assert sha(f)==imported['imported_files_sha256'][str(f.relative_to(D))]
++        r=read(f);assert r['natural_exit'] and r['source_commit']==head
++        assert r['wall_seconds']==r['completed_epoch']-r['started_epoch']
+         result_path=f.with_name(f.name.replace('.NATURAL_EXIT.json','.json'))
+-        assert sha(result_path)==r['result_sha256']
+-        result=read(result_path);assert result['status']=='PASS'
+-        all_results[r['tag']]=result
+-        mem=result.get('memory',[])
+-        receipts.append(dict(tag=r['tag'],stage=r.get('stage'),wall_seconds=r['wall_seconds'],gpu_hours=r['wall_seconds']/3600,
+-            receipt_sha256=sha(f),result_sha256=r['result_sha256'],reused_from_execution_01=imported_unit,
+-            peak_allocated=max((m['peak_allocated'] for m in mem),default=0),
+-            peak_reserved=max((m['peak_reserved'] for m in mem),default=0)))
++        assert sha(result_path)==r['result_sha256'];result=read(result_path);assert result['status']=='PASS'
++        mem=result.get('memory',[]);ident=r['unit_identity']
++        gpu=result.get('gpu_uuid',result.get('host',{}).get('gpu_uuid'))
++        assert gpu==ident['target_gpu_uuid']==routing['document_devices'][ident['document']]
++        receipts.append(dict(tag=r['tag'],stage=r['stage'],GPU_UUID=gpu,wall_seconds=r['wall_seconds'],gpu_hours=r['wall_seconds']/3600,receipt_sha256=sha(f),result_sha256=r['result_sha256'],peak_allocated=max((m['peak_allocated'] for m in mem),default=0),peak_reserved=max((m['peak_reserved'] for m in mem),default=0)))
+     for f in sorted(D.rglob('*.FAILED_EXIT.json')):
+-        r=read(f);failed.append(dict(tag=r['tag'],returncode=r['returncode'],wall_seconds=r['wall_seconds'],gpu_hours=r['wall_seconds']/3600,receipt_sha256=sha(f)))
++        r=read(f);failed.append(dict(tag=f.name.removesuffix('.FAILED_EXIT.json'),returncode=r['returncode'],wall_seconds=r['wall_seconds'],gpu_hours=r['wall_seconds']/3600,receipt_sha256=sha(f),GPU_UUID=r['unit_identity']['target_gpu_uuid']))
+     unreceipted=[]
+-    if stop:
+-        failure=read(D/'STOP.json');end=failure.get('stopped_epoch',failure.get('epoch'))
+-        for f in sorted(D.rglob('*.STARTED.json')):
+-            stem=f.name.removesuffix('.STARTED.json')
+-            if (f.parent/(stem+'.NATURAL_EXIT.json')).exists() or (f.parent/(stem+'.FAILED_EXIT.json')).exists():continue
+-            r=read(f);begin=r.get('started_epoch',r.get('started'))
+-            if begin is not None and end is not None:
+-                unreceipted.append(dict(tag=stem,started_record_sha256=sha(f),GPU_hours_upper_bound=max(0,end-begin)/3600,
+-                    method='worker STARTED through first STOP; no exact natural/failed-exit receipt, excluded from exact receipted total'))
+-    samples=[]
++    for launch in D.rglob('*.LAUNCH.json'):
++        base=launch.name.removesuffix('.LAUNCH.json')
++        if not (launch.parent/(base+'.NATURAL_EXIT.json')).exists() and not (launch.parent/(base+'.FAILED_EXIT.json')).exists():
++            end=read(D/'STOP.json').get('epoch',read(D/'STOP.json').get('stopped_epoch')) if stop else None
++            begin=read(launch)['started_epoch'];unreceipted.append(dict(tag=base,launch_sha256=sha(launch),GPU_hours_upper_bound_to_first_STOP=max(0,end-begin)/3600 if end else None,exact_GPU_hours='UNKNOWN_NO_EXIT_RECEIPT'))
+     for f in D.rglob('*.GPU_EXCLUSIVITY.jsonl'):
+         for line in f.read_text().splitlines():
+             j=json.loads(line)
+             if complete:assert j['exclusive'],j['failure_conditions']
+             for row in j.get('pid_classifications',[]):
+-                if row.get('classification')=='VERIFIED_THIS_GPU_WORKER':
+-                    value=row['used_gpu_memory_mib']
+-                    if str(value).replace('.','',1).isdigit():samples.append(float(value))
+-    ledger=dict(status='COMPLETE' if complete else 'STOP_PARTIAL',experiment=TASK,source_commit=head,
+-        actual_GPU_worker_count=len(receipts)+len(failed)+len(unreceipted),natural_exit_worker_count=len(receipts),failed_exit_worker_count=len(failed),
+-        GPU_hours=sum(w['gpu_hours'] for w in receipts)+sum(w['gpu_hours'] for w in failed),
+-        GPU_hours_method='serial worker launch to natural/failed exit wall time, including model loading and context teardown; CPU and controller waits excluded; not utilization-weighted kernel time',
+-        peak_CUDA_allocated=max((w['peak_allocated'] for w in receipts),default=0),peak_CUDA_reserved=max((w['peak_reserved'] for w in receipts),default=0),
+-        CUDA_peak_scope='original loop reset statistics for qualification/formal; short teacher and per-condition peaks separately retained; failed worker peak may be unavailable',
+-        NVML_sample_peak_MiB=max(samples) if samples else None,NVML_samples=len(samples),NVML_scope='periodic exact-UUID verified process samples, not continuous instantaneous peak',
+-        GPU_UUID='GPU-de53f243-b271-521c-d875-d96611ed8574',physical_GPU=6,hardware='single RTX3090 24GB; single-cache serial',
+-        natural_exit_workers=receipts,failed_exit_workers=failed,unreceipted_duration_upper_bounds=unreceipted,
+-        no_GPUh_cap=True,no_85percent_gate=True,training_steps=0,
+-        STOP=read(D/'STOP.json') if stop else None)
+-    ledger['GPU_hours_reused_execution_01']=sum(w['gpu_hours'] for w in receipts if w['reused_from_execution_01'])
+-    ledger['GPU_hours_new_execution_02']=sum(w['gpu_hours'] for w in receipts if not w['reused_from_execution_01'])+sum(w['gpu_hours'] for w in failed)
+-    ledger['new_GPU_worker_count']=sum(not w['reused_from_execution_01'] for w in receipts)+len(failed)+len(unreceipted)
++                if row.get('classification')=='VERIFIED_THIS_GPU_WORKER' and str(row['used_gpu_memory_mib']).replace('.','',1).isdigit():samples.append(float(row['used_gpu_memory_mib']))
++    oldresource=read(pathlib.Path(routing['original_execution'])/'RESOURCE_REPORT.json')
++    old1=oldresource['GPU_hours_reused_execution_01'];old2=oldresource['GPU_hours_new_execution_02']
++    new=sum(r['gpu_hours'] for r in receipts)+sum(r['gpu_hours'] for r in failed)
++    ledger=dict(status='COMPLETE' if complete else 'STOP_PARTIAL',experiment=TASK,source_commit=head,actual_GPU_worker_count=len(receipts)+len(failed)+len(unreceipted),natural_exit_worker_count=len(receipts),failed_exit_worker_count=len(failed),GPU_hours_new_execution_04=new,GPU_hours_reused_execution_01=old1,GPU_hours_reused_execution_02=old2,GPU_hours=new+old1+old2,GPU_hours_method='sum of actual per-worker launch-to-exit wall times; includes load/teardown, excludes admission/CPU/waits; concurrent lanes summed separately, no utilization weighting',peak_CUDA_allocated=max([oldresource['peak_CUDA_allocated']]+[r['peak_allocated'] for r in receipts]),peak_CUDA_reserved=max([oldresource['peak_CUDA_reserved']]+[r['peak_reserved'] for r in receipts]),peak_CUDA_allocated_new_execution_04=max((r['peak_allocated'] for r in receipts),default=0),peak_CUDA_reserved_new_execution_04=max((r['peak_reserved'] for r in receipts),default=0),CUDA_peak_scope='original loop-reset qualification/formal counters; excludes model-load whole-lifetime high-water mark; historical short scope separately preserved',NVML_sample_peak_MiB=max(samples+[oldresource['NVML_sample_peak_MiB']]) if samples else oldresource['NVML_sample_peak_MiB'],NVML_samples_new_execution_04=len(samples),NVML_scope='periodic exact-UUID owned process sample; not continuous instantaneous peak',device_mapping=routing['document_devices'],natural_exit_workers=receipts,failed_exit_workers=failed,unreceipted_duration_upper_bounds=unreceipted,no_GPUh_cap=True,no_85percent_gate=True,training_steps=0,STOP=read(D/'STOP.json') if stop else None)
++    ledger['runtime_canary_worker_count']=sum(r['stage']=='runtime_canary' for r in receipts)
++    ledger['science_qualification_and_formal_worker_count']=sum(r['stage']!='runtime_canary' for r in receipts)+len(failed)
++    ledger['runtime_canary_GPU_hours']=sum(r['gpu_hours'] for r in receipts if r['stage']=='runtime_canary')
++    ledger['historical_execution_03_failed_start_GPU_hours']=read(D.parent/'execution_03/RESOURCE_REPORT.json')['GPU_hours_new_execution_03']
++    ledger['GPU_hours_all_execution_attempts']=ledger['GPU_hours']+ledger['historical_execution_03_failed_start_GPU_hours']
+     publish(D/'RESOURCE_REPORT.json',ledger)
+     selection=read(D/'FROZEN_4DOC_SELECTION.json') if (D/'FROZEN_4DOC_SELECTION.json').exists() else None
+     rows=[];position_rows=[];unit_ids=[];counts=collections.Counter();fp_complete=student_complete=0
+@@ -122,9 +104,8 @@ def main():
+                 for key in ['uninterrupted_suffix_full_logit_sha256','final_full_native_cache_sha256','audit_state_fingerprint','checkpoint_sha256']:
+                     assert parent[key]==resumed[key],(doc,rot,key)
+                 assert sha(pathlib.Path(parent['checkpoint_path']))==parent['checkpoint_sha256']
+-        if complete:
+-            import torch
+-            assert not torch.cuda.is_initialized()
++        import torch
++        assert not torch.cuda.is_initialized()
+         for d in selection['documents']:
+             doc=d['document'];token_file=pathlib.Path(d['document_identity']['token_file_path']);tokens=read(token_file)
+             paths={c:D/'formal'/f'{doc}__{c}__formal.json' for c in ['FP',d['P1_predicted_rotation'],d['L7_predicted_rotation']]}
+@@ -136,7 +117,7 @@ def main():
+                 assert j['token_sha256']==sha(token_file) and j['primary_spec_sha256']==sha(D/'FROZEN_SPEC.json')
+                 assert j['formal_observer_uninterrupted_parity_PASS'] and j['observer_qualified_before_first_primary_reduction']
+                 assert j['final_cache_inventory']['cache_bytes']==2033025024
+-                assert j['gpu_uuid']==ledger['GPU_UUID']
++                assert j['gpu_uuid']==routing['document_devices'][doc]
+                 for rt in j['runtime']:
+                     assert rt['torch']==spec['runtime']['torch'] and rt['cuda_runtime']==spec['runtime']['cuda_runtime']
+                     assert rt['kernel_selector']==spec['runtime']['selector'] and rt['seed']==0
+@@ -151,7 +132,7 @@ def main():
+                     digest=hashlib.sha256()
+                     for ref in j['references']:
+                         path=pathlib.Path(ref['path']);assert sha(path)==ref['sha256'] and path.stat().st_size==ref['bytes']
+-                        if complete:
++                        if True:
+                             payload=torch.load(path,map_location='cpu',weights_only=False)
+                             assert payload['position']==ref['position'] and payload['token']==tokens[ref['position']]
+                             if ref['logits']:
+@@ -159,7 +140,7 @@ def main():
+                                 assert bool(torch.isfinite(logits).all())
+                                 digest.update(ref['position'].to_bytes(8,'little'));digest.update(logits.detach().contiguous().numpy().tobytes())
+                             del payload
+-                    if complete:assert digest.hexdigest()==j['sampled_logits_content_sha256']
++                    assert digest.hexdigest()==j['sampled_logits_content_sha256']
+                 else:
+                     student_complete+=1;v=j['primary_samples']
+                     assert [x['position'] for x in v]==positions and all(math.isfinite(x['KL']) and x['vocabulary_dimension']==157184 for x in v)
+@@ -203,91 +184,111 @@ def main():
+         DOCUMENT_LEVEL_VERDICT=verdict,SCIENTIFIC_INTERPRETATION_STATUS='CONDITIONAL_SMALL_PROSPECTIVE_EXTENSION_NO_STATISTICAL_CONFIRMATION' if complete else 'INCOMPLETE_NO_CONFIRMATORY_INFERENCE',
+         TRAINING_AUTHORIZATION='NOT_AUTHORIZED',FINAL_EXECUTION_STATUS='COMPLETE_AND_STOP' if complete else 'FAIL_CLOSED_STOP')
+     publish(D/'FINAL_STATUS.json',status)
+-    decisions=list((D/'screening').glob('*.SELECTION_DECISION.json')) if (D/'screening').exists() else []
+-    if decisions and not (D/'SHORT_HORIZON_SELECTION.csv').exists():
+-        import prospective_pipeline as pipeline
+-        pipeline.export_selection_csv(sorted((read(f) for f in decisions),key=lambda d:d['scan_index']))
+-    selected_text=', '.join(d['document'] for d in selection['documents']) if selection else 'NOT_FROZEN'
+-    pair_text='；'.join(f"{d['document']}: P1={d['P1_predicted_rotation']}, L7={d['L7_predicted_rotation']}, gaps={d['P1_gap']}/{d['L7_gap']}" for d in selection['documents']) if selection else 'NOT_RUN'
+-    table='|Document|P1 rotation|L7 rotation|K_P1|K_L7|Delta|Winner|\n|---|---|---|---:|---:|---:|---|\n'
++    spec=read(D/'FROZEN_SPEC.json');matrix=[];checkpoints=[]
++    for u in spec['new_units']:
++        key=u['document']+'__'+u['rotation'];p=D/'runs'/(key+'__parent.json');f=D/'runs'/(key+'__resumed_parity.json');cp=D/'runs'/(key+'__8192.pt');qp=D/'qualification_units'/(key+'.json')
++        row=dict(document=u['document'],rotation=u['rotation'],target_GPU_UUID=routing['document_devices'][u['document']],parent_status='PASS' if p.exists() else 'NOT_RUN',target_fresh64_status='PASS' if f.exists() else 'NOT_RUN',qualification_status='PASS' if qp.exists() else 'NOT_COMPLETED',formal_status='COMPLETE' if (D/'formal'/(key+'__formal.json')).exists() else 'NOT_RUN')
++        for stage,field in [('parent','parent_status'),('resumed_parity','target_fresh64_status')]:
++            failed_path=D/'runs'/(key+'__'+stage+'.FAILED_EXIT.json')
++            if failed_path.exists():
++                row[field]='FAILED';row['qualification_status']='FAILED_OR_NOT_QUALIFIED';row['failed_exit_sha256']=sha(failed_path)
++        if qp.exists():
++            q=read(qp)
++            from qualified_completion import compare_exact
++            compare_exact(read(p),read(f),row['target_GPU_UUID'])
++            assert sha(p)==q['parent_sha256'] and sha(f)==q['resumed_sha256'] and sha(cp)==q['checkpoint_sha256']
++            row['qualification_manifest_sha256']=sha(qp)
++        if cp.exists():
++            parent=read(p);assert sha(cp)==parent['checkpoint_sha256']
++            checkpoints.append(dict(document=u['document'],rotation=u['rotation'],path=str(cp),resolved_path=str(cp.resolve()),bytes=cp.stat().st_size,sha256=sha(cp),parent_manifest_path=str(p),parent_manifest_sha256=sha(p),parent_GPU_UUID=parent['host']['gpu_uuid'],qualified_GPU_UUID=row['target_GPU_UUID'] if qp.exists() else 'NOT_QUALIFIED',next_position=8192,checkpoint_contract_sha256=sha(D/'FROZEN_SPEC.json')))
++        matrix.append(row)
++    qualified=sum(r['qualification_status']=='PASS' for r in matrix)
++    publish(D/'QUALIFICATION_MATRIX.json',dict(status='COMPLETE' if qualified==12 else 'PARTIAL',target_device_qualified=qualified,planned=12,historical_GPU6_complete=8,units=matrix))
++    publish(D/'CHECKPOINT_MANIFEST.json',dict(status='PASS_ACTUAL_BYTE_SHA',count=len(checkpoints),checkpoints=checkpoints))
++    status.update(ENGINEERING_COMPLETE=(D/'GPU_RUNTIME_CANARY.json').exists() and read(D/'GPU_RUNTIME_CANARY.json')['status']=='PASS_BOTH_AUTHORIZED_DEVICES',NUMERICAL_QUALIFICATION_COMPLETE=qualified==12,FORMAL_SCIENCE_COMPLETE=complete and fp_complete==4 and student_complete==8,QUALIFIED_CONDITIONS=qualified,FORMAL_FP_COMPLETE=fp_complete,FORMAL_STUDENT_COMPLETE=student_complete,ACTUAL_VALID_DOCUMENTS=len(rows))
++    # FINAL_STATUS above is written by the inherited checks; the final status
++    # file is committed only once below after these independent counts.
++    publish(D/'FINAL_MACHINE_STATUS.json',status)
++    table='|文档|P1旋转|原L7旋转|K_P1|K_L7|Delta|判定|\n|---|---|---|---:|---:|---:|---|\n'
+     for r in rows:table+=f"|{r['document']}|{r['P1_rotation']}|{r['L7_rotation']}|{r['K_P1']:.17g}|{r['K_L7']:.17g}|{r['Delta']:.17g}|{r['winner']}|\n"
+-    effects=sorted(((abs(r['Delta']),r['document']) for r in rows),reverse=True)
+-    effect_text='；'.join(f'{doc}: |Delta|={value:.17g}' for value,doc in effects) or 'NOT_RUN'
+-    p1_failed=[r['document'] for r in rows if r['winner']=='L7']
+-    l7_failed=[r['document'] for r in rows if r['winner']=='P1']
+-    old_pairs={frozenset(['H_to_L6_a50','H_to_L7_a25']),frozenset(['H_to_L6_a50','H_to_L7_a50'])}
+-    reused_pair_docs=[r['document'] for r in rows if frozenset([r['P1_rotation'],r['L7_rotation']]) in old_pairs]
+-    report=f'''# Ling/KDA P1 vs Original L7 四文档前瞻验证
++    blocker=json.dumps(read(D/'STOP.json'),ensure_ascii=False,indent=2) if stop else 'NONE'
++    pairs='；'.join(f"{r['document']}: {r['P1_predicted_rotation']} vs {r['L7_predicted_rotation']} (gap={r['P1_gap']}/{r['L7_gap']})" for r in selection['documents'])
++    report=f'''# Ling/KDA 四文档前瞻实验 qualified completion
++
++科学ID：{TASK}；本轮独立身份：execution_04。结论：{status['FINAL_EXECUTION_STATUS']}。ENGINEERING_COMPLETE={status['ENGINEERING_COMPLETE']}；NUMERICAL_QUALIFICATION_COMPLETE={status['NUMERICAL_QUALIFICATION_COMPLETE']}；FORMAL_SCIENCE_COMPLETE={status['FORMAL_SCIENCE_COMPLETE']}。原两文档正式 MIXED 永久保留，旧 posthoc 面板不变。
+ 
+-实验：{TASK}。最终执行：{status['FINAL_EXECUTION_STATUS']}。原两篇正式1胜1负、MIXED永久保留；旧交叉面板仅为事后探索，本轮不与历史合并。
++## A. 原资产审计
+ 
+-1. 读取的正式资产：原FUNCTIONAL_VALIDATION成功delivery及COMPLETED_ARTIFACT_AUDIT，MIXED_OUTCOME_RESOLUTION成功RESULT_AND_DELIVERY_HASHES，正式NEXT_PROSPECTIVE_4DOC_PREREGISTRATION及协议freeze。SHA与原scorer身份PASS，具体绝对路径/SHA见PREREGISTRATION_RECONCILIATION.json。
++原预注册 SHA={phase0['pre_registration_sha256']}；四篇 freeze SHA={phase0['selection_sha256']}；freeze 北京时间2026-10-14 10:44:26。Phase0逐文件核验原成功manifest、execution01/02 manifest和SHA清单、64条评分、9个真实checkpoint、8个完整PASS和第9 parent。旧目录全程只读。修复仅在解释器启动前由launcher构造冻结三变量环境；未改或删除initializer断言。新科学文档和旋转未改：{pairs}。79项源资产含模型权重实际字节SHA已复核。execution03原环境启动错误与全部旧修复记录只读保留。本轮真实启动链路CPU回归见CPU_LAUNCH_CHAIN_REGRESSION.json；parent/fresh64正例与缺失seed负例均调用冻结initializer。GPU2/3各一次runtime canary见GPU_RUNTIME_CANARY.json，不加载模型且科学轨迹计数0。数学helper、原quantizer/forward/scale/KL reducer不变，实际新源码commit={head}，diff与AST核验见SOURCE_DIFF.patch和NUMERICAL_SOURCE_COMPATIBILITY_AUDIT.json。
+ 
+-2. PG19输入：100篇原文、完整token重新编码、前缀token、MD5/SHA及去重/排序逐项复现。历史排除20、长度不足22、输入资格58，与冻结记录完全一致。首次新增CPU审计脚本错误保留CRLF，导致假失败；对照原Path.read_text读取后复现全部原SHA。首次STOP和修复证据保留，科学输入未改、当时GPU科学单元0。
++## B. GPU稳定性和使用证据
+ 
+-3. 实际完整短程筛选{len(decisions)}篇，上限40。选择状态：{status['SHORT_HORIZON_SELECTION_STATUS']}。每篇完整16个冻结旋转、原P1和L7_TOTAL、两窗256/1024 H128、18层16heads；筛选阶段没有读取新文档长程结果。
++用户最新明确授权GPU2/3。当前目标设备绑定为{routing["authorized_devices"]}；本轮实际60秒预检结果见GPU_PREFLIGHT_RESULT_02/03，逐worker另有原冻结准入记录。昨日准备窗口的GPU4/5仅是历史准备证据；系统Xorg图形约4MiB显式保留PID/UID/starttime及双API身份。最初新增审计将任何graphics一概判busy，超过原冻结compute准入定义；原窗口原样保留，解释修正在GPU_PREFLIGHT_INTERPRETATION.json，未放宽util/内存/60秒/final3条件。启动时非目标GPU占用见本轮只读inventory，没有使用或终止非目标进程。主机PID namespace及不可读驱动日志仍UNKNOWN；实际每个worker要求SMI/NVML compute exact自有PID/UID/starttime/UUID，图形身份保持冻结基线。所有worker（包括canary）都另经一次原60秒准入；预检不冒充正式worker准入。Canary仅初始化CUDA和最小分配，无模型推理，不计资格或科学轨迹；卡小时在账本按stage单列。
+ 
+-4. 最终四篇：{selected_text}。
++## C. 资格
+ 
+-5. 每篇冻结预测与midrank gap：{pair_text}。完整16分数、两套排名、全部eligible pairs、固定优先规则及过程见FROZEN_4DOC_SELECTION.json和SHORT_HORIZON_SELECTION.csv；精确相等才并列，双方gap≥3，最大min-gap后字典序。
++目标设备真实合格 {qualified}/12；历史GPU6 8/12保持原标签。9个已完成parent没有重算，跨设备fresh64须逐条件比较全部64 full-V logits SHA、完整native cache、audit state、checkpoint SHA，恢复tensor指纹/RNG及observer ON/OFF exact；新设备标签只有真实通过后才生成。第四篇只计算其原缺3个parent及fresh。数学与数值门禁、精确比较方式未改。逐条件状态见QUALIFICATION_MATRIX.json；parent不等于完整PASS。
+ 
+-6. Selection freeze：{status['FROZEN_SELECTION_STATUS']}。实际freeze时间和SHA记录在SELECTION_FREEZE_RECEIPT.json，任何新长程worker及Primary outcome之前共同冻结；没有根据结局换文档或旋转。
++## D. 正式32K
+ 
+-7. numerical/observer/fresh-process resume/persistent QDQ/physical资格：{status['NUMERICAL_QUALIFICATION_STATUS']}。自身旋转0→8192完整KDA/MLA/conv/position与RNG checkpoint，fresh8192→8256 exact64 logits/cache/audit、ON/OFF observer，原helper AST/SHA、相同GPU UUID/runtime及原reducer合同。INT8代码经QDQ后以FP32承载量化值写回并由下一kernel消费，不宣称physical resident INT8 kernel storage，不存在高精度shadow绕过量化。
++FP {fp_complete}/4；student {student_complete}/8；valid文档 {len(rows)}/4；planned12轨迹。资格全部12通过且资源PASS后才正式运行，原冻结文档順序逐篇FP→P1→L7，全局串行；双卡只加速资格阶段。同文档FP/P1/L7在同一目标UUID/runtime配对。原8192 checkpoint是其自身token0量化/FP历史的真实合法前缀；迁移资格只有在真实fresh64 bitwise证明完整状态/缓存兼容后才算PASS，再由正式first64 observer复验；本轮实际资格/轨迹计数以前述字段为准，绝不把8256当32768。前3篇prefix历史GPU6、正式continuation设备={routing["document_devices"]["pg19-test-41603"]}，第四篇设备={routing["document_devices"]["pg19-test-26183"]}；不会声称整条轨迹始终在同UUID。INT8 code经QDQ后由FP32载体承载量化值，写回并被下一kernel消费；不称physical resident INT8 storage。
+ 
+-8. 正式完整轨迹：FP {fp_complete}/4，persistent student {student_complete}/8，计划总12。完成的单元均32768执行，384固定位置齐全；未完成或未启动单元不填零、不替换。planned document分母4，实际valid={len(rows)}。
++## E. Primary结果
+ 
+-9. 完整精度逐文档Primary：
++{table if rows else 'NOT_RUN：没有完整有效四文档Primary；未执行项不填0、不生成空科学CSV。'}
++V=157184，原FP32 KL(FP||student)，消费ids[t]后logits预测ids[t+1]，t=8192+64k，k0..383，末32704，模型实际endpoint32768。实际完整student逐点有限且384齐全，严格原Python sum/384（没有新求和算法）。Delta=K_P1-K_L7，阈值3.3300064494019496e-6仅原经验数值分辨率。P1={counts['P1']}，L7={counts['L7']}，UNRESOLVED={counts['UNRESOLVED']}，MISSING={4-len(rows)}。原协议不报告confirmatory p-value；即使独立无平局且p0=.5下4/4同方向，单侧exact sign .0625也不构成5%确认。本轮仅短程分歧及gap≥3条件下的小样本前瞻解释，document为单位，不将384点/层/heads当独立n，不合并旧2篇为n6。E_future/Hidden KL=NOT_FROZEN_NOT_COMPUTED。
+ 
+-{table if rows else 'NOT_RUN：没有可合法汇总的完整文档Primary；未创建空科学结果表。'}
+-原V157184 FP32 KL(FP||student)，消费token[t]后的next-token logits，positions8192+64k至32704，Python sum/384；模型运行至32768。阈值3.3300064494019496e-6原样保留，只是同合格合同的经验数值分辨率。相对差异(Delta/K_L7)在CSV明确分母，仅描述，非新Primary/Secondary。
++## F. 实际资源及交付
+ 
+-10. 文档级方向：P1={counts['P1']}，L7={counts['L7']}，UNRESOLVED={counts['UNRESOLVED']}，MISSING={4-len(rows)}。方向判定以冻结经验分辨率为界，不将小于分辨率的符号算成胜利。
++execution01复用 {old1:.17g} GPUh；execution02复用 {old2:.17g} GPUh；execution04新增 {new:.17g} GPUh；累计 {ledger['GPU_hours']:.17g} GPUh。本轮自然退出worker {len(receipts)}（含runtime canary {ledger["runtime_canary_worker_count"]}）、失败退出 {len(failed)}；历史execution03失败启动另计 {ledger["historical_execution_03_failed_start_GPU_hours"]:.17g} GPUh，全部尝试合计 {ledger["GPU_hours_all_execution_attempts"]:.17g} GPUh；未获退出receipt的时段仅独立上界，不能伪装精确计量。总计按每worker launch-to-exit求和，含加载/退出，排除CPU/准入空等；并行卡小时分别相加。本轮CUDA allocated峰值 {ledger['peak_CUDA_allocated_new_execution_04']} bytes，reserved {ledger['peak_CUDA_reserved_new_execution_04']} bytes；历史+本轮NVML定期owned采样峰值 {ledger['NVML_sample_peak_MiB']} MiB。CUDA原loop reset scope、NVML periodic scope有明确限制，未声称whole-lifetime或连续峰值。真实checkpoint {len(checkpoints)}个，逐路径、bytes、SHA见CHECKPOINT_MANIFEST.json；FP真实payload见各formal manifest。服务器 {D}；工作树 {WT}；本地交付 /Users/pytenter/Documents/临时项目1/ling_prospective_extension_4doc_v1/execution_04_minimal_recovery/delivery/。大型FP/checkpoint留服务器绑定SHA，模型不下载。manifest与SHA256SUMS含manifest自身的SHA验证。
+ 
+-11. 独立前瞻解释：{verdict}。各方向来自新文档和预先冻结pair；只适用于短程P1/L7分歧且双方rank gap≥3的条件分布。独立统计单位是document，不把384位置、18层16heads或6个contrast当独立样本。本轮按预注册不报告确认性p-value。即使4/4也不宣称统计确认、可训练Loss、完整未来Query因果机制或reasoning/AIME改善。
++## G. 首个blocker与复用资产
+ 
+-12. 与旧候选选择现象：本轮冻结pair与旧两种pair重合的文档为{reused_pair_docs}。只测所冻两个student，没有额外L7-a50对照；未测第三候选时不能断定复制了旧三旋转排序或L7-a50普遍最优。P1预测失败文档={p1_failed}，L7预测失败文档={l7_failed}，其余UNRESOLVED不计胜负。效应大小排序：{effect_text}；文档方向计数不按少数大效应加权，不凭 pooled mean 宣称优势。四篇不足以判断效应分布的总体代表性。
++```json
++{blocker}
++```
+ 
+-13. 实际资源：GPU worker {ledger['actual_GPU_worker_count']}，自然退出{len(receipts)}，失败退出{len(failed)}；实际{ledger['GPU_hours']:.12g} GPUh。CUDA allocated峰值{ledger['peak_CUDA_allocated']} bytes，reserved峰值{ledger['peak_CUDA_reserved']} bytes；NVML采样峰值{ledger['NVML_sample_peak_MiB']} MiB。逐worker墙钟含加载/退出，排除CPU/空等；CUDA为原统计scope，NVML不是连续瞬时高水位。详见RESOURCE_REPORT.json，单GPU6 RTX3090串行单缓存。
++实际成功单元/NOT_RUN见QUALIFICATION_MATRIX及机器状态。任何失败首条保留no_retry，不放宽门禁、不重选、不用fixture作新科学证据。已有成功字节可复用的范围仅已核验的相同科学key、source/runtime及实际已合格设备；新设备/新的恢复仍须资格，不自动沿用旧PASS。
+ 
+-14. source commit={head}。实际服务器交付目录={D}，clean worktree={WT}。模型/旋转/输入/FP/checkpoint/runtime/评分身份及source SHA逐项绑定；大型张量留服务器，可用manifest核验。RESULT_AND_DELIVERY_HASHES.json和SHA256SUMS.txt封存交付身份。
++## H. 科学解释与后续建议
+ 
+-15. 已{status['FINAL_EXECUTION_STATUS']}。TRAINING_AUTHORIZATION=NOT_AUTHORIZED。没有启动梯度、optimizer/Cayley、新L8/L9、AIME/free generation、额外32K或Qwen。本轮仅完成已授权4-doc扩展；后续建议只写报告。
++{verdict}。四篇仅有限比较证据，不能证明P1梯度可优化性、全部future Query因果机制、reasoning/AIME改善或总体稳定优势。若混合，后续可另行设计error propagation/readout observability研究；若方向一致，仍需更大独立预注册confirmation。建议不自动执行。训练授权NOT_AUTHORIZED；P1 Loss、L8/L9、STE/Cayley/optimizer、AIME/free generation/Qwen均未启动，交付后停止。
+ 
+-方向预测结果可以提供P1相对于L7在这一条件分布中的有限比较证据，但不能据4篇识别统计条件独立的增量信息。更大独立验证可另行预注册；若仍MIXED，可优先error propagation与future readout observability机制研究；若不支持P1，降低其作为独立训练Loss的优先级。任何P1 gradient trainability资格研究仍需独立设计与授权，本轮结果不自动推进训练。具体误差方向、Query敏感性与历史累积的因果链仍NOT_IDENTIFIABLE。
++## 原15问逐项状态
+ 
+-E_future=Hidden KL=NOT_FROZEN_NOT_COMPUTED。原L7已H128 recurrent-aware；P1仍原K3局部readout-aware，并非全部未来Query。原AIME背景未重测。
++1. 读取原成功、历史execution01/02 manifest与科学预注册：PASS，路径/SHA见Phase0。
++2. 输入资格原100/20/22/58与真实tokens/raw SHA保留，新执行不重复编码或选文档。
++3. 原完整4篇16旋转=64分数全部复用，未重筛。
++4. 四篇41603/2544/7987/26183，完全冻结。
++5. 预测与midrank gap：{pairs}；全部候选、排名、规则原样。
++6. freeze在所有新长程前；原时间和receipt字节未改。
++7. 目标GPU numerical/fresh/observer/QDQ资格：{qualified}/12，身份及设备迁移证据逐项保留。
++8. 正式FP {fp_complete}/4，student {student_complete}/8，valid {len(rows)}/4。
++9. 完整精度KL、Delta见E与真实CSV，未完成值NOT_RUN。
++10. 文档计数P1={counts['P1']}/L7={counts['L7']}/UNRESOLVED={counts['UNRESOLVED']}，未完成不算负。
++11. 只作条件性小样本前瞻，不做confirmatory p-value，不伪重复。
++12. 没有额外第三候选轨迹，不能据冻结两候选推断L7-a50普遍最优或复现所有旧三旋转排序。
++13. 实际资源分执行账本及真实scope见F/RESOURCE_REPORT。
++14. 实际source commit、路径、模型/输入/旋转/CP/FP/runtime/UUID/scoring SHA见封存清单。
++15. 终态{status['FINAL_EXECUTION_STATUS']}；未授权训练与额外科学任务均未执行。
+ 
+ 机器状态：
+ 
+ ```json
+-{json.dumps(status,indent=2,ensure_ascii=False)}
++{json.dumps(status,ensure_ascii=False,indent=2)}
+ ```
+ '''
+-    if not complete:
+-        report=report.replace('完整16分数、两套排名、全部eligible pairs、固定优先规则及过程见FROZEN_4DOC_SELECTION.json和SHORT_HORIZON_SELECTION.csv','实际完成分数、排名及eligible pairs见screening/*.SELECTION_DECISION.json；未freeze时FROZEN_4DOC_SELECTION.json为NOT_RUN')
+-        report=report.replace('实际freeze时间和SHA记录在SELECTION_FREEZE_RECEIPT.json，任何新长程worker及Primary outcome之前共同冻结','若未freeze则SELECTION_FREEZE_RECEIPT.json为NOT_RUN，尚无新长程outcome')
+-    report+='\n工程恢复：execution_01只读保留，原48条分数经manifest验证后直接复用；本轮新增部分从第四篇按原顺序继续。历史GPU异常根因仍UNKNOWN，实际连续准入结果见GPU_ADMISSION_DIAGNOSIS.json；GPU6同UUID，未更换设备。资源准入、控制器中断与恢复的synthetic测试见GPU_ADMISSION_TEST_REPORT.json、CONTROLLER_RESUME_TEST_REPORT.json。数学helper不变及实际源码diff见NUMERICAL_SOURCE_COMPATIBILITY_AUDIT.json和SOURCE_DIFF.patch。12条件自身checkpoint/fresh64/observer资格见LONG_HORIZON_QUALIFICATION.json（未运行则NOT_RUN）。资源账本分列execution_01复用GPUh和execution_02新增GPUh。没有以提高阈值或删除利用率检查取得PASS。\n'
+     text(D/'FINAL_SCIENTIFIC_REPORT.md',report)
+     from recovery_controller import event
+     event('COMPLETE_AND_STOP' if complete else 'STOP_DELIVERY_COMPLETE',CPU_verification='PASS',training_steps=0)
+-    required=['FINAL_SCIENTIFIC_REPORT.md','PREREGISTRATION_RECONCILIATION.json','SHORT_HORIZON_SELECTION.csv','FROZEN_4DOC_SELECTION.json',
+-        'ENGINEERING_QUALIFICATION.json','FOUR_DOC_PRIMARY_RESULTS.csv','POSITIONAL_KL.csv','RESOURCE_REPORT.json','FINAL_STATUS.json',
+-        'ENGINEERING_RECOVERY_DESIGN.md','GPU_ADMISSION_DIAGNOSIS.json','GPU_ADMISSION_TEST_REPORT.json',
+-        'CONTROLLER_RESUME_AUDIT.json','CONTROLLER_RESUME_TEST_REPORT.json','LONG_HORIZON_QUALIFICATION.json']
++    required=['FINAL_SCIENTIFIC_REPORT.md','FINAL_MACHINE_STATUS.json','PHASE0_HISTORICAL_ASSET_AUDIT.json','FROZEN_4DOC_SELECTION.json','SELECTION_FREEZE_RECEIPT.json','QUALIFICATION_MATRIX.json','CHECKPOINT_MANIFEST.json','RESOURCE_REPORT.json','NUMERICAL_SOURCE_COMPATIBILITY_AUDIT.json','LONG_HORIZON_QUALIFICATION.json','PRE_FORMAL_RESOURCE_ESTIMATE.json','FOUR_DOC_PRIMARY_RESULTS.csv','POSITIONAL_KL.csv']
+     files={}
+     for f in sorted(D.rglob('*')):
+-        if not f.is_file() or '__pycache__' in f.parts or f.suffix=='.pt' or '.partial' in f.name or f.name in ['delivery_wait.log','controller.log','controller.lock','RESULT_AND_DELIVERY_HASHES.json','SHA256SUMS.txt'] or f.name.endswith('.unit.lock'):continue
++        if not f.is_file() or '__pycache__' in f.parts or f.suffix=='.pt' or '.partial' in f.name or f.name.endswith('.lock') or f.name=='controller.log' or f.name.startswith('lane_GPU-') and f.name.endswith('.log') or f.name in ['RESULT_AND_DELIVERY_HASHES.json','SHA256SUMS.txt']:continue
+         files[str(f.relative_to(D))]=dict(bytes=f.stat().st_size,sha256=sha(f))
+-    manifest=dict(status='COMPLETE' if complete else 'STOP_WITH_ACTUAL_PARTIAL_ASSETS',experiment=TASK,source_commit=head,
+-        original_formal_verdict='MIXED_PERMANENTLY_PRESERVED',files=files,
+-        required_artifacts={n:'COMPLETE' if (D/n).exists() else 'NOT_RUN' for n in required},
+-        large_remote_payload_bindings=dict(FP_manifest_paths=[str(f) for f in (D/'formal').glob('*__FP__formal.json')] if (D/'formal').exists() else [],
+-            checkpoint_qualification_path=str(D/'ENGINEERING_QUALIFICATION_PRE_FORMAL.json') if (D/'ENGINEERING_QUALIFICATION_PRE_FORMAL.json').exists() else None),
+-        initial_CPU_auditor_failure_preserved=old_failure,live_wait_log_excluded=True,self_reference_exclusions=['manifest excludes itself and SHA256SUMS; SHA256SUMS includes manifest but excludes itself'])
++    manifest=dict(status='COMPLETE' if complete else 'STOP_WITH_ACTUAL_PARTIAL_ASSETS',experiment=TASK,execution='execution_04',source_commit=head,original_formal_verdict='MIXED_PERMANENTLY_PRESERVED',files=files,required_artifacts={n:'COMPLETE' if (D/n).exists() else 'NOT_RUN' for n in required},large_remote_payload_bindings=dict(checkpoint_manifest=str(D/'CHECKPOINT_MANIFEST.json'),FP_manifest_paths=[str(p) for p in (D/'formal').glob('*__FP__formal.json')]),self_reference_exclusions=['manifest excludes itself and SHA256SUMS; SHA256SUMS includes manifest and excludes itself'])
+     publish(D/'RESULT_AND_DELIVERY_HASHES.json',manifest)
+-    sums=''.join(v['sha256']+'  '+n+'\n' for n,v in sorted(files.items()))+sha(D/'RESULT_AND_DELIVERY_HASHES.json')+'  RESULT_AND_DELIVERY_HASHES.json\n'
+-    text(D/'SHA256SUMS.txt',sums)
+-    print(json.dumps(dict(status='CPU_DELIVERY_SEALED',complete=complete,files=len(files),valid_documents=len(rows),GPU_hours=ledger['GPU_hours'])),flush=True)
++    text(D/'SHA256SUMS.txt',''.join(v['sha256']+'  '+n+'\n' for n,v in sorted(files.items()))+sha(D/'RESULT_AND_DELIVERY_HASHES.json')+'  RESULT_AND_DELIVERY_HASHES.json\n')
++    print(json.dumps(dict(status='CPU_DELIVERY_SEALED',complete=complete,files=len(files),qualified=qualified,valid_documents=len(rows),new_GPU_hours=new)),flush=True)
+ 
+ if __name__=='__main__':main()
+diff --git a/formal_worker.py b/formal_worker.py
+index 3e53670..9101f79 100644
+--- a/formal_worker.py
++++ b/formal_worker.py
+@@ -56,6 +56,11 @@ def main():
+         assert secondary['E_future'] == secondary['Hidden_KL'] == 'NOT_FROZEN_NOT_COMPUTED'
+         from prospective_common import verify
+         cfg = verify(); gpu = w.route(cfg)
++        assert cfg['selected_gpu_uuid']==w.read(D/'EXECUTION_ROUTING.json')['document_devices'][a.document]
++        qualification=w.read(D/'qualification_units'/(a.document+'__'+a.condition+'.json'))
++        assert qualification['status']=='PASS' and qualification['qualified_gpu_uuid']==cfg['selected_gpu_uuid']
++        assert qualification['parent_sha256']==w.sha(D/'runs'/f'{a.document}__{a.condition}__parent.json')
++        assert qualification['resumed_sha256']==w.sha(D/'runs'/f'{a.document}__{a.condition}__resumed_parity.json')
+         entry = next(x for x in spec['documents'] if x['document'] == a.document)
+         assert any(u['document']==a.document and u['rotation']==a.condition for u in spec['new_units']), 'UNAUTHORIZED_NEW_SCIENTIFIC_KEY'
+         w.publish(root/(tag+'.STARTED.json'),dict(pid=os.getpid(),started_epoch=started,
+@@ -69,6 +74,7 @@ def main():
+             assert s.st_size == row['bytes'] and s.st_mtime_ns == row['mtime_ns'], ('ASSET_METADATA_CHANGED',name)
+         base = w.load_module(w.PRIOR/'run_short_horizon_proxy_v2.py','formal_verified_base')
+         direction = w.load_module(base.DIRECTION_RUNNER,'formal_verified_direction')
++        direction.GPU_UUIDS[gpu] = cfg['gpu_uuids'][str(gpu)]
+         host = direction.gpu_guard(torch,gpu)
+         assert all(host[k] == cfg['runtime'][k] for k in ('kernel','driver','torch','cuda_runtime','selector'))
+         _,_,capture_module,core = direction.load_assets(gpu)
+@@ -97,10 +103,13 @@ def main():
+         if a.condition == 'FP':
+             refdir.mkdir(); fp_manifest = None
+         else:
+-            fp_manifest = w.read(Path(spec['reference_experiment'])/'formal'/(a.document+'__FP__formal.json'))
++            # Original FROZEN_SPEC remains byte-identical for saved checkpoint
++            # identity; the new execution routes its own real FP payload.
++            assert w.read(D/'EXECUTION_ROUTING.json')['reference_experiment']==str(D)
++            fp_manifest = w.read(D/'formal'/(a.document+'__FP__formal.json'))
+             assert fp_manifest['status'] == 'PASS' and fp_manifest['sample_positions'] == positions
+             assert fp_manifest['token_sha256'] == w.sha(token_path)
+-            assert fp_manifest['gpu_uuid'] == spec['execution']['gpu_uuid']
++            assert fp_manifest['gpu_uuid'] == host['gpu_uuid'] == w.read(D/'EXECUTION_ROUTING.json')['document_devices'][a.document]
+             assert fp_manifest['primary_spec_sha256'] == w.sha(D/'FROZEN_SPEC.json')
+             assert fp_manifest['runtime'][0]['torch'] == torch.__version__
+         scale = dict(min=float('inf'),max=0.,sum=0.,count=0)
+diff --git a/functional_worker.py b/functional_worker.py
+index 2cc36a6..4b6107a 100644
+--- a/functional_worker.py
++++ b/functional_worker.py
+@@ -162,6 +162,7 @@ def main():
+         assert sha(V4_CODE / 'persistent_engine_v1.py') == spec['engine_sha256']
+         from prospective_common import verify
+         cfg = verify(); gpu = route(cfg)
++        assert cfg['selected_gpu_uuid']==read(OUT/'EXECUTION_ROUTING.json')['document_devices'][a.document]
+         entry = next(x for x in spec['documents'] if x['document'] == a.document)
+         assert any(u['document']==a.document and u['rotation']==a.condition for u in spec['new_units']), 'UNAUTHORIZED_NEW_SCIENTIFIC_KEY'
+         assert os.environ.get('CUDA_VISIBLE_DEVICES') == str(gpu)
+@@ -174,6 +175,8 @@ def main():
+         assert hardware['exclusive'], hardware['failure_conditions']
+         base = load_module(PRIOR / 'run_short_horizon_proxy_v2.py', 'functional_verified_base')
+         direction = load_module(base.DIRECTION_RUNNER, 'functional_verified_direction')
++        # Engineering-only physical UUID whitelist extension, after admission.
++        direction.GPU_UUIDS[gpu] = cfg['gpu_uuids'][str(gpu)]
+         host = direction.gpu_guard(torch, gpu)
+         assert all(host[k] == cfg['runtime'][k] for k in ('kernel', 'driver', 'torch', 'cuda_runtime', 'selector'))
+         _, _, capture_module, core = direction.load_assets(gpu)
+diff --git a/gpu_admission.py b/gpu_admission.py
+index 07af4ce..f6ca781 100644
+--- a/gpu_admission.py
++++ b/gpu_admission.py
+@@ -8,8 +8,27 @@ import v3_guard as legacy
+ 
+ UUID='GPU-de53f243-b271-521c-d875-d96611ed8574'
+ 
++def graphics_allowed(s,baseline=None):
++    if baseline is None:
++        try:baseline=json.loads((pathlib.Path(os.environ['LING_PROSPECTIVE_RESULTS'])/'EXECUTION_ROUTING.json').read_text())['baseline_graphics'][s['uuid']]
++        except (OSError,KeyError,ValueError):return False
++    groups=s['direct_NVML_processes'];xml=s['SMI_all_processes']
++    if any(g['status']!='PASS' for g in groups.values()) or xml['status']!='PASS':return False
++    if groups['graphics']['processes']!=baseline['NVML_graphics']:return False
++    graphics=[p for p in xml['processes'] if p['type']=='G']
++    if graphics!=baseline['SMI_graphics']:return False
++    owners={p['pid']:p for p in s['process_ownership']}
++    return all(owners.get(p['pid'])==p for p in baseline['ownership'])
++
+ def classify(s):
+     try:
++        if 'direct_NVML_processes' in s:
++            groups=s['direct_NVML_processes']
++            if any(g['status']!='PASS' for g in groups.values()) or s['SMI_all_processes']['status']!='PASS':
++                return 'PROCESS_VISIBILITY_UNKNOWN'
++            if groups['compute']['processes'] or any(p['type']!='G' for p in s['SMI_all_processes']['processes']):
++                return 'BUSY_VISIBLE_PROCESS'
++            if not graphics_allowed(s):return 'GRAPHICS_IDENTITY_NOT_QUALIFIED'
+         if s['physical']['returncode'] != 0 or s['compute']['returncode'] != 0 or s['direct_NVML']['status'] != 'PASS':
+             return 'DRIVER_OR_NVML_ERROR'
+         t=s['target']; n=s['direct_NVML']
+@@ -58,17 +77,33 @@ def admit(cfg,path):
+     state=classify_window(rows)
+     report=dict(status=state,uuid=uuid,index=rows[-1]['target'][0]['index'] if rows[-1]['target'] else None,
+         completed_epoch=time.time(),sample_count=len(rows),states=[classify(s) for s in rows],
+-        execution=os.environ['LING_PROSPECTIVE_RESULTS'],driver=cfg['runtime']['driver'])
++        execution=os.environ['LING_PROSPECTIVE_RESULTS'],driver=cfg['runtime']['driver'],
++        window_sha256=__import__('recovery_state').sha(path),window_path=str(path))
+     assert all(r['target'][0]['driver']==cfg['runtime']['driver'] for r in rows if r['target']),'DRIVER_CHANGED'
+     from recovery_state import atomic_json
+-    atomic_json(pathlib.Path(os.environ['LING_PROSPECTIVE_RESULTS'])/'CURRENT_GPU_ADMISSION.json',report,replace=True)
++    atomic_json(ticket_path(uuid),report,replace=True)
+     if state!='AVAILABLE_VERIFIED':raise RuntimeError(('GPU_ADMISSION_STOP',report))
+     return report
+ 
++def ticket_path(uuid):
++    return pathlib.Path(os.environ['LING_PROSPECTIVE_RESULTS'])/'admission_tickets'/(uuid+'.json')
++
+ def device(gpu,cfg,pid=None,*,binding=None,evidence=None,require_context=False):
+     if binding is not None:
+-        return legacy.device(gpu,cfg,pid,binding=binding,evidence=evidence,require_context=require_context)
+-    p=pathlib.Path(os.environ['LING_PROSPECTIVE_RESULTS'])/'CURRENT_GPU_ADMISSION.json'
++        result=legacy.device(gpu,cfg,pid,binding=binding,evidence=None,require_context=require_context)
++        s=sample(cfg['gpu_uuids'][str(gpu)])
++        groups=s['direct_NVML_processes'];xml=s['SMI_all_processes']
++        visible=all(g['status']=='PASS' for g in groups.values()) and xml['status']=='PASS'
++        listed={p['pid'] for p in groups['compute'].get('processes',[])}
++        listed.update(int(p['pid']) for p in xml.get('processes',[]) if p['type']!='G')
++        own=listed=={pid}
++        if not visible or not own or not graphics_allowed(s):
++            result['exclusive']=False;result['failure_conditions'].append('COMPUTE_GRAPHICS_EXACT_OWNERSHIP_OR_VISIBILITY_FAILED')
++        result['compute_graphics_visibility']=s
++        if evidence:
++            with pathlib.Path(evidence).open('a') as f:f.write(json.dumps(result)+'\n');f.flush();os.fsync(f.fileno())
++        return result
++    p=ticket_path(cfg['gpu_uuids'][str(gpu)])
+     try:
+         ticket=json.loads(p.read_text());s=sample(cfg['gpu_uuids'][str(gpu)])
+         state=classify(s)
+diff --git a/gpu_telemetry.py b/gpu_telemetry.py
+index f227e67..e3f0c43 100644
+--- a/gpu_telemetry.py
++++ b/gpu_telemetry.py
+@@ -5,6 +5,7 @@ import os
+ import pathlib
+ import subprocess
+ import time
++import xml.etree.ElementTree as ET
+ 
+ def query(args):
+     try:
+@@ -74,6 +75,47 @@ def observe(uuids, path, seconds=60, interval=5):
+                 row=sample(uuid); records.append(row); f.write(json.dumps(row,sort_keys=True)+'\n'); f.flush(); os.fsync(f.fileno())
+     return records
+ 
++class Process(C.Structure):
++    _fields_=[('pid',C.c_uint),('usedGpuMemory',C.c_ulonglong),('gpuInstanceId',C.c_uint),('computeInstanceId',C.c_uint)]
++
++def nvml_processes(uuid):
++    lib=C.CDLL('libnvidia-ml.so.1'); assert lib.nvmlInit_v2()==0
++    try:
++        h=C.c_void_p();assert lib.nvmlDeviceGetHandleByUUID(uuid.encode(),C.byref(h))==0
++        out={}
++        for key,fn in [('compute','nvmlDeviceGetComputeRunningProcesses_v3'),('graphics','nvmlDeviceGetGraphicsRunningProcesses_v3')]:
++            count=C.c_uint(0); rc=getattr(lib,fn)(h,C.byref(count),None)
++            if rc==0 and count.value==0: out[key]=dict(status='PASS',processes=[],api=fn); continue
++            if rc!=7: out[key]=dict(status='UNKNOWN',returncode=rc,api=fn);continue
++            values=(Process*(count.value+8))();count.value=len(values)
++            rc=getattr(lib,fn)(h,C.byref(count),values)
++            out[key]=dict(status='PASS',api=fn,processes=[{n:getattr(p,n) for n,_ in Process._fields_} for p in values[:count.value]]) if rc==0 else dict(status='UNKNOWN',returncode=rc,api=fn)
++        return out
++    finally:lib.nvmlShutdown()
++
++def process_metadata(pid):
++    try:
++        d=pathlib.Path('/proc')/str(pid);st=d.stat();text=(d/'stat').read_text();fields=text[text.rfind(')')+2:].split()
++        return dict(status='PASS',pid=pid,uid=st.st_uid,start_ticks=int(fields[19]),comm=(d/'comm').read_text().strip())
++    except Exception as e:return dict(status='UNKNOWN',pid=pid,error=repr(e))
++
++_original_sample=sample
++
++def sample(uuid):
++    s=_original_sample(uuid);s['direct_NVML_processes']=nvml_processes(uuid)
++    x=query(['nvidia-smi','-i',uuid,'-q','-x']);s['SMI_XML']=x
++    try:
++        assert x['returncode']==0
++        tree=ET.fromstring(x['stdout']);gpu=tree.find('gpu');assert gpu.findtext('uuid')==uuid
++        ps=[dict(pid=p.findtext('pid'),type=p.findtext('type'),name=p.findtext('process_name'),used_memory=p.findtext('used_memory')) for p in gpu.findall('processes/process_info')]
++        s['SMI_all_processes']=dict(status='PASS',processes=ps)
++    except Exception as e:s['SMI_all_processes']=dict(status='UNKNOWN',error=repr(e))
++    pids={int(p['pid']) for p in s['SMI_all_processes'].get('processes',[])}
++    for group in s['direct_NVML_processes'].values():pids.update(p['pid'] for p in group.get('processes',[]))
++    s['process_ownership']=[process_metadata(p) for p in sorted(pids)]
++    return s
++
++
+ if __name__ == '__main__':
+     import sys
+     d=pathlib.Path(sys.argv[1]); rows, _=inventory()
+diff --git a/prospective_common.py b/prospective_common.py
+index 207313e..e36d179 100644
+--- a/prospective_common.py
++++ b/prospective_common.py
+@@ -20,10 +20,8 @@ def sha(path):
+ def read(path):return json.loads(Path(path).read_text())
+ 
+ def publish(path,value):
+-    path=Path(path);tmp=path.with_name(path.name+'.partial')
+-    with tmp.open('x') as f:
+-        json.dump(value,f,sort_keys=True,indent=2,allow_nan=False);f.write('\n');f.flush();os.fsync(f.fileno())
+-    os.link(tmp,path);tmp.unlink()
++    from recovery_state import atomic_json
++    atomic_json(path,value)
+ 
+ def verify():
+     assert not (OUT/'STOP.json').exists(),'FIRST_FAILURE_STOP'
+@@ -39,7 +37,13 @@ def verify():
+         s=Path(row['path']).stat();assert (s.st_size,s.st_mtime_ns)==(row['bytes'],row['mtime_ns']),row['path']
+     for name,h in audit['historical_STOP_preserved'].items():assert sha(name)==h,('HISTORICAL_STOP_CHANGED',name)
+     assert shutil.disk_usage(OUT).free>=64*1024**3,'STORAGE_ADMISSION_FAILED'
+-    return read(OUT/'CALIBRATION_CONFIG.json')
++    cfg=read(OUT/'CALIBRATION_CONFIG.json')
++    routing=read(OUT/'EXECUTION_ROUTING.json')
++    assert routing['execution']==str(OUT) and routing['source_worktree']==str(WT)
++    uuid=os.environ.get('LING_TARGET_GPU_UUID')
++    assert uuid in routing['authorized_devices'],'UNAUTHORIZED_DEVICE'
++    cfg['selected_gpu_uuid']=uuid
++    return cfg
+ 
+ def entry_for(document):
+     audit=read(OLD/'PROSPECTIVE_FULL_POOL_INPUT_IDENTITY_AUDIT.json')
+diff --git a/qualified_completion.py b/qualified_completion.py
+new file mode 100644
+index 0000000..9ae1b4b
+--- /dev/null
++++ b/qualified_completion.py
+@@ -0,0 +1,152 @@
++"""Engineering routing/reuse only. All scientific worker mathematics is frozen."""
++import json
++import os
++from pathlib import Path
++import shutil
++import subprocess
++import sys
++import time
++from recovery_state import atomic_json,lock,sha,complete
++from gpu_admission import proc_identity
++from prospective_common import OUT as D, WT as W, read, verify
++
++FIELDS=['uninterrupted_suffix_full_logit_sha256','final_full_native_cache_sha256','audit_state_fingerprint','checkpoint_sha256']
++
++def compare_exact(parent,fresh,uuid):
++    assert parent['status']==fresh['status']=='PASS'
++    assert parent['begin']==0 and fresh['begin']==8192 and parent['endpoint']==fresh['endpoint']==8256
++    assert parent['observer_enabled'] is True and fresh['observer_enabled'] is False
++    assert parent['document']==fresh['document'] and parent['condition']==fresh['condition']
++    assert fresh['host']['gpu_uuid']==uuid,'WRONG_DEVICE_NUMERICAL_LABEL'
++    assert all(parent[k]==fresh[k] for k in FIELDS),'EXACT_DEVICE_RESUME_PARITY_FAILED'
++    for key in ['kernel','driver','torch','cuda_runtime','selector']:
++        assert parent['host'][key]==fresh['host'][key],'RUNTIME_CHANGED'
++    if parent['condition']!='FP':
++        for r in [parent,fresh]:
++            q=r['integrity'];assert q['passed'] and q['every_token_layer_qdq_count']==8256*18 and q['actual_next_kernel_equal_post_qdq_count']==8255*18
++    return True
++
++def reuse_parent(document,condition):
++    bindings=read(D/'REUSED_PARENT_BINDINGS.json')['units']
++    key=document+'__'+condition
++    if key not in bindings:return None
++    b=bindings[key];p=D/'runs'/(key+'__parent.json');cp=D/'runs'/(key+'__8192.pt')
++    assert sha(p)==b['parent_sha256'] and sha(cp)==b['checkpoint_sha256']
++    assert sha(b['original_manifest_path'])==b['original_manifest_sha256']
++    parent=read(p);receipt=read(b['original_natural_exit_path'])
++    assert sha(b['original_natural_exit_path'])==b['original_natural_exit_sha256']
++    assert receipt['natural_exit'] and receipt['result_sha256']==sha(p) and parent['status']=='PASS'
++    assert parent['document']==document and parent['condition']==condition and parent['begin']==0 and parent['endpoint']==8256
++    assert parent['host']['gpu_uuid']==b['original_gpu_uuid'] and parent['checkpoint_sha256']==sha(cp)
++    assert sha(D/'FROZEN_SPEC.json')==b['checkpoint_contract_sha256']
++    from recovery_controller import event
++    event('HISTORICAL_PARENT_REUSED_WITHOUT_RECOMPUTATION',document=document,rotation=condition,original_gpu_uuid=b['original_gpu_uuid'],target_gpu_uuid=os.environ['LING_TARGET_GPU_UUID'],new_device_qualification='PENDING_UNTIL_EXACT_FRESH64')
++    return parent
++
++def qualification_unit(u,uuid):
++    from recovery_controller import run,event
++    doc,rot=u['document'],u['rotation'];key=doc+'__'+rot
++    parent=run(doc,rot,'parent');fresh=run(doc,rot,'resumed_parity')
++    compare_exact(parent,fresh,uuid)
++    inventory=parent['cache_inventory'];first=inventory['511'];last=inventory['8255']
++    rate=(last['cache_bytes']-first['cache_bytes'])/(8256-512);assert rate==61440
++    assert all(x['cache_bytes']==first['cache_bytes']+(int(k)+1-512)*rate for k,x in inventory.items())
++    row=dict(document=doc,rotation=rot,status='PASS',parent_sha256=sha(D/'runs'/(key+'__parent.json')),resumed_sha256=sha(D/'runs'/(key+'__resumed_parity.json')),checkpoint_sha256=parent['checkpoint_sha256'],parent_gpu_uuid=parent['host']['gpu_uuid'],qualified_gpu_uuid=uuid,device_migration_exact=parent['host']['gpu_uuid']!=uuid,observer_ON_equals_OFF=True,own_rotation_history=True,fresh_process_exact_64_logits_cache_audit=True,native_cache_growth_bytes_per_token=rate,predicted_cache_bytes_32768=last['cache_bytes']+(32768-8256)*rate,checkpoint_source_spec_sha256=sha(D/'FROZEN_SPEC.json'))
++    atomic_json(D/'qualification_units'/(key+'.json'),row)
++    event('TARGET_DEVICE_CONDITION_QUALIFIED',document=doc,rotation=rot,uuid=uuid)
++    return row
++
++def lane_main():
++    uuid=os.environ['LING_EXECUTION_LANE'];held=lock(D/('lane_'+uuid+'.lock'))
++    cfg=verify();assert cfg['selected_gpu_uuid']==uuid
++    routing=read(D/'EXECUTION_ROUTING.json');spec=read(D/'FROZEN_SPEC.json')
++    units=[u for u in spec['new_units'] if routing['document_devices'][u['document']]==uuid]
++    done=[qualification_unit(u,uuid) for u in units]
++    atomic_json(D/('LANE_COMPLETE_'+uuid+'.json'),dict(status='PASS',uuid=uuid,units=done,count=len(done)))
++    held.close()
++
++def identity_live(identity):
++    try:return proc_identity(identity['pid'])==identity
++    except (OSError,ValueError):return False
++
++def wait_lanes(children):
++    while True:
++        pending=False
++        for uuid,identity,proc in children:
++            complete_path=D/('LANE_COMPLETE_'+uuid+'.json')
++            if proc is not None:
++                rc=proc.poll()
++                if rc is None:pending=True;continue
++                assert rc==0 and complete_path.exists(),('LANE_FAILED',uuid,rc)
++            else:
++                if identity is not None and identity_live(identity):pending=True;continue
++                assert complete_path.exists(),('LANE_LOST_NO_COMPLETE',uuid)
++            report=read(complete_path);assert report['status']=='PASS' and report['uuid']==uuid
++            for u in report['units']:assert read(D/'qualification_units'/(u['document']+'__'+u['rotation']+'.json'))==u
++        if not pending:return
++        if (D/'STOP.json').exists():raise RuntimeError('FIRST_FAILURE_IN_LANE')
++        time.sleep(2)
++
++def resource_plan():
++    old=Path('/data/zypan/experiment_runs/LING_KDA_P1_L7_MIXED_OUTCOME_RESOLUTION_V1')
++    historical=[]
++    for p in old.glob('**/*__formal.NATURAL_EXIT.json'):
++        r=read(p)
++        if r.get('natural_exit'):historical.append(dict(path=str(p),sha256=sha(p),wall_seconds=r['wall_seconds']))
++    parents=[read(p)['elapsed_seconds'] for p in (D/'runs').glob('*__parent.json')]
++    samples=[r['wall_seconds'] for r in historical]
++    estimate=sum(samples)/len(samples) if samples else 3400.
++    memories=[m['peak_reserved'] for p in (D/'runs').glob('*__parent.json') for m in read(p)['memory']]
++    reserve=max(memories)+(2033025024-527007744)
++    usage=shutil.disk_usage(D);assert usage.free>=64*1024**3
++    # Original board capacity/physical allocation are independently rechecked
++    # by every worker's original admission. This is a planning comparison.
++    assert reserve<24576*2**20,'PROJECTED_PHYSICAL_MEMORY_INSUFFICIENT'
++    report=dict(status='PASS_RESOURCE_PLANNING_NOT_RUNTIME_ADMISSION',epoch=time.time(),historical_formal_measurements=historical,qualification_parent_elapsed_seconds=parents,estimated_formal_worker_seconds=estimate,planned_formal_workers=12,estimated_formal_GPU_hours=12*estimate/3600,formal_wall_time_hours=12*estimate/3600+12/60,uncertainty='different physical RTX3090, shared host I/O and per-worker admission; actual measurements govern; estimate is not deadline',peak_measured_qualification_reserved=max(memories),conservative_reserved_plus_cache_growth=reserve,board_bytes=24576*2**20,full_native_cache_bytes=2033025024,checkpoint_projected_bytes=12*550000000,FP_full_vocabulary_payload_floor_bytes=4*384*157184*4,storage_free_bytes=usage.free,storage_minimum_original_bytes=64*1024**3,no_GPUh_cap=True,no_VRAM_percent_gate=True,resume_boundary='qualified own full native8192 checkpoint only; partial formal outputs never silently restarted',max_active_formal_caches=1)
++    atomic_json(D/'PRE_FORMAL_RESOURCE_ESTIMATE.json',report)
++    return report
++
++def run_main():
++    from recovery_controller import run,event,frozen_selection
++    if os.environ.get('LING_EXECUTION_LANE'):return lane_main()
++    held=lock(D/'controller.lock')
++    assert not (D/'STOP.json').exists(),'FIRST_FAILURE_STOP'
++    assert read(D/'PHASE0_HISTORICAL_ASSET_AUDIT.json')['status']=='PASS'
++    routing=read(D/'EXECUTION_ROUTING.json');selection=frozen_selection();spec=read(D/'FROZEN_SPEC.json')
++    assert sha(D/'FROZEN_SPEC.json')==routing['original_checkpoint_contract_sha256']
++    children=[]
++    if not (D/'ENGINEERING_QUALIFICATION_PRE_FORMAL.json').exists():
++        for uuid,index in routing['authorized_devices'].items():
++            done=D/('LANE_COMPLETE_'+uuid+'.json');lp=D/('LANE_LAUNCH_'+uuid+'.json')
++            if done.exists():children.append((uuid,None,None));continue
++            if lp.exists():
++                identity=read(lp)['identity'];assert identity_live(identity),'LOST_LANE_NO_AUTOMATIC_RETRY'
++                children.append((uuid,identity,None));continue
++            env=dict(os.environ,LING_EXECUTION_LANE=uuid,LING_TARGET_GPU_UUID=uuid,CUDA_VISIBLE_DEVICES=str(index))
++            with (D/('lane_'+uuid+'.log')).open('x') as log:
++                child=subprocess.Popen([sys.executable,'-B','-u',str(W/'recovery_controller.py')],env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
++            identity=proc_identity(child.pid);atomic_json(lp,dict(identity=identity,uuid=uuid,epoch=time.time()))
++            children.append((uuid,identity,child))
++        event('TWO_DEVICE_QUALIFICATION_RUNNING',devices=routing['authorized_devices'],new_qualification_workers_planned=15,old_parents_recomputed=0)
++        wait_lanes(children)
++        units=[read(D/'qualification_units'/(u['document']+'__'+u['rotation']+'.json')) for u in spec['new_units']]
++        assert len(units)==12 and all(u['status']=='PASS' and u['qualified_gpu_uuid']==routing['document_devices'][u['document']] for u in units)
++        atomic_json(D/'ENGINEERING_QUALIFICATION_PRE_FORMAL.json',dict(status='PASS',units=units,count=12,same_GPU_runtime_for_FP_student_pair=True,device_migration_explicitly_qualified=True,no_tolerance_relaxation=True,checkpoint_restore_source_AST_unchanged=True,observer_no_mutation_PASS=True,INT8_dequantized_FP32_carrier_not_physical_INT8_storage=True,full32768_finite_status='PENDING_FORMAL',qualification_completed_epoch=time.time()))
++    q=read(D/'ENGINEERING_QUALIFICATION_PRE_FORMAL.json');assert q['status']=='PASS' and q['count']==len(q['units'])==12
++    assert [(u['document'],u['rotation']) for u in q['units']]==[(u['document'],u['rotation']) for u in spec['new_units']]
++    for u in q['units']:
++        key=u['document']+'__'+u['rotation']
++        assert sha(D/'runs'/(key+'__parent.json'))==u['parent_sha256'] and sha(D/'runs'/(key+'__resumed_parity.json'))==u['resumed_sha256'] and sha(D/'runs'/(key+'__8192.pt'))==u['checkpoint_sha256']
++        assert u['qualified_gpu_uuid']==routing['document_devices'][u['document']]
++        assert u['checkpoint_sha256']==read(D/'runs'/(key+'__parent.json'))['checkpoint_sha256']
++        compare_exact(read(D/'runs'/(key+'__parent.json')),read(D/'runs'/(key+'__resumed_parity.json')),u['qualified_gpu_uuid'])
++    atomic_json(D/'LONG_HORIZON_QUALIFICATION.json',q)
++    atomic_json(D/'QUALIFICATION_GATES_COMPLETED.json',dict(status='ALL_EIGHT_GATES_PASS',full32768_finite_status='PENDING_FORMAL',engineering_qualification_sha256=sha(D/'ENGINEERING_QUALIFICATION_PRE_FORMAL.json')))
++    event('LONG_HORIZON_QUALIFIED',count=12)
++    if not (D/'PRE_FORMAL_RESOURCE_ESTIMATE.json').exists():resource_plan()
++    for d in selection['execution_order']:
++        uuid=routing['document_devices'][d['document']];os.environ['LING_TARGET_GPU_UUID']=uuid;os.environ['CUDA_VISIBLE_DEVICES']=str(routing['authorized_devices'][uuid])
++        for condition in d['conditions']:
++            event('FULLMODEL_RUNNING',document=d['document'],rotation=condition,uuid=uuid);run(d['document'],condition,'formal')
++    atomic_json(D/'PROSPECTIVE_COMPLETE.json',dict(status='COMPLETE',experiment=selection['experiment'],FP_complete=4,student_complete=8,planned_trajectories=12,endpoint=32768,epoch=time.time(),selection_sha256=sha(D/'FROZEN_4DOC_SELECTION.json'),original_formal_verdict='MIXED_PERMANENTLY_PRESERVED',training_steps=0))
++    event('RESULTS_READY_FOR_CPU_VERIFICATION');held.close()
+diff --git a/recovery_controller.py b/recovery_controller.py
+index d253c60..ac5e8cd 100644
+--- a/recovery_controller.py
++++ b/recovery_controller.py
+@@ -15,8 +15,11 @@ D=p.OUT;W=p.WT
+ 
+ def event(state,**fields):
+     row=dict(state=state,epoch=time.time(),execution=str(D),**fields)
+-    with (D/'STATE_EVENTS.jsonl').open('a') as f:f.write(json.dumps(row)+'\n');f.flush();os.fsync(f.fileno())
+-    atomic_json(D/'CURRENT_STATE.json',row,replace=True)
++    with (D/'STATE_EVENTS.jsonl').open('a') as f:
++        __import__('fcntl').flock(f,__import__('fcntl').LOCK_EX)
++        f.write(json.dumps(row)+'\n');f.flush();os.fsync(f.fileno())
++    name='CURRENT_STATE.json' if not os.environ.get('LING_EXECUTION_LANE') else 'CURRENT_STATE_'+os.environ['LING_EXECUTION_LANE']+'.json'
++    atomic_json(D/name,row,replace=True)
+     print(json.dumps(row),flush=True)
+ 
+ def persist(path,value):atomic_json(path,value)
+@@ -30,12 +33,16 @@ def runner_live(base):
+ 
+ def run(document,condition=None,stage='screening'):
+     cfg=p.verify();freeze=p.read(D/'SOURCE_CODE_FREEZE.json')
++    if stage=='parent':
++        from qualified_completion import reuse_parent
++        reused=reuse_parent(document,condition)
++        if reused is not None:return reused
+     folder=D/('screening' if stage=='screening' else 'formal' if stage=='formal' else 'runs');folder.mkdir(exist_ok=True)
+     tag=document if stage=='screening' else f'{document}__{condition}__{stage}'
+     base=folder/tag;result=Path(str(base)+'.json');receipt=Path(str(base)+'.NATURAL_EXIT.json')
+     identity=dict(document=document,rotation=condition,stage=stage,source_commit=freeze['source_commit'],
+         config_sha256=freeze['config_sha256'],token_sha256=entry_for(document)['token_file_sha256'],
+-        contract_sha256=sha(D/'preregistration/DOCUMENT_SELECTION_AND_EXCLUSION_RULES.json'),execution=str(D))
++        contract_sha256=sha(D/'preregistration/DOCUMENT_SELECTION_AND_EXCLUSION_RULES.json'),execution=str(D),target_gpu_uuid=cfg['selected_gpu_uuid'])
+     if result.exists() and receipt.exists():
+         r=complete(result,receipt,identity);event('SUCCESSFUL_UNIT_REUSED',tag=tag);return r
+     assert not Path(str(base)+'.FAILED_EXIT.json').exists(),'FIRST_FAILED_UNIT_NO_RETRY'
+@@ -99,30 +106,8 @@ def frozen_selection():
+     assert sha(f)==p.read(receipt)['sha256'];return s
+ 
+ def main():
+-    held=lock(D/'controller.lock')
+-    assert not (D/'STOP.json').exists(),'FIRST_FAILURE_STOP'
+-    p.run=run;p.publish=persist;p.publish_text=lambda path,s:atomic_text(path,s)
+-    imported=p.read(D/'CONTROLLER_RESUME_AUDIT.json');assert imported['status']=='PASS_EXACT_48_RESTORED'
+-    old=Path(imported['original_execution']);m=p.read(old/'RESULT_AND_DELIVERY_HASHES.json')
+-    assert sha(old/'RESULT_AND_DELIVERY_HASHES.json')==imported['original_manifest_sha256']
+-    for n,h in imported['imported_files_sha256'].items():assert sha(D/n)==h and sha(old/n)==h,n
+-    event('SHORT_SELECTION_RESUMED',cursor=3,reused_short_scores=48)
+-    selection=frozen_selection();event('SELECTION_FROZEN',selection_sha256=sha(D/'FROZEN_4DOC_SELECTION.json'))
+-    spec=p.read(D/'FROZEN_SPEC.json') if (D/'FROZEN_SPEC.json').exists() else p.make_long_spec(selection)
+-    if not (D/'ENGINEERING_QUALIFICATION_PRE_FORMAL.json').exists():p.qualify(spec)
+-    else:
+-        q=p.read(D/'ENGINEERING_QUALIFICATION_PRE_FORMAL.json');assert q['status']=='PASS' and q['count']==12
+-        for u in q['units']:
+-            assert sha(D/'runs'/f"{u['document']}__{u['rotation']}__parent.json")==u['parent_sha256']
+-            assert sha(D/'runs'/f"{u['document']}__{u['rotation']}__resumed_parity.json")==u['resumed_sha256']
+-            assert sha(D/'runs'/f"{u['document']}__{u['rotation']}__8192.pt")==u['checkpoint_sha256']
+-    q=p.read(D/'ENGINEERING_QUALIFICATION_PRE_FORMAL.json');persist(D/'LONG_HORIZON_QUALIFICATION.json',q)
+-    event('LONG_HORIZON_QUALIFIED',count=12)
+-    for d in selection['execution_order']:
+-        for condition in d['conditions']:
+-            event('FULLMODEL_RUNNING',document=d['document'],rotation=condition);run(d['document'],condition,'formal')
+-    if not (D/'PROSPECTIVE_COMPLETE.json').exists():persist(D/'PROSPECTIVE_COMPLETE.json',dict(status='COMPLETE',experiment=selection['experiment'],FP_complete=4,student_complete=8,planned_trajectories=12,endpoint=32768,epoch=time.time(),selection_sha256=sha(D/'FROZEN_4DOC_SELECTION.json'),original_formal_verdict='MIXED_PERMANENTLY_PRESERVED',training_steps=0))
+-    event('RESULTS_READY_FOR_CPU_VERIFICATION');held.close()
++    from qualified_completion import run_main
++    run_main()
+ 
+ def atomic_text(path,s):
+     from tempfile import mkstemp
+@@ -141,6 +126,8 @@ if __name__=='__main__':
+     except BaseException as e:
+         if not (D/'STOP.json').exists():persist(D/'STOP.json',dict(status='STOP',stage='RECOVERY_CONTROLLER',reason=repr(e),traceback=traceback.format_exc(),epoch=time.time(),no_retry=True))
+         event('FAIL_CLOSED_STOP',reason=repr(e))
++    if os.environ.get('LING_EXECUTION_LANE'):
++        sys.exit(1 if (D/'STOP.json').exists() else 0)
+     # One controller owns CPU verification/delivery after every scientific worker exits.
+     if (D/'PROSPECTIVE_COMPLETE.json').exists() or (D/'STOP.json').exists():
+         if (D/'RESULT_AND_DELIVERY_HASHES.json').exists():
+diff --git a/runtime_launch_probe.py b/runtime_launch_probe.py
+new file mode 100644
+index 0000000..5692dfd
+--- /dev/null
++++ b/runtime_launch_probe.py
+@@ -0,0 +1,51 @@
++"""CPU chain probe or minimal GPU initialization canary; never loads a model."""
++import argparse
++import json
++import os
++from pathlib import Path
++import sys
++import time
++import traceback
++from recovery_state import atomic_json
++from execution04_launcher import selected_environment,process_observation
++
++def main():
++    p=argparse.ArgumentParser();p.add_argument('--mode',choices=['cpu','gpu'],required=True);p.add_argument('--stage',required=True);p.add_argument('--result',type=Path,required=True);p.add_argument('--expected',type=Path,required=True);a=p.parse_args()
++    observation=process_observation();atomic_json(a.result.with_suffix('.OBSERVED_ENV.json'),observation)
++    try:
++        assert observation['environment']==json.loads(a.expected.read_text()),'ACTUAL_WORKER_ENVIRONMENT_DIFFERS_FROM_LAUNCHER'
++        if a.mode=='cpu':assert os.environ['CUDA_VISIBLE_DEVICES']==''
++        import torch
++        assert not torch.cuda.is_initialized()
++        from v2_runtime import initialize,snapshot
++        runtime=[initialize(torch,0)]
++        assert observation['hash_randomization']==0,'HASH_SEED_NOT_EFFECTIVE_AT_INTERPRETER_START'
++        assert observation['environment']['PYTHONHASHSEED']=='0'
++        memory=[];uuid=None
++        if a.mode=='gpu':
++            from prospective_common import OUT,verify
++            from gpu_admission import route,device,proc_identity
++            cfg=verify();gpu=route(cfg);uuid=cfg['selected_gpu_uuid']
++            assert os.environ['CUDA_VISIBLE_DEVICES']==str(gpu)
++            evidence=a.result.with_name(a.result.stem+'.GPU_EXCLUSIVITY.jsonl')
++            assert device(gpu,cfg,evidence=evidence)['exclusive']
++            assert torch.cuda.device_count()==1
++            torch.cuda.init();torch.cuda.synchronize();assert torch.cuda.is_initialized()
++            torch.cuda.reset_peak_memory_stats();tiny=torch.empty(1,dtype=torch.uint8,device='cuda');torch.cuda.synchronize()
++            check=device(gpu,cfg,os.getpid(),binding=proc_identity(os.getpid()),evidence=evidence,require_context=True)
++            assert check['exclusive'],check['failure_conditions']
++            memory=[dict(peak_allocated=torch.cuda.max_memory_allocated(),peak_reserved=torch.cuda.max_memory_reserved(),allocated=torch.cuda.memory_allocated(),reserved=torch.cuda.memory_reserved())]
++            runtime.append(snapshot(torch,'runtime_canary_after_CUDA_init_no_model',0));del tiny
++            assert not (OUT/'STOP.json').exists()
++        else:assert not torch.cuda.is_initialized()
++        atomic_json(a.result,dict(status='PASS',kind='RUNTIME_INITIALIZATION_CANARY' if a.mode=='gpu' else 'CPU_LAUNCH_CHAIN_PROBE',stage=a.stage,actual_environment=selected_environment(os.environ),hash_randomization=observation['hash_randomization'],hash_probe=observation['hash_probe'],runtime=runtime,gpu_uuid=uuid,memory=memory,model_loaded=False,science_trajectory_count=0,numerical_qualification=False,completed_epoch=time.time()))
++        return 0
++    except BaseException as e:
++        failure=dict(status='FAIL',kind='RUNTIME_ENVIRONMENT_PROBE',stage=a.stage,reason=repr(e),traceback=traceback.format_exc(),environment=selected_environment(os.environ),no_retry=True,epoch=time.time(),science_trajectory_count=0)
++        atomic_json(a.result.with_suffix('.PROBE_FAILURE.json'),failure)
++        if a.mode=='gpu':
++            d=Path(os.environ['LING_PROSPECTIVE_RESULTS'])
++            if not (d/'STOP.json').exists():atomic_json(d/'STOP.json',failure)
++        return 1
++
++if __name__=='__main__':sys.exit(main())
+diff --git a/test_qualified_completion.py b/test_qualified_completion.py
+new file mode 100644
+index 0000000..1946947
+--- /dev/null
++++ b/test_qualified_completion.py
+@@ -0,0 +1,101 @@
++"""CPU-only recovery/routing tests; no fixture qualifies a science device."""
++import copy
++import json
++import os
++from pathlib import Path
++import tempfile
++import unittest
++from unittest.mock import patch
++import gpu_admission as g
++import qualified_completion as q
++import recovery_controller as c
++from recovery_state import atomic_json,sha
++
++def pair():
++    a=dict(status='PASS',begin=0,endpoint=8256,observer_enabled=True,document='fixture',condition='FP',host=dict(gpu_uuid='OLD',kernel='k',driver='d',torch='t',cuda_runtime='c',selector='BT16_W8'))
++    for field in q.FIELDS:a[field]='FROZEN_SHA'
++    b=copy.deepcopy(a);b.update(begin=8192,observer_enabled=False);b['host']['gpu_uuid']='NEW'
++    return a,b
++
++class QualificationTests(unittest.TestCase):
++    def test_real_target_device_required(self):
++        a,b=pair();self.assertTrue(q.compare_exact(a,b,'NEW'))
++        with self.assertRaises(AssertionError):q.compare_exact(a,b,'OLD')
++    def test_each_exact_hash_failure_stops(self):
++        for field in q.FIELDS:
++            a,b=pair();b[field]='CHANGED'
++            with self.assertRaises(AssertionError):q.compare_exact(a,b,'NEW')
++    def test_parent_only_is_not_qualified(self):
++        a,b=pair();b['observer_enabled']=True
++        with self.assertRaises(AssertionError):q.compare_exact(a,b,'NEW')
++    def test_runtime_identity_failure_stops(self):
++        a,b=pair();b['host']['selector']='OTHER'
++        with self.assertRaises(AssertionError):q.compare_exact(a,b,'NEW')
++    def test_no_gpu6_label_inheritance(self):
++        a,b=pair();b['host']['gpu_uuid']='OLD'
++        with self.assertRaises(AssertionError):q.compare_exact(a,b,'NEW')
++    def test_worker_ticket_isolation(self):
++        self.assertNotEqual(g.ticket_path('UUID4'),g.ticket_path('UUID5'))
++    def test_qualified_lane_resume_without_pid(self):
++        with tempfile.TemporaryDirectory() as td:
++            d=Path(td);atomic_json(d/'LANE_COMPLETE_UUID4.json',dict(status='PASS',uuid='UUID4',units=[]))
++            with patch.object(q,'D',d):q.wait_lanes([('UUID4',None,None)])
++    def test_completed_new_unit_never_launches_again(self):
++        with tempfile.TemporaryDirectory() as td:
++            d=Path(td);(d/'formal').mkdir();(d/'preregistration').mkdir()
++            atomic_json(d/'SOURCE_CODE_FREEZE.json',dict(source_commit='FIXTURE',config_sha256='CONFIG'))
++            protocol=d/'preregistration/DOCUMENT_SELECTION_AND_EXCLUSION_RULES.json';atomic_json(protocol,dict(synthetic=True))
++            identity=dict(document='fixture',rotation='FP',stage='formal',source_commit='FIXTURE',config_sha256='CONFIG',token_sha256='TOKEN',contract_sha256=sha(protocol),execution=str(d),target_gpu_uuid='NEW')
++            r=d/'formal/fixture__FP__formal.json';e=d/'formal/fixture__FP__formal.NATURAL_EXIT.json'
++            atomic_json(r,dict(status='PASS',CPU_synthetic_only=True));atomic_json(e,dict(natural_exit=True,result_sha256=sha(r),unit_identity=identity))
++            with patch.object(c,'D',d),patch.object(c.p,'verify',lambda:dict(selected_gpu_uuid='NEW')),patch.object(c,'entry_for',lambda _:dict(token_file_sha256='TOKEN')),patch.object(c,'admit',side_effect=AssertionError('DUPLICATE_SCIENTIFIC_LAUNCH')):
++                c.run('fixture','FP','formal');c.run('fixture','FP','formal')
++
++    def test_actual_master_formal_order_and_twelve_barrier(self):
++        with tempfile.TemporaryDirectory() as td:
++            d=Path(td);(d/'runs').mkdir()
++            selection=dict(experiment='CPU_FIXTURE_ONLY',execution_order=[dict(document='fixture'+str(i),conditions=['FP','P1','L7']) for i in range(4)])
++            units=[dict(document=e['document'],rotation=r) for e in selection['execution_order'] for r in e['conditions']]
++            mapping={e['document']:'NEW' for e in selection['execution_order']}
++            spec=dict(new_units=units);atomic_json(d/'FROZEN_SPEC.json',spec);atomic_json(d/'PHASE0_HISTORICAL_ASSET_AUDIT.json',dict(status='PASS'))
++            atomic_json(d/'FROZEN_4DOC_SELECTION.json',selection)
++            atomic_json(d/'EXECUTION_ROUTING.json',dict(original_checkpoint_contract_sha256=sha(d/'FROZEN_SPEC.json'),document_devices=mapping,authorized_devices={'NEW':4}))
++            gates=[]
++            for u in units:
++                a,b=pair();a.update(document=u['document'],condition=u['rotation']);b.update(document=u['document'],condition=u['rotation'])
++                if u['rotation']!='FP':
++                    a['integrity']=b['integrity']=dict(passed=True,every_token_layer_qdq_count=8256*18,actual_next_kernel_equal_post_qdq_count=8255*18)
++                k=u['document']+'__'+u['rotation'];p=d/'runs'/(k+'__parent.json');f=d/'runs'/(k+'__resumed_parity.json');cp=d/'runs'/(k+'__8192.pt')
++                cp.write_bytes(b'CPU_SYNTHETIC_ONLY');a['checkpoint_sha256']=b['checkpoint_sha256']=sha(cp)
++                atomic_json(p,a);atomic_json(f,b)
++                gates.append(dict(u,status='PASS',qualified_gpu_uuid='NEW',parent_sha256=sha(p),resumed_sha256=sha(f),checkpoint_sha256=sha(cp)))
++            gate=d/'ENGINEERING_QUALIFICATION_PRE_FORMAL.json';atomic_json(gate,dict(status='PASS',count=12,units=gates));calls=[]
++            with patch.object(q,'D',d),patch.object(c,'D',d),patch.object(c,'frozen_selection',lambda:selection),patch.object(q,'resource_plan',lambda:dict(status='CPU_FIXTURE')),patch.object(c,'run',lambda doc,rot,stage:calls.append((doc,rot,stage))),patch.dict(os.environ,{'LING_EXECUTION_LANE':''}):q.run_main()
++            self.assertEqual(calls,[(u['document'],u['rotation'],'formal') for u in units])
++            self.assertTrue((d/'PROSPECTIVE_COMPLETE.json').exists())
++            bad=dict(status='PASS',count=12,units=gates[:-1]);gate.write_text(json.dumps(bad));calls.clear()
++            with patch.object(q,'D',d),patch.object(c,'D',d),patch.object(c,'frozen_selection',lambda:selection),patch.object(c,'run',lambda *args:calls.append(args)),patch.dict(os.environ,{'LING_EXECUTION_LANE':''}):
++                with self.assertRaises(AssertionError):q.run_main()
++            self.assertEqual(calls,[])
++
++class GraphicsTests(unittest.TestCase):
++    def setUp(self):
++        self.owner=dict(status='PASS',pid=4040,uid=120,start_ticks=3403,comm='Xorg')
++        self.nvml=dict(pid=4040,usedGpuMemory=4677632,gpuInstanceId=4294967295,computeInstanceId=4294967295)
++        self.xml=dict(pid='4040',type='G',name='/usr/lib/xorg/Xorg',used_memory='4 MiB')
++        self.s=dict(uuid='UUID',direct_NVML_processes=dict(compute=dict(status='PASS',processes=[]),graphics=dict(status='PASS',processes=[self.nvml])),SMI_all_processes=dict(status='PASS',processes=[self.xml]),process_ownership=[self.owner])
++        self.b=dict(NVML_graphics=[self.nvml],SMI_graphics=[self.xml],ownership=[self.owner])
++    def test_baseline_remains_visible(self):self.assertTrue(g.graphics_allowed(self.s,self.b))
++    def test_unknown_graphics_is_not_idle(self):
++        self.s['direct_NVML_processes']['graphics']['status']='UNKNOWN';self.assertFalse(g.graphics_allowed(self.s,self.b))
++    def test_pid_reuse_is_rejected(self):
++        self.s['process_ownership']=[dict(self.owner,start_ticks=9999)];self.assertFalse(g.graphics_allowed(self.s,self.b))
++    def test_new_graphics_process_is_rejected(self):
++        self.s['SMI_all_processes']['processes']=self.s['SMI_all_processes']['processes']+[dict(self.xml,pid='5555')];self.assertFalse(g.graphics_allowed(self.s,self.b))
++
++if __name__=='__main__':
++    import io,time
++    stream=io.StringIO();r=unittest.TextTestRunner(stream=stream,verbosity=2).run(unittest.defaultTestLoader.loadTestsFromModule(__import__(__name__)))
++    d=Path(os.environ['LING_PROSPECTIVE_RESULTS']);(d/'NEW_RECOVERY_TESTS.log').write_text(stream.getvalue())
++    atomic_json(d/'NEW_RECOVERY_TEST_REPORT.json',dict(status='PASS' if r.wasSuccessful() else 'FAIL',test_count=r.testsRun,skips=len(r.skipped),CPU_synthetic_only=True,GPU_scientific_units=0,source_sha256=sha(__file__),epoch=time.time()))
++    print(stream.getvalue());assert r.wasSuccessful() and not r.skipped
+diff --git a/test_true_launch_chain.py b/test_true_launch_chain.py
+new file mode 100644
+index 0000000..4cbe698
+--- /dev/null
++++ b/test_true_launch_chain.py
+@@ -0,0 +1,58 @@
++"""Formal launcher -> unchanged lane expression -> real supervisor -> initializer."""
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import tarfile
++import tempfile
++import time
++from execution04_launcher import W,worker_environment,actual_lane_environment,selected_environment,ENV_KEYS
++from recovery_state import sha,atomic_json
++
++def case(root,stage,repeat,missing=False):
++    path=root/(stage+'_'+str(repeat)+('_negative' if missing else ''));path.mkdir();base=path/'probe'
++    env=worker_environment(os.environ,0,'CPU_ONLY',2);env.update(CUDA_VISIBLE_DEVICES='',LING_PROSPECTIVE_RESULTS=str(path))
++    if missing:env.pop('PYTHONHASHSEED',None)
++    lane=actual_lane_environment(env,'CPU_ONLY','')
++    expected=path/'EXPECTED_ENV.json';atomic_json(expected,selected_environment(lane))
++    ident=dict(document='CPU_FIXTURE_ONLY',rotation='CPU_FIXTURE_ONLY',stage=stage,target_gpu_uuid='CPU_ONLY',execution=str(path))
++    command=[sys.executable,'-B',str(W/'runtime_launch_probe.py'),'--mode','cpu','--stage',stage,'--result',str(base)+'.json','--expected',str(expected)]
++    intent=path/'intent.json';atomic_json(intent,dict(command=command,base=str(base),unit_identity=ident,source_commit='CPU_FIXTURE_ONLY_NOT_GPU_SCIENCE',tag='probe',stage=stage))
++    r=subprocess.run([sys.executable,'-B',str(W/'execution04_launcher.py'),'--cpu-hop','master','--intent',str(intent)],env=env,capture_output=True,text=True,timeout=90)
++    (path/'chain.stdout.txt').write_text(r.stdout);(path/'chain.stderr.txt').write_text(r.stderr)
++    master=json.loads(Path(str(base)+'.MASTER_ENV.json').read_text());observed_lane=json.loads(Path(str(base)+'.LANE_ENV.json').read_text());observed=json.loads(base.with_suffix('.OBSERVED_ENV.json').read_text())
++    assert master['environment']==selected_environment(env)
++    assert observed_lane['environment']==selected_environment(lane)==observed['environment']
++    assert observed['environment']==json.loads(expected.read_text())
++    assert all(x['environment']['CUDA_VISIBLE_DEVICES']=='' for x in [master,observed_lane,observed])
++    if missing:
++        assert r.returncode!=0 and Path(str(base)+'.FAILED_EXIT.json').exists()
++        failure=json.loads(base.with_suffix('.PROBE_FAILURE.json').read_text())
++        assert 'PYTHONHASHSEED' in failure['traceback']
++        assert all(x['environment']['PYTHONHASHSEED'] is None and x['hash_randomization']==1 for x in [master,observed_lane,observed])
++        result=None
++    else:
++        assert r.returncode==0,(r.stdout,r.stderr)
++        result=json.loads(Path(str(base)+'.json').read_text());receipt=json.loads(Path(str(base)+'.NATURAL_EXIT.json').read_text())
++        assert receipt['natural_exit'] and receipt['result_sha256']==sha(Path(str(base)+'.json'))
++        assert result['runtime'][0]['cuda_initialized'] is False and result['science_trajectory_count']==0
++        assert all(x['environment']['PYTHONHASHSEED']=='0' and x['hash_randomization']==0 for x in [master,observed_lane,observed])
++        assert len({x['hash_probe'] for x in [master,observed_lane,observed]})==1
++    return dict(stage=stage,repeat=repeat,missing_seed_negative=missing,status='PASS_EXPECTED_REJECTION' if missing else 'PASS_CPU_ONLY',returncode=r.returncode,master=master,lane=observed_lane,worker=observed,worker_runtime=result['runtime'] if result else None,worker_command=command,supervisor_source_sha256=sha(W/'unit_runner.py'),source_environment_builder_sha256=sha(W/'execution04_launcher.py'))
++
++if __name__=='__main__':
++    output=Path(sys.argv[1]);output.mkdir(parents=True,exist_ok=True)
++    started=time.time()
++    with tempfile.TemporaryDirectory() as td:
++        root=Path(td);rows=[]
++        for stage in ['parent','resumed_parity']:
++            rows.extend(case(root,stage,r) for r in [0,1])
++            rows.append(case(root,stage,0,missing=True))
++        hashes=[r['worker']['hash_probe'] for r in rows if not r['missing_seed_negative']];assert len(set(hashes))==1
++        archive=output/'CPU_TRUE_LAUNCH_CHAIN_EVIDENCE.tar.gz'
++        with tarfile.open(archive,'w:gz') as t:
++            for p in root.rglob('*'):
++                if p.is_file():t.add(p,arcname=str(p.relative_to(root)),recursive=False)
++    atomic_json(output/'CPU_LAUNCH_CHAIN_REGRESSION.json',dict(status='PASS_CPU_TRUE_LAUNCH_CHAIN',cases=rows,case_count=len(rows),parent_and_fresh64_paths=True,actual_formal_environment_builder=True,unchanged_master_lane_expression=True,real_unchanged_unit_runner=True,frozen_initializer_called=True,interpreter_start_hashseed_verified=True,all_positive_fresh_interpreters_hash_equal=True,missing_seed_negative_cases=2,CUDA_exposed=False,model_loads=0,GPU_scientific_units=0,source_sha256={n:sha(W/n) for n in ['execution04_launcher.py','runtime_launch_probe.py','test_true_launch_chain.py','unit_runner.py','qualified_completion.py','v2_runtime.py']},evidence_archive_sha256=sha(archive),elapsed_CPU_wall_seconds=time.time()-started))
++    print('PASS_CPU_TRUE_LAUNCH_CHAIN_4_POSITIVES_2_NEGATIVES_NO_MODEL_NO_CUDA')

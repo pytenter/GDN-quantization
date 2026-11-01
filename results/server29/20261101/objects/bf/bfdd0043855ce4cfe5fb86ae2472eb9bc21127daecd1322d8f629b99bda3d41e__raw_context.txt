@@ -1,0 +1,2275 @@
+notification-application/src/main/java/com/smoketurner/notification/application/graphql/CreateNotificationMutation.java
+public class CreateNotificationMutation implements DataFetcher<Notification> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(CreateNotificationMutation.class);
+  private final NotificationStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Notification data store
+   */
+  public CreateNotificationMutation(final NotificationStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @Override
+  public Notification get(DataFetchingEnvironment environment) {
+    final String username = environment.getArgument("username");
+    if (Strings.isNullOrEmpty(username)) {
+      throw new GraphQLValidationError("username cannot be empty");
+    }
+
+    final Map<String, Object> input = environment.getArgument("notification");
+    if (input == null || input.isEmpty()) {
+      throw new GraphQLValidationError("notification cannot be empty");
+    }
+
+    final String category = String.valueOf(input.get("category")).trim();
+    if (Strings.isNullOrEmpty(category) || "null".equals(category)) {
+      throw new GraphQLValidationError("category cannot be empty");
+    }
+
+    final int categoryLength = category.codePointCount(0, category.length());
+
+    if (categoryLength < Notification.CATEGORY_MIN_LENGTH
+        || categoryLength > Notification.CATEGORY_MAX_LENGTH) {
+      throw new GraphQLValidationError(
+          String.format(
+              "category must be between %d and %d characters",
+              Notification.CATEGORY_MIN_LENGTH, Notification.CATEGORY_MAX_LENGTH));
+    }
+
+    final String message = String.valueOf(input.get("message")).trim();
+    if (Strings.isNullOrEmpty(message) || "null".equals(message)) {
+      throw new GraphQLValidationError("message cannot be empty");
+    }
+
+    final int messageLength = message.codePointCount(0, message.length());
+
+    if (messageLength < Notification.MESSAGE_MIN_LENGTH
+        || messageLength > Notification.MESSAGE_MAX_LENGTH) {
+      throw new GraphQLValidationError(
+          String.format(
+              "message must be between %d and %d characters",
+              Notification.MESSAGE_MIN_LENGTH, Notification.MESSAGE_MAX_LENGTH));
+    }
+
+    final Notification.Builder builder = Notification.builder(category, message);
+
+    final Object properties = input.get("properties");
+    if (properties != null && properties instanceof Map) {
+      builder.withProperties(convertToMap(properties));
+    }
+
+    final Notification notification = builder.build();
+
+    try {
+      return store.store(username, notification);
+    } catch (NotificationStoreException e) {
+      LOGGER.error(String.format("Unable to create notification for %s", username), e);
+      throw new GraphQLValidationError("Unable to create notification");
+    }
+  }
+
+  /**
+   * Safely convert an Object into a Map of string objects.
+   *
+   * @param obj Object to convert
+   * @return Map of properties
+   */
+  private static Map<String, String> convertToMap(final Object obj) {
+    if (obj == null) {
+      return Collections.emptyMap();
+    }
+
+    @SuppressWarnings("unchecked")
+    final Map<String, Object> map = (Map<String, Object>) obj;
+    if (map.isEmpty()) {
+      return Collections.emptyMap();
+    }
+
+    return map.entrySet().stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, e -> String.valueOf(e.getValue()).trim()));
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/graphql/UsernameFieldValidation.java
+public class UsernameFieldValidation implements FieldValidation {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(UsernameFieldValidation.class);
+  private static final List<String> VALID_FIELDS =
+      ImmutableList.of(
+          "notifications", "createNotification", "removeNotification", "removeAllNotifications");
+
+  private static final int USERNAME_MIN_LENGTH = 3;
+  private static final int USERNAME_MAX_LENGTH = 64;
+
+  @Override
+  public List<GraphQLError> validateFields(FieldValidationEnvironment environment) {
+    final List<GraphQLError> errors = new ArrayList<>();
+
+    for (FieldAndArguments fieldAndArguments : environment.getFields()) {
+      final Field field = fieldAndArguments.getField();
+      if (!VALID_FIELDS.contains(field.getName())) {
+        continue;
+      }
+
+      LOGGER.debug("Field: {}", field.getName());
+
+      final String username = fieldAndArguments.getArgumentValue("username");
+
+      if (Strings.isNullOrEmpty(username)) {
+        errors.add(environment.mkError("username cannot be empty", fieldAndArguments));
+      } else {
+        final int length = username.codePointCount(0, username.length());
+
+        if (length < USERNAME_MIN_LENGTH || length > USERNAME_MAX_LENGTH) {
+          errors.add(
+              environment.mkError(
+                  String.format(
+                      "username must be between %d and %d characters",
+                      USERNAME_MIN_LENGTH, USERNAME_MAX_LENGTH),
+                  fieldAndArguments));
+        } else if (!username.matches("[A-Za-z0-9]+")) {
+          errors.add(
+              environment.mkError(
+                  "username must only contain alphanumeric characters", fieldAndArguments));
+        }
+      }
+    }
+
+    return errors;
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/riak/NotificationListConverter.java
+public class NotificationListConverter extends Converter<NotificationListObject> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(NotificationListConverter.class);
+
+  public NotificationListConverter() {
+    super(NotificationListObject.class);
+  }
+
+  @Override
+  public NotificationListObject toDomain(final BinaryValue value, final String contentType) {
+    if (!ProtocolBufferMediaType.APPLICATION_PROTOBUF.equals(contentType)) {
+      LOGGER.error("Invalid Content-Type: {}", contentType);
+      throw new ConversionException("Invalid Content-Type: " + contentType);
+    }
+
+    final NotificationListPB list;
+    try {
+      list = NotificationListPB.parseFrom(value.unsafeGetValue());
+    } catch (InvalidProtocolBufferException e) {
+      LOGGER.error("Unable to convert value from Riak", e);
+      throw new ConversionException(e);
+    }
+
+    final NotificationListObject obj = new NotificationListObject();
+    list.getNotificationList().stream()
+        .map(NotificationListConverter::convert)
+        .forEach(obj::addNotification);
+    obj.deleteNotifications(list.getDeletedIdList());
+    return obj;
+  }
+
+  @Override
+  public ContentAndType fromDomain(final NotificationListObject domainObject) {
+    final NotificationListPB.Builder builder =
+        NotificationListPB.newBuilder().addAllDeletedId(domainObject.getDeletedIds());
+
+    domainObject.getNotifications().stream()
+        .map(NotificationListConverter::convert)
+        .forEach(builder::addNotification);
+
+    final NotificationListPB list = builder.build();
+
+    return new ContentAndType(
+        BinaryValue.unsafeCreate(list.toByteArray()), ProtocolBufferMediaType.APPLICATION_PROTOBUF);
+  }
+
+  private static Notification convert(final NotificationPB notification) {
+    return Notification.builder(notification.getCategory(), notification.getMessage())
+        .withId(notification.getId())
+        .withCreatedAt(
+            ZonedDateTime.ofInstant(
+                Instant.ofEpochMilli(notification.getCreatedAt()), ZoneOffset.UTC))
+        .withProperties(notification.getPropertyMap())
+        .build();
+  }
+
+  private static NotificationPB convert(final Notification notification) {
+    return NotificationPB.newBuilder()
+        .setId(notification.getId().get())
+        .setCategory(notification.getCategory())
+        .setMessage(notification.getMessage())
+        .setCreatedAt(notification.getCreatedAt().toInstant().toEpochMilli())
+        .putAllProperty(notification.getProperties())
+        .build();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/graphql/RemoveAllRulesMutation.java
+public class RemoveAllRulesMutation implements DataFetcher<Boolean> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(RemoveAllRulesMutation.class);
+  private final RuleStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Rule data store
+   */
+  public RemoveAllRulesMutation(final RuleStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @Override
+  public Boolean get(DataFetchingEnvironment environment) {
+    try {
+      store.removeAll();
+    } catch (NotificationStoreException e) {
+      LOGGER.error("Unable to remove all rules", e);
+      throw new GraphQLValidationError("Unable to remove all rules");
+    }
+
+    return true;
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/graphql/RemoveAllNotificationsMutation.java
+public class RemoveAllNotificationsMutation implements DataFetcher<Boolean> {
+
+  private static final Logger LOGGER =
+      LoggerFactory.getLogger(RemoveAllNotificationsMutation.class);
+  private final NotificationStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Notification data store
+   */
+  public RemoveAllNotificationsMutation(final NotificationStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @Override
+  public Boolean get(DataFetchingEnvironment environment) {
+    final String username = environment.getArgument("username");
+    if (Strings.isNullOrEmpty(username)) {
+      throw new GraphQLValidationError("username cannot be empty");
+    }
+
+    try {
+      store.removeAll(username);
+    } catch (NotificationStoreException e) {
+      LOGGER.error(String.format("Unable to remove all notifications for %s", username), e);
+      throw new GraphQLValidationError("Unable to remove all notifications");
+    }
+
+    return true;
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/resources/RuleResource.java
+@Path("/v1/rules")
+public class RuleResource {
+
+  private final RuleStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Rule data store
+   */
+  public RuleResource(final RuleStore store) {
+    this.store = Objects.requireNonNull(store);
+  }
+
+  @GET
+  @JSONP
+  @Timed
+  @Produces({MediaType.APPLICATION_JSON, "application/javascript"})
+  @CacheControl(mustRevalidate = true, noCache = true, noStore = true)
+  public Response fetch() {
+
+    final Optional<Map<String, Rule>> rules;
+    try {
+      rules = store.fetch();
+    } catch (NotificationStoreException e) {
+      throw new NotificationException(
+          Response.Status.INTERNAL_SERVER_ERROR, "Unable to fetch rules", e);
+    }
+
+    if (!rules.isPresent()) {
+      throw new NotificationException(Response.Status.NOT_FOUND, "No rules found");
+    }
+
+    return Response.ok(rules.get()).build();
+  }
+
+  @PUT
+  @Timed
+  @Path("/{category}")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response store(
+      @PathParam("category") final String category, @NotNull @Valid final Rule rule) {
+
+    if (!rule.isValid()) {
+      throw new NotificationException(
+          Response.Status.BAD_REQUEST,
+          "Rule must contain at least one of: max_size, max_duration, or match_on");
+    }
+
+    try {
+      store.store(category, rule);
+    } catch (NotificationStoreException e) {
+      throw new NotificationException(
+          Response.Status.INTERNAL_SERVER_ERROR, "Unable to store rule", e);
+    }
+
+    return Response.noContent().build();
+  }
+
+  @DELETE
+  @Timed
+  @Path("/{category}")
+  public Response delete(@PathParam("category") final String category) {
+
+    try {
+      store.remove(category);
+    } catch (NotificationStoreException e) {
+      throw new NotificationException(
+          Response.Status.INTERNAL_SERVER_ERROR, "Unable to remove rule", e);
+    }
+    return Response.noContent().build();
+  }
+
+  @DELETE
+  @Timed
+  public Response delete() {
+
+    try {
+      store.removeAll();
+    } catch (NotificationStoreException e) {
+      throw new NotificationException(
+          Response.Status.INTERNAL_SERVER_ERROR, "Unable to remove rules", e);
+    }
+    return Response.noContent().build();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/graphql/CreateRuleMutation.java
+public class CreateRuleMutation implements DataFetcher<Boolean> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(CreateRuleMutation.class);
+  private final RuleStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Rule data store
+   */
+  public CreateRuleMutation(final RuleStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @Override
+  public Boolean get(DataFetchingEnvironment environment) {
+    final String category = environment.getArgument("category");
+    if (Strings.isNullOrEmpty(category)) {
+      throw new GraphQLValidationError("category cannot be empty");
+    }
+
+    final int categoryLength = category.codePointCount(0, category.length());
+
+    if (categoryLength < Notification.CATEGORY_MIN_LENGTH
+        || categoryLength > Notification.CATEGORY_MAX_LENGTH) {
+      throw new GraphQLValidationError(
+          String.format(
+              "category must be between %d and %d characters",
+              Notification.CATEGORY_MIN_LENGTH, Notification.CATEGORY_MAX_LENGTH));
+    }
+
+    final Map<String, Object> input = environment.getArgument("rule");
+    if (input == null || input.isEmpty()) {
+      throw new GraphQLValidationError("rule cannot be empty");
+    }
+
+    final Rule.Builder builder = Rule.builder();
+    if (input.containsKey("maxSize")) {
+      try {
+        builder.withMaxSize(Integer.parseInt(String.valueOf(input.get("maxSize"))));
+      } catch (NumberFormatException e) {
+        throw new GraphQLValidationError("maxSize is not an integer");
+      }
+    }
+    if (input.containsKey("maxDuration")) {
+      try {
+        builder.withMaxDuration(Duration.parse(String.valueOf(input.get("maxDuration"))));
+      } catch (IllegalArgumentException e) {
+        throw new GraphQLValidationError("maxDuration is an invalid duration");
+      }
+    }
+    if (input.containsKey("matchOn")) {
+      builder.withMatchOn(String.valueOf(input.get("matchOn")));
+    }
+
+    final Rule rule = builder.build();
+
+    if (!rule.isValid()) {
+      throw new GraphQLValidationError("rule cannot be empty");
+    }
+
+    try {
+      store.store(category, rule);
+    } catch (NotificationStoreException e) {
+      LOGGER.error(String.format("Unable to create rule for %s", category), e);
+      throw new GraphQLValidationError("Unable to create rule");
+    }
+
+    return true;
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/managed/NotificationStoreManager.java
+public class NotificationStoreManager implements Managed {
+
+  private final NotificationStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Notification store to manage
+   */
+  public NotificationStoreManager(final NotificationStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @Override
+  public void start() throws Exception {
+    store.initialize();
+  }
+
+  @Override
+  public void stop() throws Exception {
+    // nothing to stop
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/core/IdGenerator.java
+public class IdGenerator {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(IdGenerator.class);
+  private final Ksuid ksuid;
+
+  /** Constructor */
+  public IdGenerator() {
+    this.ksuid = new Ksuid();
+  }
+
+  /**
+   * Generate a new notification ID
+   *
+   * @return the new notification ID
+   * @throws NotificationStoreException if unable to generate an ID
+   */
+  public String nextId() throws NotificationStoreException {
+    try {
+      return ksuid.generate();
+    } catch (IOException e) {
+      LOGGER.error("Unable to generate new ID", e);
+      throw new NotificationStoreException(e);
+    }
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/store/CursorStore.java
+public class CursorStore {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(CursorStore.class);
+  private static final Namespace NAMESPACE = new Namespace("cursors");
+
+  // Riak request timeout default is 60s
+  private static final int DEFAULT_TIMEOUT_MS = 60000;
+  private final RiakClient client;
+
+  // timeouts
+  private final int timeout;
+  private final Duration requestTimeout;
+
+  // timers
+  private final Timer fetchTimer;
+  private final Timer storeTimer;
+  private final Timer deleteTimer;
+
+  /**
+   * Constructor
+   *
+   * @param client Riak client
+   * @param timeout Riak server-side timeout
+   * @param requestTimeout Riak client-side timeout
+   */
+  public CursorStore(
+      final RiakClient client, final Duration timeout, final Duration requestTimeout) {
+
+    final MetricRegistry registry = SharedMetricRegistries.getOrCreate("default");
+    this.fetchTimer = registry.timer(MetricRegistry.name(CursorStore.class, "fetch"));
+    this.storeTimer = registry.timer(MetricRegistry.name(CursorStore.class, "store"));
+    this.deleteTimer = registry.timer(MetricRegistry.name(CursorStore.class, "delete"));
+
+    this.client = Objects.requireNonNull(client, "client == null");
+
+    this.timeout =
+        Optional.ofNullable(timeout)
+            .map(t -> Math.toIntExact(t.toMilliseconds()))
+            .orElse(DEFAULT_TIMEOUT_MS);
+    this.requestTimeout = Objects.requireNonNull(requestTimeout, "requestTimeout == null");
+  }
+
+  /** Internal method to set the allow_multi to true */
+  public void initialize() {
+    final boolean allowMulti = true;
+    LOGGER.debug("Setting allow_multi={} for namespace={}", allowMulti, NAMESPACE);
+    final StoreBucketProperties storeBucketProperties =
+        new StoreBucketProperties.Builder(NAMESPACE).withAllowMulti(allowMulti).build();
+
+    try {
+      client.execute(storeBucketProperties);
+    } catch (InterruptedException e) {
+      LOGGER.warn(
+          String.format("Unable to set allow_multi=%s for namespace=%s", allowMulti, NAMESPACE), e);
+      Thread.currentThread().interrupt();
+    } catch (ExecutionException e) {
+      LOGGER.error(
+          String.format("Unable to set allow_multi=%s for namespace=%s", allowMulti, NAMESPACE), e);
+    }
+  }
+
+  /**
+   * Fetch the cursor for a given user
+   *
+   * @param username User to get the cursor for
+   * @param cursorName Name of the cursor to fetch
+   * @return the last seen notification ID
+   * @throws NotificationStoreException if unable to fetch the cursor
+   */
+  public Optional<String> fetch(final String username, final String cursorName)
+      throws NotificationStoreException {
+
+    Objects.requireNonNull(username, "username == null");
+    Preconditions.checkArgument(!username.isEmpty(), "username cannot be empty");
+    Objects.requireNonNull(cursorName, "cursorName == null");
+    Preconditions.checkArgument(!cursorName.isEmpty(), "cursorName cannot be empty");
+
+    final String key = getCursorKey(username, cursorName);
+    final Location location = new Location(NAMESPACE, key);
+
+    LOGGER.debug("Fetching key (sync): {}", location);
+
+    final CursorObject cursor;
+    final FetchValue fv = new FetchValue.Builder(location).withTimeout(timeout).build();
+    try (Timer.Context context = fetchTimer.time()) {
+      final FetchValue.Response response = client.execute(fv);
+      if (response.isNotFound()) {
+        return Optional.empty();
+      }
+      cursor = response.getValue(CursorObject.class);
+    } catch (UnresolvedConflictException e) {
+      LOGGER.error("Unable to resolve siblings for key: " + location, e);
+      throw new NotificationStoreException(e);
+    } catch (ExecutionException e) {
+      LOGGER.error("Unable to fetch key: " + location, e);
+      throw new NotificationStoreException(e);
+    } catch (InterruptedException e) {
+      LOGGER.warn("Interrupted fetching key: " + location, e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+
+    return Optional.ofNullable(cursor).map(c -> c.getValue());
+  }
+
+  /**
+   * Asynchronously update a given cursor with the specified value.
+   *
+   * @param username Username to update the cursor for
+   * @param cursorName Name of the cursor to store
+   * @param value Value to set
+   * @throws NotificationStoreException if unable to update the cursor
+   */
+  public void store(final String username, final String cursorName, final String value)
+      throws NotificationStoreException {
+
+    Objects.requireNonNull(username, "username == null");
+    Preconditions.checkArgument(!username.isEmpty(), "username cannot be empty");
+    Objects.requireNonNull(cursorName, "cursorName == null");
+    Preconditions.checkArgument(!cursorName.isEmpty(), "cursorName cannot be empty");
+
+    final String key = getCursorKey(username, cursorName);
+    final CursorUpdate update = new CursorUpdate(key, value);
+
+    final Location location = new Location(NAMESPACE, key);
+    final UpdateValue updateValue =
+        new UpdateValue.Builder(location)
+            .withUpdate(update)
+            .withStoreOption(StoreValue.Option.RETURN_BODY, false)
+            .withTimeout(timeout)
+            .build();
+
+    LOGGER.debug("Updating cursor ({}) to value (async): {}", location, value);
+    try (Timer.Context context = storeTimer.time()) {
+      final RiakFuture<UpdateValue.Response, Location> future = client.executeAsync(updateValue);
+      future.await(requestTimeout.getQuantity(), requestTimeout.getUnit());
+      if (future.isSuccess()) {
+        LOGGER.debug("Successfully updated cursor: {}", location);
+      }
+    } catch (InterruptedException e) {
+      LOGGER.warn("Update request was interrupted", e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+  }
+
+  /**
+   * Asynchronously delete the cursor for a given user
+   *
+   * @param username User delete their cursor
+   * @param cursorName Name of the cursor
+   * @throws NotificationStoreException if unable to delete the cursor
+   */
+  public void delete(final String username, final String cursorName)
+      throws NotificationStoreException {
+
+    Objects.requireNonNull(username, "username == null");
+    Preconditions.checkArgument(!username.isEmpty(), "username cannot be empty");
+    Objects.requireNonNull(cursorName, "cursorName == null");
+    Preconditions.checkArgument(!cursorName.isEmpty(), "cursorName cannot be empty");
+
+    final String key = getCursorKey(username, cursorName);
+    final Location location = new Location(NAMESPACE, key);
+    final DeleteValue deleteValue = new DeleteValue.Builder(location).withTimeout(timeout).build();
+
+    LOGGER.debug("Deleting key (async): {}", location);
+    try (Timer.Context context = deleteTimer.time()) {
+      final RiakFuture<Void, Location> future = client.executeAsync(deleteValue);
+      future.await(requestTimeout.getQuantity(), requestTimeout.getUnit());
+      if (future.isSuccess()) {
+        LOGGER.debug("Successfully deleted key: {}", location);
+      }
+    } catch (InterruptedException e) {
+      LOGGER.warn("Delete request was interrupted", e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+  }
+
+  /**
+   * Return the key name for fetching a cursor
+   *
+   * @param username Username to fetch
+   * @param cursorName Name of the cursor to fetch
+   * @return the key name
+   */
+  public String getCursorKey(final String username, final String cursorName) {
+    return username + "-" + cursorName;
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/graphql/RuleDataFetcher.java
+public class RuleDataFetcher implements DataFetcher<List<Map<String, Object>>> {
+
+  private final RuleStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Rule data store
+   */
+  public RuleDataFetcher(final RuleStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @Override
+  public List<Map<String, Object>> get(DataFetchingEnvironment environment) {
+    final Map<String, Rule> data = store.fetchCached();
+
+    return data.entrySet().stream()
+        .map(e -> ImmutableMap.of("category", e.getKey(), "rule", e.getValue()))
+        .collect(Collectors.toList());
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/resources/NotificationResource.java
+@Path("/v1/notifications")
+public class NotificationResource {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(NotificationResource.class);
+  private static final String ACCEPT_RANGES_HEADER = "Accept-Ranges";
+  private static final String CONTENT_RANGE_HEADER = "Content-Range";
+  private static final String NEXT_RANGE_HEADER = "Next-Range";
+  private static final int DEFAULT_LIMIT = 20;
+  private static final int MAX_LIMIT = 1000;
+  private static final String RANGE_NAME = "id";
+  private final NotificationStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Notification data store
+   */
+  public NotificationResource(final NotificationStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @GET
+  @JSONP
+  @Timed
+  @Path("/{username}")
+  @Produces({MediaType.APPLICATION_JSON, "application/javascript"})
+  @CacheControl(mustRevalidate = true, noCache = true, noStore = true)
+  public Response fetch(
+      @HeaderParam("Range") final String rangeHeader,
+      @PathParam("username") final String username) {
+
+    final Optional<UserNotifications> list;
+    try {
+      list = store.fetch(username);
+    } catch (NotificationStoreException e) {
+      throw new NotificationException(
+          Response.Status.INTERNAL_SERVER_ERROR, "Unable to fetch notifications", e);
+    }
+
+    if (!list.isPresent()) {
+      throw new NotificationException(Response.Status.NOT_FOUND, "Notifications not found");
+    }
+
+    final ImmutableSortedSet<Notification> notifications = list.get().getNotifications();
+    final int total = notifications.size();
+
+    // if there are no notifications, just return an empty list
+    if (total < 1) {
+      return Response.ok(notifications).header(ACCEPT_RANGES_HEADER, RANGE_NAME).build();
+    }
+
+    // The newest notification is always the first notification in the list and is used to set the
+    // Last-Modified response header below.
+    final Notification newest = notifications.first();
+    final Notification oldest = notifications.last();
+
+    Notification from = newest;
+    boolean fromInclusive = true;
+    Notification to;
+    boolean toInclusive = true;
+
+    int limit = DEFAULT_LIMIT;
+    final ResponseBuilder builder;
+
+    // If no Range header is present on the request, return a 200 response
+    if (rangeHeader == null) {
+      builder = Response.ok();
+      try {
+        to = Iterables.getLast(store.skip(notifications, from.getId(""), true, limit));
+      } catch (NoSuchElementException e) {
+        LOGGER.debug("List of notifications is empty, using oldest", e);
+        to = oldest;
+      }
+    } else {
+      // If a Range header is present, return a 206 response
+      builder = Response.status(Response.Status.PARTIAL_CONTENT);
+      final RangeHeader range = RangeHeader.parse(rangeHeader);
+      limit = range.getMax().orElse(DEFAULT_LIMIT);
+      if (limit > MAX_LIMIT) {
+        limit = MAX_LIMIT;
+      }
+      try {
+        if (range.getFromId().isPresent()) {
+          from = notifications.floor(Notification.create(range.getFromId().get()));
+          if (from == null) {
+            from = newest;
+          }
+          fromInclusive = range.getFromInclusive().orElse(true);
+
+          to = Iterables.getLast(store.skip(notifications, from.getId(""), fromInclusive, limit));
+        } else {
+          to = Iterables.getLast(store.skip(notifications, from.getId(""), true, limit));
+        }
+      } catch (NoSuchElementException e) {
+        LOGGER.debug("List of notifications is empty, using oldest", e);
+        to = oldest;
+      }
+    }
+
+    // Add the Accept-Ranges response header
+    builder.header(ACCEPT_RANGES_HEADER, RANGE_NAME);
+
+    // Add the Last-Modified response header
+    builder.lastModified(Date.from(newest.getCreatedAt().toInstant()));
+
+    final ImmutableSortedSet<Notification> subSet =
+        notifications.subSet(from, fromInclusive, to, toInclusive);
+    if (!subSet.isEmpty()) {
+      final String firstId = subSet.first().getId("");
+      final String lastId = subSet.last().getId("");
+
+      // Add the Content-Range and Next-Range response headers
+      builder.header(CONTENT_RANGE_HEADER, String.format("%s %s..%s", RANGE_NAME, firstId, lastId));
+      if (subSet.last().compareTo(oldest) < 0) {
+        builder.header(
+            NEXT_RANGE_HEADER, String.format("%s ]%s..; max=%d", RANGE_NAME, lastId, limit));
+      }
+    }
+
+    return builder.entity(subSet).build();
+  }
+
+  @POST
+  @Timed
+  @Path("/{username}")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response add(
+      @PathParam("username") final String username,
+      @NotNull @Valid final Notification notification) {
+
+    final Notification storedNotification;
+    try {
+      storedNotification = store.store(username, notification);
+    } catch (NotificationStoreException e) {
+      throw new NotificationException(
+          Response.Status.INTERNAL_SERVER_ERROR, "Unable to store notification", e);
+    }
+
+    return Response.created(
+            UriBuilder.fromResource(NotificationResource.class).path("{username}").build(username))
+        .entity(storedNotification)
+        .build();
+  }
+
+  @DELETE
+  @Timed
+  @Path("/{username}")
+  public Response delete(
+      @PathParam("username") final String username,
+      @QueryParam("ids") final StringSetParam idsParam) {
+
+    try {
+      if (idsParam != null) {
+        store.remove(username, idsParam.get());
+      } else {
+        store.removeAll(username);
+      }
+    } catch (NotificationStoreException e) {
+      throw new NotificationException(
+          Response.Status.INTERNAL_SERVER_ERROR, "Unable to delete notifications", e);
+    }
+
+    return Response.noContent().build();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/exceptions/NotificationExceptionMapper.java
+public class NotificationExceptionMapper implements ExceptionMapper<NotificationException> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(NotificationExceptionMapper.class);
+
+  @Override
+  public Response toResponse(final NotificationException exception) {
+    LOGGER.debug("Error response ({}): {}", exception.getCode(), exception.getMessage());
+
+    return Response.status(exception.getCode())
+        .entity(new ErrorMessage(exception.getCode(), exception.getMessage()))
+        .type(MediaType.APPLICATION_JSON)
+        .build();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/managed/CursorStoreManager.java
+public class CursorStoreManager implements Managed {
+
+  private final CursorStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Cursor store to manage
+   */
+  public CursorStoreManager(final CursorStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @Override
+  public void start() throws Exception {
+    store.initialize();
+  }
+
+  @Override
+  public void stop() throws Exception {
+    // nothing to stop
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/core/WebSecurityFilter.java
+@Provider
+@Priority(Priorities.USER)
+public class WebSecurityFilter implements ContainerResponseFilter {
+
+  @Override
+  public void filter(ContainerRequestContext request, ContainerResponseContext response)
+      throws IOException {
+
+    final MultivaluedMap<String, Object> headers = response.getHeaders();
+
+    headers.putSingle(HttpHeaders.X_CONTENT_TYPE_OPTIONS, "nosniff");
+    headers.putSingle(HttpHeaders.X_FRAME_OPTIONS, "deny");
+    headers.putSingle(HttpHeaders.X_XSS_PROTECTION, "1; mode=block");
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/store/NotificationStore.java
+public class NotificationStore {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(NotificationStore.class);
+  private static final String CURSOR_NAME = "notifications";
+  private static final Namespace NAMESPACE = new Namespace("notifications");
+
+  // Riak request timeout default is 60s
+  private static final int DEFAULT_TIMEOUT_MS = 60000;
+
+  private final RiakClient client;
+  private final IdGenerator idGenerator;
+  private final CursorStore cursors;
+  private final RuleStore ruleStore;
+
+  // timeouts
+  private final int timeout;
+  private final Duration requestTimeout;
+
+  // timers
+  private final Timer fetchTimer;
+  private final Timer updateTimer;
+  private final Timer deleteTimer;
+
+  private Supplier<ZonedDateTime> currentTimeProvider = () -> ZonedDateTime.now(Clock.systemUTC());
+
+  /**
+   * Constructor
+   *
+   * @param client Riak client
+   * @param idGenerator ID Generator
+   * @param cursors Cursor data store
+   * @param ruleStore Rule data store
+   * @param timeout Riak server-side timeout
+   * @param requestTimeout Riak client-side timeout
+   */
+  public NotificationStore(
+      final RiakClient client,
+      final IdGenerator idGenerator,
+      final CursorStore cursors,
+      final RuleStore ruleStore,
+      final Duration timeout,
+      final Duration requestTimeout) {
+
+    final MetricRegistry registry = SharedMetricRegistries.getOrCreate("default");
+    this.fetchTimer = registry.timer(MetricRegistry.name(NotificationStore.class, "fetch"));
+    this.updateTimer = registry.timer(MetricRegistry.name(NotificationStore.class, "store"));
+    this.deleteTimer = registry.timer(MetricRegistry.name(NotificationStore.class, "delete"));
+
+    this.client = Objects.requireNonNull(client, "client == null");
+    this.idGenerator = Objects.requireNonNull(idGenerator, "idGenerator == null");
+    this.cursors = Objects.requireNonNull(cursors, "cursors == null");
+    this.ruleStore = Objects.requireNonNull(ruleStore, "ruleStore == null");
+
+    this.timeout =
+        Optional.ofNullable(timeout)
+            .map(t -> Math.toIntExact(t.toMilliseconds()))
+            .orElse(DEFAULT_TIMEOUT_MS);
+    this.requestTimeout = Objects.requireNonNull(requestTimeout, "requestTimeout == null");
+  }
+
+  /** Internal method to set the allow_multi to true */
+  public void initialize() {
+    final boolean allowMulti = true;
+    LOGGER.debug("Setting allow_multi={} for namespace={}", allowMulti, NAMESPACE);
+    final StoreBucketProperties storeBucketProperties =
+        new StoreBucketProperties.Builder(NAMESPACE).withAllowMulti(allowMulti).build();
+
+    try {
+      client.execute(storeBucketProperties);
+    } catch (InterruptedException e) {
+      LOGGER.warn(
+          String.format("Unable to set allow_multi=%s for namespace=%s", allowMulti, NAMESPACE), e);
+      Thread.currentThread().interrupt();
+    } catch (ExecutionException e) {
+      LOGGER.error(
+          String.format("Unable to set allow_multi=%s for namespace=%s", allowMulti, NAMESPACE), e);
+    }
+  }
+
+  /**
+   * Fetch a list of notifications for a given user
+   *
+   * @param username User to fetch notifications for
+   * @return Optional list of notifications or absent
+   * @throws NotificationStoreException if unable to fetch the notifications
+   */
+  public Optional<UserNotifications> fetch(final String username)
+      throws NotificationStoreException {
+
+    Objects.requireNonNull(username, "username == null");
+    Preconditions.checkArgument(!username.isEmpty(), "username cannot be empty");
+
+    final Location location = new Location(NAMESPACE, username);
+
+    LOGGER.debug("Fetching key (sync): {}", location);
+
+    final NotificationListObject list;
+    final FetchValue fv = new FetchValue.Builder(location).withTimeout(timeout).build();
+    try (Timer.Context context = fetchTimer.time()) {
+      final FetchValue.Response response = client.execute(fv);
+      if (response.isNotFound()) {
+        return Optional.empty();
+      }
+      list = response.getValue(NotificationListObject.class);
+    } catch (UnresolvedConflictException e) {
+      LOGGER.error("Unable to resolve siblings for key: " + location, e);
+      throw new NotificationStoreException(e);
+    } catch (ExecutionException e) {
+      LOGGER.error("Unable to fetch key: " + location, e);
+      throw new NotificationStoreException(e);
+    } catch (InterruptedException e) {
+      LOGGER.warn("Interrupted fetching key: " + location, e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+
+    if (list == null) {
+      return Optional.empty();
+    }
+
+    return Optional.of(splitNotifications(username, list.getNotifications()));
+  }
+
+  /**
+   * Sets the unseen state on all of the notifications based any previously viewed notifications.
+   *
+   * @param username Username of the notifications
+   * @param notifications Original notifications list
+   * @return the seen and unseen notifications
+   * @throws NotificationStoreException if unable to update the cursor
+   */
+  public UserNotifications splitNotifications(
+      final String username, @Nullable final SortedSet<Notification> notifications)
+      throws NotificationStoreException {
+
+    Objects.requireNonNull(username, "username == null");
+    Preconditions.checkArgument(!username.isEmpty(), "username cannot be empty");
+
+    // if there are no notifications, just return
+    if (notifications == null || notifications.isEmpty()) {
+      return new UserNotifications();
+    }
+
+    // get the ID of the most recent notification (this should never be
+    // zero)
+    final String newestId = notifications.first().getId("");
+    LOGGER.debug("User ({}) newest notification ID: {}", username, newestId);
+
+    // fetch rules from cache
+    final Map<String, Rule> rules = ruleStore.fetchCached();
+    LOGGER.debug("Fetched {} rules from cache", rules.size());
+
+    final Rollup unseenRollup = new Rollup(rules);
+
+    final Optional<String> cursor = cursors.fetch(username, CURSOR_NAME);
+    if (!cursor.isPresent()) {
+      // if the user has no cursor, update the cursor to the newest
+      // notification
+      LOGGER.debug("User ({}) has no cursor, setting to {}", username, newestId);
+      cursors.store(username, CURSOR_NAME, newestId);
+
+      // set all of the notifications to unseen=true
+      return new UserNotifications(unseenRollup.rollup(setUnseenState(notifications, true)));
+    }
+
+    final String lastSeenId = cursor.orElse("");
+    LOGGER.debug("User ({}) last seen notification ID: {}", username, lastSeenId);
+
+    // if the latest seen notification ID is less than the newest notification ID, then update the
+    // cursor to the newest notification ID.
+    if (lastSeenId.compareTo(newestId) < 0) {
+      LOGGER.debug("User ({}) updating cursor to {}", username, newestId);
+      cursors.store(username, CURSOR_NAME, newestId);
+    }
+
+    // get the parent ID of the last seen notification ID
+    final Optional<Notification> lastNotification = tryFind(notifications, lastSeenId);
+    if (!lastNotification.isPresent()) {
+      // if the last notification is not found, set all of the notifications as unseen
+      return new UserNotifications(unseenRollup.rollup(setUnseenState(notifications, true)));
+    }
+
+    // Set the head of the list as being unseen
+    final Stream<Notification> unseen =
+        setUnseenState(notifications.headSet(lastNotification.get()), true);
+
+    // Set the tail of the list as being seen
+    final Stream<Notification> seen =
+        setUnseenState(notifications.tailSet(lastNotification.get()), false);
+
+    final Rollup seenRollup = new Rollup(rules);
+
+    return new UserNotifications(unseenRollup.rollup(unseen), seenRollup.rollup(seen));
+  }
+
+  /**
+   * Store a new notification for a user
+   *
+   * @param username User to store the notification
+   * @param notification Notification to store
+   * @return the stored notification
+   * @throws NotificationStoreException if unable to store the notification
+   */
+  public Notification store(final String username, final Notification notification)
+      throws NotificationStoreException {
+
+    Objects.requireNonNull(username, "username == null");
+    Preconditions.checkArgument(!username.isEmpty(), "username cannot be empty");
+    Objects.requireNonNull(notification, "notification == null");
+
+    final Notification updatedNotification =
+        Notification.builder(notification)
+            .withId(idGenerator.nextId())
+            .withCreatedAt(currentTimeProvider.get())
+            .build();
+
+    final NotificationListAddition update = new NotificationListAddition(updatedNotification);
+
+    final Location location = new Location(NAMESPACE, username);
+    final UpdateValue updateValue =
+        new UpdateValue.Builder(location)
+            .withUpdate(update)
+            .withStoreOption(StoreValue.Option.RETURN_BODY, false)
+            .withTimeout(timeout)
+            .build();
+
+    LOGGER.debug("Updating key (sync): {}", location);
+
+    try (Timer.Context context = updateTimer.time()) {
+      client.execute(updateValue);
+    } catch (ExecutionException e) {
+      LOGGER.error("Unable to update key: " + location, e);
+      throw new NotificationStoreException(e);
+    } catch (InterruptedException e) {
+      LOGGER.warn("Update request was interrupted", e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+    return updatedNotification;
+  }
+
+  /**
+   * Asynchronously delete all of the notifications for a given user
+   *
+   * @param username User to delete all the notifications
+   * @throws NotificationStoreException if unable to delete the notifications
+   */
+  public void removeAll(final String username) throws NotificationStoreException {
+
+    Objects.requireNonNull(username, "username == null");
+    Preconditions.checkArgument(!username.isEmpty(), "username cannot be empty");
+
+    final Location location = new Location(NAMESPACE, username);
+    final DeleteValue deleteValue = new DeleteValue.Builder(location).withTimeout(timeout).build();
+
+    LOGGER.debug("Deleting key (async): {}", location);
+    try (Timer.Context context = deleteTimer.time()) {
+      final RiakFuture<Void, Location> future = client.executeAsync(deleteValue);
+      future.await(requestTimeout.getQuantity(), requestTimeout.getUnit());
+      if (future.isSuccess()) {
+        LOGGER.debug("Successfully deleted key: {}", location);
+      }
+    } catch (InterruptedException e) {
+      LOGGER.warn("Delete request was interrupted", e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+
+    cursors.delete(username, CURSOR_NAME);
+  }
+
+  /**
+   * Asynchronously remove individual notifications for a given user
+   *
+   * @param username User to remove notifications from
+   * @param ids Notification IDs to remove
+   * @throws NotificationStoreException if unable to remove the notifications
+   */
+  public void remove(final String username, final Collection<String> ids)
+      throws NotificationStoreException {
+
+    Objects.requireNonNull(username, "username == null");
+    Preconditions.checkArgument(!username.isEmpty(), "username cannot be empty");
+    Objects.requireNonNull(ids, "ids == null");
+
+    // if nothing to remove, return early
+    if (ids.isEmpty()) {
+      return;
+    }
+
+    final Location location = new Location(NAMESPACE, username);
+    final NotificationListDeletion delete = new NotificationListDeletion(ids);
+    final UpdateValue updateValue =
+        new UpdateValue.Builder(location)
+            .withUpdate(delete)
+            .withStoreOption(StoreValue.Option.RETURN_BODY, false)
+            .withTimeout(timeout)
+            .build();
+
+    LOGGER.debug("Updating key (async): {}", location);
+    try (Timer.Context context = updateTimer.time()) {
+      final RiakFuture<UpdateValue.Response, Location> future = client.executeAsync(updateValue);
+      future.await(requestTimeout.getQuantity(), requestTimeout.getUnit());
+      if (future.isSuccess()) {
+        LOGGER.debug("Successfully updated key: {}", location);
+      }
+    } catch (InterruptedException e) {
+      LOGGER.warn("Update request was interrupted", e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+  }
+
+  /**
+   * Set the unseen state on multiple notifications
+   *
+   * @param notifications notifications to update
+   * @param unseen whether the notifications have been seen or not
+   * @return the updated notifications
+   */
+  public static Stream<Notification> setUnseenState(
+      final Iterable<Notification> notifications, final boolean unseen) {
+
+    return StreamSupport.stream(notifications.spliterator(), false)
+        .map(notification -> Notification.builder(notification).withUnseen(unseen).build());
+  }
+
+  /**
+   * Return the parent notification that matches the given ID or is the parent of a child
+   * notification.
+   *
+   * @param notifications Notifications to search through
+   * @param id Notification ID to find
+   * @return the notification
+   */
+  public static Optional<Notification> tryFind(
+      final Iterable<Notification> notifications, final String id) {
+
+    Objects.requireNonNull(notifications, "notifications == null");
+
+    if (Strings.isNullOrEmpty(id)) {
+      return Optional.empty();
+    }
+
+    final com.google.common.base.Optional<Notification> result =
+        Iterables.tryFind(
+            notifications,
+            notification -> {
+              // first check that the ID matches
+              final Optional<String> notificationId = notification.getId();
+              if (!notificationId.isPresent()) {
+                return false;
+              } else if (id.equals(notificationId.get())) {
+                return true;
+              }
+
+              // Check to see if the notification is included in any rolled up notifications. This
+              // code should not be hit as tryFind() is called prior to the rollups happening, but
+              // we include this here for completeness.
+              final Collection<Notification> children = notification.getNotifications();
+              if (children.isEmpty()) {
+                return false;
+              }
+              return (tryFind(children, id)).isPresent();
+            });
+
+    return result.toJavaUtil();
+  }
+
+  /**
+   * Returns the index in notifications that matches the given ID or is the parent of a child
+   * notification, or -1 if the notification was not found.
+   *
+   * @param notifications Notifications to search through
+   * @param id Notification ID to find
+   * @return the position of the notification or -1 if not found
+   */
+  public static int indexOf(final Iterable<Notification> notifications, final String id) {
+
+    Objects.requireNonNull(notifications, "notifications == null");
+
+    if (Strings.isNullOrEmpty(id)) {
+      return -1;
+    }
+
+    return Iterables.indexOf(
+        notifications,
+        notification -> {
+          // first check that the ID matches
+          final Optional<String> notificationId = notification.getId();
+          if (!notificationId.isPresent()) {
+            return false;
+          } else if (id.equals(notificationId.get())) {
+            return true;
+          }
+
+          // then check to see if the notification is included in any rolled up notifications
+          final Collection<Notification> children = notification.getNotifications();
+          if (children.isEmpty()) {
+            return false;
+          }
+          return indexOf(children, id) != -1;
+        });
+  }
+
+  /**
+   * Returns an iterable that skips forward to a given notification ID then only returns count more
+   * notifications. If the given notification ID is not found
+   *
+   * @param notifications Iterable of notifications
+   * @param startId notification ID to start at
+   * @param inclusive Whether to include the startId notification or not
+   * @param limitSize Number of notifications to return
+   * @return Iterable containing the subset of the original notifications
+   */
+  public Iterable<Notification> skip(
+      final Iterable<Notification> notifications,
+      final String startId,
+      final boolean inclusive,
+      final int limitSize) {
+
+    Objects.requireNonNull(notifications, "notifications == null");
+
+    final int position = indexOf(notifications, startId);
+    if (position == -1) {
+      return Iterables.limit(notifications, limitSize);
+    }
+    if (inclusive) {
+      return Iterables.limit(Iterables.skip(notifications, position), limitSize);
+    }
+    return Iterables.limit(Iterables.skip(notifications, position + 1), limitSize);
+  }
+
+  /** Set the current time provider for tests */
+  @VisibleForTesting
+  void setCurrentTimeProvider(Supplier<ZonedDateTime> provider) {
+    currentTimeProvider = provider;
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/riak/CursorObject.java
+@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public final class CursorObject implements Comparable<CursorObject> {
+
+  @RiakBucketName private final String bucketName = "cursors";
+
+  @RiakKey @Nullable private String key;
+
+  @RiakVClock @Nullable private VClock vclock;
+
+  @RiakTombstone @Nullable private Boolean tombstone;
+
+  @RiakContentType @Nullable private String contentType;
+
+  @RiakLastModified @Nullable private Long lastModified;
+
+  @RiakVTag @Nullable private String vtag;
+
+  @Nullable private String value;
+
+  /** Constructor */
+  public CursorObject() {
+    // needed to handle tombstones
+  }
+
+  /**
+   * Constructor
+   *
+   * @param key Cursor key
+   * @param value Cursor value
+   */
+  @JsonCreator
+  public CursorObject(
+      @JsonProperty("key") final String key, @JsonProperty("value") final String value) {
+    this.key = Objects.requireNonNull(key, "key == null");
+    this.value = value;
+  }
+
+  @Nullable
+  @JsonProperty
+  public String getKey() {
+    return key;
+  }
+
+  @Nullable
+  @JsonProperty
+  public String getValue() {
+    return value;
+  }
+
+  @JsonProperty
+  public void setValue(final String value) {
+    this.value = value;
+  }
+
+  @Override
+  public boolean equals(final Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if ((obj == null) || (getClass() != obj.getClass())) {
+      return false;
+    }
+
+    final CursorObject other = (CursorObject) obj;
+    return Objects.equals(value, other.value);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(value);
+  }
+
+  @Override
+  public String toString() {
+    return MoreObjects.toStringHelper(this).add("key", key).add("value", value).toString();
+  }
+
+  @Override
+  public int compareTo(final CursorObject that) {
+    return ComparisonChain.start()
+        .compare(this.value, that.value, Ordering.natural().reverse())
+        .result();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/resources/PingResource.java
+@Path("/ping")
+public class PingResource {
+
+  @GET
+  @CacheControl(mustRevalidate = true, noCache = true, noStore = true)
+  public Response ping() {
+    return Response.ok("pong").type(MediaType.TEXT_PLAIN).build();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/store/RuleStore.java
+public class RuleStore {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(RuleStore.class);
+  private static final String BUCKET_NAME = "rules";
+  private static final Namespace NAMESPACE = new Namespace("maps", BUCKET_NAME);
+  private static final Location LOCATION = new Location(NAMESPACE, BUCKET_NAME);
+
+  // Riak request timeout default is 60s
+  private static final int DEFAULT_TIMEOUT_MS = 60000;
+
+  private final RiakClient client;
+  private final LoadingCache<String, Map<String, Rule>> cache;
+
+  // timeouts
+  private final int timeout;
+  private final Duration requestTimeout;
+
+  // metrics
+  private final Timer fetchTimer;
+  private final Timer storeTimer;
+  private final Timer deleteTimer;
+  private final Meter cacheMisses;
+
+  /**
+   * Constructor
+   *
+   * @param client Riak client
+   * @param cacheTimeout Rule cache refresh timeout
+   * @param timeout Riak server-side timeout
+   * @param requestTimeout Riak client-side timeout
+   */
+  public RuleStore(
+      final RiakClient client,
+      final Duration cacheTimeout,
+      final Duration timeout,
+      final Duration requestTimeout) {
+
+    final MetricRegistry registry = SharedMetricRegistries.getOrCreate("default");
+    this.fetchTimer = registry.timer(MetricRegistry.name(RuleStore.class, "fetch"));
+    this.storeTimer = registry.timer(MetricRegistry.name(RuleStore.class, "store"));
+    this.deleteTimer = registry.timer(MetricRegistry.name(RuleStore.class, "delete"));
+    this.cacheMisses = registry.meter(MetricRegistry.name(RuleStore.class, "cache-misses"));
+
+    this.client = Objects.requireNonNull(client, "client == null");
+
+    this.timeout =
+        Optional.ofNullable(timeout)
+            .map(t -> Math.toIntExact(t.toMilliseconds()))
+            .orElse(DEFAULT_TIMEOUT_MS);
+    this.requestTimeout = Objects.requireNonNull(requestTimeout, "requestTimeout == null");
+
+    // set up a cache for the rules
+    this.cache =
+        CacheBuilder.newBuilder()
+            .refreshAfterWrite(cacheTimeout.getQuantity(), cacheTimeout.getUnit())
+            .build(
+                new CacheLoader<String, Map<String, Rule>>() {
+                  @Override
+                  public Map<String, Rule> load(String key) throws NotificationStoreException {
+                    cacheMisses.mark();
+
+                    // all rules are stored under a common key, so we don't need to reference it
+                    return fetch().orElse(Collections.emptyMap());
+                  }
+                });
+  }
+
+  /**
+   * Fetch a copy of the rules from the cache.
+   *
+   * @return the fetched rules or an empty map of rules
+   */
+  public Map<String, Rule> fetchCached() {
+    try {
+      return cache.get(BUCKET_NAME);
+    } catch (ExecutionException e) {
+      LOGGER.warn("Unable to fetch rules from cache, returning no rules", e);
+      return Collections.emptyMap();
+    }
+  }
+
+  /**
+   * Fetch the rules from Riak
+   *
+   * @return the fetched rules
+   * @throws NotificationStoreException if unable to fetch the rules
+   */
+  public Optional<Map<String, Rule>> fetch() throws NotificationStoreException {
+
+    final FetchMap fetchMap =
+        new FetchMap.Builder(LOCATION)
+            .withOption(FetchDatatype.Option.INCLUDE_CONTEXT, false)
+            .withTimeout(timeout)
+            .build();
+
+    LOGGER.debug("Fetching key (sync): {}", LOCATION);
+
+    try (Timer.Context context = fetchTimer.time()) {
+      final FetchMap.Response response = client.execute(fetchMap);
+
+      final RiakMap map = response.getDatatype();
+      return Optional.ofNullable(map).map(m -> getRules(m));
+    } catch (ExecutionException e) {
+      LOGGER.error("Unable to fetch key: " + LOCATION, e);
+      throw new NotificationStoreException(e);
+    } catch (InterruptedException e) {
+      LOGGER.warn("Fetch request was interrupted", e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+  }
+
+  /**
+   * Fetch the context for a rule
+   *
+   * @return the fetched rule context
+   * @throws NotificationStoreException if unable to fetch the rule context
+   */
+  public Optional<Context> fetchContext() throws NotificationStoreException {
+    final FetchMap fetchMap = new FetchMap.Builder(LOCATION).withTimeout(timeout).build();
+
+    LOGGER.debug("Fetching key (sync): {}", LOCATION);
+
+    try (Timer.Context context = fetchTimer.time()) {
+      final FetchMap.Response response = client.execute(fetchMap);
+      return Optional.ofNullable(response.getContext());
+    } catch (ExecutionException e) {
+      LOGGER.error("Unable to fetch key: " + LOCATION, e);
+      throw new NotificationStoreException(e);
+    } catch (InterruptedException e) {
+      LOGGER.warn("Fetch request was interrupted", e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+  }
+
+  /**
+   * Convert a {@link RiakMap} into a standard map of {@link Rule} objects.
+   *
+   * @param map the map from Riak to convert
+   * @return a map of rule objects where the key is the category
+   */
+  private static Map<String, Rule> getRules(final RiakMap map) {
+    final ImmutableMap.Builder<String, Rule> rules = ImmutableMap.builder();
+
+    for (BinaryValue category : map.view().keySet()) {
+      final Rule.Builder builder = Rule.builder();
+
+      final RiakMap properties = map.getMap(category);
+      if (properties == null) {
+        // should never happen, but avoids a potential NPE below
+        continue;
+      }
+
+      for (BinaryValue property : properties.view().keySet()) {
+        final RiakRegister register = properties.getRegister(property);
+        if (register == null) {
+          // should never happen, but avoids a potential NPE below
+          continue;
+        }
+        final String value = register.getValue().toString();
+
+        switch (property.toString()) {
+          case Rule.MAX_SIZE:
+            builder.withMaxSize(Ints.tryParse(value));
+            break;
+          case Rule.MAX_DURATION:
+            try {
+              builder.withMaxDuration(Duration.parse(value));
+            } catch (IllegalArgumentException e) {
+              LOGGER.error("Invalid {} value: {}", Rule.MAX_DURATION, value);
+            }
+            break;
+          case Rule.MATCH_ON:
+            builder.withMatchOn(value);
+            break;
+          default:
+            // should never happen
+            break;
+        }
+      }
+
+      final Rule rule = builder.build();
+      if (rule.isValid()) {
+        rules.put(category.toString(), rule);
+      }
+    }
+    return rules.build();
+  }
+
+  /**
+   * Asynchronously store a rule
+   *
+   * @param category Rule category
+   * @param rule Rule to store
+   * @throws NotificationStoreException if unable to store the rule
+   */
+  public void store(final String category, final Rule rule) throws NotificationStoreException {
+
+    Objects.requireNonNull(category, "category == null");
+    Preconditions.checkArgument(!category.isEmpty(), "category cannot be empty");
+    Objects.requireNonNull(rule, "rule == null");
+    Preconditions.checkState(rule.isValid(), "rule is not valid");
+
+    final Optional<Context> fetchContext = fetchContext();
+
+    final MapUpdate op = new MapUpdate();
+    op.update(category, getUpdate(rule, fetchContext));
+
+    final UpdateMap.Builder builder = new UpdateMap.Builder(LOCATION, op).withTimeout(timeout);
+    fetchContext.ifPresent(c -> builder.withContext(c));
+
+    LOGGER.debug("Storing key (async): {}", LOCATION);
+
+    try (Timer.Context context = storeTimer.time()) {
+      final RiakFuture<UpdateMap.Response, Location> future = client.executeAsync(builder.build());
+      future.await(requestTimeout.getQuantity(), requestTimeout.getUnit());
+      if (future.isSuccess()) {
+        LOGGER.debug("Successfully stored key: {}", LOCATION);
+      }
+    } catch (InterruptedException e) {
+      LOGGER.warn("Store request was interrupted", e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+
+    cache.invalidateAll();
+  }
+
+  /**
+   * Prepare a Riak Map update based on the current state of a Rule
+   *
+   * @param rule the rule to update
+   * @param context Riak context from previous fetch operation
+   * @return Riak Map update operation
+   */
+  private static MapUpdate getUpdate(final Rule rule, final Optional<Context> context) {
+    final MapUpdate op = new MapUpdate();
+    if (rule.getMaxSize().isPresent()) {
+      op.update(Rule.MAX_SIZE, new RegisterUpdate(String.valueOf(rule.getMaxSize().get())));
+    } else if (context.isPresent()) {
+      op.removeRegister(Rule.MAX_SIZE);
+    }
+    if (rule.getMaxDuration().isPresent()) {
+      op.update(Rule.MAX_DURATION, new RegisterUpdate(rule.getMaxDuration().get().toString()));
+    } else if (context.isPresent()) {
+      op.removeRegister(Rule.MAX_DURATION);
+    }
+    if (rule.getMatchOn().isPresent()) {
+      op.update(Rule.MATCH_ON, new RegisterUpdate(rule.getMatchOn().get()));
+    } else if (context.isPresent()) {
+      op.removeRegister(Rule.MATCH_ON);
+    }
+    return op;
+  }
+
+  /**
+   * Asynchronously delete a rule
+   *
+   * @param category Rule category to delete
+   * @throws NotificationStoreException if unable to delete the rule
+   */
+  public void remove(final String category) throws NotificationStoreException {
+    Objects.requireNonNull(category, "category == null");
+    Preconditions.checkArgument(!category.isEmpty(), "category cannot be empty");
+
+    final Optional<Context> fetchContext = fetchContext();
+    if (!fetchContext.isPresent()) {
+      // if we have no existing context, that means the key didn't exist, so just return.
+      return;
+    }
+
+    final MapUpdate op = new MapUpdate();
+    op.removeMap(category);
+
+    final UpdateMap.Builder builder =
+        new UpdateMap.Builder(LOCATION, op).withTimeout(timeout).withContext(fetchContext.get());
+
+    LOGGER.debug("Storing key (async): {}", LOCATION);
+
+    try (Timer.Context context = storeTimer.time()) {
+      final RiakFuture<UpdateMap.Response, Location> future = client.executeAsync(builder.build());
+      future.await(requestTimeout.getQuantity(), requestTimeout.getUnit());
+      if (future.isSuccess()) {
+        LOGGER.debug("Successfully stored key: {}", LOCATION);
+      }
+    } catch (InterruptedException e) {
+      LOGGER.warn("Store request was interrupted", e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+
+    cache.invalidateAll();
+  }
+
+  /**
+   * Asynchronously delete all of the rules
+   *
+   * @throws NotificationStoreException if unable to delete the rules
+   */
+  public void removeAll() throws NotificationStoreException {
+    final DeleteValue deleteValue = new DeleteValue.Builder(LOCATION).withTimeout(timeout).build();
+
+    LOGGER.debug("Deleting key (async): {}", LOCATION);
+
+    try (Timer.Context context = deleteTimer.time()) {
+      final RiakFuture<Void, Location> future = client.executeAsync(deleteValue);
+      future.await(requestTimeout.getQuantity(), requestTimeout.getUnit());
+      if (future.isSuccess()) {
+        LOGGER.debug("Successfully deleted key: {}", LOCATION);
+      }
+    } catch (InterruptedException e) {
+      LOGGER.warn("Delete request was interrupted", e);
+      Thread.currentThread().interrupt();
+      throw new NotificationStoreException(e);
+    }
+
+    cache.invalidateAll();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/resources/VersionResource.java
+@Path("/version")
+public class VersionResource {
+
+  private final String version;
+
+  /** Constructor */
+  public VersionResource() {
+    version = getClass().getPackage().getImplementationVersion();
+  }
+
+  /**
+   * Constructor
+   *
+   * @param version Version to expose in the endpoint
+   */
+  @VisibleForTesting
+  public VersionResource(final String version) {
+    this.version = Objects.requireNonNull(version);
+  }
+
+  @GET
+  @CacheControl(mustRevalidate = true, noCache = true, noStore = true)
+  public Response getVersion() {
+    return Response.ok(version).type(MediaType.TEXT_PLAIN).build();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/graphql/RemoveNotificationMutation.java
+public class RemoveNotificationMutation implements DataFetcher<Boolean> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(RemoveNotificationMutation.class);
+  private final NotificationStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Notification data store
+   */
+  public RemoveNotificationMutation(final NotificationStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @Override
+  public Boolean get(DataFetchingEnvironment environment) {
+    final String username = environment.getArgument("username");
+    if (Strings.isNullOrEmpty(username)) {
+      throw new GraphQLValidationError("username cannot be empty");
+    }
+
+    final List<String> ids = environment.getArgument("ids");
+    if (ids == null || ids.isEmpty()) {
+      return false;
+    }
+
+    try {
+      store.remove(username, ids);
+    } catch (NotificationStoreException e) {
+      LOGGER.error(String.format("Unable to remove notifications for %s", username), e);
+      throw new GraphQLValidationError("Unable to remove notifications");
+    }
+
+    return true;
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/graphql/NotificationDataFetcher.java
+public class NotificationDataFetcher implements DataFetcher<SortedSet<Notification>> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(NotificationDataFetcher.class);
+  private final NotificationStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Notification data store
+   */
+  public NotificationDataFetcher(final NotificationStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @Nullable
+  @Override
+  public SortedSet<Notification> get(DataFetchingEnvironment environment) {
+    final String username = environment.getArgument("username");
+    if (Strings.isNullOrEmpty(username)) {
+      return null;
+    }
+
+    final Optional<UserNotifications> notifications;
+    try {
+      notifications = store.fetch(username);
+    } catch (NotificationStoreException e) {
+      LOGGER.error("Unable to fetch notifications", e);
+      return null;
+    }
+
+    if (!notifications.isPresent()) {
+      return Collections.emptySortedSet();
+    }
+
+    return notifications.get().getNotifications();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/riak/NotificationListResolver.java
+public class NotificationListResolver implements ConflictResolver<NotificationListObject> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(NotificationListResolver.class);
+  private final Histogram siblingCounts;
+
+  /** Constructor */
+  public NotificationListResolver() {
+    final MetricRegistry registry = SharedMetricRegistries.getOrCreate("default");
+    this.siblingCounts = registry.histogram(name(NotificationListResolver.class, "sibling-counts"));
+  }
+
+  @Override
+  @Nullable
+  public NotificationListObject resolve(final List<NotificationListObject> siblings)
+      throws UnresolvedConflictException {
+
+    LOGGER.debug("Found {} siblings", siblings.size());
+    siblingCounts.update(siblings.size());
+    if (siblings.size() > 1) {
+
+      final Iterator<NotificationListObject> iterator = siblings.iterator();
+      final NotificationListObject resolved = iterator.next();
+      final Set<String> deletedIds = resolved.getDeletedIds();
+
+      // add all notifications
+      while (iterator.hasNext()) {
+        final NotificationListObject sibling = iterator.next();
+        resolved.addNotifications(sibling.getNotifications());
+        deletedIds.addAll(sibling.getDeletedIds());
+      }
+
+      // remove deleted notifications
+      if (!deletedIds.isEmpty()) {
+        LOGGER.debug("IDs to delete: {}", deletedIds);
+        removeNotifications(resolved.getNotifications(), deletedIds);
+      }
+
+      return resolved;
+    } else if (siblings.size() == 1) {
+
+      final NotificationListObject resolved = siblings.get(0);
+
+      // remove deleted notifications
+      if (!resolved.getDeletedIds().isEmpty()) {
+        LOGGER.debug("IDs to delete: {}", resolved.getDeletedIds());
+        removeNotifications(resolved.getNotifications(), resolved.getDeletedIds());
+      }
+
+      return resolved;
+    } else {
+      return null;
+    }
+  }
+
+  /**
+   * Remove the given notification IDs from the list of notifications.
+   *
+   * @param notifications Notifications to delete from
+   * @param ids Notification IDs to delete
+   */
+  public static void removeNotifications(
+      final Collection<Notification> notifications, final Collection<String> ids) {
+
+    notifications.removeIf(
+        notification -> {
+          if (!notification.getId().isPresent()) {
+            return true;
+          }
+          return ids.contains(notification.getId().get());
+        });
+    // clear out the original set of IDs to delete
+    ids.clear();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/riak/NotificationListObject.java
+public class NotificationListObject {
+
+  private static final int MAX_NOTIFICATIONS = 1000;
+
+  @RiakBucketName private final String bucketName = "notifications";
+
+  @RiakKey @Nullable private String key;
+
+  @RiakVClock @Nullable private VClock vclock;
+
+  @RiakTombstone @Nullable private Boolean tombstone;
+
+  @RiakContentType @Nullable private String contentType;
+
+  @RiakLastModified @Nullable private Long lastModified;
+
+  @RiakVTag @Nullable private String vtag;
+
+  private final TreeSet<Notification> notifications = new TreeSet<>();
+  private final Set<String> deletedIds = new HashSet<>();
+
+  /** Constructor */
+  public NotificationListObject() {
+    // needed to handle tombstones
+  }
+
+  /**
+   * Constructor
+   *
+   * @param key Notification key
+   */
+  public NotificationListObject(final String key) {
+    this.key = Objects.requireNonNull(key, "key == null");
+  }
+
+  public void addNotification(final Notification notification) {
+    notifications.add(notification);
+    if (notifications.size() > MAX_NOTIFICATIONS) {
+      notifications.pollLast();
+    }
+  }
+
+  public void addNotifications(final Collection<Notification> notifications) {
+    this.notifications.addAll(notifications);
+    while (this.notifications.size() > MAX_NOTIFICATIONS) {
+      this.notifications.pollLast();
+    }
+  }
+
+  public void deleteNotification(final String id) {
+    deletedIds.add(id);
+  }
+
+  public void deleteNotifications(final Collection<String> ids) {
+    deletedIds.addAll(ids);
+  }
+
+  @Nullable
+  public String getKey() {
+    return key;
+  }
+
+  public SortedSet<Notification> getNotifications() {
+    return notifications;
+  }
+
+  public Set<String> getDeletedIds() {
+    return deletedIds;
+  }
+
+  @Override
+  public boolean equals(final Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if ((obj == null) || (getClass() != obj.getClass())) {
+      return false;
+    }
+
+    final NotificationListObject other = (NotificationListObject) obj;
+    return Objects.equals(key, other.key)
+        && Objects.equals(vclock, other.vclock)
+        && Objects.equals(tombstone, other.tombstone)
+        && Objects.equals(contentType, other.contentType)
+        && Objects.equals(lastModified, other.lastModified)
+        && Objects.equals(vtag, other.vtag)
+        && Objects.equals(notifications, other.notifications)
+        && Objects.equals(deletedIds, other.deletedIds);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(
+        key, vclock, tombstone, contentType, lastModified, vtag, notifications, deletedIds);
+  }
+
+  @Override
+  public String toString() {
+    return MoreObjects.toStringHelper(this)
+        .add("key", key)
+        .add("vclock", vclock)
+        .add("tombstone", tombstone)
+        .add("contentType", contentType)
+        .add("lastModified", lastModified)
+        .add("vtag", vtag)
+        .add("notifications", notifications)
+        .add("deletedIds", deletedIds)
+        .toString();
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/config/NotificationConfiguration.java
+public class NotificationConfiguration extends Configuration {
+
+  @NotNull
+  @MinDuration(value = 1, unit = TimeUnit.SECONDS)
+  private Duration ruleCacheTimeout = Duration.minutes(5);
+
+  @NotNull
+  @MinDuration(value = 1, unit = TimeUnit.MILLISECONDS)
+  private Duration riakTimeout = Duration.seconds(60);
+
+  @NotNull
+  @MinDuration(value = 1, unit = TimeUnit.MILLISECONDS)
+  private Duration riakRequestTimeout = Duration.seconds(5);
+
+  @Valid @NotNull @JsonProperty private final RiakFactory riak = new RiakFactory();
+
+  @Valid @NotNull @JsonProperty private final GraphQLFactory graphql = new GraphQLFactory();
+
+  @JsonProperty
+  public Duration getRiakTimeout() {
+    return riakTimeout;
+  }
+
+  @JsonProperty
+  public void setRiakTimeout(final Duration timeout) {
+    this.riakTimeout = timeout;
+  }
+
+  @JsonProperty
+  public Duration getRiakRequestTimeout() {
+    return riakRequestTimeout;
+  }
+
+  @JsonProperty
+  public void setRiakRequestTimeout(final Duration timeout) {
+    this.riakRequestTimeout = timeout;
+  }
+
+  @JsonProperty
+  public Duration getRuleCacheTimeout() {
+    return ruleCacheTimeout;
+  }
+
+  @JsonProperty
+  public void setRuleCacheTimeout(final Duration timeout) {
+    this.ruleCacheTimeout = timeout;
+  }
+
+  @JsonProperty
+  public RiakFactory getRiak() {
+    return riak;
+  }
+
+  @JsonProperty
+  public GraphQLFactory getGraphQL() {
+    return graphql;
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/graphql/RemoveRuleMutation.java
+public class RemoveRuleMutation implements DataFetcher<Boolean> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(RemoveRuleMutation.class);
+  private final RuleStore store;
+
+  /**
+   * Constructor
+   *
+   * @param store Rule data store
+   */
+  public RemoveRuleMutation(final RuleStore store) {
+    this.store = Objects.requireNonNull(store, "store == null");
+  }
+
+  @Override
+  public Boolean get(DataFetchingEnvironment environment) {
+    final String category = environment.getArgument("category");
+    if (Strings.isNullOrEmpty(category)) {
+      throw new GraphQLValidationError("category cannot be empty");
+    }
+
+    try {
+      store.remove(category);
+    } catch (NotificationStoreException e) {
+      LOGGER.error(String.format("Unable to remove rule for %s", category), e);
+      throw new GraphQLValidationError("Unable to remove rule");
+    }
+
+    return true;
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/graphql/Scalars.java
+public class Scalars {
+
+  private static Coercing<Object, Object> MAP_SCALAR_COERCION =
+      new Coercing<Object, Object>() {
+        @Override
+        public Object serialize(Object dataFetcherResult) {
+          return dataFetcherResult;
+        }
+
+        @Override
+        public Object parseValue(Object input) {
+          if (input instanceof Map) {
+            return input;
+          }
+          throw valueParsingException(input, Map.class);
+        }
+
+        @Nullable
+        @Override
+        public Object parseLiteral(Object input) {
+          return parseObjectValue(literalOrException(input, ObjectValue.class));
+        }
+      };
+
+  public static GraphQLScalarType graphQLMapScalar(String name) {
+    return new GraphQLScalarType(
+        name, "Built-in scalar for map-like structures", MAP_SCALAR_COERCION);
+  }
+
+  @Nullable
+  private static Object parseObjectValue(Value<?> value) {
+    if (value instanceof StringValue) {
+      return ((StringValue) value).getValue();
+    }
+    if (value instanceof IntValue) {
+      return ((IntValue) value).getValue();
+    }
+    if (value instanceof FloatValue) {
+      return ((FloatValue) value).getValue();
+    }
+    if (value instanceof BooleanValue) {
+      return ((BooleanValue) value).isValue();
+    }
+    if (value instanceof EnumValue) {
+      return ((EnumValue) value).getName();
+    }
+    if (value instanceof NullValue) {
+      return null;
+    }
+    if (value instanceof ArrayValue) {
+      return ((ArrayValue) value)
+          .getValues().stream().map(Scalars::parseObjectValue).collect(Collectors.toList());
+    }
+    if (value instanceof ObjectValue) {
+      final Map<String, Object> map = new LinkedHashMap<>();
+      ((ObjectValue) value)
+          .getObjectFields()
+          .forEach(field -> map.put(field.getName(), parseObjectValue(field.getValue())));
+      return map;
+    }
+    // Should never happen, as it would mean the variable was not replaced by the parser
+    throw new CoercingParseLiteralException(
+        "Unknown scalar AST type: " + value.getClass().getName());
+  }
+
+  public static <T extends Value<?>> T literalOrException(Object input, Class<T> valueType) {
+    if (valueType.isInstance(input)) {
+      return valueType.cast(input);
+    }
+    throw new CoercingParseLiteralException(errorMessage(input, valueType));
+  }
+
+  public static CoercingParseLiteralException literalParsingException(
+      Object input, Class<?>... allowedTypes) {
+    return new CoercingParseLiteralException(errorMessage(input, allowedTypes));
+  }
+
+  public static CoercingParseValueException valueParsingException(
+      Object input, Class<?>... allowedTypes) {
+    return new CoercingParseValueException(errorMessage(input, allowedTypes));
+  }
+
+  public static String errorMessage(Object input, Class<?>... allowedTypes) {
+    String types =
+        Arrays.stream(allowedTypes)
+            .map(type -> "'" + type.getSimpleName() + "'")
+            .collect(Collectors.joining(" or "));
+    return String.format(
+        "Expected %stype %s but was '%s'",
+        input instanceof Value ? "AST " : "",
+        types,
+        input == null ? "null" : input.getClass().getSimpleName());
+  }
+}
+notification-application/src/main/java/com/smoketurner/notification/application/riak/CursorResolver.java
+public class CursorResolver implements ConflictResolver<CursorObject> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(CursorResolver.class);
+  private final Histogram siblingCounts;
+
+  /** Constructor */
+  public CursorResolver() {
+    final MetricRegistry registry = SharedMetricRegistries.getOrCreate("default");
+    this.siblingCounts = registry.histogram(name(CursorResolver.class, "sibling-counts"));
+  }
+
+  @Nullable
+  @Override
+  public CursorObject resolve(final List<CursorObject> siblings)
+      throws UnresolvedConflictException {
+    LOGGER.debug("Found {} siblings", siblings.size());
+    siblingCounts.update(siblings.size());
+    if (siblings.size() > 1) {
+      Collections.sort(siblings);
+      return siblings.get(0);
+    } else if (siblings.size() == 1) {
+      return siblings.get(0);
+    } else {
+      return null;
+    }
+  }
+}

@@ -1,0 +1,12 @@
+def __create_fn__(_type_activities, _type_schedule_option, _type_on_trace_ready, _type_record_shapes, _type_profile_memory, _type_with_stack, _type_with_flops, _type_with_modules, _type_output_trace_dir, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_activities, _dflt_schedule_option, _dflt_on_trace_ready, _dflt_record_shapes, _dflt_profile_memory, _dflt_with_stack, _dflt_with_flops, _dflt_with_modules, _dflt_output_trace_dir, _return_type):
+ def __init__(self,activities:_type_activities=_dflt_activities,schedule_option:_type_schedule_option=_dflt_schedule_option,on_trace_ready:_type_on_trace_ready=_dflt_on_trace_ready,record_shapes:_type_record_shapes=_dflt_record_shapes,profile_memory:_type_profile_memory=_dflt_profile_memory,with_stack:_type_with_stack=_dflt_with_stack,with_flops:_type_with_flops=_dflt_with_flops,with_modules:_type_with_modules=_dflt_with_modules,output_trace_dir:_type_output_trace_dir=_dflt_output_trace_dir)->_return_type:
+  self.activities=activities
+  self.schedule_option=schedule_option
+  self.on_trace_ready=on_trace_ready
+  self.record_shapes=record_shapes
+  self.profile_memory=profile_memory
+  self.with_stack=with_stack
+  self.with_flops=with_flops
+  self.with_modules=with_modules
+  self.output_trace_dir=output_trace_dir
+ return __init__

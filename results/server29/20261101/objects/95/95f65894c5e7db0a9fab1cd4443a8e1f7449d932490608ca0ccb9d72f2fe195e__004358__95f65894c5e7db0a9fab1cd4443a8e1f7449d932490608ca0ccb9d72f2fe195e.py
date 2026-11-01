@@ -1,0 +1,1 @@
+lambda _cls, user, system, children_user, children_system, iowait: _tuple_new(_cls, (user, system, children_user, children_system, iowait))

@@ -1,0 +1,634 @@
+
+# Codex 科研任务：QWEN_GDN_HADAMARD_DUAL_AXIS_INT8_FEASIBILITY_V1
+
+你是一名负责大语言模型量化研究的科研工程Agent。请遵循“先审计、后设计、先验证、再执行”的原则完成任务。
+
+本轮任务只授权 CPU-only Phase 0。必须实际完成有条件可执行的CPU实验、测试及产物归档，而不是只输出建议。禁止任何新增GPU计算。
+
+## 0. 科研背景
+
+研究对象：Qwen3.5-9B，GDN recurrent state，INT8-C128，Hadamard与learnable orthogonal rotation。
+
+研究目标：验证STEPQuant Spatial Dual-Axis Fitting在严格全INT8条件下，是否值得进一步进行完整模型实验。
+
+本轮首先固定Hadamard，不使用C6R，不训练任何rotation。
+
+已冻结AIME26结果（只能引用，禁止覆盖）：
+
+- FP：52/60
+- Hadamard + C128：41/60
+- C6R + C128：40/60
+- C7 + C128：33/60
+- Native INT8-C128：18/60
+
+此前Qwen NoInflation正式8-doc结果及其CPU时空诊断保持原样。本轮不得修改、合并重判或重新解释为新codec结果。
+
+特别注意已有相关研究：
+
+1. GDN_READ_WRITE_AWARE_INT8_QUANTIZER_FEASIBILITY_V1：仅修改原C128的scale系数，未找到额外实用收益。
+2. GDN_MAGNITUDE_CONDITIONED_FUNCTIONAL_INCREMENTAL_UTILITY_V1：功能重要性相对幅度的重要增量未获确认。
+3. NoInflation 8-doc：支持oracle scale干预的长期功能收益，但不证明任何新dual-axis codec有效。
+
+这些研究不是Dual-Axis测试的替代品，但要防止重复研究已经失败的简单scale调参。
+
+## 1. 必须核对的代码和身份
+
+用户仓库：
+
+https://github.com/pytenter/GDN-quantization
+
+已知候选路径：
+- /data/zypan/worktrees/qwen-gdn-formal-equivalent-mechanism-v2
+- /data/zypan/GDN-quantization
+
+这些只是路径线索。必须实际发现当前运行环境中的仓库与有效文件，不能假定它们存在或一定是当前版本。
+
+主要参考：
+- experiments/shared/rotation/cayley_rotation.py
+- 现有Qwen Hadamard/C128正式推理实现
+- 历史INT8 quantizer和mechanism experiments
+- 相关科学报告及artifact manifests
+
+STEPQuant官方仓库：
+
+https://github.com/Dreamer-Toby/STEPQuant
+
+本次代码阅读时的参考commit：
+
+f2deac58131219e6aecff274f8eabe88e08d2e3c
+
+重点核对：
+- stepquant/quantization.py
+- stepquant/core.py
+- stepquant/calibration.py
+
+不能把该commit视为永远最新；本轮必须记录实际获取到的源码SHA。优先按照上述commit复核原始算法。禁止未经记录就采用不同版本。
+
+首先输出：
+- 当前git HEAD和branch
+- dirty worktree状态
+- 实际使用的文件路径与SHA256
+- C128的真实scale、rounding和clamp语义
+- 正式Hadamard作用的坐标轴、操作顺序和数值dtype
+- 真正的recurrent QDQ/writeback边界
+- STEPQuant对应的算法和实现差异
+
+不要通过导入可能产生GPU副作用的训练runner进行静态审计。
+
+如果历史工作树不干净，必须原样披露。只允许在独立的新实验目录或干净工作树内创建新资产，不允许重置、清理、覆盖历史工作。
+
+## 2. 严格科学边界
+
+不可妥协：
+
+1. 所有recurrent-state数值元素固定为signed INT8，范围[-127,127]。
+2. 不允许mixed-bit。
+3. 不允许FP16 pivots。
+4. 不允许FP16/FP32 persistent compensation state。
+5. 不允许LeapQuant式延迟requantization。
+6. 不允许跳过任意token的QDQ/writeback。
+7. 不允许更改Hadamard矩阵或训练新的旋转。
+8. 不允许修改模型参数。
+9. 不允许引入Qwen SGLang作为新runtime。
+10. 不允许改变现有正式实验结果。
+
+区分两种概念：
+
+- Persistent INT8-QDQ/writeback semantics
+- Physical resident INT8 storage
+
+FP32 tensor中存放已经QDQ的数值，仅满足前者，不满足后者。
+
+新codec允许使用FP16 scale元数据，但必须报告其真实存储字节数，不能把它当成零成本，也不能保留完整FP状态矩阵。
+
+本轮CPU codec可以使用瞬时FP32计算进行fit/decode，但encoded state对象只能拥有INT8 codes和被允许的scale元数据，不得额外保存原始完整FP状态。
+
+## 3. 本轮四个候选条件
+
+统一使用状态形状：
+
+S: [B, H, K, V]
+
+Qwen GDN通常K=128、V=128，但应从实际代码审计确认，不要硬编码非必要维度。
+
+所有新codec均应用在已有Hadamard坐标系下的recurrent state，不能重复旋转，也不能改动Value侧计算。
+
+### A. C128_CANONICAL
+
+调用现有冻结的Qwen C128参考实现。
+
+公式：
+
+s_j = max_i |S_ij| / 127
+
+z_ij = clamp(round(S_ij / s_j), -127, 127)
+
+S_hat_ij = s_j * z_ij
+
+必须沿用现有实现的epsilon、dtype、rounding及运算顺序。
+
+这是绝对基线，不允许重写后直接宣称等价。
+
+### B. C128_FP16_SCALE
+
+在保持单轴C128结构的情况下，只改变scale元数据的存储精度为FP16。
+
+要求：
+- 使用有明确下界的安全scale转换
+- 基于真实存储后的scale重新编码
+- 独立报告与CANONICAL的差异
+- 不允许把本条件当成原冻结C128
+
+目的：隔离scale精度造成的影响。
+
+### C. C128_LS_FP16
+
+只使用column scale，不引入row scale。
+
+过程：
+1. 计算初始column scale。
+2. 将scale转换为真实FP16存储值。
+3. 得到初始INT8 codes。
+4. 固定codes进行一次column least-squares更新：
+
+   c_j = sum_i(z_ij*S_ij) / sum_i(z_ij^2)
+
+5. 处理分母为零及非法scale。
+6. 量化并存储最终FP16 scale。
+7. 根据最终scale重新编码INT8 codes。
+8. 从codes+scale进行重构。
+
+该条件是我们自定义的单轴拟合消融，不要声称它就是STEPQuant论文中的独立方法。
+
+目的：区分“最小二乘拟合”与“额外row-scale自由度”。
+
+### D. DUAL_M_INT8
+
+核心候选：STEPQuant Spatial的w=1消融。
+
+全部state元素固定8-bit，不使用Temporal allocation和pivots。
+
+使用：
+
+m_i = mean_j |S_ij|
+
+r_i = sqrt(max(m_i, 1e-20))
+
+将r_i转换为真实存储的FP16 scale，并使用转换后的值进行后续计算。
+
+初始化column scale：
+
+c_j^(0) = max_i |S_ij / r_i| / 127
+
+转换为安全FP16 scale。
+
+初次编码：
+
+z_ij = clamp(round(S_ij/(r_i*c_j^(0))), -127, 127)
+
+随后固定初次codes，进行一次column least-squares拟合：
+
+v_ij = r_i*z_ij
+
+c_j^(1) = sum_i(v_ij*S_ij) / sum_i(v_ij^2)
+
+必须妥善处理零分母，遵守STEPQuant参考实现的fallback。
+
+将最终c_j^(1)转换为实际FP16存储值，然后重新编码：
+
+z_ij^(final) =
+clamp(round(S_ij/(r_i*c_j^(1))), -127,127)
+
+最终：
+
+S_hat_ij = r_i*c_j^(1)*z_ij^(final)
+
+注意：
+- 重构只允许读取最终INT8 codes和FP16 scales。
+- 不允许直接将拟合过程的浮点reconstruction当成持久状态。
+- 拟合时必须使用实际存储精度的scale。
+- 禁止额外反复迭代到更低MSE。
+- 必须记录所采用的STEPQuant数值下界。
+- 不允许启用STEPQuant的INT2特殊分组逻辑。
+- 不允许使用动态Query importance。
+- 不允许使用历史文档的评分结果挑选最有利的codec参数。
+
+如果与官方all-INT8、impact=ones的fit_state实现存在差异，必须解释并通过独立reference parity测试，不能自行认定等价。
+
+## 4. 暂时禁止实现的功能
+
+本轮不实现完整Dual-W在线量化。
+
+但在设计文档中记录下一阶段的公式：
+
+omega_i = E[(A_t^T q_t)_i^2]
+
+w_i = omega_i^(gamma/2) / GM(omega^(gamma/2))
+
+gamma = 0.25
+
+r_i = sqrt(m_i / w_i)
+
+以及加权column LS。
+
+这些公式仅用于未来设计说明，不得现在从旧8-doc归档中伪造omega、w或连续Query trace。
+
+当前归档缺8192之后的连续q/k/g/beta及paired errors。不可计算则明确NOT_AVAILABLE。
+
+不要借用测试集Query计算重要性，并把这种信息泄漏后的结果称为可部署codec。
+
+## 5. Phase 0 CPU-only实验
+
+执行前设置CPU-only环境。
+
+要求：
+- CUDA_VISIBLE_DEVICES=""
+- 只使用CPU tensor
+- 不使用MPS
+- 不加载9B完整模型
+- 不运行模型forward
+- 不执行训练
+- 不执行任何GPU kernel
+- 不调用AIME评分脚本
+- 不运行32K continuation
+
+### Gate 0：Provenance
+
+实际验证所有参考代码身份。
+
+检查新实验是否与历史文件路径隔离。
+
+生成source_manifest.json，记录文件路径、SHA256、git HEAD和工具环境。
+
+未能核对的资产必须标记UNVERIFIED，而不是PASS。
+
+### Gate 1：Canonical C128 exact parity
+
+构造固定seed的CPU测试状态。
+
+包括：
+- 普通随机状态
+- Hadamard变换后的合成状态
+- 行幅度严重不均衡
+- 列幅度严重不均衡
+- 稀疏状态
+- 全零状态
+- 单个大outlier
+- 正负数与rounding边界
+- batch size > 1
+
+原C128参考函数与实验中的baseline adapter必须做到：
+- codes exact
+- scales exact
+- dequant exact
+
+在相同CPU dtype和相同运算顺序下使用torch.equal验证。
+
+需要单独审计正式GPU runtime的dtype路径；不能将CPU parity冒充正式模型runtime parity。
+
+### Gate 2：Dual-Axis reference parity
+
+如果能取得固定commit的STEPQuant实现：
+
+构造：
+- architecture = "gdn"
+- bits = 全8
+- impact = 全ones
+- pivots = 0
+
+使用官方fit_state生成codes、row/column scales和重构。
+
+比较自主实现与官方reference：
+
+- code identity
+- FP16 row scale identity
+- FP16 column scale identity
+- decode reconstruction
+- shape、dtype和范围
+
+优先要求exact parity。
+
+如存在因明确浮点运算顺序导致的微小差异，必须在观察实验结果前给出固定容差及逐项原因；禁止为了PASS事后扩大阈值。
+
+如果官方reference不可用，允许完成独立数学单元测试，但将SOURCE_PARITY标记BLOCKED，不可报告已经完成官方实现资格。
+
+### Gate 3：Roundtrip与存储
+
+为新codec提供清晰的encode/decode接口。
+
+测试：
+- z dtype必须为torch.int8或明确等价的8-bit packed code表示
+- codes范围[-127,127]
+- row/column scales shape正确
+- scales有限且为正
+- decode(encode(S))与编码阶段最终reconstruction一致
+- roundtrip不依赖未存储的S
+- B>1及多head正确
+- 非法shape直接拒绝
+- NaN/Inf输入直接拒绝或明确fail-closed
+- scale underflow、overflow及全零情况有确定行为
+- fresh-process CPU deterministic重复测试
+
+任何失败都要保留最小反例。
+
+不要将临时浮点codes当成物理INT8 storage。
+
+### Gate 4：数值对照
+
+在完全相同的合成状态面板上，运行四种codec。
+
+报告：
+- State relative MSE
+- absolute MSE
+- max absolute error
+- p99 absolute error
+- zero-code fraction
+- saturation fraction
+- overflow/clipping proxy
+- row/column scale分布
+- 各条件最小、最大scale
+- encode/decode CPU latency（描述性）
+- codes和scales的实际byte数
+
+对没有row scale的条件，标记N/A。
+
+比较：
+- C128_CANONICAL vs C128_FP16_SCALE
+- C128_FP16_SCALE vs C128_LS_FP16
+- C128_LS_FP16 vs DUAL_M_INT8
+- C128_CANONICAL vs DUAL_M_INT8
+
+这些比较不能自动解读为长期效果。
+
+禁止通过挑选某个outlier分布来声称总体方法获胜。
+
+所有测试面板的生成参数、seed和输入hash必须保存。
+
+### Gate 5：零GPU的recurrent语义测试
+
+用小型合成recurrent更新模拟连续QDQ/writeback。
+
+每个step都执行：
+decode stored INT8 state
+-> FP32 transient state update
+-> encode to INT8
+-> discard transient full state
+
+下一step必须只从上一step的encoded state恢复。
+
+测试至少：
+- 1 step
+- 8 steps
+- 32 steps
+- 128 steps
+
+禁止跨step保存未经QDQ的完整FP state。
+
+注意：此测试只证明codec接口具备recurrent semantics，不证明Qwen正式GDN full-model parity。
+
+必须将正式runtime QDQ timing、cache integration和完整模型FP equivalence标为GPU资格阶段待验证，不能在Phase 0提前宣称PASS。
+
+## 6. 历史数据复用审计
+
+仅检查是否存在合法的既有FP recurrent-state完整张量，可供本轮CPU局部测试。
+
+优先检查历史实验的manifest和可读资产索引，不要重新扫描或复制整个84GB NoInflation归档。
+
+如果可以复用：
+- 记录原始路径、SHA、layer、head、token和坐标系
+- 明确该状态来自FP还是INT8学生
+- 确认状态属于量化前还是量化后
+- 必须保证Hadamard坐标系正确
+- 只读使用，不覆盖
+
+若只发现MSE标量、scale摘要或稀疏KL，则不能重建完整state。
+
+没有合法真实state时：
+REAL_STATE_DATA_AVAILABLE=NO
+
+继续完成合成数据的工程测试，但不得声称验证了真实模型的量化质量。
+
+## 7. 效率与物理存储审计
+
+分别计算四种codec的：
+- INT8 code bytes
+- row scale bytes
+- column scale bytes
+- metadata bytes
+- total physical payload bytes
+- effective bits/value
+
+C128原参考函数可能使用FP32中间tensor；必须区分：
+1. 数学QDQ工作表示
+2. 正式runtime实际保存的状态
+3. 新codec编码后的物理表示
+
+不得假设原C128的scale就是FP16，也不得仅因为新codec多出row scale就预设其真实bits/value一定更高。
+
+如果正式runtime物理存储机制无法静态核实，标记UNKNOWN。
+
+CPU latency仅作为实现开销预估，不得据此声称GPU加速。
+
+## 8. 科学结论限制
+
+本轮没有full-model logits或Future-KL。
+
+因此禁止输出：
+- Dual-Axis improves AIME
+- Dual-Axis improves long-horizon KL
+- Dual-Axis beats C6R
+- Dual-Axis and rotation are complementary
+- STEPQuant-inspired loss is validated
+
+CPU局部State MSE改善，即使幅度很大，也不能作为未来模型功能改善的证明。
+
+本轮只能给出：
+- 是否实现正确
+- 是否符合INT8与QDQ约束
+- 是否和官方reference一致
+- 是否存在明显数值灾难
+- 有无值得进入下一阶段的局部探索迹象
+- 实际存储开销和CPU计算成本
+
+不应要求Dual-M在所有输入上都优于C128；出现局部退化也必须如实保留。
+
+## 9. 下一阶段GPU实验：只起草，不执行
+
+创建独立文件：
+
+NEXT_GPU_PILOT_PREREG_DRAFT.md
+
+仅提出下一阶段建议，不得自动执行。
+
+建议候选条件：
+- H+C128_CANONICAL
+- H+C128_LS_FP16
+- H+DUAL_M_INT8
+
+可额外包括H+C128_FP16_SCALE作为控制。
+
+先进行8/32/128-token真实runtime数值与资源canary，再评估是否进入2K探索。
+
+Primary长期目标为：
+同文档、同FP参考、匹配位置的full-vocab FP32 Future-KL。
+
+Phase 1的短程测试只是资格和探索，不能作为正式32K结论。
+
+必须在正式长期测试前冻结：
+- 文档选择
+- Calibration/evaluation隔离
+- 评分位置
+- reducer
+- 数值分辨资格
+- checkpoint/恢复协议
+- GPU资源上限
+- first-failure停止规则
+
+32K长程评测不得在该草案生成后自动开始。
+
+只有Hadamard+Dual-Axis得到独立长期收益证据后，才建议考虑C6R×Dual-Axis的2×2互补性实验。
+
+C8仍然NOT_AUTHORIZED。
+
+## 10. 项目文件与交付
+
+在新实验目录：
+
+experiments/qwen_gdn/quantizer/
+QWEN_GDN_HADAMARD_DUAL_AXIS_INT8_FEASIBILITY_V1/
+
+创建尽可能精简、可复现的结构，例如：
+
+- preregistration.json
+- src/dual_axis_codec.py
+- src/baseline_codecs.py
+- tests/test_codec.py
+- tests/test_reference_parity.py
+- tests/test_recurrent_semantics.py
+- analysis/codec_comparison.csv
+- analysis/roundtrip_audit.json
+- analysis/storage_audit.json
+- analysis/provenance_audit.json
+- reports/final_report.md
+- reports/source_code_evidence.md
+- NEXT_GPU_PILOT_PREREG_DRAFT.md
+- hashes/artifact_sha256.txt
+
+以实际需要为准，不要为了填充目录生成无内容或伪造数据的文件。
+
+所有结果和SHA必须来自真实运行。
+
+生成可重复执行的CPU-only入口命令，禁止运行时下载模型权重。
+
+如果没有足够环境支持，则生成精确环境错误和未完成状态，不能伪造PASS。
+
+不能覆盖已存在的同名实验；已有目录时先核对身份，必要时使用新的attempt编号。
+
+## 11. 第一失败门禁与停止条件
+
+执行顺序：
+
+G0 源码与历史资产身份
+G1 Canonical C128 parity
+G2 STEPQuant dual-axis reference parity
+G3 编码、解码及存储正确性
+G4 合成数值面板
+G5 CPU recurrent语义
+G6 结果与SHA归档
+
+每个Gate均输出：
+- PASS
+- FAIL
+- BLOCKED
+- NOT_RUN
+
+如果某个强制门禁FAIL/BLOCKED，保存原因、证据和first-failure位置，停止后续依赖项。
+
+只允许对新实验代码做必要的最小修复，并保留每次失败历史。禁止为了获得PASS放宽阈值、改变算法定义、重新挑选有利样本。
+
+如仅部分测试可运行，输出PARTIAL_STOP，不得描述为COMPLETE/PASS。
+
+完成已授权的Phase 0后，无条件停止。
+
+禁止：
+- GPU forward
+- continuation
+- rotation training
+- full-model evaluation
+- AIME
+- 自动触发下一阶段
+- git push或改写历史commit
+
+本轮GPU_HOURS_USED必须为0。
+
+## 12. 最终报告格式
+
+请在Codex最终回报中明确输出：
+
+TASK_NAME =
+QWEN_GDN_HADAMARD_DUAL_AXIS_INT8_FEASIBILITY_V1
+
+PHASE =
+CPU_ONLY
+
+SOURCE_IDENTITY =
+PASS / FAIL / BLOCKED
+
+C128_EXACT_PARITY =
+PASS / FAIL / BLOCKED
+
+STEPQUANT_SOURCE_PARITY =
+PASS / FAIL / BLOCKED
+
+INT8_CODE_RANGE =
+PASS / FAIL / BLOCKED
+
+ROUNDTRIP =
+PASS / FAIL / BLOCKED
+
+REPEATED_QDQ_CPU_SEMANTICS =
+PASS / FAIL / BLOCKED
+
+FULL_MODEL_QDQ_RUNTIME =
+NOT_RUN
+
+DUAL_AXIS_SYNTHETIC_MSE_RESULT =
+DESCRIPTIVE_ONLY / NOT_RUN
+
+REAL_STATE_DATA_AVAILABLE =
+YES / NO / UNKNOWN
+
+PHYSICAL_STORAGE_AUDIT =
+PASS / PARTIAL / BLOCKED
+
+FULL_MODEL_FUTURE_KL =
+NOT_RUN
+
+AIME =
+NOT_RUN
+
+GPU_HOURS_USED =
+0
+
+GPU_PILOT_AUTHORIZED =
+NO
+
+C8_AUTHORIZED =
+NO
+
+FINAL_CLASSIFICATION =
+CPU_CODEC_QUALIFIED_ONLY / PARTIAL_STOP / FAIL_AND_STOP / BLOCKED_AND_STOP
+
+同时输出：
+1. 各codec真实数值结果表
+2. 所有门禁状态及首个失败原因
+3. 源码及产物SHA256
+4. 是否值得进入GPU pilot，以及支持或反对的具体证据
+5. 下一阶段GPU成本需要测量的项目
+6. 剩余科学不确定性
+
+最终不要泛泛总结“实验成功”。
+
+请明确区分工程正确性、CPU合成数据观察和真正full-model科学结果。
+
+本轮任务结束后立即STOP，等待用户下一次明确授权。

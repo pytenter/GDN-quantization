@@ -1,0 +1,1 @@
+lambda _cls, param_name, module, module_name: _tuple_new(_cls, (param_name, module, module_name))

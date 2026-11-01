@@ -1,0 +1,326 @@
+{
+  "cadence_K1": {
+    "aggregation": "per prompt mean over tokens, then macro average over prompts",
+    "cache_reset_policy": "new cache for each prompt and cadence run",
+    "cadence_semantics": "token_idx % K == 0; K=1 quantizes indices 0..steps-1; counter resets per prompt",
+    "function": "cadence_one",
+    "hook_timing": "after recurrent update, copy fake-quantized state back before next token",
+    "kl_direction": "KL(P_fp32 || P_quant)",
+    "model_path": "/data/zypan/modelscope_models/Qwen3.5-9B",
+    "prefill_quantized": false,
+    "prompt_set": "PROMPTS[0:8] from dynamic script",
+    "quantized_layer_scope": "all 24 GDN layers",
+    "quantized_layers": [
+      0,
+      1,
+      2,
+      4,
+      5,
+      6,
+      8,
+      9,
+      10,
+      12,
+      13,
+      14,
+      16,
+      17,
+      18,
+      20,
+      21,
+      22,
+      24,
+      25,
+      26,
+      28,
+      29,
+      30
+    ],
+    "quantizer": {
+      "actual_int4_range": "[-7, 7]",
+      "bits": 4,
+      "broadcast_scale_shape": [
+        1,
+        32,
+        128,
+        1
+      ],
+      "clamp": "clamp(-qmax, qmax)",
+      "dequantized_state_dtype": "torch.float32",
+      "epsilon": 1e-12,
+      "granularity": "per-row",
+      "logical_scale_shape": [
+        32,
+        128
+      ],
+      "qmax": 7,
+      "qmin": -7,
+      "reduction_dims": [
+        -1
+      ],
+      "rounding": "torch.round nearest",
+      "scale_dtype": "torch.float32",
+      "scale_formula": "max(abs(x))/(2^(bits-1)-1)",
+      "signed": true,
+      "state_dtype_after_copy": "torch.float32",
+      "state_dtype_before": "torch.float32",
+      "state_shape": [
+        1,
+        32,
+        128,
+        128
+      ],
+      "symmetric": true,
+      "zero_point": null
+    },
+    "script_path": "/data/zypan/experiments/qwen35_gdn_quant/run_dynamic_sensitivity_validation.py",
+    "teacher_forced_horizon": 64
+  },
+  "field_diff": [
+    {
+      "cadence_K1": "per prompt mean over tokens, then macro average over prompts",
+      "field": "aggregation",
+      "ordinary": "per prompt mean over tokens, then macro average over prompts",
+      "same": true
+    },
+    {
+      "cadence_K1": "new cache for each prompt and cadence run",
+      "field": "cache_reset_policy",
+      "ordinary": "new cache for each prompt and quantizer run",
+      "same": false
+    },
+    {
+      "cadence_K1": "token_idx % K == 0; K=1 quantizes indices 0..steps-1; counter resets per prompt",
+      "field": "cadence_semantics",
+      "ordinary": "ordinary profile has no cadence scheduler; effectively every token for selected layers",
+      "same": false
+    },
+    {
+      "cadence_K1": "cadence_one",
+      "field": "function",
+      "ordinary": "quantizer_profile_one",
+      "same": false
+    },
+    {
+      "cadence_K1": "after recurrent update, copy fake-quantized state back before next token",
+      "field": "hook_timing",
+      "ordinary": "after recurrent update, copy fake-quantized state back before next token",
+      "same": true
+    },
+    {
+      "cadence_K1": "KL(P_fp32 || P_quant)",
+      "field": "kl_direction",
+      "ordinary": "KL(P_fp32 || P_quant)",
+      "same": true
+    },
+    {
+      "cadence_K1": "/data/zypan/modelscope_models/Qwen3.5-9B",
+      "field": "model_path",
+      "ordinary": "/data/zypan/modelscope_models/Qwen3.5-9B",
+      "same": true
+    },
+    {
+      "cadence_K1": false,
+      "field": "prefill_quantized",
+      "ordinary": false,
+      "same": true
+    },
+    {
+      "cadence_K1": "PROMPTS[0:8] from dynamic script",
+      "field": "prompt_set",
+      "ordinary": "PROMPTS[0:8] from dynamic script",
+      "same": true
+    },
+    {
+      "cadence_K1": "all 24 GDN layers",
+      "field": "quantized_layer_scope",
+      "ordinary": "selected layers only",
+      "same": false
+    },
+    {
+      "cadence_K1": [
+        0,
+        1,
+        2,
+        4,
+        5,
+        6,
+        8,
+        9,
+        10,
+        12,
+        13,
+        14,
+        16,
+        17,
+        18,
+        20,
+        21,
+        22,
+        24,
+        25,
+        26,
+        28,
+        29,
+        30
+      ],
+      "field": "quantized_layers",
+      "ordinary": [
+        1,
+        9,
+        17,
+        25,
+        29
+      ],
+      "same": false
+    },
+    {
+      "cadence_K1": {
+        "actual_int4_range": "[-7, 7]",
+        "bits": 4,
+        "broadcast_scale_shape": [
+          1,
+          32,
+          128,
+          1
+        ],
+        "clamp": "clamp(-qmax, qmax)",
+        "dequantized_state_dtype": "torch.float32",
+        "epsilon": 1e-12,
+        "granularity": "per-row",
+        "logical_scale_shape": [
+          32,
+          128
+        ],
+        "qmax": 7,
+        "qmin": -7,
+        "reduction_dims": [
+          -1
+        ],
+        "rounding": "torch.round nearest",
+        "scale_dtype": "torch.float32",
+        "scale_formula": "max(abs(x))/(2^(bits-1)-1)",
+        "signed": true,
+        "state_dtype_after_copy": "torch.float32",
+        "state_dtype_before": "torch.float32",
+        "state_shape": [
+          1,
+          32,
+          128,
+          128
+        ],
+        "symmetric": true,
+        "zero_point": null
+      },
+      "field": "quantizer",
+      "ordinary": {
+        "actual_int4_range": "[-7, 7]",
+        "bits": 4,
+        "broadcast_scale_shape": [
+          1,
+          32,
+          128,
+          1
+        ],
+        "clamp": "clamp(-qmax, qmax)",
+        "dequantized_state_dtype": "torch.float32",
+        "epsilon": 1e-12,
+        "granularity": "per-row",
+        "logical_scale_shape": [
+          32,
+          128
+        ],
+        "qmax": 7,
+        "qmin": -7,
+        "reduction_dims": [
+          -1
+        ],
+        "rounding": "torch.round nearest",
+        "scale_dtype": "torch.float32",
+        "scale_formula": "max(abs(x))/(2^(bits-1)-1)",
+        "signed": true,
+        "state_dtype_after_copy": "torch.float32",
+        "state_dtype_before": "torch.float32",
+        "state_shape": [
+          1,
+          32,
+          128,
+          128
+        ],
+        "symmetric": true,
+        "zero_point": null
+      },
+      "same": true
+    },
+    {
+      "cadence_K1": "/data/zypan/experiments/qwen35_gdn_quant/run_dynamic_sensitivity_validation.py",
+      "field": "script_path",
+      "ordinary": "/data/zypan/experiments/qwen35_gdn_quant/run_dynamic_sensitivity_validation.py",
+      "same": true
+    },
+    {
+      "cadence_K1": 64,
+      "field": "teacher_forced_horizon",
+      "ordinary": 128,
+      "same": false
+    }
+  ],
+  "ordinary": {
+    "aggregation": "per prompt mean over tokens, then macro average over prompts",
+    "cache_reset_policy": "new cache for each prompt and quantizer run",
+    "cadence_semantics": "ordinary profile has no cadence scheduler; effectively every token for selected layers",
+    "function": "quantizer_profile_one",
+    "hook_timing": "after recurrent update, copy fake-quantized state back before next token",
+    "kl_direction": "KL(P_fp32 || P_quant)",
+    "model_path": "/data/zypan/modelscope_models/Qwen3.5-9B",
+    "prefill_quantized": false,
+    "prompt_set": "PROMPTS[0:8] from dynamic script",
+    "quantized_layer_scope": "selected layers only",
+    "quantized_layers": [
+      1,
+      9,
+      17,
+      25,
+      29
+    ],
+    "quantizer": {
+      "actual_int4_range": "[-7, 7]",
+      "bits": 4,
+      "broadcast_scale_shape": [
+        1,
+        32,
+        128,
+        1
+      ],
+      "clamp": "clamp(-qmax, qmax)",
+      "dequantized_state_dtype": "torch.float32",
+      "epsilon": 1e-12,
+      "granularity": "per-row",
+      "logical_scale_shape": [
+        32,
+        128
+      ],
+      "qmax": 7,
+      "qmin": -7,
+      "reduction_dims": [
+        -1
+      ],
+      "rounding": "torch.round nearest",
+      "scale_dtype": "torch.float32",
+      "scale_formula": "max(abs(x))/(2^(bits-1)-1)",
+      "signed": true,
+      "state_dtype_after_copy": "torch.float32",
+      "state_dtype_before": "torch.float32",
+      "state_shape": [
+        1,
+        32,
+        128,
+        128
+      ],
+      "symmetric": true,
+      "zero_point": null
+    },
+    "script_path": "/data/zypan/experiments/qwen35_gdn_quant/run_dynamic_sensitivity_validation.py",
+    "teacher_forced_horizon": 128
+  }
+}

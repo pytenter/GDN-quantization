@@ -1,0 +1,1 @@
+lambda _cls, shape, dtype, requires_grad, stride, memory_format, is_quantized, qparams: _tuple_new(_cls, (shape, dtype, requires_grad, stride, memory_format, is_quantized, qparams))

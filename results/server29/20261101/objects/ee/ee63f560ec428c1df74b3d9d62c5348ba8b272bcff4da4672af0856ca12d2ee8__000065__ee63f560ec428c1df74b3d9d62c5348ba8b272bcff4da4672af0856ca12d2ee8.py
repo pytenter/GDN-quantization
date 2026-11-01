@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self.namespace,self.func,self.use_const_ref_for_mutable_tensors,self.device_guard,self.device_check,self.python_module,self.category_override,self.variants,self.manual_kernel_registration,self.manual_cpp_binding,self.loc,self.autogen,self.ufunc_inner_loop,self.structured,self.structured_delegate,self.structured_inherits,self.precomputed,self.cpp_no_default_args,self.is_abstract,self.has_composite_implicit_autograd_kernel,self.has_composite_implicit_autograd_nested_tensor_kernel,self.has_composite_explicit_autograd_kernel,self.has_composite_explicit_autograd_non_functional_kernel,self.tags,)==(other.namespace,other.func,other.use_const_ref_for_mutable_tensors,other.device_guard,other.device_check,other.python_module,other.category_override,other.variants,other.manual_kernel_registration,other.manual_cpp_binding,other.loc,other.autogen,other.ufunc_inner_loop,other.structured,other.structured_delegate,other.structured_inherits,other.precomputed,other.cpp_no_default_args,other.is_abstract,other.has_composite_implicit_autograd_kernel,other.has_composite_implicit_autograd_nested_tensor_kernel,other.has_composite_explicit_autograd_kernel,other.has_composite_explicit_autograd_non_functional_kernel,other.tags,)
+  return NotImplemented
+ return __eq__

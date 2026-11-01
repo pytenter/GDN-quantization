@@ -1,0 +1,1 @@
+lambda _cls, done, not_done: _tuple_new(_cls, (done, not_done))

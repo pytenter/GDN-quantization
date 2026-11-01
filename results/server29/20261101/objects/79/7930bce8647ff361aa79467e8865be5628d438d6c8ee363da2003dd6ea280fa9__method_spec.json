@@ -1,0 +1,174 @@
+{
+  "buffer": {
+    "decode": "INT4key/BF16rawv buffer; updatecurrenttokenoutput beforeboundarystateQDQ; flush everydP8or1. Botharms otherwise identical.",
+    "memory": "Count actual codes/ZP/FP16 mantissas/optional INT8 exponents separately. No exponent tensor on normal head parts; one dense INT8/group tensor in an overflowing int4 or int8 head part. Keybuffer exponent bytes0. Ordinary mixed-state base5.65625bits/value including scale/ZP; max5.90625 when allstate exponent tensors allocated, extra393216B=384KiB over24x32x128x128. Buffer/marker/Python/index/allocator/model/KV/scratch separate.",
+    "native_first_token_compatibility": "Initial empty-cache single-token native chunk output uses unchanged pinned torch_chunk_gated_delta_rule arithmetic, before any boundary rounding. Its FP32 returned state is transiently verified against the Eq2 zero-state update at frozen1e-5 tolerance then discarded. Persistent carrier remains only packed base plus tokenbuffer. Later tokens use unchanged PACE replay recurrence. Record per-layer initial-chunk compatibility calls; no extra model forwards.",
+    "persistent": "Packed mixed4/8 state codes, integer ZP, FP16 mantissa, optional actual INT8 scale exponent tensors only in overflowing state head parts; original bounded INT4key/BF16value/beta/FP32logdecay buffer. Tiny recurrentcache marker only; no fullFP32/BF16 denseState acrossforwardcalls.",
+    "prefill": "Keep promptkeyBF16/valuesBF16; sequential original1-token forwards; packstate each256 consumedprompttokens and oncefinalpartialprompt, resetdecodeperiod. NoINT4promptkey quantization.",
+    "tail": "Preserve packedbase plus pendingbuffer atterminal, do not replay twice. Last sampledEOS/cappedtoken notforwarded. p+n-1forward invariant.",
+    "temporary": "Eachcall dequantbaseFP32scratch,replay pending nativeEq2 updates, compute current output, boundarypackwriteback, release scratch. No protected fullstate shadow."
+  },
+  "calibration": {
+    "dataset": "PreviouslyfrozenLongBench repobench-p/test independentdocument panel",
+    "project_identity": "UNKNOWN in originalsnapshot; do notclaimproject-leveldedup or pretrainingholdout",
+    "selection": "First2048tokenprefix ofeachof8previouslyfixed independentdocuments; rawtext, nochat/noadded specialtokens. Paperhead-calibration corpusunspecified, thisisdeclaredcorpus convention.",
+    "tokens_per_window": 2048,
+    "windows": 8
+  },
+  "common": {
+    "INT4_head_fraction": 0.75,
+    "INT8_head_fraction": 0.25,
+    "decode_key_bits": 4,
+    "decode_value_dtype": "bfloat16",
+    "exponent_policy": "STATE_ONLY_LEGACY_ACCEPTED_DOMAIN_EXACT_E0_OPTIONAL_NONNEGATIVE_INT8_PER_G32_ON_GENUINE_OVERFLOW",
+    "group_axis": "KEY_FIXED_VALUE_COLUMN",
+    "group_size": 32,
+    "key_heads": 16,
+    "method_variant": "PACE48_FP16_EXPONENT_V1",
+    "model": "Qwen3.5-9B",
+    "native_beta_dtype": "bfloat16",
+    "native_log_decay_dtype": "float32",
+    "no_rotation": true,
+    "prefill_period": 256,
+    "rounding": "nearest_ties_to_even",
+    "scale_dtype": "float16_mantissa",
+    "seed": 1,
+    "state_bits": [
+      4,
+      8
+    ],
+    "state_quantizer": "ASYMMETRIC_ZERO_INCLUSIVE_INTEGER_ZERO_POINT",
+    "state_scale_format": "FP16_MANTISSA_PLUS_OPTIONAL_INT8_EXPONENT",
+    "value_heads": 32,
+    "zero_point": "b-bit unsigned integer packed forINT4"
+  },
+  "configurations": {
+    "R2": {
+      "canonical_job_label_only": "R2",
+      "decode_period": 8,
+      "name": "PACE-4/8-FP16Exponent-dP8",
+      "original_unmodified_R2_R3": false
+    },
+    "R3": {
+      "canonical_job_label_only": "R3",
+      "decode_period": 1,
+      "name": "PACE-4/8-FP16Exponent-dP1",
+      "original_unmodified_R2_R3": false
+    }
+  },
+  "declared_quantizer_conventions": {
+    "code": "clamp(round_nearest_even(x/scale_eff)+zp,0,2**bits-1)",
+    "decode": "(integer(code)-integer(zp))*float32(scale_eff)",
+    "encoding_arithmetic": "FP64 group extrema/span/zero-point/encoding arithmetic transient; independently tested with Python IEEEdouble CPU reference and struct FP16 stored scale. Native recurrence remains FP32 and BF16 normalization.",
+    "interval": "lo=min(group_min,0);hi=max(group_max,0)",
+    "key_buffer": "Byte-identical original decode-only Asym4G32 rawBF16 unique16keyheads, FP16 direct scale/integerZP, no exponent opt-in. BF16 decode then repeat32/nativeBF16 L2normalizeonce.",
+    "scale": "State: keep byte-identical original stored FP16 scale/codes/ZP/decode when original cast is positive finite (e=0; no exponent tensor absent any overflow in that head part). On genuine overflow only, store finite FP16 mantissa and nonnegative INT8 power-of-two exponent; use that same explicitly reconstructed effective scale for encode/ZP/decode. Independent exact oracle and finite FP32 decode guards required.",
+    "unsupported": "Reject nonfinite input, invalid/negative/out-of-range exponent, invalid mantissa, nonfinite effective scale and any FP32 decode overflow. No saturation, clipping of scale, state rescaling, dynamic head reselection or precision escalation. Ordinary code clamp is unchanged and explicitly distinguished from scale clipping.",
+    "zero_point": "clamp(round_nearest_even(-lo/scale_eff),0,2**bits-1)"
+  },
+  "execution_revision": "QWEN_GDN_PACE48_AIME26_SEED1_60_V1_SCALE_EXPONENT_REPAIR_20261025",
+  "formal": {
+    "baseline_reruns": 0,
+    "conditions": [
+      "R2",
+      "R3"
+    ],
+    "count": 60,
+    "each_N": 30,
+    "extra_seeds": 0,
+    "full_scoring_requires_60_legal_exits_and_release": true,
+    "partial_reports": "truecounts/errors/provenance only, nofullaccuracy orfakeemptyCSV",
+    "seed": 1
+  },
+  "generation": {
+    "deterministic_algorithms": false,
+    "documented_conflict": true,
+    "enable_thinking": true,
+    "formal_order": "Canonicalfrozenrecordorder, perquestionR2thenR3;eachconditionoriginal30order",
+    "max_context": 82293,
+    "max_new_tokens": 81920,
+    "max_prompt_tokens": 373,
+    "min_p": 0.0,
+    "presence_penalty": 1.5,
+    "protocol_precedence": "Verifiedfrozenhistoricalprotocol takesprecedence over task deterministicTrue shorthand",
+    "repetition_penalty": 1.0,
+    "sampler": "Exacthistoricalsampler functions/constants AST, freshseed1CUDAgenerator pertrajectory; outputpresence maskexcludesprompt",
+    "scorer": "FrozenV4 unchanged",
+    "temperature": 1.0,
+    "top_k": 20,
+    "top_p": 0.95
+  },
+  "head_selection": {
+    "a": "Arithmetic mean exp(nativeFP32logdecay) for eachvaluehead acrossall8*2048tokens",
+    "denominator": "ComputeFP64 stable -expm1(16*log(a)); requirefinite0<a<1 andpositive denom, failclosedotherwise.",
+    "e": "Arithmetic mean singleAsym4 rounding SSE perhead at consumedFPnative tokens256,512,...2048, across8independentwindows (64 statepoints/head). No recurrentquanterror accumulation in calibration.",
+    "mask": "Compute once; same head_mask.json exactSHA for R2 and R3, noAIMEcalibration/reselection",
+    "rank": "Per-layer descendingE, stable ascendingheadid ties. Top8of32INT8;remaining24INT4.",
+    "score": "E=e/(1-a**16)",
+    "selection_decode_period": 8
+  },
+  "implementation_status": "NEW_HUMAN_AUTHORIZED_FORMAT_CPU_PREPARATION_ACTUAL_NEW_GPU_NOT_RUN",
+  "paper": {
+    "html_sha256": "abf335a9423088e991326b5242d39617c4b5e7952c17b088c594f60634a81995",
+    "official_implementation": "NOT_LOCATED_NOT_PROVEN_UNRELEASED",
+    "reproducibility_label": "METHOD_CONSISTENT_DECLARED_CONVENTIONS_UNVERIFIED_AGAINST_OFFICIAL_CODE",
+    "url": "https://arxiv.org/html/2610.29545v1"
+  },
+  "repair_declaration": {
+    "accepted_domain": "All old positive finite FP16 accepted scale paths must preserve exact codes, mantissa bytes, integerZP and decoded FP32 values with e=0. Any failure invalidates reuse before formal.",
+    "effective_scale": "Finite FP16mantissa times exact2**e, same effective scale used for code/ZP and decode; FP32 effective scale and all decoded values must remain finite.",
+    "exponent_allocation": "Optional perheadpart INT8/G32 state tensor only when genuine overflow occurs. None means0bytes. Dense exponent tensor may include zero entries in the same affected head part; never claim global sparse pergroup allocation.",
+    "formal": "Exactly3 original legal payloads plus57 fresh canonical jobs after actualnewCUDA exponent gate exit0/release; same originalmask, FrozenV4, sampler, seed1, cap81920. Label mixed executions and historical cost separately; not uninterrupted60.",
+    "genuine_overflow": "Finite raw state scale may use explicit exponent. No FP16 saturation/hidden clipping, headpromotion, maskswap, periodchange, newrotation or fullstate rescaling.",
+    "human_authorization_path": "operations/HUMAN_PACE_SCALE_EXPONENT_REPAIR_AUTHORIZATION.json",
+    "human_authorization_sha256": "9090e4344c7e2bbd462046c9ae9b3e50ef1701e98016ccab572dc22964c1dd97",
+    "method_variant": "PACE48_FP16_EXPONENT_V1",
+    "original_unmodified_R2_R3": false,
+    "physical_storage": {
+      "buffer_exponent_bytes": 0,
+      "group_size": 32,
+      "groups": 393216,
+      "maximum_additional_exponent_KiB": 384,
+      "maximum_additional_exponent_bytes": 393216,
+      "maximum_base_bits_per_value": 5.90625,
+      "ordinary_base_bits_per_value": 5.65625,
+      "state_values": 12582912
+    },
+    "previous_attempt": "Genuine FP16 overflow in prior SCALE_REPAIR remained a trueSTOP: sourcef51840870f017786bf761a53804a81bfa5c4a941a2207f136349761e0272256f, currentformal0/prior3, realgateexit0/failedformalexit1/release; originalseal unchanged.",
+    "prior_failure_credit": 0,
+    "reuse": "Only exact original133-source fixed calibration/mask/three actualexit0/release payloads under strict e0 accepted-domain proof; prior failedpartials have0credit and restart at token0/freshprocess/RNG/cache/history.",
+    "scope": "Explicitly human-authorized new state scale storage and numerical extension; not a silent restoration of originalR2/R3. Only states opt in; original runtime/buffer bytes and key codec unchanged.",
+    "state_scale_format": "FP16_MANTISSA_PLUS_OPTIONAL_INT8_EXPONENT"
+  },
+  "scope": {
+    "math_changes_need_new_declared_revision": true,
+    "new_code_only": true,
+    "no_unbounded_debug": true,
+    "old_assets_readonly": true,
+    "only_GPU0": true,
+    "only_GPU0_host": "202.38.247.55",
+    "other_GPUs_foreign": true,
+    "server29_GPU5_GPU6": "FOREIGN_HUMAN_CLARIFIED_OCCUPIED_NO_GPU_WORK"
+  },
+  "task_id": "QWEN_GDN_PACE48_AIME26_SEED1_60_V1",
+  "validation": {
+    "GateA": "independentCPUreference andtargetCUDA numericalquantizer/packing/extreme/grouping tests",
+    "GateB": "unquantizedState+unquantizedkeys bufferparity vs pinnednativeFP recurrence; testonly, noextraformalconfig",
+    "GateC": "productionpackedstate,bufferprecision,update/readout/writeback periods,prefilltail,no-shadow andsameheadmask checks",
+    "GateD": "fewnonAIMEreal9B trajectoriesinR2andR3 plusmemory/numeric/source/UUID andsampler checks",
+    "first_chunk_review": {
+      "finding": "10/44 fixtures showed BF16 output association differences; FP32state exact and following4 recurrent outputs exact. NoGPUhadstarted.",
+      "original_failure_report": "operations/FIRST_CHUNK_PARITY_CPU_LOCAL.json",
+      "repair": "Native first-chunk output arithmetic compatibility; no tolerance relaxation, no persistent FPstate or changed quantization periods. Related CPU and CUDA gate checks required."
+    },
+    "numeric_thresholds": {
+      "FP32_state_atol": 1e-05,
+      "FP32_state_rtol": 1e-05,
+      "frozen_before_GPU": true,
+      "native_BF16_output": "EXACT",
+      "no_postfailure_tolerance_relaxation": true,
+      "quantizer_codes_FP16_scales_integer_ZP": "EXACT against independent IEEEdouble CPU oracle"
+    },
+    "scale_exponent_repair": "New related finite scale_repair_gates/SCALE_REPAIR_GATES executes original CUDA A/B/C plus exponent_format_tests exact independent oracle, accepted-domain e0 identity, actualCPU/GPU parity, boundary/metadata/FP32 finite guards and keybuffer no-extension. No new AIME/calibration/formal credit from gates. Old original48mask+paired9B D reusable only with strict original provenance and e0 accepted-domain proof."
+  }
+}

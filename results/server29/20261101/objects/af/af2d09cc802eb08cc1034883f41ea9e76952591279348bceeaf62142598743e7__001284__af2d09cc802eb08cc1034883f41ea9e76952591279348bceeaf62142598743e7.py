@@ -1,0 +1,1 @@
+lambda _cls, state_address, state, next_uint64, next_uint32, next_double, bit_generator: _tuple_new(_cls, (state_address, state, next_uint64, next_uint32, next_double, bit_generator))

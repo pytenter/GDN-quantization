@@ -1,0 +1,1 @@
+lambda _cls, args, kwargs: _tuple_new(_cls, (args, kwargs))

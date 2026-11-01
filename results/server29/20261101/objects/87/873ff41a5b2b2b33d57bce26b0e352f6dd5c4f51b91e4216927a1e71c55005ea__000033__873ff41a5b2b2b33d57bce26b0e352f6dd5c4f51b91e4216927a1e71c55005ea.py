@@ -1,0 +1,1 @@
+lambda _cls, ast, ctx, source, filename, file_lineno: _tuple_new(_cls, (ast, ctx, source, filename, file_lineno))

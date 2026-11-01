@@ -1,0 +1,1915 @@
+src/main/java/uw/task/TaskListenerManager.java
+public class TaskListenerManager {
+
+	/**
+	 * runner监听器列表。
+	 */
+    private ArrayList<RunnerTaskListener> runnerListenerList = new ArrayList<>();
+
+    /**
+     * croner监听器列表。
+     */
+    private ArrayList<CronerTaskListener> cronerListenerList = new ArrayList<>();
+
+    /**
+     * 加入一个RunnerListener。
+     *
+     * @param listener
+     */
+    public void addRunnerListener(RunnerTaskListener listener) {
+        runnerListenerList.add(listener);
+    }
+
+    /**
+     * 加入一个RunnerListener.
+     *
+     * @param listener
+     */
+    public void addCronerListener(CronerTaskListener listener) {
+        cronerListenerList.add(listener);
+    }
+
+    /**
+     * 清除RunnerListener列表
+     */
+    public void clearRunnerListener() {
+        runnerListenerList.clear();
+    }
+
+    /**
+     * 清除RunnerListener列表
+     */
+    public void clearCronerListener() {
+        cronerListenerList.clear();
+    }
+
+    /**
+     * 获得Runner Listener列表。
+     *
+     * @return
+     */
+    public ArrayList<RunnerTaskListener> getRunnerListenerList() {
+        return runnerListenerList;
+    }
+
+    /**
+     * 获得Croner Listener列表。
+     *
+     * @return
+     */
+    public ArrayList<CronerTaskListener> getCronerListenerList() {
+        return cronerListenerList;
+    }
+
+}
+src/main/java/uw/task/api/TaskAPI.java
+public class TaskAPI {
+
+    private static final Logger log = LoggerFactory.getLogger(TaskAPI.class);
+
+    /**
+     * Task配置文件
+     */
+    private TaskProperties taskProperties;
+
+    /**
+     * Rest模板类
+     */
+    private RestTemplate restTemplate;
+
+    /**
+     * 日志客户端。
+     */
+    private LogClient logClient = null;
+
+    /**
+     * 本机的外网IP
+     */
+    private String hostIp = "";
+
+    public TaskAPI(final TaskProperties taskProperties, final RestTemplate restTemplate,
+                   final LogClient logClient) {
+        this.taskProperties = taskProperties;
+        this.restTemplate = restTemplate;
+        this.logClient = logClient;
+    }
+
+    /**
+     * @return the hostIp
+     */
+    public String getHostIp() {
+        return hostIp;
+    }
+
+    /**
+     * 更新当前主机目标配置。
+     *
+     * @return
+     */
+    public List<String> getServerTargetConfig() {
+        List<String> targetConfig = null;
+        // 判断是否是私有模式。
+        boolean privacyMode = taskProperties.isPrivacyMode();
+        try {
+            String[] data = restTemplate.getForObject(
+                    taskProperties.getTaskCenterHost() + "/taskapi/target/config?targetType={targetType}", String[].class,
+                    privacyMode ? 1 : 0);
+            targetConfig = Arrays.asList(data);
+        } catch (Exception e) {
+            log.error("TaskAPI.getHostConfig()服务端Target配置拉取异常:{}", e.getMessage());
+        }
+        if (targetConfig == null || targetConfig.size() == 0) {
+            if (log.isWarnEnabled()) {
+                log.warn("获得主机Target服务端配置失败，启用默认配置项!");
+            }
+            targetConfig = new ArrayList<>();
+            if (!privacyMode) {
+                targetConfig.add("");
+            }
+        }
+        return targetConfig;
+    }
+
+    /**
+     * 更新当前主机状态，返回主机IP地址。
+     *
+     * @return 主机IP地址
+     */
+    public String updateHostStatus() {
+        String ip = "";
+        TaskHostStatus taskHostStatus = new TaskHostStatus();
+        taskHostStatus.setHostId(taskProperties.getHostId());
+        taskHostStatus.setTaskProject(taskProperties.getProject());
+        try {
+            ip = restTemplate.postForObject(taskProperties.getTaskCenterHost() + "/taskapi/host/status", taskHostStatus,
+                    String.class);
+            hostIp = ip;
+        } catch (Exception e) {
+            log.error("TaskAPI.updateHostStatus()服务端主机状态更新异常:{}", e.getMessage());
+        }
+        return ip;
+    }
+
+    /**
+     * 初始化CronerConfig。
+     *
+     * @param config
+     */
+    public TaskCronerConfig initTaskCronerConfig(TaskCronerConfig config) {
+        try {
+            config = restTemplate.postForObject(taskProperties.getTaskCenterHost() + "/taskapi/croner/config", config,
+                    TaskCronerConfig.class);
+        } catch (Exception e) {
+            log.error("TaskAPI.initTaskCronerConfig上传Croner配置到服务端异常:{}", e.getMessage());
+        }
+        return config;
+    }
+
+    /**
+     * 初始化RunnerConfig
+     *
+     * @param config
+     */
+    public TaskRunnerConfig initTaskRunnerConfig(TaskRunnerConfig config) {
+        try {
+            config = restTemplate.postForObject(taskProperties.getTaskCenterHost() + "/taskapi/runner/config", config,
+                    TaskRunnerConfig.class);
+        } catch (Exception e) {
+            log.error("TaskAPI.initTaskRunnerConfig上传Runner配置到服务端异常:{}", e.getMessage());
+        }
+        return config;
+
+    }
+
+    /**
+     * 初始化联系人信息。
+     *
+     * @param contact
+     */
+    public void initTaskContact(TaskContact contact) {
+        try {
+            restTemplate.postForLocation(taskProperties.getTaskCenterHost() + "/taskapi/contact", contact);
+        } catch (Exception e) {
+            log.error("TaskAPI.initTaskContact上传联系人信息到服务端异常:{}", e.getMessage());
+        }
+    }
+
+    /**
+     * 根据更新时间获得变化的TaskRunner队列列表。
+     *
+     * @param lastUpdateTime 最后更新时间
+     * @return
+     */
+    public List<TaskRunnerConfig> getTaskRunnerQueueList(long lastUpdateTime) {
+        List<TaskRunnerConfig> list = null;
+        try {
+            TaskRunnerConfig[] data = restTemplate.getForObject(
+                    taskProperties.getTaskCenterHost() + "/taskapi/runner/queue?lastUpdateTime={lastUpdateTime}",
+                    TaskRunnerConfig[].class, lastUpdateTime);
+            list = Arrays.asList(data);
+        } catch (Exception e) {
+            log.error("TaskAPI.getTaskRunnerQueueList()服务端主机状态更新异常:{}", e.getMessage());
+        }
+
+        return list;
+    }
+
+    /**
+     * 根据包名前缀获得TaskRunner配置列表。
+     *
+     * @param taskPackage
+     * @param lastUpdateTime 最后更新时间
+     * @return
+     */
+    public List<TaskRunnerConfig> getTaskRunnerConfigList(String taskPackage, long lastUpdateTime) {
+        List<TaskRunnerConfig> list = null;
+        try {
+            TaskRunnerConfig[] data = restTemplate.getForObject(
+                    taskProperties.getTaskCenterHost()
+                            + "/taskapi/runner/config?taskPackage={taskPackage}&lastUpdateTime={lastUpdateTime}",
+                    TaskRunnerConfig[].class, taskPackage, lastUpdateTime);
+            list = Arrays.asList(data);
+        } catch (Exception e) {
+            log.error("TaskAPI.getTaskRunnerConfigList()服务端主机状态更新异常:{}", e.getMessage());
+        }
+
+        return list;
+    }
+
+    /**
+     * 根据包名前缀获得TaskCroner配置列表。
+     *
+     * @param taskPackage
+     * @param lastUpdateTime 最后更新时间
+     * @return
+     */
+    public List<TaskCronerConfig> getTaskCronerConfigList(String taskPackage, long lastUpdateTime) {
+        List<TaskCronerConfig> list = null;
+        try {
+            TaskCronerConfig[] data = restTemplate.getForObject(
+                    taskProperties.getTaskCenterHost()
+                            + "/taskapi/croner/config?taskPackage={taskPackage}&lastUpdateTime={lastUpdateTime}",
+                    TaskCronerConfig[].class, taskPackage, lastUpdateTime);
+            list = Arrays.asList(data);
+        } catch (Exception e) {
+            log.error("TaskAPI.getTaskCronerConfigList()服务端主机状态更新异常:{}", e.getMessage());
+        }
+
+        return list;
+    }
+
+    /**
+     * 发送Runner任务日志。
+     *
+     * @param log
+     */
+    public void sendTaskRunnerLog(TaskRunnerLog log) {
+        logClient.log(log);
+    }
+
+    /**
+     * 发送CronLog日志
+     *
+     * @param configId      配置Id,方便更新下一次执行时间
+     * @param taskCronerLog 日志对象
+     */
+    public void sendTaskCronerLog(long configId, TaskCronerLog taskCronerLog) {
+        try {
+            restTemplate.getForObject(
+                    taskProperties.getTaskCenterHost()
+                            + "/taskapi/croner/tick?id={id}&nextDate={nextDate}",
+                    Integer.class, configId, taskCronerLog.getNextDate().getTime());
+        } catch (Exception e) {
+            log.error("TaskAPI.cornerTick()服务端主机状态更新异常: " + e.getMessage(), e);
+        }
+
+        int logLevel = taskCronerLog.getLogLevel();
+        int logLimitSize = taskCronerLog.getLogLimitSize();
+        if (logLevel > TaskCronerConfig.TASK_LOG_TYPE_NONE) {
+            switch (logLevel) {
+                case TaskCronerConfig.TASK_LOG_TYPE_RECORD: {
+                    taskCronerLog.setTaskParam(null);
+                    taskCronerLog.setResultData(null);
+                }
+                break;
+                case TaskCronerConfig.TASK_LOG_TYPE_RECORD_TASK_PARAM: {
+                    String taskParam = taskCronerLog.getTaskParam();
+                    if (logLimitSize > 0 && StringUtils.isNotBlank(taskParam) && taskParam.length() > logLimitSize) {
+                        taskCronerLog.setTaskParam(taskParam.substring(0, logLimitSize));
+                    }
+                    taskCronerLog.setResultData(null);
+                }
+                break;
+                case TaskCronerConfig.TASK_LOG_TYPE_RECORD_RESULT_DATA: {
+                    String resultData = taskCronerLog.getResultData();
+                    if (logLimitSize > 0 && StringUtils.isNotBlank(resultData) && resultData.length() > logLimitSize) {
+                        taskCronerLog.setResultData(resultData.substring(0, logLimitSize));
+                    }
+                    taskCronerLog.setTaskParam(null);
+                }
+                break;
+                case TaskCronerConfig.TASK_LOG_TYPE_RECORD_ALL: {
+                    if (logLimitSize > 0) {
+                        String taskParam = taskCronerLog.getTaskParam();
+                        String resultData = taskCronerLog.getResultData();
+                        if (StringUtils.isNotBlank(taskParam) && taskParam.length() > logLimitSize) {
+                            taskCronerLog.setTaskParam(taskParam.substring(0, logLimitSize));
+                        }
+                        if (StringUtils.isNotBlank(resultData) && resultData.length() > logLimitSize) {
+                            taskCronerLog.setResultData(resultData.substring(0, logLimitSize));
+                        }
+                    }
+                }
+                break;
+            }
+            logClient.log(taskCronerLog);
+        }
+    }
+}
+src/main/java/uw/task/entity/TaskCronerConfig.java
+public class TaskCronerConfig implements Serializable {
+
+	private static final long serialVersionUID = 1L;
+
+	/**
+	 * 直接运行模式。
+	 */
+	public static final int RUN_TYPE_ANYWAY = 0;
+
+	/**
+	 * 运行在全局单例模式下。
+	 */
+	public static final int RUN_TYPE_SINGLETON = 1;
+
+    /**
+     * 什么都不记录
+     */
+    public static final int TASK_LOG_TYPE_NONE = -1;
+
+    /**
+     * 记录日志
+     */
+    public static final int TASK_LOG_TYPE_RECORD = 0;
+
+    /**
+     * 记录日志,含请求参数
+     */
+    public static final int TASK_LOG_TYPE_RECORD_TASK_PARAM = 1;
+
+    /**
+     * 记录日志,含返回参数
+     */
+    public static final int TASK_LOG_TYPE_RECORD_RESULT_DATA = 2;
+
+    /**
+     * 记录全部日志
+     */
+    public static final int TASK_LOG_TYPE_RECORD_ALL = 3;
+
+	private long id;
+
+	/**
+	 * 执行类信息
+	 */
+	private String taskClass;
+
+	/**
+	 * 执行参数，可能用于区分子任务
+	 */
+	private String taskParam;
+
+	/**
+	 * 任务名称
+	 */
+	private String taskName;
+
+	/**
+	 * 任务描述
+	 */
+	private String taskDesc;
+
+	/**
+	 * cron表达式，默认5秒一次。
+	 */
+	private String taskCron = "*/5 * * * * ?";
+
+	/**
+	 * 0随意执行，1全局唯一执行
+	 */
+	private int runType = RUN_TYPE_SINGLETON;
+
+	/**
+	 * 运行目标，默认不指定
+	 */
+	private String runTarget = "";
+
+	/**
+	 * 失败率
+	 */
+	private int failRate;
+
+	/**
+	 * 接口失败率
+	 */
+	private int failPartnerRate;
+
+	/**
+	 * 程序失败率
+	 */
+	private int failProgramRate;
+
+	/**
+	 * 数据失败率
+	 */
+	private int failDataRate;
+
+	/**
+	 * 等待超时
+	 */
+	private int waitTimeout;
+
+	/**
+	 * 运行超时
+	 */
+	private int runTimeout;
+
+	/**
+	 * 状态值
+	 */
+	private int state = 1;
+
+    /**
+     * 详见 TaskLogObjectAsStringSerializer 日志类型说明
+     */
+    private int logLevel = TASK_LOG_TYPE_RECORD;
+
+    /**
+     * 日志字符串字段大小限制: 0 表示无限制
+     */
+    private int logLimitSize = 0;
+
+	public TaskCronerConfig() {
+	}
+
+    public long getId() {
+        return id;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    public String getTaskClass() {
+        return taskClass;
+    }
+
+    public void setTaskClass(String taskClass) {
+        this.taskClass = taskClass;
+    }
+
+    public String getTaskParam() {
+        return taskParam;
+    }
+
+    public void setTaskParam(String taskParam) {
+        this.taskParam = taskParam;
+    }
+
+    public String getTaskName() {
+        return taskName;
+    }
+
+    public void setTaskName(String taskName) {
+        this.taskName = taskName;
+    }
+
+    public String getTaskDesc() {
+        return taskDesc;
+    }
+
+    public void setTaskDesc(String taskDesc) {
+        this.taskDesc = taskDesc;
+    }
+
+    public String getTaskCron() {
+        return taskCron;
+    }
+
+    public void setTaskCron(String taskCron) {
+        this.taskCron = taskCron;
+    }
+
+    public int getRunType() {
+        return runType;
+    }
+
+    public void setRunType(int runType) {
+        this.runType = runType;
+    }
+
+    public String getRunTarget() {
+        return runTarget;
+    }
+
+    public void setRunTarget(String runTarget) {
+        this.runTarget = runTarget;
+    }
+
+    public int getFailRate() {
+        return failRate;
+    }
+
+    public void setFailRate(int failRate) {
+        this.failRate = failRate;
+    }
+
+    public int getFailPartnerRate() {
+        return failPartnerRate;
+    }
+
+    public void setFailPartnerRate(int failPartnerRate) {
+        this.failPartnerRate = failPartnerRate;
+    }
+
+    public int getFailProgramRate() {
+        return failProgramRate;
+    }
+
+    public void setFailProgramRate(int failProgramRate) {
+        this.failProgramRate = failProgramRate;
+    }
+
+    public int getFailDataRate() {
+        return failDataRate;
+    }
+
+    public void setFailDataRate(int failDataRate) {
+        this.failDataRate = failDataRate;
+    }
+
+    public int getWaitTimeout() {
+        return waitTimeout;
+    }
+
+    public void setWaitTimeout(int waitTimeout) {
+        this.waitTimeout = waitTimeout;
+    }
+
+    public int getRunTimeout() {
+        return runTimeout;
+    }
+
+    public void setRunTimeout(int runTimeout) {
+        this.runTimeout = runTimeout;
+    }
+
+    public int getState() {
+        return state;
+    }
+
+    public void setState(int state) {
+        this.state = state;
+    }
+
+    public int getLogLevel() {
+        return logLevel;
+    }
+
+    public void setLogLevel(int logLevel) {
+        this.logLevel = logLevel;
+    }
+
+    public int getLogLimitSize() {
+        return logLimitSize;
+    }
+
+    public void setLogLimitSize(int logLimitSize) {
+        this.logLimitSize = logLimitSize;
+    }
+}
+src/main/java/uw/task/exception/TaskDataException.java
+public class TaskDataException extends Exception {
+
+    /**
+     * <code>serialVersionUID</code> 的注释
+     */
+    private static final long serialVersionUID = 8713460933603499992L;
+
+    public TaskDataException() {
+        super();
+    }
+
+    public TaskDataException(String msg) {
+        super(msg);
+    }
+
+    public TaskDataException(Throwable nestedThrowable) {
+        super(nestedThrowable);
+    }
+
+    public TaskDataException(String msg, Throwable nestedThrowable) {
+        super(msg, nestedThrowable);
+    }
+
+}
+src/main/java/uw/task/util/MiscUtils.java
+public class MiscUtils {
+
+    /**
+     * taskData的copy器。
+     */
+    private static BeanCopier beanCopier = BeanCopier.create(TaskData.class, TaskData.class, false);
+
+    /**
+     * copy taskData对象。
+     *
+     * @param srcData
+     * @param dstData
+     */
+    public static void copyTaskData(TaskData srcData, TaskData dstData) {
+        beanCopier.copy(srcData, dstData, null);
+    }
+
+    /**
+     * 打印异常信息，屏蔽掉spring自己的堆栈输出。
+     *
+     * @param e 需要打印的异常信息
+     * @return
+     */
+    public static String exceptionToString(Throwable e) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(e.toString()).append("\n");
+
+        StackTraceElement[] trace = e.getStackTrace();
+        for (StackTraceElement traceElement : trace) {
+            if (traceElement.getClassName().startsWith("org.spring")) {
+                continue;
+            }
+            if (traceElement.getClassName().startsWith("sun.")) {
+                continue;
+            }
+            sb.append("\tat ").append(traceElement).append("\n");
+        }
+        Throwable ourCause = e.getCause();
+        if (ourCause != null) {
+            sb.append("CAUSE BY").append(ourCause.toString()).append("\n");
+            trace = ourCause.getStackTrace();
+            for (StackTraceElement traceElement : trace) {
+                if (traceElement.getClassName().startsWith("org.spring")) {
+                    continue;
+                }
+                if (traceElement.getClassName().startsWith("sun.")) {
+                    continue;
+                }
+                sb.append("\tat ").append(traceElement).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+}
+src/main/java/uw/task/conf/TaskProperties.java
+@ConfigurationProperties(prefix = "uw.task")
+public class TaskProperties {
+
+    /**
+     * 是否启用uw-task服务注册和主机注册，默认不启用。
+     *
+     */
+    private boolean enableTaskRegistry = false;
+    /**
+     * 任务名，必须设置为基础包名。
+     */
+    private String project;
+
+    /**
+     * 私有模式。不运行全局target任务。
+     */
+    private boolean privacyMode = false;
+
+    /**
+     * croner线程数，默认在3个，建议按照实际croner任务数量*70%。
+     */
+    private int cronerThreadNum = 5;
+
+    /**
+     * RPC最小线程数,用于执行RPC调用，如不使用rpc，建议设置为1，否则按照最大并发量*10%设置。
+     */
+    private int taskRpcMinThreadNum = 1;
+
+    /**
+     * RPC最大线程数,用于执行RPC调用，超过此线程数，将会导致阻塞。
+     */
+    private int taskRpcMaxThreadNum = 100;
+
+    /**
+     * 队列任务重试延时毫秒数，默认2秒
+     */
+    private long taskQueueRetryDelay = 2000;
+
+    /**
+     *  rpc任务重试延时毫秒数，默认100毫秒
+     */
+    private long taskRpcRetryDelay = 100;
+
+    /**
+     * 运行主机ID
+     */
+    private String hostId = ManagementFactory.getRuntimeMXBean().getName();
+
+    /**
+     * 任务服务器
+     */
+    private String taskCenterHost = "127.0.0.1";
+
+    /**
+     * Redis配置
+     */
+    private RedisProperties redis = new RedisProperties();
+
+    /**
+     * Rabbit MQ配置
+     */
+    private RabbitProperties rabbitmq = new RabbitProperties();
+
+    public static class RedisProperties extends org.springframework.boot.autoconfigure.data.redis.RedisProperties {
+
+    }
+
+    public static class RabbitProperties extends org.springframework.boot.autoconfigure.amqp.RabbitProperties {
+
+    }
+
+    public boolean isEnableTaskRegistry() {
+        return enableTaskRegistry;
+    }
+
+    public void setEnableTaskRegistry(boolean enableTaskRegistry) {
+        this.enableTaskRegistry = enableTaskRegistry;
+    }
+
+    /**
+	 * @return the privacyMode
+	 */
+	public boolean isPrivacyMode() {
+		return privacyMode;
+	}
+
+	/**
+	 * @param privacyMode the privacyMode to set
+	 */
+	public void setPrivacyMode(boolean privacyMode) {
+		this.privacyMode = privacyMode;
+	}
+
+	public int getTaskRpcMinThreadNum() {
+		return taskRpcMinThreadNum;
+	}
+
+	public void setTaskRpcMinThreadNum(int taskRpcMinThreadNum) {
+		this.taskRpcMinThreadNum = taskRpcMinThreadNum;
+	}
+
+	public int getTaskRpcMaxThreadNum() {
+		return taskRpcMaxThreadNum;
+	}
+
+	public void setTaskRpcMaxThreadNum(int taskRpcMaxThreadNum) {
+		this.taskRpcMaxThreadNum = taskRpcMaxThreadNum;
+	}
+
+	/**
+     * @return the project
+     */
+    public String getProject() {
+        return project;
+    }
+
+    /**
+     * @param project the project to set
+     */
+    public void setProject(String project) {
+        this.project = project;
+    }
+
+    /**
+     * @return the hostId
+     */
+    public String getHostId() {
+        return hostId;
+    }
+
+    /**
+     * @param hostId the hostId to set
+     */
+    public void setHostId(String hostId) {
+        this.hostId = hostId;
+    }
+
+    /**
+	 * @return the cronerThreadNum
+	 */
+	public int getCronerThreadNum() {
+		return cronerThreadNum;
+	}
+
+	/**
+	 * @param cronerThreadNum the cronerThreadNum to set
+	 */
+	public void setCronerThreadNum(int cronerThreadNum) {
+		this.cronerThreadNum = cronerThreadNum;
+	}
+
+	/**
+     * @return the taskCenterHost
+     */
+    public String getTaskCenterHost() {
+        return taskCenterHost;
+    }
+
+    /**
+     * @param taskCenterHost the taskCenterHost to set
+     */
+    public void setTaskCenterHost(String taskCenterHost) {
+        this.taskCenterHost = taskCenterHost;
+    }
+
+    public RedisProperties getRedis() {
+        return redis;
+    }
+
+    public void setRedis(RedisProperties redis) {
+        this.redis = redis;
+    }
+
+    public RabbitProperties getRabbitmq() {
+        return rabbitmq;
+    }
+
+    public void setRabbitmq(RabbitProperties rabbitmq) {
+        this.rabbitmq = rabbitmq;
+    }
+
+    public long getTaskQueueRetryDelay() {
+        return taskQueueRetryDelay;
+    }
+
+    public void setTaskQueueRetryDelay(long taskQueueRetryDelay) {
+        this.taskQueueRetryDelay = taskQueueRetryDelay;
+    }
+
+    public long getTaskRpcRetryDelay() {
+        return taskRpcRetryDelay;
+    }
+
+    public void setTaskRpcRetryDelay(long taskRpcRetryDelay) {
+        this.taskRpcRetryDelay = taskRpcRetryDelay;
+    }
+}
+src/main/java/uw/task/listener/CronerTaskListener.java
+public interface CronerTaskListener {
+
+    /**
+     * 执行前的监听器。
+     *
+     * @param data
+     */
+    public void onPreExecute(TaskCronerLog data);
+
+    /**
+     * 执行后的监听器。
+     *
+     * @param data
+     */
+    public void onPostExecute(TaskCronerLog data);
+
+}
+src/main/java/uw/task/TaskData.java
+public class TaskData<TP, RD> implements Serializable {
+
+    /**
+     * serialVersionUID
+     */
+    private static final long serialVersionUID = 1333167065535557828L;
+
+    /**
+     * 任务状态:未设置
+     */
+    public static final int STATE_UNKNOWN = 0;
+
+    /**
+     * 任务状态:成功
+     */
+    public static final int STATE_SUCCESS = 1;
+
+    /**
+     * 任务状态:程序错误
+     */
+    public static final int STATE_FAIL_PROGRAM = 2;
+
+    /**
+     * 任务状态:配置错误，如超过流量限制
+     */
+    public static final int STATE_FAIL_CONFIG = 3;
+
+    /**
+     * 任务状态:第三方接口错误
+     */
+    public static final int STATE_FAIL_PARTNER = 4;
+
+    /**
+     * 任务状态:数据错误
+     */
+    public static final int STATE_FAIL_DATA = 5;
+
+    /**
+     * 运行模式：本地运行
+     */
+    public static final int RUN_TYPE_LOCAL = 1;
+
+    /**
+     * 运行模式：全局运行
+     */
+    public static final int RUN_TYPE_GLOBAL = 3;
+
+    /**
+     * 运行模式：全局运行RPC返回结果
+     */
+    public static final int RUN_TYPE_GLOBAL_RPC = 5;
+
+    /**
+     * 运行模式：自动运行RPC返回结果，使用此模式，会自动选择本地还远程运行模式。
+     */
+    public static final int RUN_TYPE_AUTO_RPC = 6;
+
+    /**
+     * 自动重试[为了兼容,默认开启重试]
+     */
+    public static final int RETRY_TYPE_AUTO = 0;
+
+    /**
+     * 用户手工重试
+     */
+    public static final int RETRY_TYPE_MANUAL = 1;
+
+    /**
+     * id，此序列值由框架自动生成，无需手工设置。
+     */
+    private long id;
+
+    /**
+     * 关联TAG，由调用方设定，用于第三方统计信息。
+     */
+    private String refTag;
+
+    /**
+     * 关联id，由调用方根据需要设置，用于第三方统计信息。
+     */
+    private long refId;
+
+    /**
+     * 关联子id，由调用方根据需要设置，用于第三方统计信息。
+     */
+    private long refSubId;
+
+    /**
+     * 关联对象，此对象不存入数据库，但可以通过Listener来访问。
+     */
+    @JsonIgnore
+    private Object refObject;
+
+    /**
+     * 流量限制TAG。
+     */
+    private String rateLimitTag;
+
+    /**
+     * 需要执行的类名，此数值必须由调用方设置。
+     */
+    private String taskClass = "";
+
+    /**
+     * 任务标签，用于细分任务队列，支持多实例运行。
+     */
+    private String taskTag = "";
+
+    /**
+     * 任务延迟毫秒数。一般这个时间不宜太长，大多数情况下不要超过60秒。
+     */
+    private long taskDelay;
+
+    /**
+     * 执行参数，此数值必须有调用方设置。
+     */
+    private TP taskParam;
+
+    /**
+     * 任务运行类型，默认为自动RPC，根据情况选择本地还是远程运行。
+     */
+    private int runType = RUN_TYPE_AUTO_RPC;
+
+    /**
+     * 重试类型
+     */
+    private int retryType;
+
+    /**
+     * 指定运行目标。
+     */
+    private String runTarget = "";
+
+    /**
+     * 任务运行时主机IP，此信息由框架自动设置。
+     */
+    private String hostIp;
+
+    /**
+     * 任务运行时主机ID（可能为docker的ContainerID），此信息由框架自动设置。
+     */
+    private String hostId;
+
+    /**
+     * 进入队列时间，此信息由框架自动设置。
+     */
+    private Date queueDate;
+
+    /**
+     * 开始消费时间，此信息由框架自动设置。
+     */
+    private Date consumeDate;
+
+    /**
+     * 开始运行时间，此信息由框架自动设置。
+     */
+    private Date runDate;
+
+    /**
+     * 运行结束日期，此信息由框架自动设置。
+     */
+    private Date finishDate;
+
+    /**
+     * 执行信息，用于存储框架自动设置。
+     */
+    private RD resultData;
+
+    /**
+     * 出错信息
+     */
+    private String errorInfo;
+
+    /**
+     * 已经执行的次数，此信息由框架自动设置。
+     */
+    private int ranTimes;
+
+    /**
+     * 执行状态，此信息由框架根据异常自动设置。
+     */
+    private int state;
+
+    /**
+     * @return the id
+     */
+    public long getId() {
+        return id;
+    }
+
+    /**
+     * @param id the id to set
+     */
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    /**
+     * @return the refId
+     */
+    public long getRefId() {
+        return refId;
+    }
+
+    /**
+     * @param refId the refId to set
+     */
+    public void setRefId(long refId) {
+        this.refId = refId;
+    }
+
+    /**
+	 * @return the refSubId
+	 */
+	public long getRefSubId() {
+		return refSubId;
+	}
+
+	/**
+	 * @param refSubId the refSubId to set
+	 */
+	public void setRefSubId(long refSubId) {
+		this.refSubId = refSubId;
+	}
+
+	/**
+	 * @return the refTag
+	 */
+	public String getRefTag() {
+		return refTag;
+	}
+
+	/**
+	 * @param refTag the refTag to set
+	 */
+	public void setRefTag(String refTag) {
+		this.refTag = refTag;
+	}
+
+	/**
+	 * @return the rateLimitTag
+	 */
+	public String getRateLimitTag() {
+		return rateLimitTag;
+	}
+
+	/**
+	 * @param rateLimitTag the rateLimitTag to set
+	 */
+	public void setRateLimitTag(String rateLimitTag) {
+		this.rateLimitTag = rateLimitTag;
+	}
+
+	/**
+	 * @return the refObject
+	 */
+	public Object getRefObject() {
+		return refObject;
+	}
+
+    /**
+     * @param refObject the refObject to set
+     */
+    public void setRefObject(Object refObject) {
+        this.refObject = refObject;
+    }
+
+    /**
+     * @return the taskClass
+     */
+    public String getTaskClass() {
+        return taskClass;
+    }
+
+    /**
+     * @param taskClass the taskClass to set
+     */
+    public void setTaskClass(String taskClass) {
+        this.taskClass = taskClass;
+    }
+
+    /**
+	 * @return the taskTag
+	 */
+	public String getTaskTag() {
+		return taskTag;
+	}
+
+	public long getTaskDelay() {
+		return taskDelay;
+	}
+
+	public void setTaskDelay(long taskDelay) {
+		this.taskDelay = taskDelay;
+	}
+
+	/**
+	 * @param taskTag the taskTag to set
+	 */
+	public void setTaskTag(String taskTag) {
+		this.taskTag = taskTag;
+	}
+
+	/**
+     * @return the taskParam
+     */
+    public TP getTaskParam() {
+        return taskParam;
+    }
+
+    /**
+     * @param taskParam the taskParam to set
+     */
+    public void setTaskParam(TP taskParam) {
+        this.taskParam = taskParam;
+    }
+
+    /**
+     * @return the runType
+     */
+    public int getRunType() {
+        return runType;
+    }
+
+    /**
+     * @param runType the runType to set
+     */
+    public void setRunType(int runType) {
+        this.runType = runType;
+    }
+
+    public int getRetryType() {
+        return retryType;
+    }
+
+    public void setRetryType(int retryType) {
+        this.retryType = retryType;
+    }
+
+    /**
+     * @return the runTarget
+     */
+    public String getRunTarget() {
+        return runTarget;
+    }
+
+    /**
+     * @param runTarget the runTarget to set
+     */
+    public void setRunTarget(String runTarget) {
+        this.runTarget = runTarget;
+    }
+
+    /**
+     * @return the hostIp
+     */
+    public String getHostIp() {
+        return hostIp;
+    }
+
+    /**
+     * @param hostIp the hostIp to set
+     */
+    public void setHostIp(String hostIp) {
+        this.hostIp = hostIp;
+    }
+
+    /**
+     * @return the hostId
+     */
+    public String getHostId() {
+        return hostId;
+    }
+
+    /**
+     * @param hostId the hostId to set
+     */
+    public void setHostId(String hostId) {
+        this.hostId = hostId;
+    }
+
+    /**
+     * @return the queueDate
+     */
+    public Date getQueueDate() {
+        return queueDate;
+    }
+
+    /**
+     * @param queueDate the queueDate to set
+     */
+    public void setQueueDate(Date queueDate) {
+        this.queueDate = queueDate;
+    }
+
+    /**
+     * @return the consumeDate
+     */
+    public Date getConsumeDate() {
+        return consumeDate;
+    }
+
+    /**
+     * @param consumeDate the consumeDate to set
+     */
+    public void setConsumeDate(Date consumeDate) {
+        this.consumeDate = consumeDate;
+    }
+
+    /**
+     * @return the runDate
+     */
+    public Date getRunDate() {
+        return runDate;
+    }
+
+    /**
+     * @param runDate the runDate to set
+     */
+    public void setRunDate(Date runDate) {
+        this.runDate = runDate;
+    }
+
+    /**
+     * @return the finishDate
+     */
+    public Date getFinishDate() {
+        return finishDate;
+    }
+
+    /**
+     * @param finishDate the finishDate to set
+     */
+    public void setFinishDate(Date finishDate) {
+        this.finishDate = finishDate;
+    }
+
+    /**
+     * @return the resultData
+     */
+    public RD getResultData() {
+        return resultData;
+    }
+
+    /**
+     * @param resultData the resultData to set
+     */
+    public void setResultData(RD resultData) {
+        this.resultData = resultData;
+    }
+
+    /**
+     * @return the errorInfo
+     */
+    public String getErrorInfo() {
+        return errorInfo;
+    }
+
+    /**
+     * @param errorInfo the errorInfo to set
+     */
+    public void setErrorInfo(String errorInfo) {
+        this.errorInfo = errorInfo;
+    }
+
+    /**
+     * @return the ranTimes
+     */
+    public int getRanTimes() {
+        return ranTimes;
+    }
+
+    /**
+     * @param ranTimes the ranTimes to set
+     */
+    public void setRanTimes(int ranTimes) {
+        this.ranTimes = ranTimes;
+    }
+
+    /**
+     * @return the status
+     */
+    public int getState() {
+        return state;
+    }
+
+    /**
+     * @param status the status to set
+     */
+    public void setState(int status) {
+        this.state = status;
+    }
+
+}
+src/main/java/uw/task/exception/TaskPartnerException.java
+public class TaskPartnerException extends Exception {
+
+    /**
+     * <code>serialVersionUID</code> 的注释
+     */
+    private static final long serialVersionUID = 8713460933603499992L;
+
+    public TaskPartnerException() {
+        super();
+    }
+
+    public TaskPartnerException(String msg) {
+        super(msg);
+    }
+
+    public TaskPartnerException(Throwable nestedThrowable) {
+        super(nestedThrowable);
+    }
+
+    public TaskPartnerException(String msg, Throwable nestedThrowable) {
+        super(msg, nestedThrowable);
+    }
+
+}
+src/main/java/uw/task/TaskCroner.java
+public abstract class TaskCroner {
+
+	/**
+	 * 运行任务。
+	 */
+	public abstract String runTask(TaskCronerLog taskCronerLog) throws Exception;
+
+	/**
+	 * 初始化配置信息。
+	 */
+	public abstract TaskCronerConfig initConfig();
+
+	/**
+	 * 初始化联系人信息。
+	 *
+	 * @return
+	 */
+	public abstract TaskContact initContact();
+
+}
+src/main/java/uw/task/util/GlobalSequenceManager.java
+public class GlobalSequenceManager {
+
+	private static final Logger log = LoggerFactory.getLogger(GlobalSequenceManager.class);
+
+	private static final String REDIS_TAG = "Sequence:";
+
+    /**
+     * 重试次数。
+     */
+    private static final int MAX_RETRY_TIMES = 3;
+
+    /**
+     * 序列递增步长值
+     */
+    private static final int SEQUENCE_INCREMENT_NUM = 10000;
+
+	/**
+	 * redis定制连接工厂
+	 */
+	private final RedisConnectionFactory redisConnectionFactory;
+
+	/**
+	 * sequenceMap
+	 */
+	private ConcurrentHashMap<String, RedisSequence> map = new ConcurrentHashMap<>();
+
+	public GlobalSequenceManager(final RedisConnectionFactory redisConnectionFactory) {
+		this.redisConnectionFactory = redisConnectionFactory;
+	}
+
+	/**
+	 * 获得序列值
+	 *
+	 * @param name
+	 * @return
+	 */
+	public long nextId(String name) {
+	    int tryCount = 0;
+	    do {
+            try {
+                RedisSequence redisSequence =  map.computeIfAbsent(name, key -> new RedisSequence(key, SEQUENCE_INCREMENT_NUM));
+                return redisSequence.nextId();
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
+                tryCount++;
+            }
+        } while (tryCount < MAX_RETRY_TIMES);
+        return -1;
+    }
+
+	/**
+	 * redis序列发生器。
+	 *
+	 * @author axeon
+	 */
+	class RedisSequence {
+
+		/**
+		 * 当前数值
+		 */
+		private AtomicLong currentId;
+
+		/**
+		 * 当前可以获取的最大id
+		 */
+		private long maxId;
+
+		/**
+		 * 增量数
+		 */
+		private int incrementNum;
+
+		/**
+		 * redis计数器
+		 */
+		private RedisAtomicLong counter;
+
+		/**
+		 * 初始化一个序列器
+		 *
+		 * @param name
+		 *            序列名称
+		 * @param incrementNum
+		 *            增长数
+		 */
+		private RedisSequence(String name, int incrementNum) {
+			this.incrementNum = incrementNum;
+			counter = new RedisAtomicLong(REDIS_TAG + name, redisConnectionFactory);
+            currentId = new AtomicLong((counter.getAndAdd(incrementNum)));
+			maxId = currentId.get() + incrementNum;
+		}
+
+		/**
+		 * 获得下一个ID
+		 *
+		 * @return 如果为超限则返回0，否则返回需要等待的秒数
+		 */
+		synchronized long nextId() {
+			long value = currentId.incrementAndGet();
+			if (value >= maxId) {
+				currentId.set(counter.getAndAdd(incrementNum));
+				maxId = currentId.get() + incrementNum;
+			}
+			return value;
+		}
+	}
+}
+src/main/java/uw/task/entity/TaskCronerLog.java
+@JsonIgnoreProperties({"refObject"})
+public class TaskCronerLog extends LogBaseVo implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    private long id;
+
+    /**
+     * 关联ID
+     */
+    private long refId;
+
+    /**
+     * 关联对象，此对象不会发送到服务器端。
+     */
+    private Object refObject;
+
+    /**
+     * 执行的类名
+     */
+    private String taskClass;
+
+    /**
+     * 执行参数，可能用于区分子任务
+     */
+    private String taskParam;
+
+    /**
+     * 运行类型。
+     */
+    private int runType;
+
+    /**
+     * 指定运行目标主机，可为空。
+     */
+    private String runTarget = "";
+
+    /**
+     * 实际运行主机IP，此信息由程序自动生成。
+     */
+    private String hostIp;
+
+    /**
+     * 实际运行主机ID，此信息由程序自动生成。
+     */
+    private String hostId;
+
+    /**
+     * 配置信息
+     */
+    private String taskCron;
+
+    /**
+     * 计划执行时间
+     */
+    private java.util.Date scheduleDate;
+
+    /**
+     * 开始运行时间
+     */
+    private java.util.Date runDate;
+
+    /**
+     * 运行结束日期
+     */
+    private java.util.Date finishDate;
+
+    /**
+     * 下次执行时间
+     */
+    private java.util.Date nextDate;
+
+    /**
+     * 执行信息，用于存储任务完成信息。
+     */
+    private String resultData;
+
+    /**
+     * 执行状态
+     */
+    private int state;
+
+    /**
+     * 日志字符串字段大小限制: 0 表示无限制
+     */
+    private int logLimitSize;
+
+    public TaskCronerLog(int logLevel, int logLimitSize) {
+        this.logLevel = logLevel;
+        this.logLimitSize = logLimitSize;
+    }
+
+    public long getId() {
+        return id;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    public long getRefId() {
+        return refId;
+    }
+
+    public void setRefId(long refId) {
+        this.refId = refId;
+    }
+
+    public Object getRefObject() {
+        return refObject;
+    }
+
+    public void setRefObject(Object refObject) {
+        this.refObject = refObject;
+    }
+
+    public String getTaskClass() {
+        return taskClass;
+    }
+
+    public void setTaskClass(String taskClass) {
+        this.taskClass = taskClass;
+    }
+
+    public String getTaskParam() {
+        if (taskParam != null) {
+            if (state != TaskData.STATE_SUCCESS || logLevel == TaskCronerConfig.TASK_LOG_TYPE_RECORD_ALL ||
+                    logLevel == TaskCronerConfig.TASK_LOG_TYPE_RECORD_RESULT_DATA) {
+                if (logLimitSize > 0 && taskParam.length() > logLimitSize) {
+                    taskParam = taskParam.substring(0, logLimitSize);
+                }
+                return taskParam;
+            }
+        }
+        return null;
+    }
+
+    public void setTaskParam(String taskParam) {
+        this.taskParam = taskParam;
+    }
+
+    public int getRunType() {
+        return runType;
+    }
+
+    public void setRunType(int runType) {
+        this.runType = runType;
+    }
+
+    public String getRunTarget() {
+        return runTarget;
+    }
+
+    public void setRunTarget(String runTarget) {
+        this.runTarget = runTarget;
+    }
+
+    public String getHostIp() {
+        return hostIp;
+    }
+
+    public void setHostIp(String hostIp) {
+        this.hostIp = hostIp;
+    }
+
+    public String getHostId() {
+        return hostId;
+    }
+
+    public void setHostId(String hostId) {
+        this.hostId = hostId;
+    }
+
+    public String getTaskCron() {
+        return taskCron;
+    }
+
+    public void setTaskCron(String taskCron) {
+        this.taskCron = taskCron;
+    }
+
+    public Date getScheduleDate() {
+        return scheduleDate;
+    }
+
+    public void setScheduleDate(Date scheduleDate) {
+        this.scheduleDate = scheduleDate;
+    }
+
+    public Date getRunDate() {
+        return runDate;
+    }
+
+    public void setRunDate(Date runDate) {
+        this.runDate = runDate;
+    }
+
+    public Date getFinishDate() {
+        return finishDate;
+    }
+
+    public void setFinishDate(Date finishDate) {
+        this.finishDate = finishDate;
+    }
+
+    public Date getNextDate() {
+        return nextDate;
+    }
+
+    public void setNextDate(Date nextDate) {
+        this.nextDate = nextDate;
+    }
+
+    public String getResultData() {
+        if (resultData != null) {
+            if (state != TaskData.STATE_SUCCESS || logLevel == TaskCronerConfig.TASK_LOG_TYPE_RECORD_ALL ||
+                    logLevel == TaskCronerConfig.TASK_LOG_TYPE_RECORD_RESULT_DATA) {
+                if (logLimitSize > 0 && resultData.length() > logLimitSize) {
+                    resultData = resultData.substring(0, logLimitSize);
+                }
+                return resultData;
+            }
+        }
+        return null;
+    }
+
+    public void setResultData(String resultData) {
+        this.resultData = resultData;
+    }
+
+    public int getState() {
+        return state;
+    }
+
+    public void setState(int state) {
+        this.state = state;
+    }
+
+    public int getLogLimitSize() {
+        return logLimitSize;
+    }
+
+    public void setLogLimitSize(int logLimitSize) {
+        this.logLimitSize = logLimitSize;
+    }
+}
+src/main/java/uw/task/util/LeaderVote.java
+public class LeaderVote {
+
+	private static final Logger log = LoggerFactory.getLogger(LeaderVote.class);
+
+	/**
+	 * REDIS前缀
+	 */
+	private static final String REDIS_TAG = "LeaderVote:";
+
+	/**
+	 * redis模板
+	 */
+	private final StringRedisTemplate stringRedisTemplate;
+
+	/**
+	 * task配置
+	 */
+	private final TaskProperties taskProperties;
+
+	public LeaderVote(final RedisConnectionFactory redisConnectionFactory, TaskProperties taskProperties) {
+		this.stringRedisTemplate = new StringRedisTemplate(redisConnectionFactory);
+        this.stringRedisTemplate.afterPropertiesSet();
+		this.taskProperties = taskProperties;
+	}
+
+	/**
+	 * hashmap表。
+	 */
+	private ConcurrentHashMap<String, VoteInfo> map = new ConcurrentHashMap<>();
+
+	/**
+	 * 返回当前是否是Leader.
+	 *
+	 * @param name
+	 * @return the isLeader
+	 */
+	public boolean isLeader(String name) {
+		VoteInfo vi = getVoteInfo(name);
+		if (vi != null) {
+			return vi.isLeader();
+		} else {
+			return false;
+		}
+	}
+
+	/**
+	 * 初始化一个voteInfo信息。
+	 *
+	 * @param name
+	 * @return
+	 */
+	private VoteInfo getVoteInfo(String name) {
+		return map.computeIfAbsent(name,key->new VoteInfo(name));
+	}
+
+	private long runTimes = 0;
+
+	/**
+	 * 20秒检查一次leader状态。
+	 */
+	public void batchCheckLeaderStatus() {
+		// 启动的前90秒，3秒检测一次状态，后面每隔18秒检测一次状态。
+		runTimes++;
+		if (runTimes > 30) {
+			if (runTimes % 6 != 0) {
+				return;
+			}
+		}
+
+		try {
+			for (Entry<String, VoteInfo> kv : map.entrySet()) {
+				kv.getValue().checkLeader();
+			}
+		} catch (Exception e) {
+			log.error(e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * 投票信息
+	 *
+	 * @author axeon
+	 */
+	private class VoteInfo {
+
+		/**
+		 * 关联对象。
+		 */
+		private BoundValueOperations<String, String> bvo;
+
+		/**
+		 * 是否是Leader
+		 */
+		private boolean isLeader = false;
+
+		/**
+		 * 默认构造器。
+		 *
+		 * @param name
+		 */
+		public VoteInfo(String name) {
+			this.bvo = stringRedisTemplate.boundValueOps(REDIS_TAG + name);
+			checkLeader();
+		}
+
+		/**
+		 * 返回是否是Leader
+		 *
+		 * @return
+		 */
+		public boolean isLeader() {
+			return isLeader;
+		}
+
+		/**
+		 * 检查是否是Leader.
+		 */
+		public boolean checkLeader() {
+			// 使用setnx来抢leader身份
+			bvo.setIfAbsent(taskProperties.getHostId());
+			// 再次确认身份，并更新expire。
+			if (taskProperties.getHostId().equals(bvo.get())) {
+				bvo.expire(60, TimeUnit.SECONDS);
+				isLeader = true;
+			} else {
+				isLeader = false;
+			}
+			return isLeader;
+		}
+	}
+
+}

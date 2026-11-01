@@ -1,0 +1,5 @@
+def __create_fn__(_type_proxy, _type_constant, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,proxy:_type_proxy,constant:_type_constant)->_return_type:
+  self.proxy=proxy
+  self.constant=constant
+ return __init__

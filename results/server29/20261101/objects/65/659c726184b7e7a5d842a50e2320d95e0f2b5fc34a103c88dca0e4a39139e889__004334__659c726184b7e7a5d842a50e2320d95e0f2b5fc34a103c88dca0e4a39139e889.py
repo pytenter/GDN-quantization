@@ -1,0 +1,1 @@
+lambda _cls, ctx_switches, interrupts, soft_interrupts, syscalls: _tuple_new(_cls, (ctx_switches, interrupts, soft_interrupts, syscalls))

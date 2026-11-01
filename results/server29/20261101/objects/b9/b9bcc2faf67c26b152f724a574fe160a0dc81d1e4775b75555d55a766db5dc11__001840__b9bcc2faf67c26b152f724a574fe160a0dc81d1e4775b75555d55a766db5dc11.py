@@ -1,0 +1,1 @@
+lambda _cls, all_gather_output, all_gather_event, all_gather_work, param_all_gather_input_dtypes, param_all_gather_input_numels, all_gather_input_split_sizes: _tuple_new(_cls, (all_gather_output, all_gather_event, all_gather_work, param_all_gather_input_dtypes, param_all_gather_input_numels, all_gather_input_split_sizes))

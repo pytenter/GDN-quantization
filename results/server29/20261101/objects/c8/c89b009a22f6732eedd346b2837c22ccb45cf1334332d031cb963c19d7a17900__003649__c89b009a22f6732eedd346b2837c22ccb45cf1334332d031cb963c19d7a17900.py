@@ -1,0 +1,1 @@
+lambda _cls, method, url, error, status, redirect_location: _tuple_new(_cls, (method, url, error, status, redirect_location))

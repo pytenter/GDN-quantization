@@ -1,0 +1,5 @@
+def __create_fn__(_type_all_gather_metadata, _type_all_gather_input_sizes, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_all_gather_metadata, _dflt_all_gather_input_sizes, _return_type):
+ def __init__(self,all_gather_metadata:_type_all_gather_metadata=_dflt_all_gather_metadata,all_gather_input_sizes:_type_all_gather_input_sizes=_dflt_all_gather_input_sizes)->_return_type:
+  self.all_gather_metadata=all_gather_metadata
+  self.all_gather_input_sizes=all_gather_input_sizes
+ return __init__

@@ -1,0 +1,1 @@
+lambda _cls, bytes_sent, bytes_recv, packets_sent, packets_recv, errin, errout, dropin, dropout: _tuple_new(_cls, (bytes_sent, bytes_recv, packets_sent, packets_recv, errin, errout, dropin, dropout))

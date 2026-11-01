@@ -1,0 +1,1 @@
+lambda _cls, addr, perms, path, rss, size, pss, shared_clean, shared_dirty, private_clean, private_dirty, referenced, anonymous, swap: _tuple_new(_cls, (addr, perms, path, rss, size, pss, shared_clean, shared_dirty, private_clean, private_dirty, referenced, anonymous, swap))

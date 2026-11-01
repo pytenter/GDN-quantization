@@ -1,0 +1,3382 @@
+dataobjs.py
+class PesterProfile(object):
+    def __init__(self, handle, color=None, mood=Mood("offline"), group=None, notes="", chumdb=None):
+        self.handle = handle
+        if color is None:
+            if chumdb:
+                color = chumdb.getColor(handle, QtGui.QColor("black"))
+            else:
+                color = QtGui.QColor("black")
+        self.color = color
+        self.mood = mood
+        if group is None:
+            if chumdb:
+                group = chumdb.getGroup(handle, "Chums")
+            else:
+                group = "Chums"
+        self.group = group
+        self.notes = notes
+    def initials(self, time=None):
+        handle = self.handle
+        caps = [l for l in handle if l.isupper()]
+        if not caps:
+            caps = [""]
+        initials = (handle[0]+caps[0]).upper()
+        if hasattr(self, 'time') and time:
+            if self.time > time:
+                return "F"+initials
+            elif self.time < time:
+                return "P"+initials
+            else:
+                return "C"+initials
+        else:
+            return (handle[0]+caps[0]).upper()
+    def colorhtml(self):
+        if self.color:
+            return self.color.name()
+        else:
+            return "#000000"
+    def colorcmd(self):
+        if self.color:
+            (r, g, b, a) = self.color.getRgb()
+            return "%d,%d,%d" % (r,g,b)
+        else:
+            return "0,0,0"
+    def plaindict(self):
+        return (self.handle, {"handle": self.handle,
+                              "mood": self.mood.name(),
+                              "color": str(self.color.name()),
+                              "group": str(self.group),
+                              "notes": str(self.notes)})
+    def blocked(self, config):
+        return self.handle in config.getBlocklist()
+
+    def memsg(self, syscolor, lexmsg, time=None):
+        suffix = lexmsg[0].suffix
+        msg = convertTags(lexmsg[1:], "text")
+        uppersuffix = suffix.upper()
+        if time is not None:
+            handle = "%s %s" % (time.temporal, self.handle)
+            initials = time.pcf+self.initials()+time.number+uppersuffix
+        else:
+            handle = self.handle
+            initials = self.initials()+uppersuffix
+        return "<c=%s>-- %s%s <c=%s>[%s]</c> %s --</c>" % (syscolor.name(), handle, suffix, self.colorhtml(), initials, msg)
+    def pestermsg(self, otherchum, syscolor, verb):
+        return "<c=%s>-- %s <c=%s>[%s]</c> %s %s <c=%s>[%s]</c> at %s --</c>" % (syscolor.name(), self.handle, self.colorhtml(), self.initials(), verb, otherchum.handle, otherchum.colorhtml(), otherchum.initials(), datetime.now().strftime("%H:%M"))
+    def moodmsg(self, mood, syscolor, theme):
+        return "<c=%s>-- %s <c=%s>[%s]</c> changed their mood to %s <img src='%s' /> --</c>" % (syscolor.name(), self.handle, self.colorhtml(), self.initials(), mood.name().upper(), theme["main/chums/moods"][mood.name()]["icon"])
+    def idlemsg(self, syscolor, verb):
+        return "<c=%s>-- %s <c=%s>[%s]</c> %s --</c>" % (syscolor.name(), self.handle, self.colorhtml(), self.initials(), verb)
+    def memoclosemsg(self, syscolor, initials, verb):
+        if type(initials) == type(list()):
+            return "<c=%s><c=%s>%s</c> %s.</c>" % (syscolor.name(), self.colorhtml(), ", ".join(initials), verb)
+        else:
+            return "<c=%s><c=%s>%s%s%s</c> %s.</c>" % (syscolor.name(), self.colorhtml(), initials.pcf, self.initials(), initials.number, verb)
+    def memonetsplitmsg(self, syscolor, initials):
+        if len(initials) <= 0:
+            return "<c=%s>Netsplit quits: <c=black>None</c></c>" % (syscolor.name())
+        else:
+            return "<c=%s>Netsplit quits: <c=black>%s</c></c>" % (syscolor.name(), ", ".join(initials))
+    def memoopenmsg(self, syscolor, td, timeGrammar, verb, channel):
+        (temporal, pcf, when) = (timeGrammar.temporal, timeGrammar.pcf, timeGrammar.when)
+        timetext = timeDifference(td)
+        initials = pcf+self.initials()
+        return "<c=%s><c=%s>%s</c> %s %s %s.</c>" % \
+            (syscolor.name(), self.colorhtml(), initials, timetext, verb, channel[1:].upper().replace("_", " "))
+    def memobanmsg(self, opchum, opgrammar, syscolor, initials, reason):
+        opinit = opgrammar.pcf+opchum.initials()+opgrammar.number
+        if type(initials) == type(list()):
+            if opchum.handle == reason:
+                return "<c=%s>%s</c> banned <c=%s>%s</c> from responding to memo." % \
+                    (opchum.colorhtml(), opinit, self.colorhtml(), ", ".join(initials))
+            else:
+                return "<c=%s>%s</c> banned <c=%s>%s</c> from responding to memo: <c=black>[%s]</c>." % \
+                    (opchum.colorhtml(), opinit, self.colorhtml(), ", ".join(initials), str(reason))
+        else:
+            initials = timeGrammar.pcf+self.initials()+timeGrammar.number
+            if opchum.handle == reason:
+                return "<c=%s>%s</c> banned <c=%s>%s</c> from responding to memo." % \
+                    (opchum.colorhtml(), opinit, self.colorhtml(), initials)
+            else:
+                return "<c=%s>%s</c> banned <c=%s>%s</c> from responding to memo: <c=black>[%s]</c>." % \
+                    (opchum.colorhtml(), opinit, self.colorhtml(), initials, str(reason))
+    def memopermabanmsg(self, opchum, opgrammar, syscolor, timeGrammar):
+        initials = timeGrammar.pcf+self.initials()+timeGrammar.number
+        opinit = opgrammar.pcf+opchum.initials()+opgrammar.number
+        return "<c=%s>%s</c> permabanned <c=%s>%s</c> from the memo." % \
+            (opchum.colorhtml(), opinit, self.colorhtml(), initials)
+    def memojoinmsg(self, syscolor, td, timeGrammar, verb):
+        (temporal, pcf, when) = (timeGrammar.temporal, timeGrammar.pcf, timeGrammar.when)
+        timetext = timeDifference(td)
+        initials = pcf+self.initials()+timeGrammar.number
+        return "<c=%s><c=%s>%s %s [%s]</c> %s %s.</c>" % \
+            (syscolor.name(), self.colorhtml(), temporal, self.handle,
+             initials, timetext, verb)
+    def memoopmsg(self, opchum, opgrammar, syscolor):
+        opinit = opgrammar.pcf+opchum.initials()+opgrammar.number
+        return "<c=%s>%s</c> made <c=%s>%s</c> an OP." % \
+            (opchum.colorhtml(), opinit, self.colorhtml(), self.initials())
+    def memodeopmsg(self, opchum, opgrammar, syscolor):
+        opinit = opgrammar.pcf+opchum.initials()+opgrammar.number
+        return "<c=%s>%s</c> took away <c=%s>%s</c>'s OP powers." % \
+            (opchum.colorhtml(), opinit, self.colorhtml(), self.initials())
+    def memovoicemsg(self, opchum, opgrammar, syscolor):
+        opinit = opgrammar.pcf+opchum.initials()+opgrammar.number
+        return "<c=%s>%s</c> gave <c=%s>%s</c> voice." % \
+            (opchum.colorhtml(), opinit, self.colorhtml(), self.initials())
+    def memodevoicemsg(self, opchum, opgrammar, syscolor):
+        opinit = opgrammar.pcf+opchum.initials()+opgrammar.number
+        return "<c=%s>%s</c> took away <c=%s>%s</c>'s voice." % \
+            (opchum.colorhtml(), opinit, self.colorhtml(), self.initials())
+    def memomodemsg(self, opchum, opgrammar, syscolor, modeverb, modeon):
+        opinit = opgrammar.pcf+opchum.initials()+opgrammar.number
+        if modeon: modeon = "now"
+        else:      modeon = "no longer"
+        return "<c=%s>Memo is %s <c=black>%s</c> by <c=%s>%s</c></c>" % \
+            (syscolor.name(), modeon, modeverb, opchum.colorhtml(), opinit)
+    def memoquirkkillmsg(self, opchum, opgrammar, syscolor):
+        opinit = opgrammar.pcf+opchum.initials()+opgrammar.number
+        return "<c=%s><c=%s>%s</c> turned off your quirk.</c>" % \
+            (syscolor.name(), opchum.colorhtml(), opinit)
+
+    @staticmethod
+    def checkLength(handle):
+        return len(handle) <= 256
+    @staticmethod
+    def checkValid(handle):
+        caps = [l for l in handle if l.isupper()]
+        if len(caps) != 1:
+            return (False, "Must have exactly 1 uppercase letter")
+        if handle[0].isupper():
+            return (False, "Cannot start with uppercase letter")
+        if re.search("[^A-Za-z0-9]", handle) is not None:
+            return (False, "Only alphanumeric characters allowed")
+        return (True,)
+parsetools.py
+def convertTags(lexed, format="html"):
+    if format not in ["html", "bbcode", "ctag", "text"]:
+        raise ValueError("Color format not recognized")
+
+    if type(lexed) in [str]:
+        lexed = lexMessage(lexed)
+    escaped = ""
+    firststr = True
+    for (i, o) in enumerate(lexed):
+        if type(o) in [str]:
+            if format == "html":
+                escaped += o.replace("&", "&amp;").replace(">", "&gt;").replace("<","&lt;")
+            else:
+                escaped += o
+        else:
+            escaped += o.convert(format)
+
+    return escaped
+menus.py
+class PesterMemoList(QtWidgets.QDialog):
+    def __init__(self, parent, channel=""):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.setModal(False)
+        self.theme = parent.theme
+        self.mainwindow = parent
+        self.setStyleSheet(self.theme["main/defaultwindow/style"])
+        self.resize(460, 300)
+
+        self.label = QtWidgets.QLabel("MEMOS")
+        self.channelarea = RightClickTree(self)
+        self.channelarea.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self.channelarea.setStyleSheet(self.theme["main/chums/style"])
+        self.channelarea.optionsMenu = QtWidgets.QMenu(self)
+        self.channelarea.setColumnCount(2)
+        self.channelarea.setHeaderLabels(["Memo", "Users"])
+        self.channelarea.setIndentation(0)
+        self.channelarea.setColumnWidth(0,200)
+        self.channelarea.setColumnWidth(1,10)
+        self.channelarea.setSortingEnabled(True)
+        self.channelarea.sortByColumn(0, QtCore.Qt.AscendingOrder)
+        self.channelarea.itemDoubleClicked.connect(self.AcceptSelection)
+
+        self.orjoinlabel = QtWidgets.QLabel("OR MAKE A NEW MEMO:")
+        self.newmemo = QtWidgets.QLineEdit(channel, self)
+        self.secretChannel = QtWidgets.QCheckBox("HIDDEN CHANNEL?", self)
+        self.inviteChannel = QtWidgets.QCheckBox("INVITATION ONLY?", self)
+
+        self.timelabel = QtWidgets.QLabel("TIMEFRAME:")
+        self.timeslider = TimeSlider(QtCore.Qt.Horizontal, self)
+        self.timeinput = TimeInput(self.timeslider, self)
+
+        self.cancel = QtWidgets.QPushButton("CANCEL", self, clicked=self.reject)
+        self.join = QtWidgets.QPushButton("JOIN", self, clicked=self.AcceptIfSelectionMade)
+        self.join.setDefault(True)
+        layout_ok = QtWidgets.QHBoxLayout()
+        layout_ok.addWidget(self.cancel)
+        layout_ok.addWidget(self.join)
+
+        layout_left  = QtWidgets.QVBoxLayout()
+        layout_right = QtWidgets.QVBoxLayout()
+        layout_right.setAlignment(QtCore.Qt.AlignTop)
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_1 = QtWidgets.QHBoxLayout()
+        layout_left.addWidget(self.label)
+        layout_left.addWidget(self.channelarea)
+        layout_right.addWidget(self.orjoinlabel)
+        layout_right.addWidget(self.newmemo)
+        layout_right.addWidget(self.secretChannel)
+        layout_right.addWidget(self.inviteChannel)
+        layout_right.addWidget(self.timelabel)
+        layout_right.addWidget(self.timeslider)
+        layout_right.addWidget(self.timeinput)
+        layout_1.addLayout(layout_left)
+        layout_1.addLayout(layout_right)
+        layout_0.addLayout(layout_1)
+        layout_0.addLayout(layout_ok)
+
+        self.setLayout(layout_0)
+
+    def newmemoname(self):
+        return self.newmemo.text()
+
+    def SelectedMemos(self):
+        return self.channelarea.selectedItems()
+
+    def HasSelection(self):
+        return len(self.SelectedMemos()) > 0 or self.newmemoname()
+
+    def updateChannels(self, channels):
+        for c in channels:
+            item = MemoListItem(c[0][1:],c[1])
+            item.setForeground(0, QtGui.QBrush(QtGui.QColor(self.theme["main/chums/userlistcolor"])))
+            item.setForeground(1, QtGui.QBrush(QtGui.QColor(self.theme["main/chums/userlistcolor"])))
+            item.setIcon(0, QtGui.QIcon(self.theme["memos/memoicon"]))
+            self.channelarea.addTopLevelItem(item)
+
+    def updateTheme(self, theme):
+        self.theme = theme
+        self.setStyleSheet(theme["main/defaultwindow/style"])
+        for item in [self.userarea.item(i) for i in range(0, self.channelarea.count())]:
+            item.setForeground(QtGui.QBrush(QtGui.QColor(theme["main/chums/userlistcolor"])))
+            item.setIcon(QtGui.QIcon(theme["memos/memoicon"]))
+
+    @QtCore.pyqtSlot()
+    def AcceptIfSelectionMade(self):
+        if self.HasSelection():
+            self.AcceptSelection()
+
+    @QtCore.pyqtSlot()
+    def AcceptSelection(self):
+        self.accept()
+randomer.py
+RANDNICK = "randomEncounter"
+generic.py
+class WMButton(QtWidgets.QPushButton):
+    def __init__(self, icon, parent=None):
+        QtWidgets.QPushButton.__init__(self, icon, "", parent)
+        self.setIconSize(icon.realsize())
+        self.resize(icon.realsize())
+        self.setFlat(True)
+        self.setStyleSheet("QPushButton { padding: 0px; }")
+        self.setAutoDefault(False)
+generic.py
+class CaseInsensitiveDict(dict):
+    def __setitem__(self, key, value):
+        super(CaseInsensitiveDict, self).__setitem__(key.lower(), value)
+    def __getitem__(self, key):
+        return super(CaseInsensitiveDict, self).__getitem__(key.lower())
+    def __contains__(self, key):
+        return super(CaseInsensitiveDict, self).__contains__(key.lower())
+    def has_key(self, key):
+        return key.lower() in super(CaseInsensitiveDict, self)
+    def __delitem__(self, key):
+        super(CaseInsensitiveDict, self).__delitem__(key.lower())
+generic.py
+class MovingWindow(QtWidgets.QFrame):
+    def __init__(self, *x, **y):
+        QtWidgets.QFrame.__init__(self, *x, **y)
+        self.moving = None
+        self.moveupdate = 0
+    def mouseMoveEvent(self, event):
+        if self.moving:
+            move = event.globalPos() - self.moving
+            self.move(move)
+            self.moveupdate += 1
+            if self.moveupdate > 5:
+                self.moveupdate = 0
+                self.update()
+    def mousePressEvent(self, event):
+        if event.button() == 1:
+            self.moving = event.globalPos() - self.pos()
+    def mouseReleaseEvent(self, event):
+        if event.button() == 1:
+            self.update()
+            self.moving = None
+convo.py
+class PesterInput(QtWidgets.QLineEdit):
+    def __init__(self, theme, parent=None):
+        QtWidgets.QLineEdit.__init__(self, parent)
+        self.setStyleSheet(theme["convo/input/style"])
+    def changeTheme(self, theme):
+        self.setStyleSheet(theme["convo/input/style"])
+    def focusInEvent(self, event):
+        self.parent().clearNewMessage()
+        self.parent().textArea.textCursor().clearSelection()
+        QtWidgets.QLineEdit.focusInEvent(self, event)
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_Up:
+            text = str(self.text())
+            next = self.parent().history.next(text)
+            if next is not None:
+                self.setText(next)
+        elif event.key() == QtCore.Qt.Key_Down:
+            prev = self.parent().history.prev()
+            if prev is not None:
+                self.setText(prev)
+        elif event.key() in [QtCore.Qt.Key_PageUp, QtCore.Qt.Key_PageDown]:
+            self.parent().textArea.keyPressEvent(event)
+        self.parent().mainwindow.idletime = 0
+        QtWidgets.QLineEdit.keyPressEvent(self, event)
+menus.py
+class PesterChooseQuirks(QtWidgets.QDialog):
+    def __init__(self, config, theme, parent):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.setModal(False)
+        self.config = config
+        self.theme = theme
+        self.mainwindow = parent
+        self.setStyleSheet(self.theme["main/defaultwindow/style"])
+        self.setWindowTitle("Set Quirks")
+
+        self.quirkList = PesterQuirkList(self.mainwindow, self)
+
+        self.addQuirkButton = QtWidgets.QPushButton("ADD QUIRK", self, clicked=self.addQuirkDialog)
+
+        self.upShiftButton = QtWidgets.QPushButton("^", self, clicked=self.quirkList.upShiftQuirk)
+        self.downShiftButton = QtWidgets.QPushButton("v", self, clicked=self.quirkList.downShiftQuirk)
+        self.upShiftButton.setToolTip("Move quirk up one")
+        self.downShiftButton.setToolTip("Move quirk down one")
+
+        self.newGroupButton = QtWidgets.QPushButton("*", self, clicked=self.quirkList.addQuirkGroup)
+        self.newGroupButton.setToolTip("New Quirk Group")
+
+        layout_quirklist = QtWidgets.QHBoxLayout() #the nude layout quirklist
+        layout_shiftbuttons = QtWidgets.QVBoxLayout() #the shift button layout
+        layout_shiftbuttons.addWidget(self.upShiftButton)
+        layout_shiftbuttons.addWidget(self.newGroupButton)
+        layout_shiftbuttons.addWidget(self.downShiftButton)
+        layout_quirklist.addWidget(self.quirkList)
+        layout_quirklist.addLayout(layout_shiftbuttons)
+
+        layout_1 = QtWidgets.QHBoxLayout()
+        layout_1.addWidget(self.addQuirkButton)
+
+        self.editSelectedButton = QtWidgets.QPushButton("EDIT", self, clicked=self.editSelected)
+        self.removeSelectedButton = QtWidgets.QPushButton("REMOVE", self, clicked=self.quirkList.removeCurrent)
+        layout_3 = QtWidgets.QHBoxLayout()
+        layout_3.addWidget(self.editSelectedButton)
+        layout_3.addWidget(self.removeSelectedButton)
+
+        self.ok = QtWidgets.QPushButton("OK", self, clicked=self.accept)
+        self.ok.setDefault(True)
+        self.test = QtWidgets.QPushButton("TEST QUIRKS", self, clicked=self.testQuirks)
+        self.cancel = QtWidgets.QPushButton("CANCEL", self, clicked=self.reject)
+        layout_ok = QtWidgets.QHBoxLayout()
+        layout_ok.addWidget(self.cancel)
+        layout_ok.addWidget(self.test)
+        layout_ok.addWidget(self.ok)
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_0.addLayout(layout_quirklist)
+        layout_0.addLayout(layout_1)
+        #layout_0.addLayout(layout_2)
+        layout_0.addLayout(layout_3)
+        layout_0.addLayout(layout_ok)
+
+        self.setLayout(layout_0)
+
+    def quirks(self):
+        u = []
+        for i in range(self.quirkList.topLevelItemCount()):
+            for j in range(self.quirkList.topLevelItem(i).childCount()):
+                u.append(self.quirkList.topLevelItem(i).child(j).quirk)
+        return u
+        #return [self.quirkList.item(i).quirk for i in range(self.quirkList.count())]
+    def testquirks(self):
+        u = []
+        for i in range(self.quirkList.topLevelItemCount()):
+            for j in range(self.quirkList.topLevelItem(i).childCount()):
+                item = self.quirkList.topLevelItem(i).child(j)
+                if (item.checkState(0) == QtCore.Qt.Checked):
+                    u.append(item.quirk)
+        return u
+
+    @QtCore.pyqtSlot()
+    def testQuirks(self):
+        if not hasattr(self, 'quirktester'):
+            self.quirktester = None
+        if self.quirktester:
+            return
+        self.quirktester = QuirkTesterWindow(self)
+        self.quirktester.show()
+
+    @QtCore.pyqtSlot()
+    def editSelected(self):
+        q = self.quirkList.currentQuirk()
+        if not q: return
+        quirk = q.quirk
+        self.addQuirkDialog(q)
+
+    @QtCore.pyqtSlot()
+    def addQuirkDialog(self, quirk=None):
+        if not hasattr(self, 'quirkadd'):
+            self.quirkadd = None
+        if self.quirkadd:
+            return
+        self.quirkadd = PesterQuirkTypes(self, quirk)
+        self.quirkadd.accepted.connect(self.addQuirk)
+        self.quirkadd.rejected.connect(self.closeQuirk)
+        self.quirkadd.show()
+    @QtCore.pyqtSlot()
+    def addQuirk(self):
+        types = ["prefix","suffix","replace","regexp","random","spelling"]
+        vdict = {}
+        vdict["type"] = types[self.quirkadd.pages.currentIndex()-1]
+        page = self.quirkadd.pages.currentWidget().layout()
+        if vdict["type"] in ("prefix","suffix"):
+            vdict["value"] = str(page.itemAt(1).layout().itemAt(1).widget().text())
+        elif vdict["type"] == "replace":
+            vdict["from"] = str(page.itemAt(1).layout().itemAt(1).widget().text())
+            vdict["to"] = str(page.itemAt(2).layout().itemAt(1).widget().text())
+        elif vdict["type"] == "regexp":
+            vdict["from"] = str(page.itemAt(2).layout().itemAt(1).layout().itemAt(1).widget().text())
+            vdict["to"] = str(page.itemAt(2).layout().itemAt(2).layout().itemAt(1).widget().text())
+        elif vdict["type"] == "random":
+            vdict["from"] = str(self.quirkadd.regexp.text())
+            randomlist = [str(self.quirkadd.replacelist.item(i).text())
+                          for i in range(0,self.quirkadd.replacelist.count())]
+            vdict["randomlist"] = randomlist
+        elif vdict["type"] == "spelling":
+            vdict["percentage"] = self.quirkadd.slider.value()
+
+        if vdict["type"] in ("regexp", "random"):
+            try:
+                re.compile(vdict["from"])
+            except re.error as e:
+                quirkWarning = QtWidgets.QMessageBox(self)
+                quirkWarning.setText("Not a valid regular expression!")
+                quirkWarning.setInformativeText("H3R3S WHY DUMP4SS: %s" % (e))
+                quirkWarning.exec_()
+                self.quirkadd = None
+                return
+
+        quirk = pesterQuirk(vdict)
+        if self.quirkadd.quirk is None:
+            item = PesterQuirkItem(quirk)
+            self.quirkList.addItem(item)
+        else:
+            self.quirkadd.quirk.update(quirk)
+        self.quirkadd = None
+    @QtCore.pyqtSlot()
+    def closeQuirk(self):
+        self.quirkadd = None
+menus.py
+class PesterUserlist(QtWidgets.QDialog):
+    def __init__(self, config, theme, parent):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.setModal(False)
+        self.config = config
+        self.theme = theme
+        self.mainwindow = parent
+        self.setStyleSheet(self.theme["main/defaultwindow/style"])
+        self.resize(200, 600)
+
+        self.searchbox = QtWidgets.QLineEdit(self, textChanged=self.updateUsers)
+        #self.searchbox.setStyleSheet(theme["convo/input/style"]) # which style is better?
+        self.searchbox.setPlaceholderText("Search")
+
+        self.label = QtWidgets.QLabel("USERLIST")
+        self.userarea = RightClickList(self)
+        self.userarea.setStyleSheet(self.theme["main/chums/style"])
+        self.userarea.optionsMenu = QtWidgets.QMenu(self)
+
+        self.addChumAction = QtWidgets.QAction(self.mainwindow.theme["main/menus/rclickchumlist/addchum"], self, triggered=self.addChumSlot)
+        self.pesterChumAction = QtWidgets.QAction(self.mainwindow.theme["main/menus/rclickchumlist/pester"], self, triggered=self.pesterChumSlot)
+        self.userarea.optionsMenu.addAction(self.addChumAction)
+        self.userarea.optionsMenu.addAction(self.pesterChumAction)
+
+        self.ok = QtWidgets.QPushButton("OK", self, clicked=self.accept)
+        self.ok.setDefault(True)
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_0.addWidget(self.label)
+        layout_0.addWidget(self.userarea)
+        layout_0.addWidget(self.searchbox)
+        layout_0.addWidget(self.ok)
+
+        self.setLayout(layout_0)
+
+        self.mainwindow.namesUpdated.connect(self.updateUsers)
+        self.mainwindow.userPresentSignal.connect(self.updateUserPresent)
+        self.updateUsers()
+
+        self.searchbox.setFocus()
+    @QtCore.pyqtSlot()
+    def updateUsers(self):
+        names = self.mainwindow.namesdb["#pesterchum"]
+        self.userarea.clear()
+        for n in names:
+            if str(self.searchbox.text()) == "" or n.lower().find(str(self.searchbox.text()).lower()) != -1:
+                item = QtWidgets.QListWidgetItem(n)
+                item.setForeground(QtGui.QBrush(QtGui.QColor(self.theme["main/chums/userlistcolor"])))
+                self.userarea.addItem(item)
+        self.userarea.sortItems()
+    @QtCore.pyqtSlot('QString', 'QString', 'QString')
+    def updateUserPresent(self, handle, channel, update):
+        h = str(handle)
+        c = str(channel)
+        if update == "quit":
+            self.delUser(h)
+        elif update == "left" and c == "#pesterchum":
+            self.delUser(h)
+        elif update == "join" and c == "#pesterchum":
+            if str(self.searchbox.text()) == "" or h.lower().find(str(self.searchbox.text()).lower()) != -1:
+                self.addUser(h)
+    def addUser(self, name):
+        item = QtWidgets.QListWidgetItem(name)
+        item.setForeground(QtGui.QBrush(QtGui.QColor(self.theme["main/chums/userlistcolor"])))
+        self.userarea.addItem(item)
+        self.userarea.sortItems()
+    def delUser(self, name):
+        matches = self.userarea.findItems(name, QtCore.Qt.MatchFlags(0))
+        for m in matches:
+            self.userarea.takeItem(self.userarea.row(m))
+
+    def changeTheme(self, theme):
+        self.theme = theme
+        self.setStyleSheet(theme["main/defaultwindow/style"])
+        self.userarea.setStyleSheet(theme["main/chums/style"])
+        self.addChumAction.setText(theme["main/menus/rclickchumlist/addchum"])
+        for item in [self.userarea.item(i) for i in range(0, self.userarea.count())]:
+            item.setForeground(QtGui.QBrush(QtGui.QColor(theme["main/chums/userlistcolor"])))
+
+    @QtCore.pyqtSlot()
+    def addChumSlot(self):
+        cur = self.userarea.currentItem()
+        if not cur:
+            return
+        self.addChum.emit(cur.text())
+    @QtCore.pyqtSlot()
+    def pesterChumSlot(self):
+        cur = self.userarea.currentItem()
+        if not cur:
+            return
+        self.pesterChum.emit(cur.text())
+
+    addChum = QtCore.pyqtSignal('QString')
+    pesterChum = QtCore.pyqtSignal('QString')
+generic.py
+class RightClickTree(QtWidgets.QTreeWidget):
+    def contextMenuEvent(self, event):
+        if event.reason() == QtGui.QContextMenuEvent.Mouse:
+            listing = self.itemAt(event.pos())
+            self.setCurrentItem(listing)
+            optionsMenu = self.getOptionsMenu()
+            if optionsMenu:
+                optionsMenu.popup(event.globalPos())
+    def getOptionsMenu(self):
+        return self.optionsMenu
+convo.py
+class PesterText(QtWidgets.QTextEdit):
+    def __init__(self, theme, parent=None):
+        QtWidgets.QTextEdit.__init__(self, parent)
+        if hasattr(self.parent(), 'mainwindow'):
+            self.mainwindow = self.parent().mainwindow
+        else:
+            self.mainwindow = self.parent()
+        if type(parent.parent()) is PesterTabWindow:
+            self.tabobject = parent.parent()
+            self.hasTabs = True
+        else:
+            self.hasTabs = False
+        self.initTheme(theme)
+        self.setReadOnly(True)
+        self.setMouseTracking(True)
+        self.textSelected = False
+        self.copyAvailable.connect(self.textReady)
+        self.urls = {}
+        for k in smiledict:
+            self.addAnimation(QtCore.QUrl("smilies/%s" % (smiledict[k])), "smilies/%s" % (smiledict[k]))
+        self.mainwindow.animationSetting.connect(self.animateChanged)
+    def addAnimation(self, url, fileName):
+        movie = PesterMovie(self)
+        movie.setFileName(fileName)
+        movie.setCacheMode(QtGui.QMovie.CacheAll)
+        if movie.frameCount() > 1:
+            self.urls[movie] = url
+            movie.frameChanged.connect(movie.animate)
+            #movie.start()
+    @QtCore.pyqtSlot(bool)
+    def animateChanged(self, animate):
+        if animate:
+            for m in self.urls:
+                html = str(self.toHtml())
+                if html.find(self.urls[m].toString()) != -1:
+                    if m.frameCount() > 1:
+                        m.start()
+        else:
+            for m in self.urls:
+                html = str(self.toHtml())
+                if html.find(self.urls[m].toString()) != -1:
+                    if m.frameCount() > 1:
+                        m.stop()
+
+    @QtCore.pyqtSlot(bool)
+    def textReady(self, ready):
+        self.textSelected = ready
+    def initTheme(self, theme):
+        if "convo/scrollbar" in theme:
+            self.setStyleSheet("QTextEdit { %s } QScrollBar:vertical { %s } QScrollBar::handle:vertical { %s } QScrollBar::add-line:vertical { %s } QScrollBar::sub-line:vertical { %s } QScrollBar:up-arrow:vertical { %s } QScrollBar:down-arrow:vertical { %s }" % (theme["convo/textarea/style"], theme["convo/scrollbar/style"], theme["convo/scrollbar/handle"], theme["convo/scrollbar/downarrow"], theme["convo/scrollbar/uparrow"], theme["convo/scrollbar/uarrowstyle"], theme["convo/scrollbar/darrowstyle"] ))
+        else:
+            self.setStyleSheet("QTextEdit { %s }" % (theme["convo/textarea/style"]))
+    def addMessage(self, lexmsg, chum):
+        if len(lexmsg) == 0:
+            return
+        color = chum.colorcmd()
+        systemColor = QtGui.QColor(self.parent().mainwindow.theme["convo/systemMsgColor"])
+        initials = chum.initials()
+        parent = self.parent()
+        window = parent.mainwindow
+        me = window.profile()
+        if self.mainwindow.config.animations():
+            for m in self.urls:
+                if convertTags(lexmsg).find(self.urls[m].toString()) != -1:
+                    if m.state() == QtGui.QMovie.NotRunning:
+                        m.start()
+        if self.parent().mainwindow.config.showTimeStamps():
+            if self.parent().mainwindow.config.time12Format():
+                time = strftime("[%I:%M")
+            else:
+                time = strftime("[%H:%M")
+            if self.parent().mainwindow.config.showSeconds():
+                time += strftime(":%S] ")
+            else:
+                time += "] "
+        else:
+            time = ""
+        if lexmsg[0] == "PESTERCHUM:BEGIN":
+            parent.setChumOpen(True)
+            pmsg = chum.pestermsg(me, systemColor, window.theme["convo/text/beganpester"])
+            window.chatlog.log(chum.handle, pmsg)
+            self.append(convertTags(pmsg))
+        elif lexmsg[0] == "PESTERCHUM:CEASE":
+            parent.setChumOpen(False)
+            pmsg = chum.pestermsg(me, systemColor, window.theme["convo/text/ceasepester"])
+            window.chatlog.log(chum.handle, pmsg)
+            self.append(convertTags(pmsg))
+        elif lexmsg[0] == "PESTERCHUM:BLOCK":
+            pmsg = chum.pestermsg(me, systemColor, window.theme['convo/text/blocked'])
+            window.chatlog.log(chum.handle, pmsg)
+            self.append(convertTags(pmsg))
+        elif lexmsg[0] == "PESTERCHUM:UNBLOCK":
+            pmsg = chum.pestermsg(me, systemColor, window.theme['convo/text/unblocked'])
+            window.chatlog.log(chum.handle, pmsg)
+            self.append(convertTags(pmsg))
+        elif lexmsg[0] == "PESTERCHUM:BLOCKED":
+            pmsg = chum.pestermsg(me, systemColor, window.theme['convo/text/blockedmsg'])
+            window.chatlog.log(chum.handle, pmsg)
+            self.append(convertTags(pmsg))
+        elif lexmsg[0] == "PESTERCHUM:IDLE":
+            imsg = chum.idlemsg(systemColor, window.theme['convo/text/idle'])
+            window.chatlog.log(chum.handle, imsg)
+            self.append(convertTags(imsg))
+        elif type(lexmsg[0]) is mecmd:
+            memsg = chum.memsg(systemColor, lexmsg)
+            if chum is me:
+                window.chatlog.log(parent.chum.handle, memsg)
+            else:
+                window.chatlog.log(chum.handle, memsg)
+            self.append(time + convertTags(memsg))
+        else:
+            if not parent.chumopen and chum is not me:
+                beginmsg = chum.pestermsg(me, systemColor, window.theme["convo/text/beganpester"])
+                parent.setChumOpen(True)
+                window.chatlog.log(chum.handle, beginmsg)
+                self.append(convertTags(beginmsg))
+
+            lexmsg[0:0] = [colorBegin("<c=%s>" % (color), color),
+                           "%s: " % (initials)]
+            lexmsg.append(colorEnd("</c>"))
+            self.append("<span style=\"color:#000000\">" + time + convertTags(lexmsg) + "</span>")
+            #self.append('<img src="/Users/lexi/pesterchum-lex/smilies/tab.gif" />'
+            #            + '<img src="/Users/lexi/pesterchum/smilies/tab.gif" />'
+            #            + '<img src="/Applications/Pesterchum.app/Contents/Resources/smilies/tab.gif" />'
+            #            + '<img src="smilies/tab.gif" />');
+            if chum is me:
+                window.chatlog.log(parent.chum.handle, lexmsg)
+            else:
+                if window.idleaction.isChecked() and parent.chumopen:
+                    idlethreshhold = 60
+                    if (not hasattr(self, 'lastmsg')) or \
+                            datetime.now() - self.lastmsg > timedelta(0,idlethreshhold):
+                        verb = window.theme["convo/text/idle"]
+                        idlemsg = me.idlemsg(systemColor, verb)
+                        parent.textArea.append(convertTags(idlemsg))
+                        window.chatlog.log(parent.title(), idlemsg)
+                        parent.messageSent.emit("PESTERCHUM:IDLE", parent.title())
+                self.lastmsg = datetime.now()
+                window.chatlog.log(chum.handle, lexmsg)
+    def changeTheme(self, theme):
+        self.initTheme(theme)
+        sb = self.verticalScrollBar()
+        sb.setValue(sb.maximum())
+    def focusInEvent(self, event):
+        self.parent().clearNewMessage()
+        QtWidgets.QTextEdit.focusInEvent(self, event)
+
+    def keyPressEvent(self, event):
+        if hasattr(self.parent(), 'textInput'):
+            if event.key() not in [QtCore.Qt.Key_PageUp, QtCore.Qt.Key_PageDown, \
+                                   QtCore.Qt.Key_Up, QtCore.Qt.Key_Down]:
+                self.parent().textInput.keyPressEvent(event)
+        QtWidgets.QTextEdit.keyPressEvent(self, event)
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            url = self.anchorAt(event.pos())
+            if url != "":
+                if url[0] == "#" and url != "#pesterchum":
+                    self.parent().mainwindow.showMemos(url[1:])
+                elif url[0] == "@":
+                    handle = str(url[1:])
+                    self.parent().mainwindow.newConversation(handle)
+                else:
+                    if event.modifiers() == QtCore.Qt.ControlModifier:
+                        QtWidgets.QApplication.clipboard().setText(url)
+                    else:
+                        QtGui.QDesktopServices.openUrl(QtCore.QUrl(url, QtCore.QUrl.TolerantMode))
+        QtWidgets.QTextEdit.mousePressEvent(self, event)
+    def mouseMoveEvent(self, event):
+        QtWidgets.QTextEdit.mouseMoveEvent(self, event)
+        if self.anchorAt(event.pos()):
+            if self.viewport().cursor().shape != QtCore.Qt.PointingHandCursor:
+                self.viewport().setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        else:
+            self.viewport().setCursor(QtGui.QCursor(QtCore.Qt.IBeamCursor))
+
+    def contextMenuEvent(self, event):
+        textMenu = self.createStandardContextMenu()
+        if self.textSelected:
+            self.submitLogAction = QtWidgets.QAction("Submit to Pesterchum QDB", self, triggered=self.submitLog)
+            textMenu.addAction(self.submitLogAction)
+        textMenu.exec_(event.globalPos())
+
+    def submitLogTitle(self):
+        return "[%s -> %s]" % (self.parent().mainwindow.profile().handle,
+                               self.parent().chum.handle)
+
+    @QtCore.pyqtSlot()
+    def submitLog(self):
+        mimedata = self.createMimeDataFromSelection()
+        htmldata = img2smiley(mimedata.data("text/html"))
+        textdoc = QtGui.QTextDocument()
+        textdoc.setHtml(htmldata)
+        logdata = "%s\n%s" % (self.submitLogTitle(), textdoc.toPlainText())
+        self.sending = QtWidgets.QDialog(self)
+        layout = QtWidgets.QVBoxLayout()
+        self.sending.sendinglabel = QtWidgets.QLabel("S3ND1NG...", self.sending)
+        cancelbutton = QtWidgets.QPushButton("OK", self.sending, clicked=self.sending.close)
+        layout.addWidget(self.sending.sendinglabel)
+        layout.addWidget(cancelbutton)
+        self.sending.setLayout(layout)
+        self.sending.show()
+        params = urllib.parse.urlencode({'quote': logdata, 'do': "add"})
+        headers = {"Content-type": "application/x-www-form-urlencoded",
+                   "Accept": "text/plain"}
+        try:
+            pass
+            hconn = http.client.HTTPConnection('qdb.pesterchum.net', 80,
+                                           timeout=15)
+            hconn.request("POST", "/index.php", params, headers)
+            response = hconn.getresponse()
+            if response.status == 200:
+                self.sending.sendinglabel.setText("SUCC3SS!")
+            else:
+                self.sending.sendinglabel.setText("F41L3D: %s %s" % (response.status, response.reason))
+            hconn.close()
+        except Exception as e:
+            self.sending.sendinglabel.setText("F41L3D: %s" % (e))
+        del self.sending
+generic.py
+class PesterList(list):
+    def __init__(self, l):
+        self.extend(l)
+libs/pytwmn.py
+class TwmnError(Exception):
+class Notification(object):
+    UNWN_ERR = -1
+    NO_TWMND = -2
+    NO_CONF  = -3
+    def __init__(self, code):
+    def __str__(self):
+def confExists():
+def init(host="127.0.0.1", port=None):
+    def __init__(self, title="", msg="", icon=""):
+    def set_duration(self, time):
+    def show(self):
+parsetools.py
+def themeChecker(theme):
+    needs = ["main/size", "main/icon", "main/windowtitle", "main/style", \
+    "main/background-image", "main/menubar/style", "main/menu/menuitem", \
+    "main/menu/style", "main/menu/selected", "main/close/image", \
+    "main/close/loc", "main/minimize/image", "main/minimize/loc", \
+    "main/menu/loc", "main/menus/client/logviewer", \
+    "main/menus/client/addgroup", "main/menus/client/options", \
+    "main/menus/client/exit", "main/menus/client/userlist", \
+    "main/menus/client/memos", "main/menus/client/import", \
+    "main/menus/client/idle", "main/menus/client/reconnect", \
+    "main/menus/client/_name", "main/menus/profile/quirks", \
+    "main/menus/profile/block", "main/menus/profile/color", \
+    "main/menus/profile/switch", "main/menus/profile/_name", \
+    "main/menus/help/about", "main/menus/help/_name", "main/moodlabel/text", \
+    "main/moodlabel/loc", "main/moodlabel/style", "main/moods", \
+    "main/addchum/style", "main/addchum/text", "main/addchum/size", \
+    "main/addchum/loc", "main/pester/text", "main/pester/size", \
+    "main/pester/loc", "main/block/text", "main/block/size", "main/block/loc", \
+    "main/mychumhandle/label/text", "main/mychumhandle/label/loc", \
+    "main/mychumhandle/label/style", "main/mychumhandle/handle/loc", \
+    "main/mychumhandle/handle/size", "main/mychumhandle/handle/style", \
+    "main/mychumhandle/colorswatch/size", "main/mychumhandle/colorswatch/loc", \
+    "main/defaultmood", "main/chums/size", "main/chums/loc", \
+    "main/chums/style", "main/menus/rclickchumlist/pester", \
+    "main/menus/rclickchumlist/removechum", \
+    "main/menus/rclickchumlist/blockchum", "main/menus/rclickchumlist/viewlog", \
+    "main/menus/rclickchumlist/removegroup", \
+    "main/menus/rclickchumlist/renamegroup", \
+    "main/menus/rclickchumlist/movechum", "convo/size", \
+    "convo/tabwindow/style", "convo/tabs/tabstyle", "convo/tabs/style", \
+    "convo/tabs/selectedstyle", "convo/style", "convo/margins", \
+    "convo/chumlabel/text", "convo/chumlabel/style", "convo/chumlabel/align/h", \
+    "convo/chumlabel/align/v", "convo/chumlabel/maxheight", \
+    "convo/chumlabel/minheight", "main/menus/rclickchumlist/quirksoff", \
+    "main/menus/rclickchumlist/addchum", "main/menus/rclickchumlist/blockchum", \
+    "main/menus/rclickchumlist/unblockchum", \
+    "main/menus/rclickchumlist/viewlog", "main/trollslum/size", \
+    "main/trollslum/style", "main/trollslum/label/text", \
+    "main/trollslum/label/style", "main/menus/profile/block", \
+    "main/chums/moods/blocked/icon", "convo/systemMsgColor", \
+    "convo/textarea/style", "convo/text/beganpester", "convo/text/ceasepester", \
+    "convo/text/blocked", "convo/text/unblocked", "convo/text/blockedmsg", \
+    "convo/text/idle", "convo/input/style", "memos/memoicon", \
+    "memos/textarea/style", "memos/systemMsgColor", "convo/text/joinmemo", \
+    "memos/input/style", "main/menus/rclickchumlist/banuser", \
+    "main/menus/rclickchumlist/opuser", "main/menus/rclickchumlist/voiceuser", \
+    "memos/margins", "convo/text/openmemo", "memos/size", "memos/style", \
+    "memos/label/text", "memos/label/style", "memos/label/align/h", \
+    "memos/label/align/v", "memos/label/maxheight", "memos/label/minheight", \
+    "memos/userlist/style", "memos/userlist/width", "memos/time/text/width", \
+    "memos/time/text/style", "memos/time/arrows/left", \
+    "memos/time/arrows/style", "memos/time/buttons/style", \
+    "memos/time/arrows/right", "memos/op/icon", "memos/voice/icon", \
+    "convo/text/closememo", "convo/text/kickedmemo", \
+    "main/chums/userlistcolor", "main/defaultwindow/style", \
+    "main/chums/moods", "main/chums/moods/chummy/icon", "main/menus/help/help", \
+    "main/menus/help/calsprite", "main/menus/help/nickserv", "main/menus/help/chanserv", \
+    "main/menus/rclickchumlist/invitechum", "main/menus/client/randen", \
+    "main/menus/rclickchumlist/memosetting", "main/menus/rclickchumlist/memonoquirk", \
+    "main/menus/rclickchumlist/memohidden", "main/menus/rclickchumlist/memoinvite", \
+    "main/menus/rclickchumlist/memomute", "main/menus/rclickchumlist/notes"]
+
+    for n in needs:
+        try:
+            theme[n]
+        except KeyError:
+            raise ThemeException("Missing theme requirement: %s" % (n))
+parsetools.py
+class ThemeException(Exception):
+    def __init__(self, value):
+        self.parameter = value
+    def __str__(self):
+        return repr(self.parameter)
+generic.py
+class MultiTextDialog(QtWidgets.QDialog):
+    def __init__(self, title, parent, *queries):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.setWindowTitle(title)
+        if len(queries) == 0:
+            return
+        self.inputs = {}
+        layout_1 = QtWidgets.QHBoxLayout()
+        for d in queries:
+            label = d["label"]
+            inputname = d["inputname"]
+            value = d.get("value", "")
+            l = QtWidgets.QLabel(label, self)
+            layout_1.addWidget(l)
+            self.inputs[inputname] = QtWidgets.QLineEdit(value, self)
+            layout_1.addWidget(self.inputs[inputname])
+        self.ok = QtWidgets.QPushButton("OK", self, clicked=self.accept)
+        self.ok.setDefault(True)
+        self.cancel = QtWidgets.QPushButton("CANCEL", self, clicked=self.reject)
+        layout_ok = QtWidgets.QHBoxLayout()
+        layout_ok.addWidget(self.cancel)
+        layout_ok.addWidget(self.ok)
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_0.addLayout(layout_1)
+        layout_0.addLayout(layout_ok)
+
+        self.setLayout(layout_0)
+    def getText(self):
+        r = self.exec_()
+        if r == QtWidgets.QDialog.Accepted:
+            retval = {}
+            for (name, widget) in self.inputs.items():
+                retval[name] = str(widget.text())
+            return retval
+        else:
+            return None
+bugreport.py
+class BugReporter(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.mainwindow = parent
+        self.setStyleSheet(self.mainwindow.theme["main/defaultwindow/style"])
+        self.setWindowTitle("Report a Bug")
+        self.setModal(False)
+
+        self.title = QtWidgets.QLabel("Bug Report:")
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_0.addWidget(self.title)
+
+        layout_0.addWidget(QtWidgets.QLabel("Chumhandle:"))
+        handleLabel = QtWidgets.QLabel("The best chumhandle to contact you at for further information.")
+        font = handleLabel.font()
+        font.setPointSize(8)
+        handleLabel.setFont(font)
+        layout_0.addWidget(handleLabel)
+        self.name = QtWidgets.QLineEdit(self)
+        self.name.setStyleSheet("background:white; font-weight:bold; color:black; font-size: 10pt;")
+        layout_0.addWidget(self.name)
+
+        layout_0.addWidget(QtWidgets.QLabel("Description of bug:"))
+        descLabel = QtWidgets.QLabel("Include as much information as possible\n(theme, related options, what you were doing at the time, etc.)")
+        font = descLabel.font()
+        font.setPointSize(8)
+        descLabel.setFont(font)
+        layout_0.addWidget(descLabel)
+
+        self.textarea = QtWidgets.QTextEdit(self)
+        self.textarea.setStyleSheet("background:white; font-weight:normal; color:black; font-size: 10pt;")
+
+        layout_0.addWidget(self.textarea)
+
+        self.ok = QtWidgets.QPushButton("SEND", self, clicked=self.sendReport)
+        self.ok.setDefault(True)
+        self.cancel = QtWidgets.QPushButton("CANCEL", self, clicked=self.reject)
+        layout_2 = QtWidgets.QHBoxLayout()
+        layout_2.addWidget(self.cancel)
+        layout_2.addWidget(self.ok)
+
+        layout_0.addLayout(layout_2)
+
+        self.setLayout(layout_0)
+
+    @QtCore.pyqtSlot()
+    def sendReport(self):
+        name = str(self.mainwindow.profile().handle)
+        bestname = str(self.name.text())
+        os = ostools.osVer()
+        full = ostools.platform.platform()
+        python = ostools.platform.python_version()
+        qt = QtCore.qVersion()
+        msg = str(self.textarea.toPlainText())
+
+        if len(bestname) <= 0 or len(msg) <= 0:
+            msgbox = QtWidgets.QMessageBox()
+            msgbox.setStyleSheet(self.mainwindow.theme["main/defaultwindow/style"])
+            msgbox.setText("You must fill out all fields first!")
+            msgbox.setStandardButtons(QtWidgets.QMessageBox.Ok)
+            ret = msgbox.exec_()
+            return
+
+        QtWidgets.QDialog.accept(self)
+        data = urllib.parse.urlencode({"name":name, "version": version._pcVersion, "bestname":bestname, "os":os, "platform":full, "python":python, "qt":qt, "msg":msg})
+        print("Sending...")
+        f = urllib.request.urlopen("http://distantsphere.com/pc/reporter.php", data)
+        text = f.read()
+        print(text)
+        if text == "success!":
+            print("Sent!")
+        else:
+            print("Problems ):")
+randomer.py
+class RandomHandler(QtCore.QObject):
+    def __init__(self, parent):
+        QtCore.QObject.__init__(self, parent)
+        self.randNick = RANDNICK
+        self.mainwindow = parent
+        self.queue = []
+        self.running = False
+
+    def setRunning(self, on):
+        self.running = on
+        self.mainwindow.rand.setEnabled(on)
+
+    def getRandomer(self):
+        self.queue.append("?")
+        self.mainwindow.sendNotice.emit("?", self.randNick)
+
+    def setRandomer(self, r):
+        if r != self.mainwindow.userprofile.getRandom():
+            if r: code = "+"
+            else: code = "-"
+            self.queue.append(code)
+            self.mainwindow.sendNotice.emit(code, self.randNick)
+
+    def setIdle(self, i):
+        if i: code = "~"
+        else: code = "*"
+        self.queue.append(code)
+        self.mainwindow.sendNotice.emit(code, self.randNick)
+
+    @QtCore.pyqtSlot()
+    def getEncounter(self):
+        self.queue.append("!")
+        self.mainwindow.sendNotice.emit("!", self.randNick)
+
+    def incoming(self, msg):
+        l = msg.split("=")
+        code = l[0][0]
+        if code not in self.queue:
+            return # Ignore if we didn't request this
+        self.queue.remove(code)
+        if code == "?":
+            if l[1][0] == "y":
+                self.mainwindow.userprofile.setRandom(True)
+            elif l[1][0] == "n":
+                self.mainwindow.userprofile.setRandom(False)
+        elif code in ["+","-"]:
+            if l[1][0] == "k":
+                if code == "+":
+                    self.mainwindow.userprofile.setRandom(True)
+                else:
+                    self.mainwindow.userprofile.setRandom(False)
+        elif code in ["~","*"]:
+            if l[1][0] == "k":
+                pass
+        elif code == "!":
+            if l[1] == "x":
+                msgbox = QtWidgets.QMessageBox()
+                msgbox.setText("Unable to fetch you a random encounter!")
+                msgbox.setInformativeText("Try again later :(")
+                msgbox.exec_()
+                return
+            name = str(l[1])
+            print(name)
+            self.mainwindow.newConversation(name)
+mood.py
+class PesterMoodHandler(QtCore.QObject):
+    def __init__(self, parent, *buttons):
+        QtCore.QObject.__init__(self)
+        self.buttons = {}
+        self.mainwindow = parent
+        for b in buttons:
+            self.buttons[b.mood.value()] = b
+            if b.mood.value() == self.mainwindow.profile().mood.value():
+                b.setSelected(True)
+            b.clicked.connect(b.updateMood)
+            b.moodUpdated.connect(self.updateMood)
+    def removeButtons(self):
+        for b in self.buttons.values():
+            b.close()
+    def showButtons(self):
+        for b in self.buttons.values():
+            b.show()
+            b.raise_()
+    @QtCore.pyqtSlot(int)
+    def updateMood(self, m):
+        # update MY mood
+        oldmood = self.mainwindow.profile().mood
+        try:
+            oldbutton = self.buttons[oldmood.value()]
+            oldbutton.setSelected(False)
+        except KeyError:
+            pass
+        try:
+            newbutton = self.buttons[m]
+            newbutton.setSelected(True)
+        except KeyError:
+            pass
+        newmood = Mood(m)
+        self.mainwindow.userprofile.chat.mood = newmood
+        self.mainwindow.userprofile.setLastMood(newmood)
+        if self.mainwindow.currentMoodIcon:
+            moodicon = newmood.icon(self.mainwindow.theme)
+            self.mainwindow.currentMoodIcon.setPixmap(moodicon.pixmap(moodicon.realsize()))
+        if oldmood.name() != newmood.name():
+            for c in self.mainwindow.convos.values():
+                c.myUpdateMood(newmood)
+        self.mainwindow.moodUpdated.emit()
+menus.py
+class PesterOptions(QtWidgets.QDialog):
+    def __init__(self, config, theme, parent):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.setWindowTitle("Options")
+        self.setModal(False)
+        self.config = config
+        self.theme = theme
+        self.setStyleSheet(self.theme["main/defaultwindow/style"])
+
+        layout_4 = QtWidgets.QVBoxLayout()
+
+        hr = QtWidgets.QFrame()
+        hr.setFrameShape(QtWidgets.QFrame.HLine)
+        hr.setFrameShadow(QtWidgets.QFrame.Sunken)
+        vr = QtWidgets.QFrame()
+        vr.setFrameShape(QtWidgets.QFrame.VLine)
+        vr.setFrameShadow(QtWidgets.QFrame.Sunken)
+
+        self.tabs = QtWidgets.QButtonGroup(self)
+        self.tabs.buttonClicked[int].connect(self.changePage)
+        tabNames = ["Chum List", "Conversations", "Interface", "Sound", "Notifications", "Logging", "Idle/Updates", "Theme", "Connection"]
+        if parent.advanced: tabNames.append("Advanced")
+        for t in tabNames:
+            button = QtWidgets.QPushButton(t)
+            self.tabs.addButton(button)
+            layout_4.addWidget(button)
+            button.setCheckable(True)
+        self.tabs.button(-2).setChecked(True)
+        self.pages = QtWidgets.QStackedWidget(self)
+
+        self.bandwidthcheck = QtWidgets.QCheckBox("Low Bandwidth", self)
+        if self.config.lowBandwidth():
+            self.bandwidthcheck.setChecked(True)
+        bandwidthLabel = QtWidgets.QLabel("(Stops you for receiving the flood of MOODS,\n"
+                                      " though stops chumlist from working properly)")
+        font = bandwidthLabel.font()
+        font.setPointSize(8)
+        bandwidthLabel.setFont(font)
+
+        self.autonickserv = QtWidgets.QCheckBox("Auto-Identify with NickServ", self)
+        self.autonickserv.setChecked(parent.userprofile.getAutoIdentify())
+        self.nickservpass = QtWidgets.QLineEdit(self)
+        self.nickservpass.setPlaceholderText("NickServ Password")
+        self.nickservpass.setEchoMode(QtWidgets.QLineEdit.PasswordEchoOnEdit)
+        self.nickservpass.setText(parent.userprofile.getNickServPass())
+        self.autonickserv.stateChanged.connect(self.autoNickServChange)
+
+        self.autojoinlist = QtWidgets.QListWidget(self)
+        self.autojoinlist.addItems(parent.userprofile.getAutoJoins())
+        self.addAutoJoinBtn = QtWidgets.QPushButton("Add", self, clicked=self.addAutoJoin)
+        self.delAutoJoinBtn = QtWidgets.QPushButton("Remove", self, clicked=self.delAutoJoin)
+
+        self.tabcheck = QtWidgets.QCheckBox("Tabbed Conversations", self)
+        if self.config.tabs():
+            self.tabcheck.setChecked(True)
+        self.tabmemocheck = QtWidgets.QCheckBox("Tabbed Memos", self)
+        if self.config.tabMemos():
+            self.tabmemocheck.setChecked(True)
+        self.hideOffline = QtWidgets.QCheckBox("Hide Offline Chums", self)
+        if self.config.hideOfflineChums():
+            self.hideOffline.setChecked(True)
+
+        self.soundcheck = QtWidgets.QCheckBox("Sounds On", self, stateChanged=self.soundChange)
+        self.chatsoundcheck = QtWidgets.QCheckBox("Pester Sounds", self)
+        self.chatsoundcheck.setChecked(self.config.chatSound())
+        self.memosoundcheck = QtWidgets.QCheckBox("Memo Sounds", self, stateChanged=self.memoSoundChange)
+        self.memosoundcheck.setChecked(self.config.memoSound())
+        self.memopingcheck = QtWidgets.QCheckBox("Memo Ping", self)
+        self.memopingcheck.setChecked(self.config.memoPing())
+        self.namesoundcheck = QtWidgets.QCheckBox("Memo Mention (initials)", self)
+        self.namesoundcheck.setChecked(self.config.nameSound())
+        if self.config.soundOn():
+            self.soundcheck.setChecked(True)
+            if not self.memosoundcheck.isChecked():
+                self.memoSoundChange(0)
+        else:
+            self.chatsoundcheck.setEnabled(False)
+            self.memosoundcheck.setEnabled(False)
+            self.memoSoundChange(0)
+
+        self.editMentions = QtWidgets.QPushButton("Edit Mentions", self, clicked=self.openMentions)
+        self.editMentions2 = QtWidgets.QPushButton("Edit Mentions", self, clicked=self.openMentions)
+
+        self.currentVol = QtWidgets.QLabel(str(self.config.volume())+"%", self)
+        self.currentVol.setAlignment(QtCore.Qt.AlignHCenter)
+        self.volume = QtWidgets.QSlider(QtCore.Qt.Horizontal, self)
+        self.volume.setMinimum(0)
+        self.volume.setMaximum(100)
+        self.volume.setValue(self.config.volume())
+        self.volume.valueChanged.connect(self.printValue)
+
+        self.timestampcheck = QtWidgets.QCheckBox("Time Stamps", self)
+        if self.config.showTimeStamps():
+            self.timestampcheck.setChecked(True)
+
+        self.timestampBox = QtWidgets.QComboBox(self)
+        self.timestampBox.addItem("12 hour")
+        self.timestampBox.addItem("24 hour")
+        if self.config.time12Format():
+            self.timestampBox.setCurrentIndex(0)
+        else:
+            self.timestampBox.setCurrentIndex(1)
+        self.secondscheck = QtWidgets.QCheckBox("Show Seconds", self)
+        if self.config.showSeconds():
+            self.secondscheck.setChecked(True)
+
+        self.memomessagecheck = QtWidgets.QCheckBox("Show OP and Voice Messages in Memos", self)
+        if self.config.opvoiceMessages():
+            self.memomessagecheck.setChecked(True)
+
+        if not ostools.isOSXBundle():
+            self.animationscheck = QtWidgets.QCheckBox("Use animated smilies", self)
+            if self.config.animations():
+                self.animationscheck.setChecked(True)
+            animateLabel = QtWidgets.QLabel("(Disable if you leave chats open for LOOOONG periods of time)")
+            font = animateLabel.font()
+            font.setPointSize(8)
+            animateLabel.setFont(font)
+
+        self.userlinkscheck = QtWidgets.QCheckBox("Disable #Memo and @User Links", self)
+        self.userlinkscheck.setChecked(self.config.disableUserLinks())
+        self.userlinkscheck.setVisible(False)
+
+
+        # Will add ability to turn off groups later
+        #self.groupscheck = QtWidgets.QCheckBox("Use Groups", self)
+        #self.groupscheck.setChecked(self.config.useGroups())
+        self.showemptycheck = QtWidgets.QCheckBox("Show Empty Groups", self)
+        self.showemptycheck.setChecked(self.config.showEmptyGroups())
+        self.showonlinenumbers = QtWidgets.QCheckBox("Show Number of Online Chums", self)
+        self.showonlinenumbers.setChecked(self.config.showOnlineNumbers())
+
+        sortLabel = QtWidgets.QLabel("Sort Chums")
+        self.sortBox = QtWidgets.QComboBox(self)
+        self.sortBox.addItem("Alphabetically")
+        self.sortBox.addItem("By Mood")
+        self.sortBox.addItem("Manually")
+        method = self.config.sortMethod()
+        if method >= 0 and method < self.sortBox.count():
+            self.sortBox.setCurrentIndex(method)
+        layout_3 = QtWidgets.QHBoxLayout()
+        layout_3.addWidget(sortLabel)
+        layout_3.addWidget(self.sortBox, 10)
+
+        self.logpesterscheck = QtWidgets.QCheckBox("Log all Pesters", self)
+        if self.config.logPesters() & self.config.LOG:
+            self.logpesterscheck.setChecked(True)
+        self.logmemoscheck = QtWidgets.QCheckBox("Log all Memos", self)
+        if self.config.logMemos() & self.config.LOG:
+            self.logmemoscheck.setChecked(True)
+        self.stamppestercheck = QtWidgets.QCheckBox("Log Time Stamps for Pesters", self)
+        if self.config.logPesters() & self.config.STAMP:
+            self.stamppestercheck.setChecked(True)
+        self.stampmemocheck = QtWidgets.QCheckBox("Log Time Stamps for Memos", self)
+        if self.config.logMemos() & self.config.STAMP:
+            self.stampmemocheck.setChecked(True)
+
+        self.idleBox = QtWidgets.QSpinBox(self)
+        self.idleBox.setStyleSheet("background:#FFFFFF")
+        self.idleBox.setRange(1, 1440)
+        self.idleBox.setValue(self.config.idleTime())
+        layout_5 = QtWidgets.QHBoxLayout()
+        layout_5.addWidget(QtWidgets.QLabel("Minutes before Idle:"))
+        layout_5.addWidget(self.idleBox)
+
+        self.updateBox = QtWidgets.QComboBox(self)
+        self.updateBox.addItem("Once a Day")
+        self.updateBox.addItem("Once a Week")
+        self.updateBox.addItem("Only on Start")
+        self.updateBox.addItem("Never")
+        check = self.config.checkForUpdates()
+        if check >= 0 and check < self.updateBox.count():
+            self.updateBox.setCurrentIndex(check)
+        layout_6 = QtWidgets.QHBoxLayout()
+        layout_6.addWidget(QtWidgets.QLabel("Check for\nPesterchum Updates:"))
+        layout_6.addWidget(self.updateBox)
+
+        if not ostools.isOSXLeopard():
+            self.mspaCheck = QtWidgets.QCheckBox("Check for MSPA Updates", self)
+            self.mspaCheck.setChecked(self.config.checkMSPA())
+
+        self.randomscheck = QtWidgets.QCheckBox("Receive Random Encounters")
+        self.randomscheck.setChecked(parent.userprofile.randoms)
+        if not parent.randhandler.running:
+            self.randomscheck.setEnabled(False)
+
+        avail_themes = self.config.availableThemes()
+        self.themeBox = QtWidgets.QComboBox(self)
+        notheme = (theme.name not in avail_themes)
+        for (i, t) in enumerate(avail_themes):
+            self.themeBox.addItem(t)
+            if (not notheme and t == theme.name) or (notheme and t == "pesterchum"):
+                self.themeBox.setCurrentIndex(i)
+        self.refreshtheme = QtWidgets.QPushButton("Refresh current theme", self, clicked=parent.themeSelectOverride)
+        self.ghostchum = QtWidgets.QCheckBox("Pesterdunk Ghostchum!!", self)
+        self.ghostchum.setChecked(self.config.ghostchum())
+
+        self.buttonOptions = ["Minimize to Taskbar", "Minimize to Tray", "Quit"]
+        self.miniBox = QtWidgets.QComboBox(self)
+        self.miniBox.addItems(self.buttonOptions)
+        self.miniBox.setCurrentIndex(self.config.minimizeAction())
+        self.closeBox = QtWidgets.QComboBox(self)
+        self.closeBox.addItems(self.buttonOptions)
+        self.closeBox.setCurrentIndex(self.config.closeAction())
+        layout_mini = QtWidgets.QHBoxLayout()
+        layout_mini.addWidget(QtWidgets.QLabel("Minimize"))
+        layout_mini.addWidget(self.miniBox)
+        layout_close = QtWidgets.QHBoxLayout()
+        layout_close.addWidget(QtWidgets.QLabel("Close"))
+        layout_close.addWidget(self.closeBox)
+
+        self.pesterBlink = QtWidgets.QCheckBox("Blink Taskbar on Pesters", self)
+        if self.config.blink() & self.config.PBLINK:
+            self.pesterBlink.setChecked(True)
+        self.memoBlink = QtWidgets.QCheckBox("Blink Taskbar on Memos", self)
+        if self.config.blink() & self.config.MBLINK:
+            self.memoBlink.setChecked(True)
+
+        self.notifycheck = QtWidgets.QCheckBox("Toast Notifications", self)
+        if self.config.notify():
+            self.notifycheck.setChecked(True)
+        self.notifyOptions = QtWidgets.QComboBox(self)
+        types = self.parent().tm.availableTypes()
+        cur = self.parent().tm.currentType()
+        self.notifyOptions.addItems(types)
+        for (i,t) in enumerate(types):
+            if t == cur:
+                self.notifyOptions.setCurrentIndex(i)
+                break
+        self.notifyTypeLabel = QtWidgets.QLabel("Type", self)
+        layout_type = QtWidgets.QHBoxLayout()
+        layout_type.addWidget(self.notifyTypeLabel)
+        layout_type.addWidget(self.notifyOptions)
+        self.notifySigninCheck   = QtWidgets.QCheckBox("Chum signs in", self)
+        if self.config.notifyOptions() & self.config.SIGNIN:
+            self.notifySigninCheck.setChecked(True)
+        self.notifySignoutCheck  = QtWidgets.QCheckBox("Chum signs out", self)
+        if self.config.notifyOptions() & self.config.SIGNOUT:
+            self.notifySignoutCheck.setChecked(True)
+        self.notifyNewMsgCheck   = QtWidgets.QCheckBox("New messages", self)
+        if self.config.notifyOptions() & self.config.NEWMSG:
+            self.notifyNewMsgCheck.setChecked(True)
+        self.notifyNewConvoCheck = QtWidgets.QCheckBox("Only new conversations", self)
+        if self.config.notifyOptions() & self.config.NEWCONVO:
+            self.notifyNewConvoCheck.setChecked(True)
+        self.notifyMentionsCheck = QtWidgets.QCheckBox("Memo Mentions (initials)", self)
+        if self.config.notifyOptions() & self.config.INITIALS:
+            self.notifyMentionsCheck.setChecked(True)
+        self.notifyChange(self.notifycheck.checkState())
+        self.notifycheck.stateChanged.connect(self.notifyChange)
+
+        if parent.advanced:
+            self.modechange = QtWidgets.QLineEdit(self)
+            layout_change = QtWidgets.QHBoxLayout()
+            layout_change.addWidget(QtWidgets.QLabel("Change:"))
+            layout_change.addWidget(self.modechange)
+
+        self.ok = QtWidgets.QPushButton("OK", self, clicked=self.accept)
+        self.ok.setDefault(True)
+        self.cancel = QtWidgets.QPushButton("CANCEL", self, clicked=self.reject)
+        layout_2 = QtWidgets.QHBoxLayout()
+        layout_2.addWidget(self.cancel)
+        layout_2.addWidget(self.ok)
+
+        # Tab layouts
+        # Chum List
+        widget = QtWidgets.QWidget()
+        layout_chumlist = QtWidgets.QVBoxLayout(widget)
+        layout_chumlist.setAlignment(QtCore.Qt.AlignTop)
+        layout_chumlist.addWidget(self.hideOffline)
+        #layout_chumlist.addWidget(self.groupscheck)
+        layout_chumlist.addWidget(self.showemptycheck)
+        layout_chumlist.addWidget(self.showonlinenumbers)
+        layout_chumlist.addLayout(layout_3)
+        self.pages.addWidget(widget)
+
+        # Conversations
+        widget = QtWidgets.QWidget()
+        layout_chat = QtWidgets.QVBoxLayout(widget)
+        layout_chat.setAlignment(QtCore.Qt.AlignTop)
+        layout_chat.addWidget(self.timestampcheck)
+        layout_chat.addWidget(self.timestampBox)
+        layout_chat.addWidget(self.secondscheck)
+        layout_chat.addWidget(self.memomessagecheck)
+        if not ostools.isOSXBundle():
+            layout_chat.addWidget(self.animationscheck)
+            layout_chat.addWidget(animateLabel)
+        layout_chat.addWidget(self.randomscheck)
+        # Re-enable these when it's possible to disable User and Memo links
+        #layout_chat.addWidget(hr)
+        #layout_chat.addWidget(QtWidgets.QLabel("User and Memo Links"))
+        #layout_chat.addWidget(self.userlinkscheck)
+        self.pages.addWidget(widget)
+
+        # Interface
+        widget = QtWidgets.QWidget()
+        layout_interface = QtWidgets.QVBoxLayout(widget)
+        layout_interface.setAlignment(QtCore.Qt.AlignTop)
+        layout_interface.addWidget(self.tabcheck)
+        layout_interface.addWidget(self.tabmemocheck)
+        layout_interface.addLayout(layout_mini)
+        layout_interface.addLayout(layout_close)
+        layout_interface.addWidget(self.pesterBlink)
+        layout_interface.addWidget(self.memoBlink)
+        self.pages.addWidget(widget)
+
+        # Sound
+        widget = QtWidgets.QWidget()
+        layout_sound = QtWidgets.QVBoxLayout(widget)
+        layout_sound.setAlignment(QtCore.Qt.AlignTop)
+        layout_sound.addWidget(self.soundcheck)
+        layout_indent = QtWidgets.QVBoxLayout()
+        layout_indent.addWidget(self.chatsoundcheck)
+        layout_indent.addWidget(self.memosoundcheck)
+        layout_doubleindent = QtWidgets.QVBoxLayout()
+        layout_doubleindent.addWidget(self.memopingcheck)
+        layout_doubleindent.addWidget(self.namesoundcheck)
+        layout_doubleindent.addWidget(self.editMentions)
+        layout_doubleindent.setContentsMargins(22,0,0,0)
+        layout_indent.addLayout(layout_doubleindent)
+        layout_indent.setContentsMargins(22,0,0,0)
+        layout_sound.addLayout(layout_indent)
+        layout_sound.addSpacing(15)
+        layout_sound.addWidget(QtWidgets.QLabel("Master Volume:", self))
+        layout_sound.addWidget(self.volume)
+        layout_sound.addWidget(self.currentVol)
+        self.pages.addWidget(widget)
+
+        # Notifications
+        widget = QtWidgets.QWidget()
+        layout_notify = QtWidgets.QVBoxLayout(widget)
+        layout_notify.setAlignment(QtCore.Qt.AlignTop)
+        layout_notify.addWidget(self.notifycheck)
+        layout_indent = QtWidgets.QVBoxLayout()
+        layout_indent.addLayout(layout_type)
+        layout_indent.setContentsMargins(22,0,0,0)
+        layout_indent.addWidget(self.notifySigninCheck)
+        layout_indent.addWidget(self.notifySignoutCheck)
+        layout_indent.addWidget(self.notifyNewMsgCheck)
+        layout_doubleindent = QtWidgets.QVBoxLayout()
+        layout_doubleindent.addWidget(self.notifyNewConvoCheck)
+        layout_doubleindent.setContentsMargins(22,0,0,0)
+        layout_indent.addLayout(layout_doubleindent)
+        layout_indent.addWidget(self.notifyMentionsCheck)
+        layout_indent.addWidget(self.editMentions2)
+        layout_notify.addLayout(layout_indent)
+        self.pages.addWidget(widget)
+
+        # Logging
+        widget = QtWidgets.QWidget()
+        layout_logs = QtWidgets.QVBoxLayout(widget)
+        layout_logs.setAlignment(QtCore.Qt.AlignTop)
+        layout_logs.addWidget(self.logpesterscheck)
+        layout_logs.addWidget(self.logmemoscheck)
+        layout_logs.addWidget(self.stamppestercheck)
+        layout_logs.addWidget(self.stampmemocheck)
+        self.pages.addWidget(widget)
+
+        # Idle/Updates
+        widget = QtWidgets.QWidget()
+        layout_idle = QtWidgets.QVBoxLayout(widget)
+        layout_idle.setAlignment(QtCore.Qt.AlignTop)
+        layout_idle.addLayout(layout_5)
+        layout_idle.addLayout(layout_6)
+        if not ostools.isOSXLeopard():
+            layout_idle.addWidget(self.mspaCheck)
+        self.pages.addWidget(widget)
+
+        # Theme
+        widget = QtWidgets.QWidget()
+        layout_theme = QtWidgets.QVBoxLayout(widget)
+        layout_theme.setAlignment(QtCore.Qt.AlignTop)
+        layout_theme.addWidget(QtWidgets.QLabel("Pick a Theme:"))
+        layout_theme.addWidget(self.themeBox)
+        layout_theme.addWidget(self.refreshtheme)
+        layout_theme.addWidget(self.ghostchum)
+        self.pages.addWidget(widget)
+
+        # Connection
+        widget = QtWidgets.QWidget()
+        layout_connect = QtWidgets.QVBoxLayout(widget)
+        layout_connect.setAlignment(QtCore.Qt.AlignTop)
+        layout_connect.addWidget(self.bandwidthcheck)
+        layout_connect.addWidget(bandwidthLabel)
+        layout_connect.addWidget(self.autonickserv)
+        layout_indent = QtWidgets.QVBoxLayout()
+        layout_indent.addWidget(self.nickservpass)
+        layout_indent.setContentsMargins(22,0,0,0)
+        layout_connect.addLayout(layout_indent)
+        layout_connect.addWidget(QtWidgets.QLabel("Auto-Join Memos:"))
+        layout_connect.addWidget(self.autojoinlist)
+        layout_8 = QtWidgets.QHBoxLayout()
+        layout_8.addWidget(self.addAutoJoinBtn)
+        layout_8.addWidget(self.delAutoJoinBtn)
+        layout_connect.addLayout(layout_8)
+        self.pages.addWidget(widget)
+
+        # Advanced
+        if parent.advanced:
+            widget = QtWidgets.QWidget()
+            layout_advanced = QtWidgets.QVBoxLayout(widget)
+            layout_advanced.setAlignment(QtCore.Qt.AlignTop)
+            layout_advanced.addWidget(QtWidgets.QLabel("Current User Mode: %s" % parent.modes))
+            layout_advanced.addLayout(layout_change)
+            self.pages.addWidget(widget)
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_1 = QtWidgets.QHBoxLayout()
+        layout_1.addLayout(layout_4)
+        layout_1.addWidget(vr)
+        layout_1.addWidget(self.pages)
+        layout_0.addLayout(layout_1)
+        layout_0.addSpacing(30)
+        layout_0.addLayout(layout_2)
+
+        self.setLayout(layout_0)
+
+    @QtCore.pyqtSlot(int)
+    def changePage(self, page):
+        self.tabs.button(page).setChecked(True)
+        # What is this, I don't even. qt, fuck
+        page = -page - 2
+        self.pages.setCurrentIndex(page)
+
+    @QtCore.pyqtSlot(int)
+    def notifyChange(self, state):
+        if state == 0:
+            self.notifyTypeLabel.setEnabled(False)
+            self.notifyOptions.setEnabled(False)
+            self.notifySigninCheck.setEnabled(False)
+            self.notifySignoutCheck.setEnabled(False)
+            self.notifyNewMsgCheck.setEnabled(False)
+            self.notifyNewConvoCheck.setEnabled(False)
+            self.notifyMentionsCheck.setEnabled(False)
+        else:
+            self.notifyTypeLabel.setEnabled(True)
+            self.notifyOptions.setEnabled(True)
+            self.notifySigninCheck.setEnabled(True)
+            self.notifySignoutCheck.setEnabled(True)
+            self.notifyNewMsgCheck.setEnabled(True)
+            self.notifyNewConvoCheck.setEnabled(True)
+            self.notifyMentionsCheck.setEnabled(True)
+
+    @QtCore.pyqtSlot(int)
+    def autoNickServChange(self, state):
+        self.nickservpass.setEnabled(state != 0)
+
+    @QtCore.pyqtSlot()
+    def addAutoJoin(self, mitem=None):
+        d = {"label": "Memo:", "inputname": "value" }
+        if mitem is not None:
+            d["value"] = str(mitem.text())
+        pdict = MultiTextDialog("ENTER MEMO", self, d).getText()
+        if pdict is None:
+            return
+        pdict["value"] = "#" + pdict["value"]
+        if mitem is None:
+            items = self.autojoinlist.findItems(pdict["value"], QtCore.Qt.MatchFixedString)
+            if len(items) == 0:
+                self.autojoinlist.addItem(pdict["value"])
+        else:
+            mitem.setText(pdict["value"])
+
+    @QtCore.pyqtSlot()
+    def delAutoJoin(self):
+        i = self.autojoinlist.currentRow()
+        if i >= 0:
+            self.autojoinlist.takeItem(i)
+
+    @QtCore.pyqtSlot(int)
+    def soundChange(self, state):
+        if state == 0:
+            self.chatsoundcheck.setEnabled(False)
+            self.memosoundcheck.setEnabled(False)
+            self.memoSoundChange(0)
+        else:
+            self.chatsoundcheck.setEnabled(True)
+            self.memosoundcheck.setEnabled(True)
+            if self.memosoundcheck.isChecked():
+                self.memoSoundChange(1)
+    @QtCore.pyqtSlot(int)
+    def memoSoundChange(self, state):
+        if state == 0:
+            self.memopingcheck.setEnabled(False)
+            self.namesoundcheck.setEnabled(False)
+        else:
+            self.memopingcheck.setEnabled(True)
+            self.namesoundcheck.setEnabled(True)
+    @QtCore.pyqtSlot(int)
+    def printValue(self, v):
+        self.currentVol.setText(str(v)+"%")
+
+    @QtCore.pyqtSlot()
+    def openMentions(self):
+        if not hasattr(self, 'mentionmenu'):
+            self.mentionmenu = None
+        if not self.mentionmenu:
+            self.mentionmenu = PesterMentions(self.parent(), self.theme, self)
+            self.mentionmenu.accepted.connect(self.updateMentions)
+            self.mentionmenu.rejected.connect(self.closeMentions)
+            self.mentionmenu.show()
+            self.mentionmenu.raise_()
+            self.mentionmenu.activateWindow()
+    @QtCore.pyqtSlot()
+    def closeMentions(self):
+        self.mentionmenu.close()
+        self.mentionmenu = None
+    @QtCore.pyqtSlot()
+    def updateMentions(self):
+        m = []
+        for i in range(self.mentionmenu.mentionlist.count()):
+            m.append(str(self.mentionmenu.mentionlist.item(i).text()))
+        self.parent().userprofile.setMentions(m)
+        self.mentionmenu = None
+parsetools.py
+def addTimeInitial(string, grammar):
+    endofi = string.find(":")
+    endoftag = string.find(">")
+    # support Doc Scratch mode
+    if (endoftag < 0 or endoftag > 16) or (endofi < 0 or endofi > 17):
+        return string
+    return string[0:endoftag+1]+grammar.pcf+string[endoftag+1:endofi]+grammar.number+string[endofi:]
+irc.py
+class PesterIRC(QtCore.QThread):
+    def __init__(self, config, window):
+        QtCore.QThread.__init__(self)
+        self.mainwindow = window
+        self.config = config
+        self.registeredIRC = False
+        self.stopIRC = None
+        self.NickServ = services.NickServ()
+        self.ChanServ = services.ChanServ()
+    def IRCConnect(self):
+        server = self.config.server()
+        port = self.config.port()
+        self.cli = IRCClient(PesterHandler, host=server, port=int(port), nick=self.mainwindow.profile().handle, real_name='pcc31', blocking=True, timeout=120)
+        self.cli.command_handler.parent = self
+        self.cli.command_handler.mainwindow = self.mainwindow
+        self.cli.connect()
+        self.conn = self.cli.conn()
+    def run(self):
+        try:
+            self.IRCConnect()
+        except socket.error as se:
+            self.stopIRC = se
+            return
+        while 1:
+            res = True
+            try:
+                logging.debug("updateIRC()")
+                res = self.updateIRC()
+            except socket.timeout as se:
+                logging.debug("timeout in thread %s" % (self))
+                self.cli.close()
+                self.stopIRC = se
+                return
+            except socket.error as se:
+                if self.registeredIRC:
+                    self.stopIRC = None
+                else:
+                    self.stopIRC = se
+                logging.debug("socket error, exiting thread")
+                return
+            else:
+                if not res:
+                    logging.debug("false Yield: %s, returning" % res)
+                    return
+
+    def setConnected(self):
+        self.registeredIRC = True
+        self.connected.emit()
+    def setConnectionBroken(self):
+        logging.debug("setconnection broken")
+        self.reconnectIRC()
+        #self.brokenConnection = True
+    @QtCore.pyqtSlot()
+    def updateIRC(self):
+        try:
+            res = next(self.conn)
+        except socket.timeout as se:
+            if self.registeredIRC:
+                return True
+            else:
+                raise se
+        except socket.error as se:
+            raise se
+        except StopIteration:
+            self.conn = self.cli.conn()
+            return True
+        else:
+            return res
+    @QtCore.pyqtSlot()
+    def reconnectIRC(self):
+        logging.debug("reconnectIRC() from thread %s" % (self))
+        self.cli.close()
+
+    @QtCore.pyqtSlot(PesterProfile)
+    def getMood(self, *chums):
+        self.cli.command_handler.getMood(*chums)
+    @QtCore.pyqtSlot(PesterList)
+    def getMoods(self, chums):
+        self.cli.command_handler.getMood(*chums)
+    @QtCore.pyqtSlot('QString', 'QString')
+    def sendNotice(self, text, handle):
+        h = str(handle)
+        t = str(text)
+        try:
+            helpers.notice(self.cli, h, t)
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString', 'QString')
+    def sendMessage(self, text, handle):
+        h = str(handle)
+        textl = [str(text)]
+        def splittext(l):
+            if len(l[0]) > 450:
+                space = l[0].rfind(" ", 0,430)
+                if space == -1:
+                    space = 450
+                elif l[0][space+1:space+5] == "</c>":
+                    space = space+4
+                a = l[0][0:space+1]
+                b = l[0][space+1:]
+                if a.count("<c") > a.count("</c>"):
+                    # oh god ctags will break!! D=
+                    hanging = []
+                    usedends = []
+                    c = a.rfind("<c")
+                    while c != -1:
+                        d = a.find("</c>", c)
+                        while d in usedends:
+                            d = a.find("</c>", d+1)
+                        if d != -1: usedends.append(d)
+                        else:
+                            f = a.find(">", c)+1
+                            hanging.append(a[c:f])
+                        c = a.rfind("<c",0,c)
+
+                    # end all ctags in first part
+                    for i in range(a.count("<c")-a.count("</c>")):
+                        a = a + "</c>"
+                    #start them up again in the second part
+                    for c in hanging:
+                        b = c + b
+                if len(b) > 0:
+                    return [a] + splittext([b])
+                else:
+                    return [a]
+            else:
+                return l
+        textl = splittext(textl)
+        try:
+            for t in textl:
+                helpers.msg(self.cli, h, t)
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString', bool)
+    def startConvo(self, handle, initiated):
+        h = str(handle)
+        try:
+            if initiated:
+                helpers.msg(self.cli, h, "PESTERCHUM:BEGIN")
+            helpers.msg(self.cli, h, "COLOR >%s" % (self.mainwindow.profile().colorcmd()))
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString')
+    def endConvo(self, handle):
+        h = str(handle)
+        try:
+            helpers.msg(self.cli, h, "PESTERCHUM:CEASE")
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot()
+    def updateProfile(self):
+        me = self.mainwindow.profile()
+        handle = me.handle
+        try:
+            helpers.nick(self.cli, handle)
+        except socket.error:
+            self.setConnectionBroken()
+        self.mainwindow.closeConversations(True)
+        self.mainwindow.doAutoIdentify()
+        self.mainwindow.autoJoinDone = False
+        self.mainwindow.doAutoJoins()
+        self.updateMood()
+    @QtCore.pyqtSlot()
+    def updateMood(self):
+        me = self.mainwindow.profile()
+        try:
+            helpers.msg(self.cli, "#pesterchum", "MOOD >%d" % (me.mood.value()))
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot()
+    def updateColor(self):
+        me = self.mainwindow.profile()
+        for h in self.mainwindow.convos.keys():
+            try:
+                helpers.msg(self.cli, h, "COLOR >%s" % (self.mainwindow.profile().colorcmd()))
+            except socket.error:
+                self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString')
+    def blockedChum(self, handle):
+        h = str(handle)
+        try:
+            helpers.msg(self.cli, h, "PESTERCHUM:BLOCK")
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString')
+    def unblockedChum(self, handle):
+        h = str(handle)
+        try:
+            helpers.msg(self.cli, h, "PESTERCHUM:UNBLOCK")
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString')
+    def requestNames(self, channel):
+        c = str(channel)
+        try:
+            helpers.names(self.cli, c)
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot()
+    def requestChannelList(self):
+        try:
+            helpers.channel_list(self.cli)
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString')
+    def joinChannel(self, channel):
+        c = str(channel)
+        try:
+            helpers.join(self.cli, c)
+            helpers.mode(self.cli, c, "", None)
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString')
+    def leftChannel(self, channel):
+        c = str(channel)
+        try:
+            helpers.part(self.cli, c)
+            self.cli.command_handler.joined = False
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString', 'QString')
+    def kickUser(self, handle, channel):
+        l = handle.split(":")
+        c = str(channel)
+        h = str(l[0])
+        if len(l) > 1:
+            reason = str(l[1])
+            if len(l) > 2:
+              for x in l[2:]:
+                reason += str(":") + str(x)
+        else:
+            reason = ""
+        try:
+            helpers.kick(self.cli, h, c, reason)
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString', 'QString', 'QString')
+    def setChannelMode(self, channel, mode, command):
+        c = str(channel)
+        m = str(mode)
+        cmd = str(command)
+        if cmd == "":
+            cmd = None
+        try:
+            helpers.mode(self.cli, c, m, cmd)
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString')
+    def channelNames(self, channel):
+        c = str(channel)
+        try:
+            helpers.names(self.cli, c)
+        except socket.error:
+            self.setConnectionBroken()
+    @QtCore.pyqtSlot('QString', 'QString')
+    def inviteChum(self, handle, channel):
+        h = str(handle)
+        c = str(channel)
+        try:
+            helpers.invite(self.cli, h, c)
+        except socket.error:
+            self.setConnectionBroken()
+
+    @QtCore.pyqtSlot()
+    def pingServer(self):
+        try:
+            self.cli.send("PING %s" % int(time()))
+        except socket.error:
+            self.setConnectionBroken()
+
+    @QtCore.pyqtSlot(bool)
+    def setAway(self, away=True):
+        try:
+            if away:
+                self.cli.send("AWAY Idle")
+            else:
+                self.cli.send("AWAY")
+        except socket.error:
+            self.setConnectionBroken()
+
+    @QtCore.pyqtSlot('QString', 'QString')
+    def killSomeQuirks(self, channel, handle):
+        c = str(channel)
+        h = str(handle)
+        try:
+            helpers.ctcp(self.cli, c, "NOQUIRKS", h)
+        except socket.error:
+            self.setConnectionBroken()
+
+    moodUpdated = QtCore.pyqtSignal('QString', Mood)
+    colorUpdated = QtCore.pyqtSignal('QString', QtGui.QColor)
+    messageReceived = QtCore.pyqtSignal('QString', 'QString')
+    memoReceived = QtCore.pyqtSignal('QString', 'QString', 'QString')
+    noticeReceived = QtCore.pyqtSignal('QString', 'QString')
+    inviteReceived = QtCore.pyqtSignal('QString', 'QString')
+    timeCommand = QtCore.pyqtSignal('QString', 'QString', 'QString')
+    namesReceived = QtCore.pyqtSignal('QString', PesterList)
+    channelListReceived = QtCore.pyqtSignal(PesterList)
+    nickCollision = QtCore.pyqtSignal('QString', 'QString')
+    myHandleChanged = QtCore.pyqtSignal('QString')
+    chanInviteOnly = QtCore.pyqtSignal('QString')
+    modesUpdated = QtCore.pyqtSignal('QString', 'QString')
+    connected = QtCore.pyqtSignal()
+    userPresentUpdate = QtCore.pyqtSignal('QString', 'QString',
+                                   'QString')
+    cannotSendToChan = QtCore.pyqtSignal('QString', 'QString')
+    tooManyPeeps = QtCore.pyqtSignal()
+    quirkDisable = QtCore.pyqtSignal('QString', 'QString', 'QString')
+dataobjs.py
+class pesterQuirk(object):
+    def __init__(self, quirk):
+        if type(quirk) != dict:
+            raise ValueError("Quirks must be given a dictionary")
+        self.quirk = quirk
+        self.type = self.quirk["type"]
+        if "on" not in self.quirk:
+            self.quirk["on"] = True
+        self.on = self.quirk["on"]
+        if "group" not in self.quirk:
+            self.quirk["group"] = "Miscellaneous"
+        self.group = self.quirk["group"]
+    def apply(self, string, first=False, last=False):
+        if not self.on:
+            return string
+        elif self.type == "prefix":
+            return self.quirk["value"] + string
+        elif self.type == "suffix":
+            return string + self.quirk["value"]
+        elif self.type == "replace":
+            return string.replace(self.quirk["from"], self.quirk["to"])
+        elif self.type == "regexp":
+            fr = self.quirk["from"]
+            if not first and len(fr) > 0 and fr[0] == "^":
+                return string
+            if not last and len(fr) > 0 and fr[len(fr)-1] == "$":
+                return string
+            to = self.quirk["to"]
+            pt = parseRegexpFunctions(to)
+            return re.sub(fr, pt.expand, string)
+        elif self.type == "random":
+            if len(self.quirk["randomlist"]) == 0:
+                return string
+            fr = self.quirk["from"]
+            if not first and len(fr) > 0 and fr[0] == "^":
+                return string
+            if not last and len(fr) > 0 and fr[len(fr)-1] == "$":
+                return string
+            def randomrep(mo):
+                choice = random.choice(self.quirk["randomlist"])
+                pt = parseRegexpFunctions(choice)
+                return pt.expand(mo)
+            return re.sub(self.quirk["from"], randomrep, string)
+        elif self.type == "spelling":
+            percentage = self.quirk["percentage"]/100.0
+            words = string.split(" ")
+            newl = []
+            ctag = re.compile("(</?c=?.*?>)", re.I)
+            for w in words:
+                p = random.random()
+                if not ctag.search(w) and p < percentage:
+                    newl.append(mispeller(w))
+                elif p < percentage:
+                    split = ctag.split(w)
+                    tmp = []
+                    for s in split:
+                        if s and not ctag.search(s):
+                            tmp.append(mispeller(s))
+                        else:
+                            tmp.append(s)
+                    newl.append("".join(tmp))
+                else:
+                    newl.append(w)
+            return " ".join(newl)
+
+    def __str__(self):
+        if self.type == "prefix":
+            return "BEGIN WITH: %s" % (self.quirk["value"])
+        elif self.type == "suffix":
+            return "END WITH: %s" % (self.quirk["value"])
+        elif self.type == "replace":
+            return "REPLACE %s WITH %s" % (self.quirk["from"], self.quirk["to"])
+        elif self.type == "regexp":
+            return "REGEXP: %s REPLACED WITH %s" % (self.quirk["from"], self.quirk["to"])
+        elif self.type == "random":
+            return "REGEXP: %s RANDOMLY REPLACED WITH %s" % (self.quirk["from"], [r for r in self.quirk["randomlist"]])
+        elif self.type == "spelling":
+            return "MISPELLER: %d%%" % (self.quirk["percentage"])
+generic.py
+class NoneSound(object):
+    def play(self): pass
+    def setVolume(self, v): pass
+mood.py
+class Mood(object):
+    moods = ["chummy", "rancorous", "offline", "pleasant", "distraught",
+             "pranky", "smooth", "ecstatic", "relaxed", "discontent",
+             "devious", "sleek", "detestful", "mirthful", "manipulative",
+             "vigorous", "perky", "acceptant", "protective", "mystified",
+             "amazed", "insolent", "bemused" ]
+    moodcats = ["chums", "trolls", "other"]
+    revmoodcats = {'discontent': 'trolls', 'insolent': 'chums', 'rancorous': 'chums', 'sleek': 'trolls', 'bemused': 'chums', 'mystified': 'chums', 'pranky': 'chums', 'distraught': 'chums', 'offline': 'chums', 'chummy': 'chums', 'protective': 'other', 'vigorous': 'trolls', 'ecstatic': 'trolls', 'relaxed': 'trolls', 'pleasant': 'chums', 'manipulative': 'trolls', 'detestful': 'trolls', 'smooth': 'chums', 'mirthful': 'trolls', 'acceptant': 'trolls', 'perky': 'trolls', 'devious': 'trolls', 'amazed': 'chums'}
+
+    def __init__(self, mood):
+        if type(mood) is int:
+            self.mood = mood
+        else:
+            self.mood = self.moods.index(mood)
+    def value(self):
+        return self.mood
+    def name(self):
+        try:
+            name = self.moods[self.mood]
+        except IndexError:
+            name = "chummy"
+        return name
+    def icon(self, theme):
+        try:
+            f = theme["main/chums/moods"][self.name()]["icon"]
+        except KeyError:
+            return PesterIcon(theme["main/chums/moods/chummy/icon"])
+        return PesterIcon(f)
+menus.py
+class PesterChooseTheme(QtWidgets.QDialog):
+    def __init__(self, config, theme, parent):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.config = config
+        self.theme = theme
+        self.parent = parent
+        self.setStyleSheet(self.theme["main/defaultwindow/style"])
+        self.setWindowTitle("Pick a theme")
+
+        instructions = QtWidgets.QLabel("Pick a theme:")
+
+        avail_themes = config.availableThemes()
+        self.themeBox = QtWidgets.QComboBox(self)
+        for (i, t) in enumerate(avail_themes):
+            self.themeBox.addItem(t)
+            if t == theme.name:
+                self.themeBox.setCurrentIndex(i)
+
+        self.ok = QtWidgets.QPushButton("OK", self, clicked=self.accept)
+        self.ok.setDefault(True)
+        self.cancel = QtWidgets.QPushButton("CANCEL", self, clicked=self.reject)
+        layout_ok = QtWidgets.QHBoxLayout()
+        layout_ok.addWidget(self.cancel)
+        layout_ok.addWidget(self.ok)
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_0.addWidget(instructions)
+        layout_0.addWidget(self.themeBox)
+        layout_0.addLayout(layout_ok)
+
+        self.setLayout(layout_0)
+
+        self.accepted.connect(parent.themeSelected)
+        self.rejected.connect(parent.closeTheme)
+logviewer.py
+class PesterLogViewer(QtWidgets.QDialog):
+    def __init__(self, chum, config, theme, parent):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.setModal(False)
+        self.config = config
+        self.theme = theme
+        self.parent = parent
+        self.mainwindow = parent
+        global _datadir
+        self.handle = parent.profile().handle
+        self.chum = chum
+        self.convos = {}
+        self.logpath = _datadir+"logs"
+
+        self.setStyleSheet(self.theme["main/defaultwindow/style"])
+        self.setWindowTitle("Pesterlogs with " + self.chum)
+
+        self.format = "bbcode"
+        if os.path.exists("%s/%s/%s/%s" % (self.logpath, self.handle, chum, self.format)):
+            self.logList = os.listdir("%s/%s/%s/%s/" % (self.logpath, self.handle, self.chum, self.format))
+        else:
+            self.logList = []
+
+        if not os.path.exists("%s/%s/%s/%s" % (self.logpath, self.handle, chum, self.format)) or len(self.logList) == 0:
+            instructions = QtWidgets.QLabel("No Pesterlogs were found")
+
+            self.ok = QtWidgets.QPushButton("CLOSE", self, clicked=self.reject)
+            self.ok.setDefault(True)
+            layout_ok = QtWidgets.QHBoxLayout()
+            layout_ok.addWidget(self.ok)
+
+            layout_0 = QtWidgets.QVBoxLayout()
+            layout_0.addWidget(instructions)
+            layout_0.addLayout(layout_ok)
+
+            self.setLayout(layout_0)
+        else:
+            self.instructions = QtWidgets.QLabel("Pesterlog with " +self.chum+ " on")
+
+            self.textArea = PesterLogText(theme, self.parent)
+            self.textArea.setReadOnly(True)
+            self.textArea.setFixedWidth(600)
+            if "convo/scrollbar" in theme:
+                self.textArea.setStyleSheet("QTextEdit { width:500px; %s } QScrollBar:vertical { %s } QScrollBar::handle:vertical { %s } QScrollBar::add-line:vertical { %s } QScrollBar::sub-line:vertical { %s } QScrollBar:up-arrow:vertical { %s } QScrollBar:down-arrow:vertical { %s }" % (theme["convo/textarea/style"], theme["convo/scrollbar/style"], theme["convo/scrollbar/handle"], theme["convo/scrollbar/downarrow"], theme["convo/scrollbar/uparrow"], theme["convo/scrollbar/uarrowstyle"], theme["convo/scrollbar/darrowstyle"] ))
+            else:
+                self.textArea.setStyleSheet("QTextEdit { width:500px; %s }" % (theme["convo/textarea/style"]))
+
+            self.logList.sort()
+            self.logList.reverse()
+
+            self.tree = RightClickTree()
+            self.tree.optionsMenu = QtWidgets.QMenu(self)
+            self.tree.setFixedSize(260, 300)
+            self.tree.header().hide()
+            if "convo/scrollbar" in theme:
+                self.tree.setStyleSheet("QTreeWidget { %s } QScrollBar:vertical { %s } QScrollBar::handle:vertical { %s } QScrollBar::add-line:vertical { %s } QScrollBar::sub-line:vertical { %s } QScrollBar:up-arrow:vertical { %s } QScrollBar:down-arrow:vertical { %s }" % (theme["convo/textarea/style"], theme["convo/scrollbar/style"], theme["convo/scrollbar/handle"], theme["convo/scrollbar/downarrow"], theme["convo/scrollbar/uparrow"], theme["convo/scrollbar/uarrowstyle"], theme["convo/scrollbar/darrowstyle"] ))
+            else:
+                self.tree.setStyleSheet("%s" % (theme["convo/textarea/style"]))
+            self.tree.itemSelectionChanged.connect(self.loadSelectedLog)
+            self.tree.setSortingEnabled(False)
+
+            child_1 = None
+            last = ["",""]
+            for (i,l) in enumerate(self.logList):
+                my = self.fileToMonthYear(l)
+                if my[0] != last[0]:
+                    child_1 = QtWidgets.QTreeWidgetItem(["%s %s" % (my[0], my[1])])
+                    self.tree.addTopLevelItem(child_1)
+                    if i == 0:
+                        child_1.setExpanded(True)
+                child_1.addChild(QtWidgets.QTreeWidgetItem([self.fileToTime(l)]))
+                last = self.fileToMonthYear(l)
+
+            self.hilight = PesterLogHighlighter(self.textArea)
+            if len(self.logList) > 0: self.loadLog(self.logList[0])
+
+            self.search = PesterLogSearchInput(theme, self)
+            self.search.setFocus()
+            self.find = QtWidgets.QPushButton("Find", self)
+            font = self.find.font()
+            font.setPointSize(8)
+            self.find.setFont(font)
+            self.find.setDefault(True)
+            self.find.setFixedSize(40, 20)
+            layout_search = QtWidgets.QHBoxLayout()
+            layout_search.addWidget(self.search)
+            layout_search.addWidget(self.find)
+
+            self.qdb = QtWidgets.QPushButton("Pesterchum QDB", self, clicked=self.openQDB)
+            self.qdb.setFixedWidth(260)
+            self.ok = QtWidgets.QPushButton("CLOSE", self, clicked=self.reject)
+            self.ok.setFixedWidth(80)
+            layout_ok = QtWidgets.QHBoxLayout()
+            layout_ok.addWidget(self.qdb)
+            layout_ok.addWidget(self.ok)
+            layout_ok.setAlignment(self.ok, QtCore.Qt.AlignRight)
+
+            layout_logs = QtWidgets.QHBoxLayout()
+            layout_logs.addWidget(self.tree)
+            layout_right = QtWidgets.QVBoxLayout()
+            layout_right.addWidget(self.textArea)
+            layout_right.addLayout(layout_search)
+            layout_logs.addLayout(layout_right)
+
+            layout_0 = QtWidgets.QVBoxLayout()
+            layout_0.addWidget(self.instructions)
+            layout_0.addLayout(layout_logs)
+            layout_0.addLayout(layout_ok)
+
+            self.setLayout(layout_0)
+
+    @QtCore.pyqtSlot()
+    def loadSelectedLog(self):
+        if len(self.tree.currentItem().text(0)) > len("September 2011"):
+            self.loadLog(self.timeToFile(self.tree.currentItem().text(0)))
+
+    @QtCore.pyqtSlot()
+    def openQDB(self):
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl("http://qdb.pesterchum.net/index.php?p=browse", QtCore.QUrl.TolerantMode))
+
+    def loadLog(self, fname):
+        fp = codecs.open("%s/%s/%s/%s/%s" % (self.logpath, self.handle, self.chum, self.format, fname), encoding='utf-8', mode='r')
+        self.textArea.clear()
+        for line in fp:
+            cline = line.replace("\r\n", "").replace("[/color]","</c>").replace("[url]","").replace("[/url]","")
+            cline = re.sub("\[color=(#.{6})]", r"<c=\1>", cline)
+            self.textArea.append(convertTags(cline))
+        textCur = self.textArea.textCursor()
+        textCur.movePosition(1)
+        self.textArea.setTextCursor(textCur)
+        self.instructions.setText("Pesterlog with " +self.chum+ " on " + self.fileToTime(str(fname)))
+
+    def logSearch(self, search):
+        self.hilight.searchTerm = search
+        self.hilight.rehighlight()
+
+    def fileToMonthYear(self, fname):
+        time = strptime(fname[(fname.index(".")+1):fname.index(".txt")], "%Y-%m-%d.%H.%M")
+        return [strftime("%B", time), strftime("%Y", time)]
+    def fileToTime(self, fname):
+        timestr = fname[(fname.index(".")+1):fname.index(".txt")]
+        return strftime("%a %d %b %Y %H %M", strptime(timestr, "%Y-%m-%d.%H.%M"))
+    def timeToFile(self, time):
+        return self.chum + strftime(".%Y-%m-%d.%H.%M.txt", strptime(str(time), "%a %d %b %Y %H %M"))
+mood.py
+class PesterMoodButton(QtWidgets.QPushButton):
+    def __init__(self, parent, **options):
+        icon = PesterIcon(options["icon"])
+        QtWidgets.QPushButton.__init__(self, icon, options["text"], parent)
+        self.setIconSize(icon.realsize())
+        self.setFlat(True)
+        self.resize(*options["size"])
+        self.move(*options["loc"])
+        self.unselectedSheet = options["style"]
+        self.selectedSheet = options["selected"]
+        self.setStyleSheet(self.unselectedSheet)
+        self.mainwindow = parent
+        self.mood = Mood(options["mood"])
+    def setSelected(self, selected):
+        if selected:
+            self.setStyleSheet(self.selectedSheet)
+        else:
+            self.setStyleSheet(self.unselectedSheet)
+    @QtCore.pyqtSlot()
+    def updateMood(self):
+        # updates OUR mood
+        self.moodUpdated.emit(self.mood.value())
+    moodUpdated = QtCore.pyqtSignal(int)
+toast.py
+class PesterToastMachine(ToastMachine, QtCore.QObject):
+    def __init__(self, parent, name, on=True, type="default",
+                 types=({'default'  : DefaultToast,
+                        'libnotify' : pynotify.Notification}
+                        if pynotify else
+                        {'default' : DefaultToast}),
+                 extras={}):
+        ToastMachine.__init__(self, parent, name, on, type, types, extras)
+        QtCore.QObject.__init__(self, parent)
+
+    def setEnabled(self, on):
+        oldon = self.on
+        ToastMachine.setEnabled(self, on)
+        if oldon != self.on:
+            self.parent.config.set('notify', self.on)
+            if self.on:
+                self.timer.start()
+            else:
+                self.timer.stop()
+
+    def setCurrentType(self, type):
+        oldtype = self.type
+        ToastMachine.setCurrentType(self, type)
+        if oldtype != self.type:
+            self.parent.config.set('notifyType', self.type)
+
+    @QtCore.pyqtSlot()
+    def showNext(self):
+        ToastMachine.showNext(self)
+
+    def run(self):
+        pass
+        #~ self.timer = QtCore.QTimer(self)
+        #~ self.timer.setInterval(1000)
+        #~ self.timer.timeout.connect(self.showNext)
+        #~ if self.on:
+            #~ self.timer.start()
+menus.py
+class AddChumDialog(QtWidgets.QDialog):
+    def __init__(self, avail_groups, parent=None):
+        QtWidgets.QDialog.__init__(self, parent)
+
+        self.mainwindow = parent
+        self.setStyleSheet(self.mainwindow.theme["main/defaultwindow/style"])
+        self.setWindowTitle("Enter Chum Handle")
+        self.setModal(True)
+
+        self.title = QtWidgets.QLabel("Enter Chum Handle")
+        self.chumBox = QtWidgets.QLineEdit(self)
+        self.groupBox = QtWidgets.QComboBox(self)
+        avail_groups.sort()
+        avail_groups.pop(avail_groups.index("Chums"))
+        avail_groups.insert(0, "Chums")
+        for g in avail_groups:
+            self.groupBox.addItem(g)
+        self.newgrouplabel = QtWidgets.QLabel("Or make a new group:")
+        self.newgroup = QtWidgets.QLineEdit(self)
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_0.addWidget(self.title)
+        layout_0.addWidget(self.chumBox)
+        layout_0.addWidget(self.groupBox)
+        layout_0.addWidget(self.newgrouplabel)
+        layout_0.addWidget(self.newgroup)
+
+        self.ok = QtWidgets.QPushButton("OK", self, clicked=self.accept)
+        self.ok.setDefault(True)
+        self.cancel = QtWidgets.QPushButton("CANCEL", self, clicked=self.reject)
+        layout_2 = QtWidgets.QHBoxLayout()
+        layout_2.addWidget(self.cancel)
+        layout_2.addWidget(self.ok)
+
+        layout_0.addLayout(layout_2)
+
+        self.setLayout(layout_0)
+convo.py
+class PesterTabWindow(QtWidgets.QFrame):
+    def __init__(self, mainwindow, parent=None, convo="convo"):
+        QtWidgets.QFrame.__init__(self, parent)
+        self.setAttribute(QtCore.Qt.WA_QuitOnClose, False)
+        self.setFocusPolicy(QtCore.Qt.ClickFocus)
+        self.mainwindow = mainwindow
+
+        self.tabs = QtWidgets.QTabBar(self)
+        self.tabs.setMovable(True)
+        self.tabs.setTabsClosable(True)
+        self.tabs.currentChanged.connect(self.changeTab)
+        self.tabs.tabCloseRequested.connect(self.tabClose)
+        self.tabs.tabMoved.connect(self.tabMoved)
+
+        self.initTheme(self.mainwindow.theme)
+        self.layout = QtWidgets.QVBoxLayout()
+        self.layout.setContentsMargins(0,0,0,0)
+        self.layout.addWidget(self.tabs)
+        self.setLayout(self.layout)
+        self.convos = {}
+        self.tabIndices = {}
+        self.currentConvo = None
+        self.changedTab = False
+        self.softclose = False
+
+        self.type = convo
+
+        # get default tab color i guess
+        self.defaultTabTextColor = self.getTabTextColor()
+
+    def getTabTextColor(self):
+        # ugly, ugly hack
+        self.changedTab = True
+        i = self.tabs.addTab(".")
+        c = self.tabs.tabTextColor(i)
+        self.tabs.removeTab(i)
+        self.changedTab = False
+        return c
+    def addChat(self, convo):
+        self.convos[convo.title()] = convo
+        # either addTab or setCurrentIndex will trigger changed()
+        newindex = self.tabs.addTab(convo.title())
+        self.tabIndices[convo.title()] = newindex
+        self.tabs.setCurrentIndex(newindex)
+        self.tabs.setTabIcon(newindex, convo.icon())
+    def showChat(self, handle):
+        tabi = self.tabIndices[handle]
+        if self.tabs.currentIndex() == tabi:
+            self.activateWindow()
+            self.raise_()
+            self.convos[handle].raiseChat()
+        else:
+            self.tabs.setCurrentIndex(tabi)
+
+    def convoHasFocus(self, convo):
+        if ((self.hasFocus() or self.tabs.hasFocus()) and
+            self.tabs.tabText(self.tabs.currentIndex()) == convo.title()):
+            return True
+
+    def keyPressEvent(self, event):
+        keypress = event.key()
+        mods = event.modifiers()
+        if ((mods & QtCore.Qt.ControlModifier) and
+            keypress == QtCore.Qt.Key_Tab):
+            handles = list(self.convos.keys())
+            waiting = self.mainwindow.waitingMessages.waitingHandles()
+            waitinghandles = list(set(handles) & set(waiting))
+            if len(waitinghandles) > 0:
+                nexti = self.tabIndices[waitinghandles[0]]
+            else:
+                nexti = (self.tabIndices[self.currentConvo.title()] + 1) % self.tabs.count()
+            self.tabs.setCurrentIndex(nexti)
+
+    def closeSoft(self):
+        self.softclose = True
+        self.close()
+    def updateBlocked(self, handle):
+        i = self.tabIndices[handle]
+        icon = QtGui.QIcon(self.mainwindow.theme["main/chums/moods/blocked/icon"])
+        self.tabs.setTabIcon(i, icon)
+        if self.tabs.currentIndex() == i:
+            self.setWindowIcon(icon)
+    def updateMood(self, handle, mood, unblocked=False):
+        i = self.tabIndices[handle]
+        if handle in self.mainwindow.config.getBlocklist() and not unblocked:
+            icon = QtGui.QIcon(self.mainwindow.theme["main/chums/moods/blocked/icon"])
+        else:
+            icon = mood.icon(self.mainwindow.theme)
+        self.tabs.setTabIcon(i, icon)
+        if self.tabs.currentIndex() == i:
+            self.setWindowIcon(icon)
+    def closeEvent(self, event):
+        if not self.softclose:
+            while self.tabs.count() > 0:
+                self.tabClose(0)
+        self.windowClosed.emit()
+    def focusInEvent(self, event):
+        # make sure we're not switching tabs!
+        i = self.tabs.tabAt(self.mapFromGlobal(QtGui.QCursor.pos()))
+        if i == -1:
+              i = self.tabs.currentIndex()
+        handle = str(self.tabs.tabText(i))
+        self.clearNewMessage(handle)
+    def convoHasFocus(self, handle):
+        i = self.tabIndices[handle]
+        if (self.tabs.currentIndex() == i and
+            (self.hasFocus() or self.tabs.hasFocus())):
+            return True
+        else:
+            return False
+    def notifyNewMessage(self, handle):
+        i = self.tabIndices[handle]
+        self.tabs.setTabTextColor(i, QtGui.QColor(self.mainwindow.theme["%s/tabs/newmsgcolor" % (self.type)]))
+        convo = self.convos[handle]
+        def func():
+            convo.showChat()
+        self.mainwindow.waitingMessages.addMessage(handle, func)
+        # set system tray
+    def clearNewMessage(self, handle):
+        try:
+            i = self.tabIndices[handle]
+            self.tabs.setTabTextColor(i, self.defaultTabTextColor)
+        except KeyError:
+            pass
+        self.mainwindow.waitingMessages.messageAnswered(handle)
+    def initTheme(self, theme):
+        self.resize(*theme["convo/size"])
+        self.setStyleSheet(theme["convo/tabwindow/style"])
+        self.tabs.setShape(theme["convo/tabs/tabstyle"])
+        self.tabs.setStyleSheet("QTabBar::tab{ %s } QTabBar::tab:selected { %s }" % (theme["convo/tabs/style"], theme["convo/tabs/selectedstyle"]))
+
+    def changeTheme(self, theme):
+        self.initTheme(theme)
+        for c in self.convos.values():
+            tabi = self.tabIndices[c.title()]
+            self.tabs.setTabIcon(tabi, c.icon())
+        currenttabi = self.tabs.currentIndex()
+        if currenttabi >= 0:
+            currentHandle = str(self.tabs.tabText(self.tabs.currentIndex()))
+            self.setWindowIcon(self.convos[currentHandle].icon())
+        self.defaultTabTextColor = self.getTabTextColor()
+
+    @QtCore.pyqtSlot(int)
+    def tabClose(self, i):
+        handle = str(self.tabs.tabText(i))
+        self.mainwindow.waitingMessages.messageAnswered(handle)
+        convo = self.convos[handle]
+        del self.convos[handle]
+        del self.tabIndices[handle]
+        self.tabs.removeTab(i)
+        for (h, j) in self.tabIndices.items():
+            if j > i:
+                self.tabIndices[h] = j-1
+        self.layout.removeWidget(convo)
+        convo.close()
+        if self.tabs.count() == 0:
+            self.close()
+            return
+        if self.currentConvo == convo:
+            currenti = self.tabs.currentIndex()
+            currenth = str(self.tabs.tabText(currenti))
+            self.currentConvo = self.convos[currenth]
+        self.currentConvo.raiseChat()
+
+    @QtCore.pyqtSlot(int)
+    def changeTab(self, i):
+        if i < 0:
+            return
+        if self.changedTab:
+            self.changedTab = False
+            return
+        handle = str(self.tabs.tabText(i))
+        convo = self.convos[handle]
+        if self.currentConvo:
+            self.layout.removeWidget(self.currentConvo)
+        self.currentConvo = convo
+        self.layout.addWidget(convo)
+        self.setWindowIcon(convo.icon())
+        self.setWindowTitle(convo.title())
+        self.activateWindow()
+        self.raise_()
+        convo.raiseChat()
+
+    @QtCore.pyqtSlot(int, int)
+    def tabMoved(self, to, fr):
+        l = self.tabIndices
+        for i in l:
+            if l[i] == fr:
+                oldpos = i
+            if l[i] == to:
+                newpos = i
+        l[oldpos] = to
+        l[newpos] = fr
+
+    windowClosed = QtCore.pyqtSignal()
+menus.py
+class PesterChooseProfile(QtWidgets.QDialog):
+    def __init__(self, userprofile, config, theme, parent, collision=None):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.userprofile = userprofile
+        self.theme = theme
+        self.config = config
+        self.parent = parent
+        self.setStyleSheet(self.theme["main/defaultwindow/style"])
+
+        self.currentHandle = QtWidgets.QLabel("CHANGING FROM %s" % userprofile.chat.handle)
+        self.chumHandle = QtWidgets.QLineEdit(self)
+        self.chumHandle.setMinimumWidth(200)
+        self.chumHandleLabel = QtWidgets.QLabel(self.theme["main/mychumhandle/label/text"], self)
+        self.chumColorButton = QtWidgets.QPushButton(self, clicked=self.openColorDialog)
+        self.chumColorButton.resize(50, 20)
+        self.chumColorButton.setStyleSheet("background: %s" % (userprofile.chat.colorhtml()))
+        self.chumcolor = userprofile.chat.color
+        layout_1 = QtWidgets.QHBoxLayout()
+        layout_1.addWidget(self.chumHandleLabel)
+        layout_1.addWidget(self.chumHandle)
+        layout_1.addWidget(self.chumColorButton)
+
+        # available profiles?
+        avail_profiles = self.config.availableProfiles()
+        if avail_profiles:
+            self.profileBox = QtWidgets.QComboBox(self)
+            self.profileBox.addItem("Choose a profile...")
+            for p in avail_profiles:
+                self.profileBox.addItem(p.chat.handle)
+        else:
+            self.profileBox = None
+
+        self.defaultcheck = QtWidgets.QCheckBox(self)
+        self.defaultlabel = QtWidgets.QLabel("Set This Profile As Default", self)
+        layout_2 = QtWidgets.QHBoxLayout()
+        layout_2.addWidget(self.defaultlabel)
+        layout_2.addWidget(self.defaultcheck)
+
+        self.ok = QtWidgets.QPushButton("OK", self, clicked=self.validateProfile)
+        self.ok.setDefault(True)
+        self.cancel = QtWidgets.QPushButton("CANCEL", self, clicked=self.reject)
+        if not collision and avail_profiles:
+            self.delete = QtWidgets.QPushButton("DELETE", self, clicked=self.deleteProfile)
+        layout_ok = QtWidgets.QHBoxLayout()
+        layout_ok.addWidget(self.cancel)
+        layout_ok.addWidget(self.ok)
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        if collision:
+            collision_warning = QtWidgets.QLabel("%s is taken already! Pick a new profile." % (collision))
+            layout_0.addWidget(collision_warning)
+        else:
+            layout_0.addWidget(self.currentHandle, alignment=QtCore.Qt.AlignHCenter)
+        layout_0.addLayout(layout_1)
+        if avail_profiles:
+            profileLabel = QtWidgets.QLabel("Or choose an existing profile:", self)
+            layout_0.addWidget(profileLabel)
+            layout_0.addWidget(self.profileBox)
+        layout_0.addLayout(layout_ok)
+        if not collision and avail_profiles:
+            layout_0.addWidget(self.delete)
+        layout_0.addLayout(layout_2)
+        self.errorMsg = QtWidgets.QLabel(self)
+        self.errorMsg.setStyleSheet("color:red;")
+        layout_0.addWidget(self.errorMsg)
+        self.setLayout(layout_0)
+
+        self.accepted.connect(parent.profileSelected)
+        self.rejected.connect(parent.closeProfile)
+
+    @QtCore.pyqtSlot()
+    def openColorDialog(self):
+        self.colorDialog = QtWidgets.QColorDialog(self)
+        color = self.colorDialog.getColor(initial=self.userprofile.chat.color)
+        self.chumColorButton.setStyleSheet("background: %s" % color.name())
+        self.chumcolor = color
+        self.colorDialog = None
+
+    @QtCore.pyqtSlot()
+    def validateProfile(self):
+        if not self.profileBox or self.profileBox.currentIndex() == 0:
+            handle = str(self.chumHandle.text())
+            if not PesterProfile.checkLength(handle):
+                self.errorMsg.setText("PROFILE HANDLE IS TOO LONG")
+                return
+            if not PesterProfile.checkValid(handle)[0]:
+                self.errorMsg.setText("NOT A VALID CHUMTAG. REASON:\n%s" % (PesterProfile.checkValid(handle)[1]))
+                return
+        self.accept()
+
+    @QtCore.pyqtSlot()
+    def deleteProfile(self):
+        if self.profileBox and self.profileBox.currentIndex() > 0:
+            handle = str(self.profileBox.currentText())
+            if handle == self.parent.profile().handle:
+                problem = QtWidgets.QMessageBox()
+                problem.setStyleSheet(self.theme["main/defaultwindow/style"])
+                problem.setWindowTitle("Problem!")
+                problem.setInformativeText("You can't delete the profile you're currently using!")
+                problem.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                problem.exec_()
+                return
+            msgbox = QtWidgets.QMessageBox()
+            msgbox.setStyleSheet(self.theme["main/defaultwindow/style"])
+            msgbox.setWindowTitle("WARNING!")
+            msgbox.setInformativeText("Are you sure you want to delete the profile: %s" % (handle))
+            msgbox.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
+            ret = msgbox.exec_()
+            if ret == QtWidgets.QMessageBox.Ok:
+                try:
+                    remove(_datadir+"profiles/%s.js" % (handle))
+                except OSError:
+                    problem = QtWidgets.QMessageBox()
+                    problem.setStyleSheet(self.theme["main/defaultwindow/style"])
+                    problem.setWindowTitle("Problem!")
+                    problem.setInformativeText("There was a problem deleting the profile: %s" % (handle))
+                    problem.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                    problem.exec_()
+generic.py
+class PesterIcon(QtGui.QIcon):
+    def __init__(self, *x):
+        QtGui.QIcon.__init__(self, x[0])
+        if type(x[0]) in [str]:
+            self.icon_pixmap = QtGui.QPixmap(x[0])
+        else:
+            self.icon_pixmap = None
+    def realsize(self):
+        if self.icon_pixmap:
+            return self.icon_pixmap.size()
+        else:
+            try:
+                return self.availableSizes()[0]
+            except IndexError:
+                return None
+menus.py
+class LoadingScreen(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        QtWidgets.QDialog.__init__(self, parent, (QtCore.Qt.CustomizeWindowHint |
+                                              QtCore.Qt.FramelessWindowHint))
+        self.mainwindow = parent
+        self.setStyleSheet(self.mainwindow.theme["main/defaultwindow/style"])
+
+        self.loadinglabel = QtWidgets.QLabel("CONN3CT1NG", self)
+        self.cancel = QtWidgets.QPushButton("QU1T >:?", self, clicked=self.reject)
+        self.ok = QtWidgets.QPushButton("R3CONN3CT >:]", self, clicked=self.tryAgain)
+
+        self.layout = QtWidgets.QVBoxLayout()
+        self.layout.addWidget(self.loadinglabel)
+        layout_1 = QtWidgets.QHBoxLayout()
+        layout_1.addWidget(self.cancel)
+        layout_1.addWidget(self.ok)
+        self.layout.addLayout(layout_1)
+        self.setLayout(self.layout)
+
+    def hideReconnect(self):
+        self.ok.hide()
+    def showReconnect(self):
+        self.ok.show()
+
+    tryAgain = QtCore.pyqtSignal()
+convo.py
+class PesterConvo(QtWidgets.QFrame):
+    def __init__(self, chum, initiated, mainwindow, parent=None):
+        QtWidgets.QFrame.__init__(self, parent)
+        self.setAttribute(QtCore.Qt.WA_QuitOnClose, False)
+        self.setObjectName(chum.handle)
+        self.setFocusPolicy(QtCore.Qt.ClickFocus)
+        self.chum = chum
+        self.mainwindow = mainwindow
+        theme = self.mainwindow.theme
+        self.resize(*theme["convo/size"])
+        self.setStyleSheet("QFrame#%s { %s }" % (chum.handle, theme["convo/style"]))
+        self.setWindowIcon(self.icon())
+        self.setWindowTitle(self.title())
+
+        t = Template(self.mainwindow.theme["convo/chumlabel/text"])
+
+        self.chumLabel = QtWidgets.QLabel(t.safe_substitute(handle=chum.handle), self)
+        self.chumLabel.setStyleSheet(self.mainwindow.theme["convo/chumlabel/style"])
+        self.chumLabel.setAlignment(self.aligndict["h"][self.mainwindow.theme["convo/chumlabel/align/h"]] | self.aligndict["v"][self.mainwindow.theme["convo/chumlabel/align/v"]])
+        self.chumLabel.setMaximumHeight(self.mainwindow.theme["convo/chumlabel/maxheight"])
+        self.chumLabel.setMinimumHeight(self.mainwindow.theme["convo/chumlabel/minheight"])
+        self.chumLabel.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding))
+        self.textArea = PesterText(self.mainwindow.theme, self)
+        self.textInput = PesterInput(self.mainwindow.theme, self)
+        self.textInput.setFocus()
+
+        self.textInput.returnPressed.connect(self.sentMessage)
+
+        self.layout = QtWidgets.QVBoxLayout()
+        self.layout.addWidget(self.chumLabel)
+        self.layout.addWidget(self.textArea)
+        self.layout.addWidget(self.textInput)
+        self.layout.setSpacing(0)
+        margins = self.mainwindow.theme["convo/margins"]
+        self.layout.setContentsMargins(margins["left"], margins["top"],
+                                      margins["right"], margins["bottom"])
+
+        self.setLayout(self.layout)
+
+        self.optionsMenu = QtWidgets.QMenu(self)
+        self.optionsMenu.setStyleSheet(self.mainwindow.theme["main/defaultwindow/style"])
+        self.addChumAction = QtWidgets.QAction(self.mainwindow.theme["main/menus/rclickchumlist/addchum"], self, triggered=self.addThisChum)
+        self.blockAction = QtWidgets.QAction(self.mainwindow.theme["main/menus/rclickchumlist/blockchum"], self, triggered=self.blockThisChum)
+        self.quirksOff = QtWidgets.QAction(self.mainwindow.theme["main/menus/rclickchumlist/quirksoff"], self, toggled=self.toggleQuirks)
+        self.quirksOff.setCheckable(True)
+        self.oocToggle = QtWidgets.QAction(self.mainwindow.theme["main/menus/rclickchumlist/ooc"], self, toggled=self.toggleOOC)
+        self.oocToggle.setCheckable(True)
+        self.unblockchum = QtWidgets.QAction(self.mainwindow.theme["main/menus/rclickchumlist/unblockchum"], self, triggered=self.unblockChumSlot)
+        self.reportchum = QtWidgets.QAction(self.mainwindow.theme["main/menus/rclickchumlist/report"], self, triggered=self.reportThisChum)
+        self.logchum = QtWidgets.QAction(self.mainwindow.theme["main/menus/rclickchumlist/viewlog"], self, triggered=self.openChumLogs)
+
+        self.optionsMenu.addAction(self.quirksOff)
+        self.optionsMenu.addAction(self.oocToggle)
+        self.optionsMenu.addAction(self.logchum)
+        self.optionsMenu.addAction(self.addChumAction)
+        self.optionsMenu.addAction(self.blockAction)
+        self.optionsMenu.addAction(self.reportchum)
+
+        self.chumopen = False
+        self.applyquirks = True
+        self.ooc = False
+
+        if parent:
+            parent.addChat(self)
+        if initiated:
+            msg = self.mainwindow.profile().pestermsg(self.chum, QtGui.QColor(self.mainwindow.theme["convo/systemMsgColor"]), self.mainwindow.theme["convo/text/beganpester"])
+            self.setChumOpen(True)
+            self.textArea.append(convertTags(msg))
+            self.mainwindow.chatlog.log(self.title(), msg)
+        self.newmessage = False
+        self.history = PesterHistory()
+
+    def title(self):
+        return self.chum.handle
+    def icon(self):
+        return self.chum.mood.icon(self.mainwindow.theme)
+    def myUpdateMood(self, mood):
+        chum = self.mainwindow.profile()
+        syscolor = QtGui.QColor(self.mainwindow.theme["convo/systemMsgColor"])
+        msg = chum.moodmsg(mood, syscolor, self.mainwindow.theme)
+        self.textArea.append(convertTags(msg))
+        self.mainwindow.chatlog.log(self.title(), msg)
+
+    def updateMood(self, mood, unblocked=False, old=None):
+        syscolor = QtGui.QColor(self.mainwindow.theme["convo/systemMsgColor"])
+        #~ if mood.name() == "offline" and self.chumopen == True and not unblocked:
+            #~ self.mainwindow.ceasesound.play()
+            #~ msg = self.chum.pestermsg(self.mainwindow.profile(), syscolor, self.mainwindow.theme["convo/text/ceasepester"])
+            #~ self.textArea.append(convertTags(msg))
+            #~ self.mainwindow.chatlog.log(self.title(), msg)
+            #~ self.chumopen = False
+        if old and old.name() != mood.name():
+            msg = self.chum.moodmsg(mood, syscolor, self.mainwindow.theme)
+            self.textArea.append(convertTags(msg))
+            self.mainwindow.chatlog.log(self.title(), msg)
+        if self.parent():
+            self.parent().updateMood(self.title(), mood, unblocked)
+        else:
+            if self.chum.blocked(self.mainwindow.config) and not unblocked:
+                self.setWindowIcon(QtGui.QIcon(self.mainwindow.theme["main/chums/moods/blocked/icon"]))
+                self.optionsMenu.addAction(self.unblockchum)
+                self.optionsMenu.removeAction(self.blockAction)
+            else:
+                self.setWindowIcon(mood.icon(self.mainwindow.theme))
+                self.optionsMenu.removeAction(self.unblockchum)
+                self.optionsMenu.addAction(self.blockAction)
+        # print mood update?
+    def updateBlocked(self):
+        if self.parent():
+            self.parent().updateBlocked(self.title())
+        else:
+            self.setWindowIcon(QtGui.QIcon(self.mainwindow.theme["main/chums/moods/blocked/icon"]))
+        self.optionsMenu.addAction(self.unblockchum)
+        self.optionsMenu.removeAction(self.blockAction)
+
+    def updateColor(self, color):
+        self.chum.color = color
+    def addMessage(self, msg, me=True):
+        if type(msg) is str:
+            lexmsg = lexMessage(msg)
+        else:
+            lexmsg = msg
+        if me:
+            chum = self.mainwindow.profile()
+        else:
+            chum = self.chum
+            self.notifyNewMessage()
+        self.textArea.addMessage(lexmsg, chum)
+
+    def notifyNewMessage(self):
+        # first see if this conversation HASS the focus
+        if not (self.hasFocus() or self.textArea.hasFocus() or
+                self.textInput.hasFocus() or
+                (self.parent() and self.parent().convoHasFocus(self.title()))):
+            # ok if it has a tabconvo parent, send that the notify.
+            if self.parent():
+                self.parent().notifyNewMessage(self.title())
+                if type(self.parent()).__name__ == "PesterTabWindow":
+                  if self.mainwindow.config.blink() & self.mainwindow.config.PBLINK:
+                    self.mainwindow.gainAttention.emit(self.parent())
+                elif type(self.parent()).__name__ == "MemoTabWindow":
+                  if self.mainwindow.config.blink() & self.mainwindow.config.MBLINK:
+                    self.mainwindow.gainAttention.emit(self.parent())
+            # if not change the window title and update system tray
+            else:
+                self.newmessage = True
+                self.setWindowTitle(self.title()+"*")
+                def func():
+                    self.showChat()
+                self.mainwindow.waitingMessages.addMessage(self.title(), func)
+                if type(self).__name__ == "PesterConvo":
+                  if self.mainwindow.config.blink() & self.mainwindow.config.PBLINK:
+                    self.mainwindow.gainAttention.emit(self)
+                elif type(self).__name__ == "PesterMemo":
+                  if self.mainwindow.config.blink() & self.mainwindow.config.MBLINK:
+                    self.mainwindow.gainAttention.emit(self)
+
+    def clearNewMessage(self):
+        if self.parent():
+            self.parent().clearNewMessage(self.title())
+        elif self.newmessage:
+            self.newmessage = False
+            self.setWindowTitle(self.title())
+            self.mainwindow.waitingMessages.messageAnswered(self.title())
+            # reset system tray
+    def focusInEvent(self, event):
+        self.clearNewMessage()
+        self.textInput.setFocus()
+
+    def raiseChat(self):
+        self.activateWindow()
+        self.raise_()
+        self.textInput.setFocus()
+
+    def showChat(self):
+        if self.parent():
+            self.parent().showChat(self.title())
+        self.raiseChat()
+    def contextMenuEvent(self, event):
+        if event.reason() == QtGui.QContextMenuEvent.Mouse:
+            self.optionsMenu.popup(event.globalPos())
+    def closeEvent(self, event):
+        self.mainwindow.waitingMessages.messageAnswered(self.title())
+        for movie in self.textArea.urls:
+            movie.stop()
+            del movie
+        self.windowClosed.emit(self.title())
+
+    def setChumOpen(self, o):
+        self.chumopen = o
+    def changeTheme(self, theme):
+        self.resize(*theme["convo/size"])
+        self.setStyleSheet("QFrame#%s { %s }" % (self.chum.handle, theme["convo/style"]))
+
+        margins = theme["convo/margins"]
+        self.layout.setContentsMargins(margins["left"], margins["top"],
+                                       margins["right"], margins["bottom"])
+
+        self.setWindowIcon(self.icon())
+        t = Template(self.mainwindow.theme["convo/chumlabel/text"])
+        self.chumLabel.setText(t.safe_substitute(handle=self.title()))
+        self.chumLabel.setStyleSheet(theme["convo/chumlabel/style"])
+        self.chumLabel.setAlignment(self.aligndict["h"][self.mainwindow.theme["convo/chumlabel/align/h"]] | self.aligndict["v"][self.mainwindow.theme["convo/chumlabel/align/v"]])
+        self.chumLabel.setMaximumHeight(self.mainwindow.theme["convo/chumlabel/maxheight"])
+        self.chumLabel.setMinimumHeight(self.mainwindow.theme["convo/chumlabel/minheight"])
+        self.chumLabel.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Expanding))
+        self.quirksOff.setText(self.mainwindow.theme["main/menus/rclickchumlist/quirksoff"])
+        self.addChumAction.setText(self.mainwindow.theme["main/menus/rclickchumlist/addchum"])
+        self.blockAction.setText(self.mainwindow.theme["main/menus/rclickchumlist/blockchum"])
+        self.unblockchum.setText(self.mainwindow.theme["main/menus/rclickchumlist/unblockchum"])
+        self.logchum.setText(self.mainwindow.theme["main/menus/rclickchumlist/viewlog"])
+
+        self.textArea.changeTheme(theme)
+        self.textInput.changeTheme(theme)
+
+
+    @QtCore.pyqtSlot()
+    def sentMessage(self):
+        text = str(self.textInput.text())
+        if text == "" or text[0:11] == "PESTERCHUM:":
+            return
+        oocDetected = oocre.match(text.strip())
+        if self.ooc and not oocDetected:
+            text = "(( %s ))" % (text)
+        self.history.add(text)
+        quirks = self.mainwindow.userprofile.quirks
+        lexmsg = lexMessage(text)
+        if type(lexmsg[0]) is not mecmd and self.applyquirks and not (self.ooc or oocDetected):
+            try:
+                lexmsg = quirks.apply(lexmsg)
+            except:
+                msgbox = QtWidgets.QMessageBox()
+                msgbox.setText("Whoa there! There seems to be a problem.")
+                msgbox.setInformativeText("A quirk seems to be having a problem. (Possibly you're trying to capture a non-existant group?)")
+                msgbox.exec_()
+                return
+        lexmsgs = splitMessage(lexmsg)
+
+        for lm in lexmsgs:
+            serverMsg = copy(lm)
+            self.addMessage(lm, True)
+            # if ceased, rebegin
+            if hasattr(self, 'chumopen') and not self.chumopen:
+                self.mainwindow.newConvoStarted.emit(self.title(), True)
+                self.setChumOpen(True)
+            text = convertTags(serverMsg, "ctag")
+            self.messageSent.emit(text, self.title())
+        self.textInput.setText("")
+
+    @QtCore.pyqtSlot()
+    def addThisChum(self):
+        self.mainwindow.addChum(self.chum)
+    @QtCore.pyqtSlot()
+    def blockThisChum(self):
+        self.mainwindow.blockChum(self.chum.handle)
+    @QtCore.pyqtSlot()
+    def reportThisChum(self):
+        self.mainwindow.reportChum(self.chum.handle)
+    @QtCore.pyqtSlot()
+    def unblockChumSlot(self):
+        self.mainwindow.unblockChum(self.chum.handle)
+    @QtCore.pyqtSlot(bool)
+    def toggleQuirks(self, toggled):
+        self.applyquirks = not toggled
+    @QtCore.pyqtSlot(bool)
+    def toggleOOC(self, toggled):
+        self.ooc = toggled
+    @QtCore.pyqtSlot()
+    def openChumLogs(self):
+        currentChum = self.chum.handle
+        self.mainwindow.chumList.pesterlogviewer = PesterLogViewer(currentChum, self.mainwindow.config, self.mainwindow.theme, self.mainwindow)
+        self.mainwindow.chumList.pesterlogviewer.rejected.connect(self.mainwindow.chumList.closeActiveLog)
+        self.mainwindow.chumList.pesterlogviewer.show()
+        self.mainwindow.chumList.pesterlogviewer.raise_()
+        self.mainwindow.chumList.pesterlogviewer.activateWindow()
+
+    messageSent = QtCore.pyqtSignal('QString', 'QString')
+    windowClosed = QtCore.pyqtSignal('QString')
+
+    aligndict = {"h": {"center": QtCore.Qt.AlignHCenter,
+                       "left": QtCore.Qt.AlignLeft,
+                       "right": QtCore.Qt.AlignRight },
+                 "v": {"center": QtCore.Qt.AlignVCenter,
+                       "top": QtCore.Qt.AlignTop,
+                       "bottom": QtCore.Qt.AlignBottom } }
+toast.py
+class PesterToast(DefaultToast):
+    def __init__(self, machine, title, msg, icon, time=3000, parent=None):
+        logging.info(isinstance(parent, QtWidgets.QWidget))
+        kwds = dict(machine=machine, title=title, msg=msg, icon=icon)
+        super().__init__(parent, **kwds)
+
+        self.machine = machine
+        self.time = time
+
+        if ostools.isWin32():
+            self.setWindowFlags(QtCore.Qt.ToolTip)
+        else:
+            self.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.X11BypassWindowManagerHint | QtCore.Qt.ToolTip)
+
+        self.m_animation = QtCore.QParallelAnimationGroup()
+        anim = QtCore.QPropertyAnimation(self, finished=self.reverseTrigger)
+        anim.setTargetObject(self)
+        self.m_animation.addAnimation(anim)
+        anim.setEasingCurve(QtCore.QEasingCurve.OutBounce)
+        anim.setDuration(1000)
+
+        self.m_animation.setDirection(QtCore.QAnimationGroup.Forward)
+
+        self.title = QtWidgets.QLabel(title, self)
+        self.msg = QtWidgets.QLabel(msg, self)
+        self.content = msg
+        if icon:
+            self.icon = QtWidgets.QLabel("")
+            self.icon.setPixmap(QtGui.QPixmap(icon).scaledToWidth(30))
+        else:
+            self.icon = QtWidgets.QLabel("")
+            self.icon.setPixmap(QtGui.QPixmap(30, 30))
+            self.icon.pixmap().fill(QtGui.QColor(0,0,0,0))
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_0.setContentsMargins(0, 0, 0, 0)
+
+        if self.icon:
+            layout_1 = QtWidgets.QGridLayout()
+            layout_1.addWidget(self.icon, 0,0, 1,1)
+            layout_1.addWidget(self.title, 0,1, 1,7)
+            layout_1.setAlignment(self.msg, QtCore.Qt.AlignTop)
+            layout_0.addLayout(layout_1)
+        else:
+            layout_0.addWidget(self.title)
+        layout_0.addWidget(self.msg)
+
+        self.setMaximumWidth(self.parent().theme["toasts/width"])
+        self.msg.setMaximumWidth(self.parent().theme["toasts/width"])
+        self.title.setMinimumHeight(self.parent().theme["toasts/title/minimumheight"])
+
+        self.setLayout(layout_0)
+
+        self.setGeometry(0,0, self.parent().theme["toasts/width"], self.parent().theme["toasts/height"])
+        self.setStyleSheet(self.parent().theme["toasts/style"])
+        self.title.setStyleSheet(self.parent().theme["toasts/title/style"])
+        if self.icon:
+            self.icon.setStyleSheet(self.parent().theme["toasts/icon/style"])
+        self.msg.setStyleSheet(self.parent().theme["toasts/content/style"])
+        self.layout().setSpacing(0)
+
+        self.msg.setText(PesterToast.wrapText(self.msg.font(), str(self.msg.text()), self.parent().theme["toasts/width"], self.parent().theme["toasts/content/style"]))
+
+        p = QtWidgets.QApplication.desktop().availableGeometry(self).bottomRight()
+        o = QtWidgets.QApplication.desktop().screenGeometry(self).bottomRight()
+        anim.setStartValue(p.y() - o.y())
+        anim.setEndValue(100)
+        anim.valueChanged.connect(self.updateBottomLeftAnimation)
+
+        self.byebye = False
+
+    @QtCore.pyqtSlot()
+    def show(self):
+        self.m_animation.start()
+
+    @QtCore.pyqtSlot()
+    def done(self):
+        QtWidgets.QWidget.hide(self)
+        t = self.machine.toasts[0]
+        if t.title == str(self.title.text()) and \
+           t.msg == str(self.content):
+            self.machine.toasts.pop(0)
+            self.machine.displaying = False
+        if self.machine.on:
+            self.machine.showNext()
+        del self
+
+    @QtCore.pyqtSlot()
+    def reverseTrigger(self):
+        if self.time >= 0:
+            QtCore.QTimer.singleShot(self.time, self.reverseStart)
+
+    @QtCore.pyqtSlot()
+    def reverseStart(self):
+        if not self.byebye:
+            self.byebye = True
+            anim = self.m_animation.animationAt(0)
+            self.m_animation.setDirection(QtCore.QAnimationGroup.Backward)
+            anim.setEasingCurve(QtCore.QEasingCurve.InCubic)
+            anim.finished.disconnect(self.reverseTrigger)
+            anim.finished.connect(self.done)
+            self.m_animation.start()
+
+    @QtCore.pyqtSlot(QtCore.QVariant)
+    def updateBottomLeftAnimation(self, value):
+        p = QtWidgets.QApplication.desktop().availableGeometry(self).bottomRight()
+        val = float(self.height())/100
+        self.move(p.x()-self.width(), p.y() - (value * val) +1)
+        self.layout().setSpacing(0)
+        QtWidgets.QWidget.show(self)
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.RightButton:
+            self.reverseStart()
+        elif event.button() == QtCore.Qt.LeftButton:
+            pass
+
+    @staticmethod
+    def wrapText(font, text, maxwidth, css=""):
+        ret = []
+        metric = QtGui.QFontMetrics(font)
+        if "padding" in css:
+            if css[css.find("padding")+7] != "-":
+                colon = css.find(":", css.find("padding"))
+                semicolon = css.find(";", css.find("padding"))
+                if semicolon < 0:
+                    stuff = css[colon+1:]
+                else:
+                    stuff = css[colon+1:semicolon]
+                stuff = stuff.replace("px", "").lstrip().rstrip()
+                stuff = stuff.split(" ")
+                if len(stuff) == 1:
+                    maxwidth -= int(stuff[0])*2
+                elif len(stuff) == 2:
+                    maxwidth -= int(stuff[1])*2
+                elif len(stuff) == 3:
+                    maxwidth -= int(stuff[1])*2
+                elif len(stuff) == 4:
+                    maxwidth -= int(stuff[1]) + int(stuff[3])
+            else:
+                if "padding-left" in css:
+                    colon = css.find(":", css.find("padding-left"))
+                    semicolon = css.find(";", css.find("padding-left"))
+                    if semicolon < 0:
+                        stuff = css[colon+1:]
+                    else:
+                        stuff = css[colon+1:semicolon]
+                    stuff = stuff.replace("px", "").lstrip().rstrip()
+                    if stuff.isdigit():
+                        maxwidth -= int(stuff)
+                if "padding-right" in css:
+                    colon = css.find(":", css.find("padding-right"))
+                    semicolon = css.find(";", css.find("padding-right"))
+                    if semicolon < 0:
+                        stuff = css[colon+1:]
+                    else:
+                        stuff = css[colon+1:semicolon]
+                    stuff = stuff.replace("px", "").lstrip().rstrip()
+                    if stuff.isdigit():
+                        maxwidth -= int(stuff)
+
+        if metric.width(text) < maxwidth:
+            return text
+        while metric.width(text) > maxwidth:
+            lastspace = text.find(" ")
+            curspace = lastspace
+            while metric.width(text, curspace) < maxwidth:
+                lastspace = curspace
+                curspace = text.find(" ", lastspace+1)
+                if curspace == -1:
+                    break
+            if (metric.width(text[:lastspace]) > maxwidth) or \
+               len(text[:lastspace]) < 1:
+                for i in range(len(text)):
+                    if metric.width(text[:i]) > maxwidth:
+                        lastspace = i-1
+                        break
+            ret.append(text[:lastspace])
+            text = text[lastspace+1:]
+        ret.append(text)
+        return "\n".join(ret)
+generic.py
+class RightClickList(QtWidgets.QListWidget):
+    def contextMenuEvent(self, event):
+        #fuckin Qt
+        if event.reason() == QtGui.QContextMenuEvent.Mouse:
+            listing = self.itemAt(event.pos())
+            self.setCurrentItem(listing)
+            optionsMenu = self.getOptionsMenu()
+            if optionsMenu:
+                optionsMenu.popup(event.globalPos())
+    def getOptionsMenu(self):
+        return self.optionsMenu
+mood.py
+class PesterMoodAction(QtCore.QObject):
+    def __init__(self, m, func):
+        QtCore.QObject.__init__(self)
+        self.mood = m
+        self.func = func
+    @QtCore.pyqtSlot()
+    def updateMood(self):
+        self.func(self.mood)
+dataobjs.py
+class pesterQuirks(object):
+    def __init__(self, quirklist):
+        self.quirklist = []
+        for q in quirklist:
+            self.addQuirk(q)
+    def plainList(self):
+        return [q.quirk for q in self.quirklist]
+    def addQuirk(self, q):
+        if type(q) == dict:
+            self.quirklist.append(pesterQuirk(q))
+        elif type(q) == pesterQuirk:
+            self.quirklist.append(q)
+    def apply(self, lexed, first=False, last=False):
+        prefix = [q for q in self.quirklist if q.type=='prefix']
+        suffix = [q for q in self.quirklist if q.type=='suffix']
+
+        newlist = []
+        for (i, o) in enumerate(lexed):
+            if type(o) not in [str]:
+                if i == 0:
+                    string = " "
+                    for p in prefix:
+                        string += p.apply(string)
+                    newlist.append(string)
+                newlist.append(o)
+                continue
+            lastStr = (i == len(lexed)-1)
+            string = o
+            for q in self.quirklist:
+                if q.type != 'prefix' and q.type != 'suffix':
+                    if q.type == 'regexp' or q.type == 'random':
+                        string = q.apply(string, first=(i==0), last=lastStr)
+                    else:
+                        string = q.apply(string)
+                elif q.type == 'prefix' and i == 0:
+                    string = q.apply(string)
+                elif q.type == 'suffix' and lastStr:
+                    string = q.apply(string)
+            newlist.append(string)
+
+        final = []
+        for n in newlist:
+            if type(n) in [str]:
+                final.extend(lexMessage(n))
+            else:
+                final.append(n)
+        return final
+
+    def __iter__(self):
+        for q in self.quirklist:
+            yield q
+logviewer.py
+class PesterLogUserSelect(QtWidgets.QDialog):
+    def __init__(self, config, theme, parent):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.setModal(False)
+        self.config = config
+        self.theme = theme
+        self.parent = parent
+        self.handle = parent.profile().handle
+        self.logpath = _datadir+"logs"
+
+        self.setStyleSheet(self.theme["main/defaultwindow/style"])
+        self.setWindowTitle("Pesterlogs")
+
+        instructions = QtWidgets.QLabel("Pick a memo or chumhandle:")
+
+        if os.path.exists("%s/%s" % (self.logpath, self.handle)):
+            chumMemoList = os.listdir("%s/%s/" % (self.logpath, self.handle))
+        else:
+            chumMemoList = []
+        chumslist = config.chums()
+        for c in chumslist:
+            if not c in chumMemoList:
+                chumMemoList.append(c)
+        chumMemoList.sort()
+
+        self.chumsBox = RightClickList(self)
+        self.chumsBox.setStyleSheet(self.theme["main/chums/style"])
+        self.chumsBox.optionsMenu = QtWidgets.QMenu(self)
+
+        for (i, t) in enumerate(chumMemoList):
+            item = QtWidgets.QListWidgetItem(t)
+            item.setForeground(QtGui.QBrush(QtGui.QColor(self.theme["main/chums/userlistcolor"])))
+            self.chumsBox.addItem(item)
+
+        self.search = PesterLogSearchInput(theme, self)
+        self.search.setFocus()
+
+        self.cancel = QtWidgets.QPushButton("CANCEL", self, clicked=self.reject)
+        self.ok = QtWidgets.QPushButton("OK", self, clicked=self.viewActivatedLog)
+        self.ok.setDefault(True)
+        layout_ok = QtWidgets.QHBoxLayout()
+        layout_ok.addWidget(self.cancel)
+        layout_ok.addWidget(self.ok)
+        self.directory = QtWidgets.QPushButton("LOG DIRECTORY", self, clicked=self.openDir)
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_0.addWidget(instructions)
+        layout_0.addWidget(self.chumsBox)
+        layout_0.addWidget(self.search)
+        layout_0.addLayout(layout_ok)
+        layout_0.addWidget(self.directory)
+
+        self.setLayout(layout_0)
+
+    def selectedchum(self):
+        return self.chumsBox.currentItem()
+
+    def logSearch(self, search):
+        found = self.chumsBox.findItems(search, QtCore.Qt.MatchStartsWith)
+        if len(found) > 0 and len(found) < self.chumsBox.count():
+            self.chumsBox.setCurrentItem(found[0])
+
+    @QtCore.pyqtSlot()
+    def viewActivatedLog(self):
+        selectedchum = self.selectedchum().text()
+        if not hasattr(self, 'pesterlogviewer'):
+            self.pesterlogviewer = None
+        if not self.pesterlogviewer:
+            self.pesterlogviewer = PesterLogViewer(selectedchum, self.config, self.theme, self.parent)
+            self.pesterlogviewer.rejected.connect(self.closeActiveLog)
+            self.pesterlogviewer.show()
+            self.pesterlogviewer.raise_()
+            self.pesterlogviewer.activateWindow()
+        self.accept()
+
+    @QtCore.pyqtSlot()
+    def closeActiveLog(self):
+        self.pesterlogviewer.close()
+        self.pesterlogviewer = None
+
+    @QtCore.pyqtSlot()
+    def openDir(self):
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl("file:///" + os.path.join(_datadir, "logs"), QtCore.QUrl.TolerantMode))
+menus.py
+class UpdatePesterchum(QtWidgets.QDialog):
+    def __init__(self, ver, url, parent=None):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.url = url
+        self.mainwindow = parent
+        self.setStyleSheet(self.mainwindow.theme["main/defaultwindow/style"])
+        self.setWindowTitle("Pesterchum v%s Update" % (ver))
+        self.setModal(False)
+
+        self.title = QtWidgets.QLabel("An update to Pesterchum is available!")
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_0.addWidget(self.title)
+
+        self.ok = QtWidgets.QPushButton("D0WNL04D 4ND 1NST4LL N0W", self, clicked=self.accept)
+        self.ok.setDefault(True)
+        self.cancel = QtWidgets.QPushButton("CANCEL", self, clicked=self.reject)
+        layout_2 = QtWidgets.QHBoxLayout()
+        layout_2.addWidget(self.cancel)
+        layout_2.addWidget(self.ok)
+
+        layout_0.addLayout(layout_2)
+
+        self.setLayout(layout_0)
+menus.py
+class AboutPesterchum(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.mainwindow = parent
+        self.setStyleSheet(self.mainwindow.theme["main/defaultwindow/style"])
+
+        self.title = QtWidgets.QLabel("P3ST3RCHUM V. %s" % (_pcVersion))
+        self.credits = QtWidgets.QLabel("Programming by:\n\
+  illuminatedwax (ghostDunk)\n\
+  Kiooeht (evacipatedBox)\n\
+  Lexi (lexicalNuance)\n\
+  oakwhiz\n\
+  alGore\n\
+  Cerxi (binaryCabalist)\n\
+\n\
+Art by:\n\
+  Grimlive (aquaMarinist)\n\
+  Cerxi (binaryCabalist)\n\
+\n\
+Special Thanks:\n\
+  ABT\n\
+  gamblingGenocider\n\
+  Eco-Mono")
+
+        self.ok = QtWidgets.QPushButton("OK", self, clicked=self.reject)
+
+        layout_0 = QtWidgets.QVBoxLayout()
+        layout_0.addWidget(self.title)
+        layout_0.addWidget(self.credits)
+        layout_0.addWidget(self.ok)
+
+        self.setLayout(layout_0)

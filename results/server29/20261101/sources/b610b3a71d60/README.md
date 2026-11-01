@@ -1,0 +1,50 @@
+# qwen_historical_runtime_gpu_recovery_archive
+
+原始相对目录：`qwen_historical_runtime_gpu_recovery_archive`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/FINAL_REPORT.md`](../../objects/5f/5fcff50962a322dfda0f09605b1c0a95b8414663f9ffb0de472b4cdbb1409a47__FINAL_REPORT.md)
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/analysis/final_review/FINAL_REPORT_REVIEW.json`](../../objects/e8/e8509a6408a132b30b78e3d70a872487aa31a6f12e1354cf5241a389e0bc1fc8__FINAL_REPORT_REVIEW.json)
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/HANDOFF.md`](../../objects/31/3107f5a56433769c5ee2a4984cda1f900b5b57ecf52a0e4e98ae1d80be2472a8__HANDOFF.md)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/HANDOFF.md`](../../objects/c3/c360cd8a0ae5f7e1229ba8af29db8d9c9489c0e6a56214d1a3b19a4120b7b918__HANDOFF.md)
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/EXECUTION_PLAN.md`](../../objects/f6/f6ff9101bf54f863f7713109f00f4da58961a65c7c2c797ca6e0a2302739de23__EXECUTION_PLAN.md)
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/NUMERICAL_CONTRACT.md`](../../objects/ea/eac5e59a9d371038a1fdad36861c2bc4885e598a0a1bf1cb0ffb06d98e57c728__NUMERICAL_CONTRACT.md)
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/FINAL_SEAL_RECEIPT.json`](../../objects/a1/a169556cbb1fa3bbd7dcb0e397a3c45391696ce1fc1a4dd674ff4ef51c4b74be__FINAL_SEAL_RECEIPT.json)
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/CPU_ADMISSION_HISTORY.md`](../../objects/36/36b5fd5c237b8e4364beaaf680313681fd2e74919b922b3db7a6c222300dd5d8__CPU_ADMISSION_HISTORY.md)
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/RUNTIME_IDENTITY_AUDIT.md`](../../objects/01/012a3d0f253b548fd8c6146da700f1b422d0ab65c0476a6c45969ecfd7287021__RUNTIME_IDENTITY_AUDIT.md)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/FINAL_SEAL_RECEIPT.json`](../../objects/5b/5be227f4b61eb61b641c559720e05a3d00159c8cc5e1d3ed53fafd712ee104b6__FINAL_SEAL_RECEIPT.json)
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/FINAL_SCIENTIFIC_REPORT.md`](../../objects/5f/5fcff50962a322dfda0f09605b1c0a95b8414663f9ffb0de472b4cdbb1409a47__FINAL_REPORT.md)
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/INT8_COMPATIBILITY_AUDIT.md`](../../objects/f9/f9f0e30d549cb8b8686b8e499eaa41a51bb17bcf7f76b2bbb6889c0f5d75e7ee__INT8_COMPATIBILITY_AUDIT.md)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/FINAL_SCIENTIFIC_REPORT.md`](../../objects/00/00c24c462a03bf6b6d26aaa846df254eb4fc1b31d90b50458ece18c5cd548abd__FINAL_SCIENTIFIC_REPORT.md)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/GPU_EXECUTION_AMENDMENT.md`](../../objects/ad/ad540026f59d3896a2d6a5a8b26a82f4f083b65bd64e4fc512167deadbf958ba__GPU_EXECUTION_AMENDMENT.md)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/INT8_COMPATIBILITY_AUDIT.md`](../../objects/79/797fceb4df854d626ecb611aab0e7b17dd5ab4b6712cbd56946f884939a6b768__INT8_COMPATIBILITY_AUDIT.md)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/analysis/TERMINAL_HANDOFF.md`](../../objects/b4/b409e0f2b4ead737b6f769a641af1095302d7d3403faebb1e4c1bf9567ba663e__TERMINAL_HANDOFF.md)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/benchmarks/CURRENT_NEW_REFERENCE.csv`](../../objects/a3/a355443c476829ad9fe6249606d3645a26833a908e37e6b6e54575c0eb7d29e5__CURRENT_NEW_REFERENCE.csv)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/benchmarks/RESTORED_FP_BENCHMARK.csv`](../../objects/10/10d2623c7689940f61c9a456cd5e357047b0de9722ca7569ae2e6732865ece90__RESTORED_FP_BENCHMARK.csv)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/scripts/verify_final_source_dependencies.py`](../../objects/e9/e961d213675e16d5b2b7aabe17720411215a03cd9c89b64e0de62c18b83affcb__verify_final_source_dependencies.py)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/analysis/FINAL_INDEPENDENT_RESULT_REVIEW.json`](../../objects/70/7050849067874c384d20bbcf9803988b9c3a187dd5fbd153aea61102bb582001__FINAL_INDEPENDENT_RESULT_REVIEW.json)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/scripts/verify_final_source_dependencies_v2.py`](../../objects/8c/8cda168fd50fad9fa5d816f64e41447b5a6d7d6a36b225ae357436d42e707eb5__verify_final_source_dependencies_v2.py)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/analysis/FINAL_SOURCE_DEPENDENCY_VERIFICATION.json`](../../objects/11/11cc36b37fb51b9797acd06fd4994552aa6f494c44d80d6893ad98286102725a__FINAL_SOURCE_DEPENDENCY_VERIFICATION.json)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/analysis/POST_GPU_RELEASE_ADMISSION_FINAL_SNAPSHOT.json`](../../objects/3e/3e542115bd6f0e9dfd9df9d7cf68d85520e1613d25ba9a1fa6429a23e578ba0a__POST_GPU_RELEASE_ADMISSION_FINAL_SNAPSHOT.json)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/analysis/retained_pair/ACTUAL_RETAINED_TENSOR_COMPARISONS.csv`](../../objects/5e/5e6b1eab8ecbf26b7ea1e337a69d51497dcb3ff1d6a26526c8f079e307e7de5a__ACTUAL_RETAINED_TENSOR_COMPARISONS.csv)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/source_tree/data/zypan/analyses/qwen_gdn_dual_m_equivalent_speedup_v1/CODEC_EXECUTION_GRAPH.md`](../../objects/7f/7f5ce12ac10c327174bfaca585d8fefd48aa4268a752dc19323821a992b7936f__CODEC_EXECUTION_GRAPH.md)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/payload/candidate/source_tree/data/zypan/analyses/qwen_gdn_dual_m_equivalent_speedup_v1/CODEC_EXECUTION_GRAPH.md`](../../objects/7f/7f5ce12ac10c327174bfaca585d8fefd48aa4268a752dc19323821a992b7936f__CODEC_EXECUTION_GRAPH.md)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/source_tree/data/zypan/GDN-quantization/results/propagation/gdn_rw_int8_quantizer_v1_protocol_audit.json`](../../../../propagation/gdn_rw_int8_quantizer_v1_protocol_audit.json)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/dependency_by_path_sha256/04d81d2e38fcb753595c713b7b3013e7836921160de121caa440608ed838ea0a/EXECUTION_PLAN.md`](../../objects/ea/eacfa36afc6b5f5860d26fd91c0fb7c84978a27af7bdf8a3426f3ad7abd79cb7__EXECUTION_PLAN.md)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/source_tree/data/zypan/analyses/qwen_gdn_dual_m_equivalent_speedup_v1/audit_official/CODEC_EXECUTION_GRAPH.md`](../../objects/7f/7f5ce12ac10c327174bfaca585d8fefd48aa4268a752dc19323821a992b7936f__CODEC_EXECUTION_GRAPH.md)
+- [`CPU_ADMISSION_20261019_V1/CPU_DELIVERY/execution_payload/candidate/source_tree/data/zypan/analyses/qwen_gdn_dual_m_equivalent_speedup_v1/CODEC_EXECUTION_GRAPH.md`](../../objects/7f/7f5ce12ac10c327174bfaca585d8fefd48aa4268a752dc19323821a992b7936f__CODEC_EXECUTION_GRAPH.md)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/source_tree/data/zypan/GDN-quantization/results/propagation/gdn_rw_int8_quantizer_v1_final_classification.json`](../../../../propagation/gdn_rw_int8_quantizer_v1_final_classification.json)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/dependency_by_path_sha256/18ade381152b0246980594a09aff1a4ba26c8e7395565f6a3d89534683c2e2b8/preregistration.json`](../../objects/da/da2cdb37fc787b84e73d32c51c16e296728b3b9c45875b5658f8c40b93832126__preregistration.json)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/dependency_by_path_sha256/3fbec3d4354b17e791127eef69c8303409de1b2f6062c58e4b9bc58b9ea5cd8b/score_positions.json`](../../objects/a2/a25033b53cfb43a7152f31913d059835f886d076e75cd86bb859640c659565b2__score_positions.json)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/dependency_by_path_sha256/5603009f4be422f17dd523561acc9c05ec78c476282becc1fa89997d77dd4210/preregistration.json`](../../objects/54/544da3293e5f819cbfa4953ed8381e30126342dfd47ebd52bfbcde77ea04fb5b__preregistration.json)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/dependency_by_path_sha256/979e400abdb5b629918344828e02ecc7f8bde5150575e9b1c81460a81b564381/score_positions.json`](../../objects/8a/8a8670dc1ee60cd2a4f7d2f3fa2dbe6243ad868a65c5656b7ebb324c8b80f3f1__score_positions.json)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/dependency_by_path_sha256/e08c81dc24101eae8f2a8e6a896ed1c3f1fc4439475854b59aa40d2333012dd1/score_positions.json`](../../objects/a8/a86600444d32cc2e34620c47ddc66f1da8eee057ab2eabf040c4562258ef0503__score_positions.json)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/dependency_by_path_sha256/ed4d36d66ee88b82a83ec60ebc6b2a76fb5d5f2f09629159c860776ff4532134/score_positions.json`](../../objects/c6/c663e479a12b4a06e16a8faf0b19cf550bfc3921ba21583fbce2904a2826a17f__score_positions.json)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/dependency_by_path_sha256/fd428f797cfe48eaf6f0581ccb23b9cbe612df670c7f1c3eef1cf78f7d704a60/score_positions.json`](../../objects/08/084f1699484192f0a05efa82369f0f7af2a9d4e86790acdb0c504c4d38eab2af__score_positions.json)
+- [`GPU_EXECUTION_20261019_V1/PAYLOAD_ASSETS/candidate/dependency_by_path_sha256/de88ad1038e11b3e07761e365ba23c5314bd9d7ddac05923c84082f7b21e75d0/postprocess_scores.py`](../../objects/00/003024fe753f530f8f824570f29e9485b04d374594258803aee2ec732e059ca1__postprocess_scores.py)
+- [`GPU_EXECUTION_20261019_V1/SMALL_DELIVERY/payload/candidate/source_tree/data/zypan/GDN-quantization/results/propagation/gdn_rw_int8_quantizer_v1_protocol_audit.json`](../../../../propagation/gdn_rw_int8_quantizer_v1_protocol_audit.json)

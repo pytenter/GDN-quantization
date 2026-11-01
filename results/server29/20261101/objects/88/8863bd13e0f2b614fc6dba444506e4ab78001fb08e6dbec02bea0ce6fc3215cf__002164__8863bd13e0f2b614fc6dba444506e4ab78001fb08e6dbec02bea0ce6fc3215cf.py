@@ -1,0 +1,1 @@
+def foo(module, a): pass

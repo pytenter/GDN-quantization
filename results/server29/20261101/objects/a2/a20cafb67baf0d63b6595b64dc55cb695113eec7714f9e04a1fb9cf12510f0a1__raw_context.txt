@@ -1,0 +1,2818 @@
+app/src/main/java/com/studio4plus/homerplayer/ui/BatteryStatusIndicator.java
+public class BatteryStatusIndicator {
+
+    private final ImageView indicatorView;
+    private final EventBus eventBus;
+
+    private static final EnumMap<ChargeLevel, Integer> BATTERY_DRAWABLE =
+            new EnumMap<>(ChargeLevel.class);
+
+    private static final EnumMap<ChargeLevel, Integer> CHARGING_DRAWABLE =
+            new EnumMap<>(ChargeLevel.class);
+
+    static {
+        BATTERY_DRAWABLE.put(ChargeLevel.CRITICAL, R.drawable.battery_critical);
+        BATTERY_DRAWABLE.put(ChargeLevel.LEVEL_1, R.drawable.battery_red_1);
+
+        CHARGING_DRAWABLE.put(ChargeLevel.CRITICAL, R.drawable.battery_charging_0);
+        CHARGING_DRAWABLE.put(ChargeLevel.LEVEL_1, R.drawable.battery_charging_0);
+        CHARGING_DRAWABLE.put(ChargeLevel.LEVEL_2, R.drawable.battery_charging_1);
+        CHARGING_DRAWABLE.put(ChargeLevel.LEVEL_3, R.drawable.battery_charging_2);
+        CHARGING_DRAWABLE.put(ChargeLevel.FULL, R.drawable.battery_3);
+    }
+
+    public BatteryStatusIndicator(ImageView indicatorView, EventBus eventBus) {
+        this.indicatorView = indicatorView;
+        this.eventBus = eventBus;
+        this.eventBus.registerSticky(this);
+    }
+
+    public void startAnimations() {
+        Drawable indicatorDrawable = indicatorView.getDrawable();
+        if (indicatorDrawable instanceof AnimationDrawable)
+            ((AnimationDrawable) indicatorDrawable).start();
+    }
+
+    public void shutdown() {
+        // TODO: find an automatic way to unregister
+        eventBus.unregister(this);
+    }
+
+    private void updateBatteryStatus(BatteryStatus batteryStatus) {
+        Integer statusDrawable = batteryStatus.isCharging
+                ? CHARGING_DRAWABLE.get(batteryStatus.chargeLevel)
+                : BATTERY_DRAWABLE.get(batteryStatus.chargeLevel);
+
+        if (statusDrawable == null) {
+            indicatorView.setVisibility(View.GONE);
+        } else {
+            if (indicatorView.getVisibility() != View.VISIBLE)
+                indicatorView.setVisibility(View.VISIBLE);
+            indicatorView.setImageResource(statusDrawable);
+            startAnimations();
+        }
+    }
+
+    @SuppressWarnings("unused")
+    public void onEvent(BatteryStatusChangeEvent batteryEvent) {
+        updateBatteryStatus(batteryEvent.batteryStatus);
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/ui/classic/FragmentBookItem.java
+public class FragmentBookItem extends BookListChildFragment {
+
+    public static FragmentBookItem newInstance(String bookId) {
+        FragmentBookItem newFragment = new FragmentBookItem();
+        Bundle args = new Bundle();
+        args.putString(ARG_BOOK_ID, bookId);
+        newFragment.setArguments(args);
+        return newFragment;
+    }
+
+    @Inject public AudioBookManager audioBookManager;
+    @Inject @Named("AUDIOBOOKS_DIRECTORY") public String audioBooksDirectoryName;
+
+    private @Nullable UiControllerBookList controller;
+
+    @Override
+    public View onCreateView(
+            @NonNull LayoutInflater inflater,
+            @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_book_item, container, false);
+        HomerPlayerApplication.getComponent(view.getContext()).inject(this);
+
+        Bundle args = getArguments();
+        final String bookId = args.getString(ARG_BOOK_ID);
+        if (bookId != null) {
+            AudioBook book = audioBookManager.getById(bookId);
+            TextView textView = view.findViewById(R.id.title);
+            textView.setText(book.getTitle());
+
+            @ColorInt int textColour = getColor(book.getColourScheme().textColourAttrId);
+            textView.setTextColor(textColour);
+            view.setBackgroundColor(getColor(book.getColourScheme().backgroundColorAttrId));
+
+            if (book.isDemoSample()) {
+                TextView copyBooksInstruction =
+                        (TextView) view.findViewById(R.id.copyBooksInstruction);
+                String directoryMessage =
+                        getString(R.string.copyBooksInstructionMessage, audioBooksDirectoryName);
+                copyBooksInstruction.setText(Html.fromHtml(directoryMessage));
+                copyBooksInstruction.setTextColor(textColour);
+                copyBooksInstruction.setVisibility(View.VISIBLE);
+            }
+
+            final Button startButton = (Button) view.findViewById(R.id.startButton);
+            startButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Preconditions.checkNotNull(controller);
+                    controller.playCurrentAudiobook();
+                    startButton.setEnabled(false);
+                }
+            });
+        }
+
+        return view;
+    }
+
+    public String getAudioBookId() {
+        return getArguments().getString(ARG_BOOK_ID);
+    }
+
+    void setController(@NonNull UiControllerBookList controller) {
+        this.controller = controller;
+    }
+
+    @ColorInt
+    private int getColor(@AttrRes int attributeId) {
+        TypedValue value = new TypedValue();
+        getContext().getTheme().resolveAttribute(attributeId, value, true);
+        return getResources().getColor(value.resourceId);
+    }
+
+    private static final String ARG_BOOK_ID = "bookId";
+}
+app/src/main/java/com/studio4plus/homerplayer/ui/classic/ClassicBookList.java
+public class ClassicBookList extends Fragment implements BookListUi {
+
+    private View view;
+    private ViewPager bookPager;
+    private BookListPagerAdapter bookAdapter;
+    private UiControllerBookList uiControllerBookList;
+
+    @Inject public AnalyticsTracker analyticsTracker;
+    @Inject public GlobalSettings globalSettings;
+
+    @SuppressLint("ClickableViewAccessibility")
+    @Override
+    public View onCreateView(
+            @NonNull LayoutInflater inflater,
+            @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
+        view = inflater.inflate(R.layout.fragment_book_list, container, false);
+        HomerPlayerApplication.getComponent(view.getContext()).inject(this);
+
+        bookPager = view.findViewById(R.id.bookListPager);
+        bookPager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
+            int currentViewIndex;
+            String currentBookId;
+
+            @Override
+            public void onPageSelected(int index) {
+                FragmentBookItem itemFragment = (FragmentBookItem) bookAdapter.getItem(index);
+                if (!itemFragment.getAudioBookId().equals(currentBookId)) {
+                    currentBookId = itemFragment.getAudioBookId();
+                    uiControllerBookList.changeBook(currentBookId);
+                }
+                currentViewIndex = index;
+            }
+
+            @Override
+            public void onPageScrollStateChanged(int state) {
+                if (state == ViewPager.SCROLL_STATE_IDLE) {
+                    int adjustedIndex = bookAdapter.wrapViewIndex(currentViewIndex);
+                    if (adjustedIndex != currentViewIndex)
+                        bookPager.setCurrentItem(adjustedIndex, false);
+                    analyticsTracker.onBookSwiped();
+                }
+            }
+        });
+
+        final Context context = view.getContext();
+        bookPager.setOnTouchListener(new MultitapTouchListener(
+                context, () -> startActivity(new Intent(context, SettingsActivity.class))));
+
+        return view;
+    }
+
+    private void updateBookList(List<AudioBook> audioBooks, int currentBookIndex) {
+        bookAdapter = new BookListPagerAdapter(getChildFragmentManager(), audioBooks);
+        bookPager.setAdapter(bookAdapter);
+        bookPager.setCurrentItem(
+                bookAdapter.bookIndexToViewIndex(currentBookIndex), false);
+    }
+
+    @Override
+    public void initWithController(UiControllerBookList uiControllerBookList) {
+        this.uiControllerBookList = uiControllerBookList;
+        uiControllerBookList.getViewState().observe(
+                getViewLifecycleOwner(),
+                viewState -> updateBookList(viewState.books, viewState.currentBookIndex));
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        CrashReporting.log("UI: ClassicBookList fragment resumed");
+        showHintsIfNecessary();
+    }
+
+    private void showHintsIfNecessary() {
+        if (isResumed() && isVisible() && !isAnyHintVisible()) {
+            if (!globalSettings.browsingHintShown()) {
+                HintOverlay overlay = new HintOverlay(
+                        view, R.id.browseHintOverlayStub, R.string.hint_browsing, R.drawable.hint_horizontal_swipe);
+                overlay.show();
+                globalSettings.setBrowsingHintShown();
+            } else if (!globalSettings.settingsHintShown()) {
+                HintOverlay overlay = new HintOverlay(
+                        view, R.id.settingsHintOverlayStub, R.string.hint_settings, R.drawable.hint_tap);
+                overlay.show();
+                globalSettings.setSettingsHintShown();
+            }
+        }
+    }
+
+    private boolean isAnyHintVisible() {
+        ViewStub browseHintStub = view.findViewById(R.id.browseHintOverlayStub);
+        ViewStub settingsHintStub = view.findViewById(R.id.settingsHintOverlayStub);
+        return  browseHintStub == null || settingsHintStub == null;
+    }
+
+    private class BookListPagerAdapter extends FragmentStatePagerAdapter {
+
+        private static final int OFFSET = 1;
+
+        private final @NonNull List<AudioBook> audioBooks;
+
+        BookListPagerAdapter(@NonNull FragmentManager fm, @NonNull List<AudioBook> audioBooks) {
+            super(fm, FragmentStatePagerAdapter.BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT);
+            this.audioBooks = audioBooks;
+        }
+
+        int getBookIndex(int viewIndex) {
+            int bookIndex = viewIndex - OFFSET;
+            if (bookIndex < 0)
+                return audioBooks.size() + bookIndex;
+            else
+                return bookIndex % audioBooks.size();
+        }
+
+        @Override
+        @NonNull
+        public Fragment getItem(int viewIndex) {
+            int bookIndex = getBookIndex(viewIndex);
+            FragmentBookItem item = FragmentBookItem.newInstance(audioBooks.get(bookIndex).getId());
+            item.setController(uiControllerBookList);
+            return item;
+        }
+
+        @Override
+        public int getCount() {
+            return audioBooks.size() > 0 ? audioBooks.size() + 2*OFFSET : 0;
+        }
+
+        int bookIndexToViewIndex(int bookIndex) {
+            return bookIndex + OFFSET;
+        }
+
+        int wrapViewIndex(int viewIndex) {
+            if (viewIndex < OFFSET) {
+                viewIndex += audioBooks.size();
+            } else {
+                final int audioBookCount = audioBooks.size();
+                final int lastBookIndex = audioBookCount - 1;
+                if (viewIndex - OFFSET > lastBookIndex)
+                    viewIndex -= audioBookCount;
+            }
+            return viewIndex;
+        }
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/analytics/AnalyticsTracker.java
+public class AnalyticsTracker {
+    private static final String BOOKS_INSTALLED = "booksInstalled";
+    private static final String BOOKS_INSTALLED_TYPE_KEY = "type";
+    private static final String BOOK_PLAYED = "bookPlayed";
+    private static final String BOOK_PLAYED_TYPE_KEY = "type";
+    private static final String BOOK_PLAYED_DURATION_KEY = "durationBucket";
+    private static final String BOOK_PLAYED_TYPE_SAMPLE = "sample";
+    private static final String BOOK_PLAYED_TYPE_USER_CONTENT = "userContent";
+    private static final String BOOK_SWIPED = "bookSwiped";
+    private static final String BOOK_LIST_DISPLAYED = "bookListDisplayed";
+    private static final String FF_REWIND = "ffRewind";
+    private static final String FF_REWIND_ABORTED = "ffRewindAborted";
+    private static final String FF_REWIND_IS_FF_KEY = "isFf";
+    private static final String FF_REWIND_DURATION_KEY = "durationBucket";
+    private static final String PERMISSION_RATIONALE_SHOWN = "permissionRationaleShown";
+    private static final String PERMISSION_RATIONALE_REQUEST_KEY = "permissionRequest";
+    private static final String PLAYBACK_ERROR = "playbackError";
+    private static final String PLAYBACK_ERROR_MESSAGE_KEY = "message";
+    private static final String PLAYBACK_ERROR_FORMAT_KEY = "format";
+    private static final String PLAYBACK_ERROR_DURATION_KEY = "durationMs";
+    private static final String PLAYBACK_ERROR_POSITION_KEY = "positionMs";
+    private static final String SAMPLES_DOWNLOAD_STARTED = "samplesDownloadStarted";
+    private static final String SAMPLES_DOWNLOAD_SUCCESS = "samplesDownloadSuccess";
+    private static final String SAMPLES_DOWNLOAD_FAILURE = "samplesDownloadFailure";
+
+    @NonNull
+    private static final NavigableMap<Long, String> PLAYBACK_DURATION_BUCKETS = new TreeMap<>();
+    @NonNull
+    private static final NavigableMap<Long, String> REWIND_DURATION_BUCKETS = new TreeMap<>();
+
+    @NonNull
+    private final GlobalSettings globalSettings;
+    @NonNull
+    private final StatsLogger stats;
+
+    private CurrentlyPlayed currentlyPlayed;
+
+    @Inject
+    public AnalyticsTracker(
+            @NonNull StatsLogger statsLogger,
+            @NonNull GlobalSettings globalSettings,
+            @NonNull EventBus eventBus) {
+        this.globalSettings = globalSettings;
+        eventBus.register(this);
+        this.stats = statsLogger;
+    }
+
+    @SuppressWarnings("unused")
+    public void onEvent(AudioBooksChangedEvent event) {
+        if (event.contentType.supersedes(globalSettings.booksEverInstalled())) {
+            Map<String, String> data = Collections.singletonMap(
+                    BOOKS_INSTALLED_TYPE_KEY, event.contentType.name());
+            stats.logEvent(BOOKS_INSTALLED, data);
+        }
+        globalSettings.setBooksEverInstalled(event.contentType);
+    }
+
+    @SuppressWarnings("unused")
+    public void onEvent(SettingsEnteredEvent event) {
+        globalSettings.setSettingsEverEntered();
+    }
+
+    @SuppressWarnings("unused")
+    public void onEvent(DemoSamplesInstallationStartedEvent event) {
+        stats.logEvent(SAMPLES_DOWNLOAD_STARTED);
+    }
+
+    @SuppressWarnings("unused")
+    public void onEvent(DemoSamplesInstallationFinishedEvent event) {
+        if (event.success) {
+            stats.logEvent(SAMPLES_DOWNLOAD_SUCCESS);
+        } else {
+            Map<String, String> data = Collections.singletonMap("error", event.errorMessage);
+            stats.logEvent(SAMPLES_DOWNLOAD_FAILURE, data);
+        }
+    }
+
+    @SuppressWarnings("unused")
+    public void onEvent(PlaybackProgressedEvent event) {
+        if (currentlyPlayed == null)
+            currentlyPlayed = new CurrentlyPlayed(event.audioBook, System.nanoTime());
+    }
+
+    @SuppressWarnings("unused")
+    public void onEvent(PlaybackStoppingEvent event) {
+        if (currentlyPlayed != null) {
+            Map<String, String> data = new TreeMap<>();
+            data.put(BOOK_PLAYED_TYPE_KEY,
+                     currentlyPlayed.audioBook.isDemoSample()
+                             ? BOOK_PLAYED_TYPE_SAMPLE
+                             : BOOK_PLAYED_TYPE_USER_CONTENT);
+            long elapsedTimeS = TimeUnit.NANOSECONDS.toSeconds(
+                    System.nanoTime() - currentlyPlayed.startTimeNano);
+            Map.Entry<Long, String> bucket = PLAYBACK_DURATION_BUCKETS.floorEntry(elapsedTimeS);
+            data.put(BOOK_PLAYED_DURATION_KEY, bucket.getValue());
+            currentlyPlayed = null;
+            stats.logEvent(BOOK_PLAYED, data);
+        }
+    }
+
+    @SuppressWarnings("unused")
+    public void onEvent(PlaybackErrorEvent event) {
+        Map<String, String> data = new TreeMap<>();
+        data.put(PLAYBACK_ERROR_MESSAGE_KEY, event.errorMessage);
+        data.put(PLAYBACK_ERROR_FORMAT_KEY, event.format);
+        data.put(PLAYBACK_ERROR_DURATION_KEY, event.durationMs + "ms");
+        data.put(PLAYBACK_ERROR_POSITION_KEY, event.positionMs + "ms");
+        stats.logEvent(PLAYBACK_ERROR, data);
+    }
+
+    public void onBookSwiped() {
+        stats.logEvent(BOOK_SWIPED);
+    }
+
+    public void onBookListDisplayed() {
+        stats.logEvent(BOOK_LIST_DISPLAYED);
+    }
+
+    public void onFfRewindFinished(boolean isFf, long elapsedWallTimeMs) {
+        Map.Entry<Long, String> durationBucket = REWIND_DURATION_BUCKETS.floorEntry(elapsedWallTimeMs);
+        durationBucket.getValue();
+        Map<String, String> params = new HashMap<>(2);
+        params.put(FF_REWIND_IS_FF_KEY, Boolean.toString(isFf));
+        params.put(FF_REWIND_DURATION_KEY, durationBucket.getValue());
+        stats.logEvent(FF_REWIND, params);
+    }
+
+    public void onFfRewindAborted() {
+        stats.logEvent(FF_REWIND_ABORTED);
+    }
+
+    public void onPermissionRationaleShown(String permissionRequest) {
+        stats.logEvent(
+                PERMISSION_RATIONALE_SHOWN,
+                Collections.singletonMap(PERMISSION_RATIONALE_REQUEST_KEY, permissionRequest));
+    }
+
+    private static class CurrentlyPlayed {
+        final AudioBook audioBook;
+        final long startTimeNano;
+
+        private CurrentlyPlayed(AudioBook audioBook, long startTimeNano) {
+            this.audioBook = audioBook;
+            this.startTimeNano = startTimeNano;
+        }
+    }
+
+    static {
+        PLAYBACK_DURATION_BUCKETS.put(0L, "0 - 30s");
+        PLAYBACK_DURATION_BUCKETS.put(30L, "30 - 60s");
+        PLAYBACK_DURATION_BUCKETS.put(60L, "1 - 5m");
+        PLAYBACK_DURATION_BUCKETS.put(5 * 60L, "5 - 15m");
+        PLAYBACK_DURATION_BUCKETS.put(15 * 60L, "15 - 30m");
+        PLAYBACK_DURATION_BUCKETS.put(30 * 60L, "> 30m");
+        REWIND_DURATION_BUCKETS.put(TimeUnit.SECONDS.toMillis(0), "0 - 1s");
+        REWIND_DURATION_BUCKETS.put(TimeUnit.SECONDS.toMillis(1), "1 - 10s");
+        REWIND_DURATION_BUCKETS.put(TimeUnit.SECONDS.toMillis(10), "10 - 60s");
+        REWIND_DURATION_BUCKETS.put(TimeUnit.SECONDS.toMillis(60), "> 60s");
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/content/ConfigurationContentProvider.java
+public class ConfigurationContentProvider extends ContentProvider {
+
+    @Inject public KioskModeSwitcher kioskModeSwitcher;
+    @Inject public GlobalSettings globalSettings;
+
+    @Override
+    public boolean onCreate() {
+        return true;
+    }
+
+    private void injectDependenciesIfNecessary(){
+        // onCreate is called before the application object is initialized therefore
+        // Dagger injection is run by the first operation on the content provider.
+        if (globalSettings == null)
+            HomerPlayerApplication.getComponent(getContext()).inject(this);
+    }
+
+    @Nullable
+    @Override
+    public Cursor query(
+            @NonNull Uri uri,
+            @Nullable String[] projection,
+            @Nullable String selection,
+            @Nullable String[] selectionArgs,
+            @Nullable String sortOrder) {
+        injectDependenciesIfNecessary();
+        return new ConfigurationCursor(
+                kioskModeSwitcher.isLockTaskPermitted(),
+                globalSettings.isFullKioskModeEnabled());
+    }
+
+    @Nullable
+    @Override
+    public String getType(@NonNull Uri uri) {
+        return null;
+    }
+
+    @Nullable
+    @Override
+    public Uri insert(@NonNull Uri uri, @Nullable ContentValues contentValues) {
+        return null;
+    }
+
+    @Override
+    public int delete(@NonNull Uri uri, @Nullable String s, @Nullable String[] strings) {
+        return 0;
+    }
+
+    @Override
+    public int update(@NonNull Uri uri, @Nullable ContentValues contentValues, @Nullable String s, @Nullable String[] strings) {
+        return 0;
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/battery/BatteryStatusProvider.java
+public class BatteryStatusProvider extends BroadcastReceiver {
+
+    private final IntentFilter batteryStatusIntentFilter;
+    private final Context applicationContext;
+    private final EventBus eventBus;
+
+    @Inject
+    public BatteryStatusProvider(@ApplicationScope Context applicationContext, EventBus eventBus) {
+        this.applicationContext = applicationContext;
+        this.eventBus = eventBus;
+        batteryStatusIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+    }
+
+    public void start() {
+        Intent batteryStatusIntent = applicationContext.registerReceiver(this, batteryStatusIntentFilter);
+        if (batteryStatusIntent != null)
+            notifyBatteryStatus(getBatteryStatus(batteryStatusIntent));
+    }
+
+    public void stop() {
+        applicationContext.unregisterReceiver(this);
+    }
+
+
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        if (batteryStatusIntentFilter.matchAction(intent.getAction())) {
+            notifyBatteryStatus(getBatteryStatus(intent));
+        }
+    }
+
+    private void notifyBatteryStatus(BatteryStatus batteryStatus) {
+        eventBus.postSticky(new BatteryStatusChangeEvent(batteryStatus));
+    }
+
+    private BatteryStatus getBatteryStatus(@NonNull Intent batteryStatusIntent) {
+        int status = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+        boolean isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL;
+
+        ChargeLevel chargeLevel;
+        if (status == BatteryManager.BATTERY_STATUS_FULL) {
+            chargeLevel = ChargeLevel.FULL;
+        } else {
+            int level = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+            int scale = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+
+            float chargePercent = level / (float) scale;
+            chargeLevel = fromPercentage(chargePercent);
+        }
+
+        return new BatteryStatus(chargeLevel, isCharging);
+    }
+
+    private static ChargeLevel fromPercentage(float percentage) {
+        if (percentage < 0.2f)
+            return ChargeLevel.CRITICAL;
+        else if (percentage < 0.333f)
+            return ChargeLevel.LEVEL_1;
+        else if (percentage < 0.666f)
+            return ChargeLevel.LEVEL_2;
+        else if (percentage < 1.0f)
+            return ChargeLevel.LEVEL_3;
+        else
+            return ChargeLevel.FULL;
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/service/DemoSamplesInstallerService.java
+@MainThread
+public class DemoSamplesInstallerService extends Service {
+
+    private static final String CLASS_NAME = "DemoSamplesInstallerService";
+    private static final String ACTION_EXTRA = "action";
+    private static final int ACTION_START_DOWNLOAD = 0;
+    private static final int ACTION_CANCEL_DOWNLOAD = 1;
+
+    private static final int DOWNLOAD_BUFFER_SIZE = 32767;
+    private static final long MIN_PROGRESS_UPDATE_INTERVAL_NANOS = TimeUnit.MILLISECONDS.toNanos(100);
+    private static final int NOTIFICATION_ID = R.string.demo_samples_service_notification_download;
+
+    public static final String BROADCAST_DOWNLOAD_PROGRESS_ACTION =
+            CLASS_NAME + ".PROGRESS";
+    public static final String PROGRESS_BYTES_EXTRA = "progressBytes";
+    public static final String TOTAL_BYTES_EXTRA = "totalBytes";
+    public static final String BROADCAST_INSTALL_STARTED_ACTION =
+            CLASS_NAME + ".INSTALL_STARTED";
+    public static final String BROADCAST_INSTALL_FINISHED_ACTION =
+            CLASS_NAME + ".INSTALL_FINISHED";
+    public static final String BROADCAST_FAILED_ACTION =
+            CLASS_NAME + ".FAILED";
+
+    public static Intent createDownloadIntent(Context context, Uri downloadUri) {
+        Intent intent = new Intent(context, DemoSamplesInstallerService.class);
+        intent.setData(downloadUri);
+        intent.putExtra(ACTION_EXTRA, ACTION_START_DOWNLOAD);
+        return intent;
+    }
+
+    public static Intent createCancelIntent(Context context) {
+        Intent intent = new Intent(context, DemoSamplesInstallerService.class);
+        intent.putExtra(ACTION_EXTRA, ACTION_CANCEL_DOWNLOAD);
+        return intent;
+    }
+
+    // It's a bit ugly the the service communicates with other components both via
+    // a LocalBroadcastManager and an EventBus.
+    @Inject public EventBus eventBus;
+    private DownloadAndInstallThread downloadAndInstallThread;
+    private boolean isDownloading = false;
+    private long lastProgressUpdateNanos = 0;
+    private static DemoSamplesInstallerService instance;
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        int action = intent.getIntExtra(ACTION_EXTRA, -1);
+        switch(action) {
+            case ACTION_START_DOWNLOAD: {
+                CrashReporting.log("DemoSamplesInstallerService: starting download");
+                Preconditions.checkState(downloadAndInstallThread == null);
+                String downloadUri = intent.getDataString();
+
+                Notification notification = NotificationUtil.createForegroundServiceNotification(
+                        getApplicationContext(),
+                        R.string.demo_samples_service_notification_download,
+                        android.R.drawable.stat_sys_download);
+                startForeground(NOTIFICATION_ID, notification);
+
+                try {
+                    ResultHandler result = new ResultHandler(this, getMainLooper());
+                    isDownloading = true;
+                    downloadAndInstallThread = new DownloadAndInstallThread(this, result, downloadUri);
+                    downloadAndInstallThread.start();
+                } catch (MalformedURLException e) {
+                    onFailed(e.getMessage());
+                }
+                break;
+            }
+            case ACTION_CANCEL_DOWNLOAD:
+                CrashReporting.log("DemoSamplesInstallerService: cancelling download");
+                if (downloadAndInstallThread != null) {
+                    isDownloading = false;
+                    downloadAndInstallThread.interrupt();
+                    downloadAndInstallThread = null;
+                    stopForeground(true);
+                }
+                break;
+        }
+
+        return START_NOT_STICKY;
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        CrashReporting.log("DemoSamplesInstallerService: created");
+        HomerPlayerApplication.getComponent(getApplicationContext()).inject(this);
+        instance = this;
+    }
+
+    @Override
+    public void onDestroy() {
+        CrashReporting.log("DemoSamplesInstallerService: destroying");
+        if (downloadAndInstallThread != null)
+            downloadAndInstallThread.interrupt();
+        instance = null;
+        super.onDestroy();
+    }
+
+    public static boolean isDownloading() {
+        // This is a hack relying on the fact that only one service instance may be started
+        // and that the service is local.
+        return instance != null && instance.isDownloading;
+    }
+
+    public static boolean isInstalling() {
+        // This is a hack relying on the fact that only one service instance may be started
+        // and that the service is local.
+        return instance != null && instance.downloadAndInstallThread != null
+                && !instance.isDownloading;
+    }
+
+    private void onInstallStarted() {
+        CrashReporting.log("DemoSamplesInstallerService: install started");
+        isDownloading = false;
+        Intent intent = new Intent(BROADCAST_INSTALL_STARTED_ACTION);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+
+        NotificationManager notificationManager =
+                (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        Notification notification = NotificationUtil.createForegroundServiceNotification(
+                getApplicationContext(),
+                R.string.demo_samples_service_notification_install,
+                android.R.drawable.stat_sys_download_done);
+        notificationManager.notify(NOTIFICATION_ID, notification);
+    }
+
+    private void onInstallFinished() {
+        CrashReporting.log("DemoSamplesInstallerService: install finished");
+        Intent intent = new Intent(BROADCAST_INSTALL_FINISHED_ACTION);
+        eventBus.post(new DemoSamplesInstallationFinishedEvent(true, null));
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+
+        // MediaStoreUpdateEvent may change the state of the UI, send it as the last action.
+        eventBus.post(new MediaStoreUpdateEvent());
+        stopSelf();
+    }
+
+    private void onFailed(@NonNull String errorMessage) {
+        CrashReporting.log("DemoSamplesInstallerService: download or install failed");
+        isDownloading = false;
+        eventBus.post(new DemoSamplesInstallationFinishedEvent(false, errorMessage));
+        Intent intent = new Intent(BROADCAST_FAILED_ACTION);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+        stopSelf();
+    }
+
+    private void onProgress(int transferredBytes, int totalBytes) {
+        long nowNanos = System.nanoTime();
+        if (nowNanos - lastProgressUpdateNanos > MIN_PROGRESS_UPDATE_INTERVAL_NANOS
+                || transferredBytes == totalBytes) {
+            Intent intent = new Intent(BROADCAST_DOWNLOAD_PROGRESS_ACTION);
+            intent.putExtra(PROGRESS_BYTES_EXTRA, transferredBytes);
+            intent.putExtra(TOTAL_BYTES_EXTRA, totalBytes);
+            LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+            lastProgressUpdateNanos = nowNanos;
+        }
+    }
+
+    private static class ResultHandler {
+
+        private final DemoSamplesInstallerService service;
+        private final Handler handler;
+
+        private ResultHandler(DemoSamplesInstallerService service, Looper looper) {
+            this.service = service;
+            this.handler = new Handler(looper);
+        }
+
+        void onInstallFinished() {
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    service.onInstallFinished();
+                }
+            });
+        }
+
+        void onFailed(final @NonNull String errorMessage) {
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    service.onFailed(errorMessage);
+                }
+            });
+        }
+
+        void onDownloadProgress(final int progress, final int total) {
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    service.onProgress(progress, total);
+                }
+            });
+        }
+
+        void onInstallStarted() {
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    service.onInstallStarted();
+                }
+            });
+        }
+    }
+
+    private static class DownloadAndInstallThread extends Thread {
+
+        private final Context context;
+        private final ResultHandler resultHandler;
+        private final URL downloadUrl;
+
+        DownloadAndInstallThread(Context context, ResultHandler resultHandler, String downloadUrl)
+                throws MalformedURLException {
+            super("DownloadThread");
+            this.context = context;
+            this.resultHandler = resultHandler;
+            this.downloadUrl = new URL(downloadUrl);
+        }
+
+        @WorkerThread
+        @Override
+        public void run() {
+            try {
+                File tmpFile = downloadSamples();
+
+                if (isInterrupted())
+                    return;  // No result expected.
+
+                resultHandler.onInstallStarted();
+                DemoSamplesInstaller installer =
+                        HomerPlayerApplication.getComponent(context).createDemoSamplesInstaller();
+                installer.installBooksFromZip(tmpFile);
+
+                resultHandler.onInstallFinished();
+            } catch (IOException e) {
+                resultHandler.onFailed(e.getMessage());
+            }
+        }
+
+        @WorkerThread
+        private File downloadSamples() throws IOException {
+            byte[] inputBuffer = new byte[DOWNLOAD_BUFFER_SIZE];
+            File tmpFile = File.createTempFile("download", null, context.getExternalCacheDir());
+            tmpFile.deleteOnExit();
+
+            OutputStream output = new BufferedOutputStream(new FileOutputStream(tmpFile));
+            HttpsURLConnection connection = (HttpsURLConnection) downloadUrl.openConnection();
+            // Disable gzip, apparently Java and/or Android's okhttp has problems with it
+            // (possibly https://bugs.java.com/bugdatabase/view_bug.do?bug_id=7003462).
+            connection.setRequestProperty("accept-encoding", "identity");
+            enableTlsOnAndroid4(connection);
+            InputStream input = new BufferedInputStream(connection.getInputStream());
+
+            int totalBytesRead = 0;
+            int bytesRead;
+            while((bytesRead = input.read(inputBuffer, 0, inputBuffer.length)) > 0) {
+                output.write(inputBuffer, 0, bytesRead);
+                totalBytesRead += bytesRead;
+                resultHandler.onDownloadProgress(totalBytesRead, connection.getContentLength());
+
+                if (isInterrupted())
+                    break;
+            }
+            output.close();
+
+            connection.disconnect();
+
+            return tmpFile;
+        }
+
+        private static void enableTlsOnAndroid4(HttpsURLConnection connection) {
+            // The internets say that this may be also needed on some API 21 phones...
+            if (Build.VERSION.SDK_INT <= 21) {
+                try {
+                    connection.setSSLSocketFactory(new TlsSSLSocketFactory());
+                } catch (KeyManagementException | NoSuchAlgorithmException e) {
+                    CrashReporting.logException(e);
+                    // Nothing much to do here, the app will attempt the download and most likely
+                    // fail.
+                }
+            }
+        }
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/ui/classic/ClassicNoBooksUi.java
+public class ClassicNoBooksUi extends Fragment implements NoBooksUi {
+
+    private UiControllerNoBooks controller;
+    private View view;
+    private ProgressUi progressUi;
+
+    public @Inject @Named("AUDIOBOOKS_DIRECTORY") String audioBooksDirectoryName;
+
+    @Override
+    public View onCreateView(
+            @NonNull LayoutInflater inflater,
+            @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
+        view = inflater.inflate(R.layout.fragment_no_books, container, false);
+        ApplicationComponent component = HomerPlayerApplication.getComponent(view.getContext());
+        component.inject(this);
+
+        TextView noBooksPath = view.findViewById(R.id.noBooksPath);
+        String directoryMessage =
+                getString(R.string.copyBooksInstructionMessage, audioBooksDirectoryName);
+        noBooksPath.setText(Html.fromHtml(directoryMessage));
+
+        Button downloadSamplesButton = view.findViewById(R.id.downloadSamplesButton);
+        downloadSamplesButton.setOnClickListener(v -> controller.startSamplesInstallation());
+
+        final Context context = view.getContext();
+        view.setOnTouchListener(new MultitapTouchListener(
+                context, () -> startActivity(new Intent(context, SettingsActivity.class))));
+
+        return view;
+    }
+
+    @Override
+    public void initWithController(@NonNull UiControllerNoBooks controller) {
+        this.controller = controller;
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        CrashReporting.log("UI: ClassicNoBooks fragment resumed");
+    }
+
+    @Override
+    public void shutdown() {
+        if (progressUi != null) {
+            progressUi.shutdown();
+            progressUi = null;
+        }
+    }
+
+    private void onInstallError() {
+        Preconditions.checkNotNull(progressUi);
+        progressUi.shutdown();
+        new AlertDialog.Builder(view.getContext())
+                .setTitle(R.string.samplesDownloadErrorTitle)
+                .setMessage(R.string.samplesDownloadErrorMessage)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
+    }
+
+    @Override @NonNull
+    public InstallProgressObserver showInstallProgress(boolean isAlreadyInstalling) {
+        progressUi = new ProgressUi(view.getContext(), controller, isAlreadyInstalling);
+        return progressUi;
+    }
+
+    private class ProgressUi implements InstallProgressObserver {
+        private final @NonNull Context context;
+        private final @NonNull
+        UiControllerNoBooks controller;
+        private final @NonNull ProgressDialog progressDialog;
+
+        ProgressUi(@NonNull Context context,
+                   @NonNull UiControllerNoBooks controller,
+                   boolean isAlreadyInstalling) {
+            this.context = context;
+            this.controller = controller;
+            this.progressDialog = createProgressDialog();
+            progressDialog.show();
+            progressDialog.setIndeterminate(true);
+            if (isAlreadyInstalling)
+                onInstallStarted();
+        }
+
+        @Override
+        public void onDownloadProgress(int transferredBytes, int totalBytes) {
+            if (totalBytes > -1) {
+                int totalKBytes = totalBytes / 1024;
+                if (progressDialog.isIndeterminate() || progressDialog.getMax() != totalKBytes) {
+                    progressDialog.setIndeterminate(false);
+                    progressDialog.setMax(totalKBytes);
+                }
+                progressDialog.setProgress(transferredBytes / 1024);
+            }
+        }
+
+        @Override
+        public void onInstallStarted() {
+            progressDialog.setIndeterminate(true);
+            progressDialog.getButton(DialogInterface.BUTTON_NEGATIVE).setVisibility(View.INVISIBLE);
+        }
+
+        @Override
+        public void onFailure() {
+            ClassicNoBooksUi.this.onInstallError();
+        }
+
+        void shutdown() {
+            progressDialog.dismiss();
+        }
+
+        private ProgressDialog createProgressDialog() {
+            final ProgressDialog progressDialog = new ProgressDialog(context);
+
+            int maxKB = 0;
+            int progressKB = 0;
+
+            progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+            progressDialog.setTitle(R.string.samplesDownloadProgressTitle);
+            progressDialog.setProgress(progressKB);
+            progressDialog.setMax(maxKB);
+            progressDialog.setProgressNumberFormat("%1d/%2d KB");
+            progressDialog.setCancelable(false);
+            progressDialog.setButton(
+                    DialogInterface.BUTTON_NEGATIVE,
+                    context.getString(android.R.string.cancel),
+                    (dialog, which) -> {
+                        // Note: the dialog will dismiss itself even if the controller doesn't
+                        // abort the installation.
+                        controller.abortSamplesInstallation();
+                    });
+            return progressDialog;
+        }
+    }
+
+}
+app/src/main/java/com/studio4plus/homerplayer/ui/classic/ClassicPlaybackUi.java
+public class ClassicPlaybackUi implements PlaybackUi {
+
+    @Inject public SoundBank soundBank;
+    @Inject public GlobalSettings globalSettings;
+
+    private final @NonNull FragmentPlayback fragment;
+    private final @NonNull ClassicMainUi mainUi;
+    private final boolean animateOnInit;
+
+    private @Nullable SoundBank.Sound ffRewindSound;
+
+    ClassicPlaybackUi(
+            @NonNull Activity activity, @NonNull ClassicMainUi mainUi, boolean animateOnInit) {
+        this.fragment = new FragmentPlayback();
+        this.mainUi = mainUi;
+        this.animateOnInit = animateOnInit;
+        HomerPlayerApplication.getComponent(activity).inject(this);
+
+        if (globalSettings.isFFRewindSoundEnabled())
+            ffRewindSound = soundBank.getSound(SoundBank.SoundId.FF_REWIND);
+    }
+
+    @Override
+    public void initWithController(@NonNull UiControllerPlayback controller) {
+        fragment.setController(controller);
+        mainUi.showPlayback(fragment, animateOnInit);
+    }
+
+    @Override
+    public void onPlaybackProgressed(long playbackPositionMs) {
+        fragment.onPlaybackProgressed(playbackPositionMs);
+    }
+
+    @Override
+    public void onPlaybackStopping() {
+        fragment.onPlaybackStopping();
+    }
+
+    @Override
+    public void onFFRewindSpeed(SpeedLevel speedLevel) {
+        if (ffRewindSound != null) {
+            if (speedLevel == SpeedLevel.STOP) {
+                SoundBank.stopTrack(ffRewindSound.track);
+            } else {
+                int soundPlaybackFactor = SPEED_LEVEL_SOUND_RATE.get(speedLevel);
+                ffRewindSound.track.setPlaybackRate(ffRewindSound.sampleRate * soundPlaybackFactor);
+                ffRewindSound.track.play();
+            }
+
+        }
+    }
+
+    @Override
+    public void onVolumeChanged(int min, int max, int current) {
+        fragment.onVolumeChanged(min, max, current);
+    }
+
+    private static final EnumMap<SpeedLevel, Integer> SPEED_LEVEL_SOUND_RATE =
+            new EnumMap<>(SpeedLevel.class);
+
+    static {
+        // No value for STOP.
+        SPEED_LEVEL_SOUND_RATE.put(SpeedLevel.REGULAR, 1);
+        SPEED_LEVEL_SOUND_RATE.put(SpeedLevel.FAST, 2);
+        SPEED_LEVEL_SOUND_RATE.put(SpeedLevel.FASTEST, 4);
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/ui/settings/PlaybackSettingsFragment.java
+public class PlaybackSettingsFragment extends BaseSettingsFragment {
+
+    @Nullable
+    private SnippetPlayer snippetPlayer = null;
+
+    @Inject public GlobalSettings globalSettings;
+    @Inject public AudioBookManager audioBookManager;
+    @Inject public EventBus eventBus;
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        HomerPlayerApplication.getComponent(requireActivity()).inject(this);
+        super.onCreate(savedInstanceState);
+    }
+
+    @Override
+    public void onCreatePreferences(Bundle bundle, String rootKey) {
+        setPreferencesFromResource(R.xml.preferences_playback, rootKey);
+
+        getPreference(GlobalSettings.KEY_JUMP_BACK).setSummaryProvider(
+                new FormatStringListSummaryProvider(
+                        getResources(),
+                        R.string.pref_jump_back_entry_disabled,
+                        R.string.pref_jump_back_summary));
+        getPreference(GlobalSettings.KEY_SLEEP_TIMER).setSummaryProvider(
+                new FormatStringListSummaryProvider(
+                        getResources(),
+                        R.string.pref_sleep_timer_summary_disabled,
+                        R.string.pref_sleep_timer_summary));
+        Preference playbackSpeed = getPreference(GlobalSettings.KEY_PLAYBACK_SPEED);
+        playbackSpeed.setOnPreferenceClickListener(
+                preference -> {
+                    if (snippetPlayer == null || !snippetPlayer.isPlaying())
+                        playSnippet(globalSettings.getPlaybackSpeed());
+                    return false;
+                });
+        playbackSpeed.setOnPreferenceChangeListener(
+                (preference, newValue) -> {
+                    playSnippet(Float.parseFloat((String) newValue));
+                    return true;
+                });
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (snippetPlayer != null) {
+            snippetPlayer.stop();
+            snippetPlayer = null;
+        }
+    }
+
+    private void playSnippet(float speed) {
+        if (snippetPlayer != null) {
+            snippetPlayer.stop();
+            snippetPlayer = null;
+        }
+
+        AudioBook book = audioBookManager.getCurrentBook();
+        if (book != null) {
+            snippetPlayer = new SnippetPlayer(getActivity(), eventBus, speed);
+
+            snippetPlayer.play(book);
+        }
+    }
+
+    @Override
+    protected int getTitle() {
+        return R.string.pref_playback_options_screen_title;
+    }
+
+    private static class FormatStringListSummaryProvider
+            implements Preference.SummaryProvider<ListPreference> {
+
+        @NonNull
+        private final Resources resources;
+        @StringRes
+        private final int stringDisabled;
+        @StringRes
+        private final int stringValue;
+
+        private FormatStringListSummaryProvider(@NonNull Resources resources, int stringDisabled, int stringValue) {
+            this.resources = resources;
+            this.stringDisabled = stringDisabled;
+            this.stringValue = stringValue;
+        }
+
+        @Override
+        public CharSequence provideSummary(ListPreference preference) {
+            int index = preference.findIndexOfValue(preference.getValue());
+            if (index == 0) {
+                return resources.getString(stringDisabled);
+            } else {
+                CharSequence entry = preference.getEntries()[index];
+                return resources.getString(stringValue, entry);
+            }
+        }
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/model/AudioBookManager.java
+@ApplicationScope
+public class AudioBookManager {
+
+    @NonNull
+    private final List<AudioBook> audioBooks = new ArrayList<>();
+    @NonNull
+    private final FileScanner fileScanner;
+    @NonNull
+    private final Storage storage;
+    @Nullable
+    private AudioBook currentBook;
+    private boolean isInitialized = false;
+    private boolean isFirstScan = true;
+    @NonNull
+    private final EventBus eventBus;
+
+    @Inject
+    @MainThread
+    public AudioBookManager(
+            @NonNull EventBus eventBus, @NonNull FileScanner fileScanner, @NonNull Storage storage) {
+        this.fileScanner = fileScanner;
+        this.storage = storage;
+        this.eventBus = eventBus;
+        eventBus.register(this);
+    }
+
+    @SuppressWarnings("UnusedDeclaration")
+    @MainThread
+    public void onEvent(MediaStoreUpdateEvent ignored) {
+        scanFiles();
+    }
+
+    @MainThread
+    @NonNull
+    public List<AudioBook> getAudioBooks() {
+        return new ArrayList<>(audioBooks);
+    }
+
+    @MainThread
+    public void setCurrentBook(@NonNull String bookId) {
+        AudioBook newBook = getById(bookId);
+        if (newBook != currentBook) {
+            currentBook = getById(bookId);
+            eventBus.post(new CurrentBookChangedEvent(currentBook));
+        }
+    }
+
+    @MainThread
+    @Nullable
+    public AudioBook getCurrentBook() {
+        return currentBook;
+    }
+
+    @MainThread
+    public int getCurrentBookIndex() {
+        return audioBooks.indexOf(currentBook);
+    }
+
+    @MainThread
+    @Nullable
+    public AudioBook getById(String id) {
+        for (AudioBook book : audioBooks)
+            if (book.getId().equals(id))
+                return book;
+        return null;
+    }
+
+    @MainThread
+    public File getDefaultAudioBooksDirectory() {
+        return fileScanner.getDefaultAudioBooksDirectory();
+    }
+
+    @MainThread
+    public boolean isInitialized() {
+        return isInitialized;
+    }
+
+    @MainThread
+    public void scanFiles() {
+        SimpleFuture<List<FileSet>> future = fileScanner.scanAudioBooksDirectories();
+        future.addListener(new SimpleFuture.Listener<List<FileSet>>() {
+            @Override
+            public void onResult(@NonNull List<FileSet> result) {
+                isInitialized = true;
+                processScanResult(result);
+            }
+
+            @Override
+            public void onException(@NonNull Throwable t) {
+                isInitialized = true;
+                // TODO: clear the list of books?
+                CrashReporting.logException(t);
+            }
+        });
+    }
+
+    @MainThread
+    private void processScanResult(@NonNull List<FileSet> fileSets) {
+        if (isFirstScan && fileSets.isEmpty()) {
+            // The first scan may fail if it is just after booting and the SD card is not yet
+            // mounted. Retry in a while.
+            Handler handler = new Handler(Looper.myLooper());
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    scanFiles();
+                }
+            }, TimeUnit.SECONDS.toMillis(10));
+        }
+
+        // This isn't very efficient but there shouldn't be more than a dozen audio books on the
+        // device.
+        List<AudioBook> booksToRemove = new ArrayList<>();
+        for (AudioBook audioBook : audioBooks) {
+            String id = audioBook.getId();
+            boolean isInFileSet = false;
+            for (FileSet fileSet : fileSets) {
+                if (id.equals(fileSet.id)) {
+                    isInFileSet = true;
+                    break;
+                }
+            }
+            if (!isInFileSet)
+                booksToRemove.add(audioBook);
+        }
+        if (booksToRemove.contains(currentBook))
+            currentBook = null;
+        boolean audioBooksChanged = audioBooks.removeAll(booksToRemove);
+        LibraryContentType contentType = LibraryContentType.EMPTY;
+
+        for (FileSet fileSet : fileSets) {
+            if (getById(fileSet.id) == null) {
+                AudioBook audioBook = new AudioBook(fileSet);
+                storage.readAudioBookState(audioBook);
+                audioBook.setUpdateObserver(storage);
+                audioBooks.add(audioBook);
+                audioBooksChanged = true;
+            }
+            LibraryContentType newContentType = fileSet.isDemoSample
+                    ? LibraryContentType.SAMPLES_ONLY : LibraryContentType.USER_CONTENT;
+            if (newContentType.supersedes(contentType))
+                contentType = newContentType;
+        }
+
+        if (audioBooks.size() > 0) {
+            Collections.sort(audioBooks, new Comparator<AudioBook>() {
+                @Override
+                public int compare(AudioBook lhs, AudioBook rhs) {
+                    return lhs.getTitle().compareToIgnoreCase(rhs.getTitle());
+                }
+            });
+
+            assignColoursToNewBooks();
+        }
+        if (currentBook == null) {
+            String id = storage.getCurrentAudioBook();
+            if (getById(id) == null && audioBooks.size() > 0)
+                id = audioBooks.get(0).getId();
+
+            if (id != null)
+                setCurrentBook(id);
+        }
+
+        if (audioBooksChanged || isFirstScan)
+            eventBus.post(new AudioBooksChangedEvent(contentType));
+
+        isFirstScan = false;
+    }
+
+    @MainThread
+    public void resetAllBookProgress() {
+        for (AudioBook book : audioBooks) {
+            book.resetPosition();
+        }
+    }
+
+    @MainThread
+    private void assignColoursToNewBooks() {
+        final int MAX_NEIGHBOUR_DISTANCE = 2;
+
+        int count = audioBooks.size();
+        int lastIndex = count - 1;
+        for (int i = 0; i < count; ++i) {
+            AudioBook currentBook = audioBooks.get(i);
+            if (currentBook.getColourScheme() == null) {
+                int startNeighbourIndex = i - MAX_NEIGHBOUR_DISTANCE;
+                int endNeighbourIndex = i + MAX_NEIGHBOUR_DISTANCE;
+                List<ColourScheme> coloursToAvoid = getColoursInRange(
+                        Math.max(0, startNeighbourIndex),
+                        Math.min(lastIndex, endNeighbourIndex));
+                currentBook.setColourScheme(ColourScheme.getRandom(coloursToAvoid));
+                storage.writeAudioBookState(currentBook);
+            }
+        }
+    }
+
+    @MainThread
+    @NonNull
+    private List<ColourScheme> getColoursInRange(int startIndex, int endIndex) {
+        List<ColourScheme> colours = new ArrayList<>();
+        for (int i = startIndex; i <= endIndex; ++i) {
+            ColourScheme colourScheme = audioBooks.get(i).getColourScheme();
+            if (colourScheme != null)
+                colours.add(colourScheme);
+        }
+        return colours;
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/ui/settings/KioskSettingsFragment.java
+public class KioskSettingsFragment extends BaseSettingsFragment {
+
+    private static final String KEY_UNREGISTER_DEVICE_OWNER = "unregister_device_owner_preference";
+
+    @Inject public KioskModeSwitcher kioskModeSwitcher;
+    @Inject public EventBus eventBus;
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        HomerPlayerApplication.getComponent(getActivity()).inject(this);
+        super.onCreate(savedInstanceState);
+    }
+
+    @Override
+    public void onCreatePreferences(Bundle bundle, String rootKey) {
+        setPreferencesFromResource(R.xml.preferences_kiosk, rootKey);
+
+        if (Build.VERSION.SDK_INT < 21) {
+            Preference kioskModePreference = findPreference(GlobalSettings.KEY_KIOSK_MODE);
+            kioskModePreference.setEnabled(false);
+        }
+        if (Build.VERSION.SDK_INT < 19) {
+            Preference simpleKioskModePreference =
+                    findPreference(GlobalSettings.KEY_SIMPLE_KIOSK_MODE);
+            simpleKioskModePreference.setEnabled(false);
+        }
+        updateKioskModeSummaries();
+
+        ConfirmDialogPreference preferenceUnregisterDeviceOwner =
+                (ConfirmDialogPreference) findPreference(KEY_UNREGISTER_DEVICE_OWNER);
+        if (Build.VERSION.SDK_INT >= 21) {
+            preferenceUnregisterDeviceOwner.setOnConfirmListener(
+                    new ConfirmDialogPreference.OnConfirmListener() {
+                        @Override
+                        public void onConfirmed() {
+                            disableDeviceOwner();
+                        }
+                    });
+
+            updateUnregisterDeviceOwner(HomerPlayerDeviceAdmin.isDeviceOwner(requireActivity()));
+        } else {
+            getPreferenceScreen().removePreference(preferenceUnregisterDeviceOwner);
+        }
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        eventBus.register(this);
+    }
+
+    @Override
+    public void onStop() {
+        eventBus.unregister(this);
+        super.onStop();
+    }
+
+    @Override
+    protected int getTitle() {
+        return R.string.pref_kiosk_mode_screen_title;
+    }
+
+    @SuppressWarnings("UnusedDeclaration")
+    public void onEvent(DeviceAdminChangeEvent deviceAdminChangeEvent) {
+        updateUnregisterDeviceOwner(deviceAdminChangeEvent.isEnabled);
+    }
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+        switch (key) {
+            case GlobalSettings.KEY_KIOSK_MODE:
+                onKioskModeSwitched(sharedPreferences);
+                break;
+            case GlobalSettings.KEY_SIMPLE_KIOSK_MODE:
+                kioskModeSwitcher.onSimpleKioskModeEnabled(
+                        requireActivity(), sharedPreferences.getBoolean(key, false));
+                updateKioskModeSummaries();
+                break;
+        }
+    }
+
+    private void updateKioskModeSummaries() {
+        SwitchPreference fullModePreference =
+                (SwitchPreference) findPreference(GlobalSettings.KEY_KIOSK_MODE);
+        {
+            int summaryStringId;
+            if (Build.VERSION.SDK_INT < 21) {
+                summaryStringId = R.string.pref_kiosk_mode_full_summary_old_version;
+            } else {
+                summaryStringId = fullModePreference.isChecked()
+                        ? R.string.pref_kiosk_mode_any_summary_on
+                        : R.string.pref_kiosk_mode_any_summary_off;
+            }
+            fullModePreference.setSummary(summaryStringId);
+        }
+
+        SwitchPreference simpleModePreference =
+                (SwitchPreference) findPreference(GlobalSettings.KEY_SIMPLE_KIOSK_MODE);
+        {
+            int summaryStringId;
+            if (Build.VERSION.SDK_INT < 19) {
+                summaryStringId = R.string.pref_kiosk_mode_simple_summary_old_version;
+            } else {
+                summaryStringId = simpleModePreference.isChecked()
+                        ? R.string.pref_kiosk_mode_any_summary_on
+                        : R.string.pref_kiosk_mode_any_summary_off;
+            }
+            simpleModePreference.setSummary(summaryStringId);
+            simpleModePreference.setEnabled(!fullModePreference.isChecked());
+        }
+    }
+
+    private void updateUnregisterDeviceOwner(boolean isEnabled) {
+        Preference preference = findPreference(KEY_UNREGISTER_DEVICE_OWNER);
+        preference.setEnabled(isEnabled);
+        preference.setSummary(getString(isEnabled
+                ? R.string.pref_kiosk_mode_unregister_device_owner_summary_on
+                : R.string.pref_kiosk_mode_unregister_device_owner_summary_off));
+    }
+
+    private void disableDeviceOwner() {
+        SwitchPreference kioskModePreference =
+                (SwitchPreference) findPreference(GlobalSettings.KEY_KIOSK_MODE);
+        kioskModePreference.setChecked(false);
+        HomerPlayerDeviceAdmin.clearDeviceOwner(getActivity());
+    }
+
+    @SuppressLint("CommitPrefEdits")
+    private void onKioskModeSwitched(SharedPreferences sharedPreferences) {
+        boolean newKioskModeEnabled =
+                sharedPreferences.getBoolean(GlobalSettings.KEY_KIOSK_MODE, false);
+        boolean isLockedPermitted = kioskModeSwitcher.isLockTaskPermitted();
+        if (newKioskModeEnabled && !isLockedPermitted) {
+            AlertDialog dialog = new AlertDialog.Builder(getActivity())
+                    .setMessage(getResources().getString(
+                            R.string.settings_device_owner_required_alert))
+                    .setNeutralButton(android.R.string.ok, null)
+                    .create();
+            dialog.show();
+
+            SwitchPreference switchPreference =
+                    (SwitchPreference) findPreference(GlobalSettings.KEY_KIOSK_MODE);
+            switchPreference.setChecked(false);
+            // Beware: the code below causes this function to be recursively entered again.
+            // It should be the last thing the function does.
+            SharedPreferences.Editor editor = sharedPreferences.edit();
+            editor.putBoolean(GlobalSettings.KEY_KIOSK_MODE, false);
+            editor.commit();
+            return;
+        }
+        if (isLockedPermitted)
+            kioskModeSwitcher.onFullKioskModeEnabled(requireActivity(), newKioskModeEnabled);
+        updateKioskModeSummaries();
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/ui/KioskModeHandler.java
+@Singleton
+public class KioskModeHandler {
+
+    private final GlobalSettings globalSettings;
+    private final EventBus eventBus;
+    private boolean keepNavigation = false;
+
+    private boolean isLockEnabled = false;
+
+    @Inject
+    public KioskModeHandler(GlobalSettings settings, EventBus eventBus) {
+        this.globalSettings = settings;
+        this.eventBus = eventBus;
+    }
+
+    public void setKeepNavigation(Boolean keepNavigation) {
+        this.keepNavigation = keepNavigation;
+    }
+
+    public void onActivityStart(@NonNull Activity activity) {
+        setUiFlagsAndLockTask(activity);
+        eventBus.register(this);
+    }
+
+    public void onActivityStop() {
+        eventBus.unregister(this);
+    }
+
+    public void onFocusGained(@NonNull Activity activity) {
+        setUiFlagsAndLockTask(activity);
+    }
+
+    @SuppressWarnings("unused")
+    public void onEvent(KioskModeChanged event) {
+        if (event.type == KioskModeChanged.Type.FULL)
+            lockTask(event.activity, event.isEnabled);
+        setNavigationVisibility(event.activity, !event.isEnabled);
+    }
+
+    private void setUiFlagsAndLockTask(@NonNull Activity activity) {
+        int visibilitySetting = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        if (!keepNavigation) {
+            visibilitySetting |= View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
+        }
+
+        activity.getWindow().getDecorView().setSystemUiVisibility(visibilitySetting);
+        if (globalSettings.isAnyKioskModeEnabled())
+            setNavigationVisibility(activity, false);
+
+        if (globalSettings.isFullKioskModeEnabled())
+            lockTask(activity, true);
+    }
+
+    private void setNavigationVisibility(@NonNull Activity activity, boolean show) {
+        if (Build.VERSION.SDK_INT < 19 || keepNavigation)
+            return;
+
+        int flags = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                View.SYSTEM_UI_FLAG_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+
+        View decorView = activity.getWindow().getDecorView();
+        int visibilitySetting = decorView.getSystemUiVisibility();
+        if (show)
+            visibilitySetting &= ~flags;
+        else
+            visibilitySetting |= flags;
+
+        decorView.setSystemUiVisibility(visibilitySetting);
+    }
+
+    private void lockTask(@NonNull Activity activity, boolean isLocked) {
+        if (isLockEnabled != isLocked) {
+            isLockEnabled = isLocked;
+            if (isLocked)
+                API21.startLockTask(activity);
+            else
+                API21.stopLockTask(activity);
+        }
+    }
+    @TargetApi(21)
+    private static class API21 {
+        static void startLockTask(Activity activity) {
+            activity.startLockTask();
+        }
+
+        static void stopLockTask(Activity activity) {
+            activity.stopLockTask();
+        }
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/player/Player.java
+public class Player {
+
+    private final ExoPlayer exoPlayer;
+    private final EventBus eventBus;
+    private ProgressiveMediaSource.Factory mediaSourceFactory;
+
+    private float playbackSpeed = 1.0f;
+
+    public Player(Context context, EventBus eventBus) {
+        exoPlayer = new ExoPlayer.Builder(context).build();
+        this.eventBus = eventBus;
+    }
+
+    public PlaybackController createPlayback() {
+        return new PlaybackControllerImpl(new Handler(Looper.myLooper()));
+    }
+
+    public DurationQueryController createDurationQuery(List<File> files) {
+        return new DurationQueryControllerImpl(files);
+    }
+
+    public void setPlaybackSpeed(float speed) {
+        this.playbackSpeed = speed;
+        PlaybackParameters params = new PlaybackParameters(speed, 1.0f);
+        exoPlayer.setPlaybackParameters(params);
+    }
+
+    public void setPlaybackVolume(float volume) {
+        exoPlayer.setVolume(volume);
+    }
+
+    private void prepareAudioFile(File file, long startPositionMs) {
+        Uri fileUri = Uri.fromFile(file);
+        MediaSource source = getExtractorMediaSourceFactory().createMediaSource(fileUri);
+
+        exoPlayer.seekTo(startPositionMs);
+        exoPlayer.prepare(source, false, true);
+    }
+
+    private ProgressiveMediaSource.Factory getExtractorMediaSourceFactory() {
+        if (mediaSourceFactory == null) {
+            DataSource.Factory dataSourceFactory = new FileDataSource.Factory();
+            DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
+            extractorsFactory.setMp3ExtractorFlags(Mp3Extractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING);
+            mediaSourceFactory = new ProgressiveMediaSource.Factory(
+                    dataSourceFactory, extractorsFactory);
+        }
+        return mediaSourceFactory;
+    }
+
+    private class PlaybackControllerImpl implements
+            com.google.android.exoplayer2.Player.Listener,
+            PlaybackController {
+
+        private File currentFile;
+        private Observer observer;
+        private int lastPlaybackState;
+        private Handler handler;
+        private final Runnable updateProgressTask = this::updateProgress;
+
+        private PlaybackControllerImpl(Handler handler) {
+            this.handler = handler;
+            exoPlayer.setPlayWhenReady(true);  // Call before setting the listener.
+            exoPlayer.addListener(this);
+            lastPlaybackState = exoPlayer.getPlaybackState();
+        }
+
+        @Override
+        public void setObserver(Observer observer) {
+            this.observer = observer;
+        }
+
+        @Override
+        public void start(File currentFile, long startPositionMs) {
+            Preconditions.checkNotNull(observer);
+            this.currentFile = currentFile;
+            exoPlayer.setPlayWhenReady(true);
+            prepareAudioFile(currentFile, startPositionMs);
+        }
+
+        @Override
+        public void pause() {
+            exoPlayer.setPlayWhenReady(false);
+            // This ought to be done in onPlayerStateChanged but detecting pause is not as trivial
+            // as doing this here directly.
+            handler.removeCallbacks(updateProgressTask);
+        }
+
+        public void stop() {
+            long position = exoPlayer.getCurrentPosition();
+            exoPlayer.stop();
+            observer.onPlaybackStopped(position);
+        }
+
+        @Override
+        public void release() {
+            exoPlayer.stop();
+        }
+
+        @Override
+        public long getCurrentPosition() {
+            return exoPlayer.getCurrentPosition();
+        }
+
+        @Override
+        public void onPlaybackStateChanged(int playbackState) {
+            if (playbackState == lastPlaybackState)
+                return;
+            lastPlaybackState = playbackState;
+
+            switch(playbackState) {
+                case com.google.android.exoplayer2.Player.STATE_READY:
+                    observer.onDuration(currentFile, exoPlayer.getDuration());
+                    updateProgress();
+                    break;
+                case com.google.android.exoplayer2.Player.STATE_ENDED:
+                    handler.removeCallbacks(updateProgressTask);
+                    observer.onPlaybackEnded();
+                    break;
+                case com.google.android.exoplayer2.Player.STATE_IDLE:
+                    handler.removeCallbacks(updateProgressTask);
+                    exoPlayer.release();
+                    exoPlayer.removeListener(this);
+                    observer.onPlayerReleased();
+                    break;
+            }
+        }
+
+        @Override
+        public void onPlayerError(PlaybackException error) {
+            eventBus.post(new PlaybackErrorEvent(
+                    error.getMessage(),
+                    exoPlayer.getDuration(),
+                    exoPlayer.getCurrentPosition(),
+                    getFormatDescription()));
+            if (error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE) {
+                // May happen with files that have seeking or length information.
+                observer.onPlaybackEnded();
+                return;
+            }
+            observer.onPlaybackError(currentFile);
+        }
+
+        private void updateProgress() {
+            long positionMs = exoPlayer.getCurrentPosition();
+            observer.onPlaybackProgressed(positionMs);
+
+            // Aim a moment after the expected second change. It's necessary because the actual
+            // playback speed may be slightly different than playbackSpeed when it's different
+            // than 1.0.
+            long delayMs = (long) ((1200 - (positionMs % 1000)) * playbackSpeed);
+            if (delayMs < 100)
+                delayMs += (long) (1000 * playbackSpeed);
+
+            handler.postDelayed(updateProgressTask, delayMs);
+        }
+
+        private String getFormatDescription() {
+            Format format = exoPlayer.getAudioFormat();
+            if (format != null) {
+                return format.toString();
+            } else {
+                String fileName = currentFile.getName();
+                int suffixIndex = fileName.lastIndexOf('.');
+                return suffixIndex != -1 ? fileName.substring(suffixIndex) : "";
+            }
+        }
+    }
+
+    private class DurationQueryControllerImpl implements
+            com.google.android.exoplayer2.Player.EventListener,
+            DurationQueryController {
+
+        private final Iterator<File> iterator;
+        private File currentFile;
+        private Observer observer;
+        private boolean releaseOnIdle = false;
+
+        private DurationQueryControllerImpl(List<File> files) {
+            Preconditions.checkArgument(!files.isEmpty());
+            this.iterator = files.iterator();
+        }
+
+        @Override
+        public void start(Observer observer) {
+            this.observer = observer;
+            exoPlayer.setPlayWhenReady(false);  // Call before setting the listener.
+            exoPlayer.addListener(this);
+            processNextFile();
+        }
+
+        @Override
+        public void stop() {
+            releaseOnIdle = true;
+            exoPlayer.stop();
+        }
+
+        @Override
+        public void onPlaybackStateChanged(int playbackState) {
+            switch(playbackState) {
+                case com.google.android.exoplayer2.Player.STATE_READY:
+                    observer.onDuration(currentFile, exoPlayer.getDuration());
+                    boolean hasNext = processNextFile();
+                    if (!hasNext)
+                        exoPlayer.stop();
+                    break;
+                case com.google.android.exoplayer2.Player.STATE_IDLE:
+                    exoPlayer.removeListener(this);
+                    if (releaseOnIdle) {
+                        exoPlayer.release();
+                        observer.onPlayerReleased();
+                    } else {
+                        observer.onFinished();
+                    }
+                    break;
+            }
+        }
+
+        @Override
+        public void onPlayerError(@NonNull PlaybackException error) {
+            releaseOnIdle = true;
+            observer.onPlayerError(currentFile);
+        }
+
+        private boolean processNextFile() {
+            boolean hasNext = iterator.hasNext();
+            if (hasNext) {
+                currentFile = iterator.next();
+                prepareAudioFile(currentFile, 0);
+            }
+            return hasNext;
+        }
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/ui/settings/MainSettingsFragment.java
+public class MainSettingsFragment extends BaseSettingsFragment {
+
+    private static final String KEY_RESET_ALL_BOOK_PROGRESS = "reset_all_book_progress_preference";
+    private static final String KEY_FAQ = "faq_preference";
+    private static final String KEY_VERSION = "version_preference";
+
+    private static final String FAQ_URL = "https://goo.gl/1RVxFW";
+
+    @Inject public AudioBookManager audioBookManager;
+    @Inject public GlobalSettings globalSettings;
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        HomerPlayerApplication.getComponent(requireActivity()).inject(this);
+        super.onCreate(savedInstanceState);
+    }
+
+    @Override
+    public void onCreatePreferences(Bundle bundle, String rootKey) {
+        setPreferencesFromResource(R.xml.preferences_main, rootKey);
+
+        ConfirmDialogPreference preferenceResetProgress =
+                getPreference(KEY_RESET_ALL_BOOK_PROGRESS);
+        preferenceResetProgress.setOnConfirmListener(() -> {
+            audioBookManager.resetAllBookProgress();
+            Toast.makeText(
+                    getActivity(),
+                    R.string.pref_reset_all_book_progress_done,
+                    Toast.LENGTH_SHORT).show();
+        });
+        setupFaq();
+        updateVersionSummary();
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        updateKioskModeSummary();
+    }
+
+    @Override
+    protected int getTitle() {
+        return R.string.settings_title;
+    }
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+        switch(key) {
+            case GlobalSettings.KEY_SIMPLE_KIOSK_MODE:
+            case GlobalSettings.KEY_KIOSK_MODE:
+                updateKioskModeSummary();
+                break;
+        }
+    }
+
+    private void updateVersionSummary() {
+        Preference preference = getPreference(KEY_VERSION);
+        String versionString = String.format(
+                Locale.US, "%s (%d)", BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE);
+        preference.setSummary(versionString);
+    }
+
+    private void updateKioskModeSummary() {
+        Preference kioskModeScreen = getPreference(GlobalSettings.KEY_KIOSK_MODE_SCREEN);
+
+        int summaryStringId = R.string.pref_kiosk_mode_screen_summary_disabled;
+        if (globalSettings.isFullKioskModeEnabled())
+            summaryStringId = R.string.pref_kiosk_mode_screen_summary_full;
+        else if (globalSettings.isSimpleKioskModeEnabled())
+            summaryStringId = R.string.pref_kiosk_mode_screen_summary_simple;
+        kioskModeScreen.setSummary(summaryStringId);
+    }
+
+    private void setupFaq() {
+        Preference preference = getPreference(KEY_FAQ);
+        preference.setSummary(getString(R.string.pref_help_faq_summary, FAQ_URL));
+        preference.setOnPreferenceClickListener(preference1 -> {
+            openUrl(FAQ_URL);
+            return true;
+        });
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/service/PlaybackService.java
+public class PlaybackService
+        extends Service
+        implements DeviceMotionDetector.Listener, AudioManager.OnAudioFocusChangeListener {
+
+    public enum State {
+        IDLE,
+        PREPARATION,
+        PLAYBACK
+    }
+
+    private static final long FADE_OUT_DURATION_MS = TimeUnit.SECONDS.toMillis(10);
+
+    private static final String TAG = "PlaybackService";
+    private static final int NOTIFICATION_ID = R.string.playback_service_notification;
+    private static final PlaybackStoppingEvent PLAYBACK_STOPPING_EVENT = new PlaybackStoppingEvent();
+    private static final PlaybackStoppedEvent PLAYBACK_STOPPED_EVENT = new PlaybackStoppedEvent();
+
+    @Inject public GlobalSettings globalSettings;
+    @Inject public EventBus eventBus;
+
+    private Player player;
+    private DurationQuery durationQueryInProgress;
+    private AudioBookPlayback playbackInProgress;
+    private DeviceMotionDetector motionDetector;
+    private Handler handler;
+    private final SleepFadeOut sleepFadeOut = new SleepFadeOut();
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return new ServiceBinder();
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        HomerPlayerApplication.getComponent(getApplicationContext()).inject(this);
+        // TODO: use Dagger to create DeviceMotionDetector?
+        SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        handler = new Handler(getMainLooper());
+        if (sensorManager != null && DeviceMotionDetector.hasSensors(sensorManager)) {
+            motionDetector = new DeviceMotionDetector(sensorManager, this);
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        CrashReporting.log(Log.DEBUG, TAG, "PlaybackService.onDestroy");
+        super.onDestroy();
+        stopPlayback();
+    }
+
+    public void startPlayback(AudioBook book) {
+        Preconditions.checkState(playbackInProgress == null);
+        Preconditions.checkState(durationQueryInProgress == null);
+        Preconditions.checkState(player == null);
+
+        requestAudioFocus();
+        player = HomerPlayerApplication.getComponent(getApplicationContext()).createAudioBookPlayer();
+        player.setPlaybackSpeed(globalSettings.getPlaybackSpeed());
+
+        if (motionDetector != null)
+            motionDetector.enable();
+
+        Notification notification = NotificationUtil.createForegroundServiceNotification(
+                getApplicationContext(),
+                R.string.playback_service_notification,
+                android.R.drawable.ic_media_play);
+        ContextCompat.startForegroundService(
+                this, new Intent(this, PlaybackService.class));
+        startForeground(NOTIFICATION_ID, notification);
+
+        if (book.getTotalDurationMs() == AudioBook.UNKNOWN_POSITION) {
+            CrashReporting.log(Log.DEBUG, TAG,"PlaybackService.startPlayback: create DurationQuery");
+            durationQueryInProgress = new DurationQuery(player, book);
+        } else {
+            CrashReporting.log(Log.DEBUG, TAG,"PlaybackService.startPlayback: create AudioBookPlayback");
+            playbackInProgress = new AudioBookPlayback(
+                    player, handler, book, globalSettings.getJumpBackPreferenceMs());
+        }
+    }
+
+    public State getState() {
+        if (durationQueryInProgress != null) {
+            return State.PREPARATION;
+        } else if (playbackInProgress != null) {
+            return State.PLAYBACK;
+        } else {
+            return State.IDLE;
+        }
+    }
+
+    public void pauseForRewind() {
+        Preconditions.checkNotNull(playbackInProgress);
+        playbackInProgress.pauseForRewind();
+    }
+
+    public void resumeFromRewind() {
+        Preconditions.checkNotNull(playbackInProgress);
+        playbackInProgress.resumeFromRewind();
+    }
+
+    public long getCurrentTotalPositionMs() {
+        Preconditions.checkNotNull(playbackInProgress);
+        return playbackInProgress.getCurrentTotalPositionMs();
+    }
+
+    public AudioBook getAudioBookBeingPlayed() {
+        Preconditions.checkNotNull(playbackInProgress);
+        return playbackInProgress.audioBook;
+    }
+
+    public void stopPlayback() {
+        if (durationQueryInProgress != null)
+            durationQueryInProgress.stop();
+        else if (playbackInProgress != null)
+            playbackInProgress.stop();
+
+        CrashReporting.log(Log.DEBUG, TAG, "PlaybackService.stopPlayback");
+        onPlaybackEnded();
+    }
+
+    @Override
+    public void onFaceDownStill() {
+        CrashReporting.log(Log.DEBUG, TAG, "PlaybackService.onFaceDownStill");
+        stopPlayback();
+    }
+
+    @Override
+    public void onSignificantMotion() {
+        resetSleepTimer();
+    }
+
+    @Override
+    public void onAudioFocusChange(int focusChange) {
+        // TRANSIENT loss is reported on phone calls.
+        // Notifications should request TRANSIENT_CAN_DUCK so they won't interfere.
+        if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
+                focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            CrashReporting.log(Log.DEBUG, TAG, "PlaybackService.onAudioFocusChange");
+            stopPlayback();
+        }
+    }
+
+    public class ServiceBinder extends Binder {
+        public PlaybackService getService() {
+            return PlaybackService.this;
+        }
+    }
+
+    private void onPlaybackEnded() {
+        durationQueryInProgress = null;
+        playbackInProgress = null;
+        if (motionDetector != null)
+             motionDetector.disable();
+
+        stopSleepTimer();
+        dropAudioFocus();
+        eventBus.post(PLAYBACK_STOPPING_EVENT);
+    }
+
+    private void onPlayerReleased() {
+        CrashReporting.log(Log.DEBUG, TAG, "PlaybackService.onPlayerReleased");
+        if (playbackInProgress != null || durationQueryInProgress != null) {
+            onPlaybackEnded();
+        }
+        player = null;
+        eventBus.post(PLAYBACK_STOPPED_EVENT);
+        stopForeground(true);
+        stopSelf();
+    }
+
+    private void requestAudioFocus() {
+        AudioManager audioManager =
+                (AudioManager) getApplicationContext().getSystemService(Context.AUDIO_SERVICE);
+        audioManager.requestAudioFocus(
+                this, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+    }
+
+    private void dropAudioFocus() {
+        AudioManager audioManager =
+                (AudioManager) getApplicationContext().getSystemService(Context.AUDIO_SERVICE);
+        audioManager.abandonAudioFocus(this);
+    }
+
+    private void resetSleepTimer() {
+        stopSleepTimer();
+        long timerMs = globalSettings.getSleepTimerMs();
+        if (timerMs > 0)
+            sleepFadeOut.scheduleStart(timerMs);
+    }
+
+    private void stopSleepTimer() {
+        sleepFadeOut.reset();
+    }
+
+    private class AudioBookPlayback implements PlaybackController.Observer {
+
+        final @NonNull AudioBook audioBook;
+        private final @NonNull PlaybackController controller;
+        private final @NonNull Handler handler;
+        private final @NonNull Runnable updatePosition = new Runnable() {
+            @Override
+            public void run() {
+                audioBook.updatePosition(controller.getCurrentPosition());
+                handler.postDelayed(updatePosition, UPDATE_TIME_MS);
+            }
+        };
+
+        private final long UPDATE_TIME_MS = TimeUnit.SECONDS.toMillis(10);
+
+        private AudioBookPlayback(
+                @NonNull Player player,
+                @NonNull Handler handler,
+                @NonNull AudioBook audioBook,
+                int jumpBackMs) {
+            this.audioBook = audioBook;
+            this.handler = handler;
+
+            controller = player.createPlayback();
+            controller.setObserver(this);
+            AudioBook.Position position = audioBook.getLastPosition();
+            long startPositionMs = Math.max(0, position.seekPosition - jumpBackMs);
+            controller.start(position.file, startPositionMs);
+            handler.postDelayed(updatePosition, UPDATE_TIME_MS);
+            resetSleepTimer();
+        }
+
+        public void stop() {
+            controller.stop();
+        }
+
+        public void pauseForRewind() {
+            handler.removeCallbacks(updatePosition);
+            stopSleepTimer();
+            controller.pause();
+        }
+
+        public void resumeFromRewind() {
+            AudioBook.Position position = audioBook.getLastPosition();
+            controller.start(position.file, position.seekPosition);
+            handler.postDelayed(updatePosition, UPDATE_TIME_MS);
+            resetSleepTimer();
+        }
+
+        long getCurrentTotalPositionMs() {
+            return audioBook.getLastPositionTime(controller.getCurrentPosition());
+        }
+
+        @Override
+        public void onPlaybackProgressed(long currentPositionMs) {
+            eventBus.post(new PlaybackProgressedEvent(
+                    audioBook, audioBook.getLastPositionTime(currentPositionMs)));
+        }
+
+        @Override
+        public void onDuration(File file, long durationMs) {
+            audioBook.offerFileDuration(file, durationMs);
+        }
+
+        @Override
+        public void onPlaybackEnded() {
+            boolean hasMoreToPlay = audioBook.advanceFile();
+            CrashReporting.log(Log.DEBUG, TAG, "PlaybackService.AudioBookPlayback.onPlaybackEnded: " +
+                    (hasMoreToPlay ? "more to play" : "finished"));
+            if (hasMoreToPlay) {
+                AudioBook.Position position = audioBook.getLastPosition();
+                controller.start(position.file, position.seekPosition);
+            } else {
+                audioBook.resetPosition();
+                PlaybackService.this.onPlaybackEnded();
+                controller.release();
+            }
+        }
+
+        @Override
+        public void onPlaybackStopped(long currentPositionMs) {
+            audioBook.updatePosition(currentPositionMs);
+        }
+
+        @Override
+        public void onPlaybackError(File path) {
+            eventBus.post(new PlaybackFatalErrorEvent(path));
+        }
+
+        @Override
+        public void onPlayerReleased() {
+            handler.removeCallbacks(updatePosition);
+            PlaybackService.this.onPlayerReleased();
+        }
+    }
+
+    private class DurationQuery implements DurationQueryController.Observer {
+
+        private final AudioBook audioBook;
+        private final DurationQueryController controller;
+
+        private DurationQuery(Player player, AudioBook audioBook) {
+            this.audioBook = audioBook;
+
+            List<File> files = audioBook.getFilesWithNoDuration();
+            controller = player.createDurationQuery(files);
+            controller.start(this);
+        }
+
+        public void stop() {
+            controller.stop();
+        }
+
+        @Override
+        public void onDuration(File file, long durationMs) {
+            audioBook.offerFileDuration(file, durationMs);
+        }
+
+        @Override
+        public void onFinished() {
+            CrashReporting.log(Log.DEBUG, TAG, "PlaybackService.DurationQuery.onFinished");
+            Preconditions.checkState(durationQueryInProgress == this);
+            durationQueryInProgress = null;
+            playbackInProgress = new AudioBookPlayback(
+                    player, handler, audioBook, globalSettings.getJumpBackPreferenceMs());
+        }
+
+        @Override
+        public void onPlayerReleased() {
+            PlaybackService.this.onPlayerReleased();
+        }
+
+        @Override
+        public void onPlayerError(File path) {
+            eventBus.post(new PlaybackFatalErrorEvent(path));
+        }
+    }
+
+    private class SleepFadeOut implements Runnable {
+        private float currentVolume = 1.0f;
+        private final long STEP_INTERVAL_MS = 100;
+        private final float VOLUME_DOWN_STEP =  (float) STEP_INTERVAL_MS / FADE_OUT_DURATION_MS;
+
+        public void scheduleStart(long delay) {
+            handler.postDelayed(this, delay);
+        }
+
+        public void reset() {
+            handler.removeCallbacks(this);
+            currentVolume = 1.0f;
+
+            // The player may have been released already.
+            if (player != null)
+              player.setPlaybackVolume(currentVolume);
+        }
+
+        @Override
+        public void run() {
+            currentVolume -= VOLUME_DOWN_STEP;
+            player.setPlaybackVolume(currentVolume);
+            if (currentVolume <= 0) {
+                CrashReporting.log(Log.DEBUG, TAG, "SleepFadeOut stop");
+                stopPlayback();
+            } else {
+                handler.postDelayed(this, STEP_INTERVAL_MS);
+            }
+        }
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/service/AudioBookPlayerModule.java
+@Module
+public class AudioBookPlayerModule {
+    @Provides
+    Player provideAudioBookPlayer(Context context, EventBus eventBus) {
+        return new Player(context, eventBus);
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/ui/classic/FragmentPlayback.java
+public class FragmentPlayback extends Fragment implements FFRewindTimer.Observer {
+
+    private View view;
+    private Button stopButton;
+    private ImageButton rewindButton;
+    private ImageButton ffButton;
+    private TextView elapsedTimeView;
+    private TextView elapsedTimeRewindFFView;
+    private VolumeIndicatorShowController volumeIndicatorShowController;
+    private VolumeChangeIndicator volumeIndicator;
+    private RewindFFHandler rewindFFHandler;
+    private Animator elapsedTimeRewindFFViewAnimation;
+
+    private @Nullable UiControllerPlayback controller;
+
+    @Inject public GlobalSettings globalSettings;
+
+    @SuppressLint("ClickableViewAccessibility")
+    @Override
+    public View onCreateView(
+            @NonNull LayoutInflater inflater,
+            @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
+        view = inflater.inflate(R.layout.fragment_playback, container, false);
+        HomerPlayerApplication.getComponent(view.getContext()).inject(this);
+
+        stopButton = view.findViewById(R.id.stopButton);
+        stopButton.setOnClickListener(v -> {
+            Preconditions.checkNotNull(controller);
+            controller.stopPlayback();
+        });
+
+        elapsedTimeView = view.findViewById(R.id.elapsedTime);
+        elapsedTimeRewindFFView = view.findViewById(R.id.elapsedTimeRewindFF);
+
+        elapsedTimeView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(
+                    View v,
+                    int left, int top, int right, int bottom,
+                    int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                RelativeLayout.LayoutParams params =
+                        (RelativeLayout.LayoutParams) elapsedTimeRewindFFView.getLayoutParams();
+                params.leftMargin = left;
+                params.topMargin = top;
+                params.width = right - left;
+                params.height = bottom - top;
+                elapsedTimeRewindFFView.setLayoutParams(params);
+            }
+        });
+
+        // Don't let any events "through" overlays.
+        View.OnTouchListener capturingListener = (v, event) -> true;
+        RepeatButton volumeUp = view.findViewById(R.id.volumeUp);
+        RepeatButton volumeDown = view.findViewById(R.id.volumeDown);
+        if (globalSettings.isVolumeControlEnabled()) {
+            volumeUp.setOnClickListener(this::volumeUp);
+            volumeUp.setOnLongClickListener(this::volumeUp);
+            volumeUp.setOnPressListener(this::requestShowVolume);
+            volumeDown.setOnClickListener(this::volumeDown);
+            volumeDown.setOnLongClickListener(this::volumeDown);
+            volumeDown.setOnPressListener(this::requestShowVolume);
+
+            View volumeIndicatorOverlay = view.findViewById(R.id.volumeIndicatorOverlay);
+            volumeIndicatorOverlay.setOnTouchListener(capturingListener);
+            volumeIndicatorShowController = new VolumeIndicatorShowController(volumeIndicatorOverlay);
+            volumeIndicator = view.findViewById(R.id.volumeIndicator);
+        } else {
+            volumeUp.setVisibility(View.GONE);
+            volumeDown.setVisibility(View.GONE);
+        }
+
+        rewindButton = view.findViewById(R.id.rewindButton);
+        ffButton = view.findViewById(R.id.fastForwardButton);
+
+        View rewindFFOverlay = view.findViewById(R.id.rewindFFOverlay);
+        rewindFFHandler = new RewindFFHandler(
+                (View) rewindFFOverlay.getParent(), rewindFFOverlay);
+        rewindButton.setEnabled(false);
+        ffButton.setEnabled(false);
+        rewindFFOverlay.setOnTouchListener(capturingListener);
+
+        elapsedTimeRewindFFViewAnimation =
+                AnimatorInflater.loadAnimator(view.getContext(), R.animator.bounce);
+        elapsedTimeRewindFFViewAnimation.setTarget(elapsedTimeRewindFFView);
+
+        return view;
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    @Override
+    public void onResume() {
+        super.onResume();
+        CrashReporting.log("UI: FragmentPlayback resumed");
+        rewindButton.setOnTouchListener(new PressReleaseDetector(rewindFFHandler));
+        ffButton.setOnTouchListener(new PressReleaseDetector(rewindFFHandler));
+        showHintIfNecessary();
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    @Override
+    public void onPause() {
+        // Remove press-release detectors and tell rewindFFHandler directly that we're paused.
+        rewindButton.setOnTouchListener(null);
+        ffButton.setOnTouchListener(null);
+        rewindFFHandler.onPause();
+        super.onPause();
+    }
+
+    void onPlaybackStopping() {
+        disableUiOnStopping();
+        rewindFFHandler.onStopping();
+    }
+
+    void onPlaybackProgressed(long playbackPositionMs) {
+        onTimerUpdated(playbackPositionMs);
+        enableUiOnStart();
+    }
+
+    void onVolumeChanged(int min, int max, int current) {
+        volumeIndicator.setVolume(min, max, current);
+        volumeIndicatorShowController.show();
+    }
+
+    void enableUiOnStart() {
+        rewindButton.setEnabled(true);
+        ffButton.setEnabled(true);
+    }
+
+    private void disableUiOnStopping() {
+        rewindButton.setEnabled(false);
+        stopButton.setEnabled(false);
+        ffButton.setEnabled(false);
+    }
+
+    private boolean volumeUp(@NonNull View ignored) {
+        Preconditions.checkNotNull(controller);
+        controller.volumeUp();
+        return true;
+    }
+
+    private boolean volumeDown(@NonNull View ignored) {
+        Preconditions.checkNotNull(controller);
+        controller.volumeDown();
+        return true;
+    }
+
+    private void requestShowVolume(@NonNull View ignored) {
+        Preconditions.checkNotNull(controller);
+        controller.showVolume();
+    }
+
+    private static class VolumeIndicatorShowController {
+        private static final long SHOW_HIDE_DURATION_MS = 500;
+        private static final long AUTO_HIDE_DURATION_MS = 3000;
+
+        @NonNull
+        private final View volumeIndicatorOverlay;
+        private boolean isShown = false;
+
+        @NonNull
+        private final Runnable hideTask = this::hide;
+
+        private VolumeIndicatorShowController(@NonNull View volumeIndicatorOverlay) {
+            this.volumeIndicatorOverlay = volumeIndicatorOverlay;
+        }
+
+        void show() {
+            if (!isShown) {
+                volumeIndicatorOverlay.animate().cancel();
+                volumeIndicatorOverlay.setVisibility(View.VISIBLE);
+                long duration = Math.round(
+                        (1f - volumeIndicatorOverlay.getAlpha()) * SHOW_HIDE_DURATION_MS);
+                volumeIndicatorOverlay.animate()
+                        .alpha(1f)
+                        .setDuration(duration)
+                        .setListener(null)
+                        .start();
+                isShown = true;
+            }
+            volumeIndicatorOverlay.removeCallbacks(hideTask);
+            volumeIndicatorOverlay.postDelayed(hideTask, AUTO_HIDE_DURATION_MS);
+        }
+
+        void hide() {
+            isShown = false;
+            volumeIndicatorOverlay.removeCallbacks(hideTask);
+            volumeIndicatorOverlay.animate().cancel();
+            long duration = Math.round(
+                    volumeIndicatorOverlay.getAlpha() * SHOW_HIDE_DURATION_MS);
+            volumeIndicatorOverlay.animate()
+                    .alpha(0f)
+                    .setDuration(duration)
+                    .setListener(new SimpleAnimatorListener() {
+                        @Override
+                        public void onAnimationEnd(Animator animator) {
+                            volumeIndicatorOverlay.setVisibility(View.GONE);
+                        }
+                    })
+                    .start();
+        }
+    }
+
+    private String elapsedTime(long elapsedMs) {
+        long hours = TimeUnit.MILLISECONDS.toHours(elapsedMs);
+        long minutes = TimeUnit.MILLISECONDS.toMinutes(elapsedMs) % 60;
+        long seconds = TimeUnit.MILLISECONDS.toSeconds(elapsedMs) % 60;
+
+        return getString(R.string.playback_elapsed_time, hours, minutes, seconds);
+    }
+
+    private void showHintIfNecessary() {
+        if (isResumed() && isVisible()) {
+            if (!globalSettings.flipToStopHintShown()) {
+                HintOverlay overlay = new HintOverlay(
+                        view, R.id.flipToStopHintOverlayStub, R.string.hint_flip_to_stop, R.drawable.hint_flip_to_stop);
+                overlay.show();
+                globalSettings.setFlipToStopHintShown();
+            }
+        }
+    }
+
+    @Override
+    public void onTimerUpdated(long displayTimeMs) {
+        elapsedTimeView.setText(elapsedTime(displayTimeMs));
+        elapsedTimeRewindFFView.setText(elapsedTime(displayTimeMs));
+    }
+
+    @Override
+    public void onTimerLimitReached() {
+        if (elapsedTimeRewindFFView.getVisibility() == View.VISIBLE) {
+            elapsedTimeRewindFFViewAnimation.start();
+        }
+    }
+
+    void setController(@NonNull UiControllerPlayback controller) {
+        this.controller = controller;
+    }
+
+    private class RewindFFHandler implements PressReleaseDetector.Listener {
+
+        private final View commonParent;
+        private final View rewindOverlay;
+        private Animator currentAnimator;
+        private boolean isRunning;
+
+        private RewindFFHandler(@NonNull View commonParent, @NonNull View rewindOverlay) {
+            this.commonParent = commonParent;
+            this.rewindOverlay = rewindOverlay;
+        }
+
+        @Override
+        public void onPressed(final View v, float x, float y) {
+            Preconditions.checkNotNull(controller);
+            if (currentAnimator != null) {
+                currentAnimator.cancel();
+            }
+
+            final boolean isFF = (v == ffButton);
+            rewindOverlay.setVisibility(View.VISIBLE);
+            currentAnimator = createAnimation(v, x, y, true);
+            currentAnimator.addListener(new AnimatorListener() {
+                @Override
+                protected void onAnimationCompleted() {
+                    controller.startRewind(isFF, FragmentPlayback.this);
+                }
+
+                @Override
+                public void onAnimationCancel(Animator animator) {
+                    super.onAnimationCancel(animator);
+                    resumeFromRewind();
+                }
+
+                @Override
+                protected void onCompletedOrCancelled() {
+                    currentAnimator = null;
+                }
+            });
+            currentAnimator.start();
+
+            controller.pauseForRewind();
+            isRunning = true;
+        }
+
+        @Override
+        public void onReleased(View v, float x, float y) {
+            if (currentAnimator != null) {
+                currentAnimator.cancel();
+                rewindOverlay.setVisibility(View.GONE);
+                currentAnimator = null;
+            } else {
+                currentAnimator = createAnimation(v, x, y, false);
+                currentAnimator.addListener(new AnimatorListener() {
+                    @Override
+                    protected void onCompletedOrCancelled() {
+                        rewindOverlay.setVisibility(View.GONE);
+                        currentAnimator = null;
+                    }
+                });
+                currentAnimator.start();
+                resumeFromRewind();
+            }
+        }
+
+        void onPause() {
+            if (currentAnimator != null) {
+                // Cancelling the animation calls resumeFromRewind.
+                currentAnimator.cancel();
+                currentAnimator = null;
+            } else if (isRunning) {
+                resumeFromRewind();
+            }
+        }
+
+        void onStopping() {
+            if (isRunning)
+                stopRewind();
+        }
+
+        private void resumeFromRewind() {
+            Preconditions.checkNotNull(controller);
+            stopRewind();
+            controller.resumeFromRewind();
+        }
+
+        private void stopRewind() {
+            Preconditions.checkNotNull(controller);
+            controller.stopRewind();
+            isRunning = false;
+        }
+
+        private Animator createAnimation(View v, float x, float y, boolean reveal) {
+            Rect viewRect = ViewUtils.getRelativeRect(commonParent, v);
+            float startX = viewRect.left + x;
+            float startY = viewRect.top + y;
+
+            // Compute final radius
+            float dx = Math.max(startX, commonParent.getWidth() - startX);
+            float dy = Math.max(startY, commonParent.getHeight() - startY);
+            float finalRadius = (float) Math.hypot(dx, dy);
+
+            float initialRadius = reveal ? 0f : finalRadius;
+            if (!reveal)
+                finalRadius = 0f;
+
+            final int durationResId = reveal
+                    ? R.integer.ff_rewind_overlay_show_animation_time_ms
+                    : R.integer.ff_rewind_overlay_hide_animation_time_ms;
+            Animator animator = ViewAnimationUtils.createCircularReveal(
+                    rewindOverlay, Math.round(startX), Math.round(startY), initialRadius, finalRadius);
+            animator.setDuration(getResources().getInteger(durationResId));
+            animator.setInterpolator(new AccelerateDecelerateInterpolator());
+
+            return animator;
+        }
+    }
+
+    private static abstract class AnimatorListener extends SimpleAnimatorListener {
+        private boolean isCancelled = false;
+
+        @Override
+        public final void onAnimationEnd(Animator animator) {
+            if (!isCancelled) {
+                onAnimationCompleted();
+                onCompletedOrCancelled();
+            }
+        }
+
+        @CallSuper
+        @Override
+        public void onAnimationCancel(Animator animator) {
+            isCancelled = true;
+            onCompletedOrCancelled();
+        }
+
+        protected abstract void onCompletedOrCancelled();
+        protected void onAnimationCompleted() {}
+    }
+}
+app/src/main/java/com/studio4plus/homerplayer/model/DemoSamplesInstaller.java
+public class DemoSamplesInstaller {
+
+    private final File audioBooksDirectory;
+    private final Locale locale;
+    private final Context context;
+
+    @Inject
+    @MainThread
+    public DemoSamplesInstaller(Context context, Locale locale, AudioBookManager audioBookManager) {
+        this.context = context;
+        this.audioBooksDirectory = audioBookManager.getDefaultAudioBooksDirectory();
+        this.locale = locale;
+    }
+
+    @WorkerThread
+    public boolean installBooksFromZip(File zipPath) throws IOException {
+        File tempFolder = Files.createTempDir();
+        InputStream inputStream = new BufferedInputStream(new FileInputStream(zipPath));
+        Decompress decompress = new Decompress(inputStream, tempFolder.getAbsolutePath());
+        decompress.unzip();
+        boolean anythingInstalled = installBooks(tempFolder);
+        deleteFolderWithFiles(tempFolder);
+
+        return anythingInstalled;
+    }
+
+    @WorkerThread
+    private boolean installBooks(File sourceDirectory) {
+        if (!audioBooksDirectory.exists()) {
+            if (!audioBooksDirectory.mkdirs())
+                return false;
+        }
+
+        boolean anythingInstalled = false;
+        File books[] = sourceDirectory.listFiles();
+        for (File bookDirectory : books) {
+            boolean success = installSingleBook(bookDirectory, audioBooksDirectory);
+            if (success)
+                anythingInstalled = true;
+        }
+
+        return anythingInstalled;
+    }
+
+    @WorkerThread
+    private boolean installSingleBook(File sourceBookDirectory, File audioBooksDirectory) {
+        File titlesFile = new File(sourceBookDirectory, TITLES_FILE_NAME);
+        String localizedTitle = readLocalizedTitle(titlesFile, locale);
+
+        if (localizedTitle == null)
+            return false; // Malformed package.
+
+        File bookDirectory = new File(audioBooksDirectory, localizedTitle);
+
+        if (bookDirectory.exists())
+            return false;
+
+        if (!bookDirectory.mkdirs())
+            return false;
+
+        try {
+            File sampleIndicator = new File(bookDirectory, FileScanner.SAMPLE_BOOK_FILE_NAME);
+            Files.touch(sampleIndicator);
+
+            File files[] = sourceBookDirectory.listFiles(new FilenameFilter() {
+                @Override
+                public boolean accept(File dir, String filename) {
+                    return !TITLES_FILE_NAME.equals(filename);
+                }
+            });
+            int count = files.length;
+            String installedFilePaths[] = new String[count];
+
+            for (int i = 0; i < count; ++i) {
+                File srcFile = files[i];
+                File dstFile = new File(bookDirectory, srcFile.getName());
+                Files.copy(srcFile, dstFile);
+                installedFilePaths[i] = dstFile.getAbsolutePath();
+            }
+
+            MediaScannerConnection.scanFile(context, installedFilePaths, null, null);
+
+            return true;
+        } catch(IOException exception) {
+            deleteFolderWithFiles(bookDirectory);
+            CrashReporting.logException(exception);
+            return false;
+        }
+    }
+
+    @WorkerThread
+    private String readLocalizedTitle(File file, Locale locale) {
+        try {
+            String titlesString = Files.toString(file, Charset.forName(TITLES_FILE_CHARSET));
+            JSONObject titles = (JSONObject) new JSONTokener(titlesString).nextValue();
+            String languageCode = locale.getLanguage();
+            String localizedTitle = titles.optString(languageCode, null);
+            if (localizedTitle == null)
+                localizedTitle = titles.getString(DEFAULT_TITLE_FIELD);
+
+            return localizedTitle;
+        } catch(IOException | JSONException | ClassCastException exception) {
+            CrashReporting.logException(exception);
+            return null;
+        }
+    }
+
+    /**
+     * Deletes files from a directory, non-recursive.
+     */
+    @SuppressWarnings("ResultOfMethodCallIgnored")
+    private void deleteFolderWithFiles(File directory) {
+        File files[] = directory.listFiles();
+        for (File file : files) {
+            file.delete();
+        }
+        directory.delete();
+    }
+
+    private static final String TITLES_FILE_NAME = "titles.json";
+    private static final String TITLES_FILE_CHARSET = "UTF-8";
+    private static final String DEFAULT_TITLE_FIELD = "default";
+}

@@ -1,0 +1,6 @@
+def __create_fn__(_type_fx_graph_cache_key, _type_backward_state_indices, _type_num_symints_saved_for_bw_, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,fx_graph_cache_key:_type_fx_graph_cache_key,backward_state_indices:_type_backward_state_indices,num_symints_saved_for_bw_:_type_num_symints_saved_for_bw_)->_return_type:
+  self.fx_graph_cache_key=fx_graph_cache_key
+  self.backward_state_indices=backward_state_indices
+  self.num_symints_saved_for_bw_=num_symints_saved_for_bw_
+ return __init__

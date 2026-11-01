@@ -1,0 +1,7 @@
+def __create_fn__(_type_inductor_artifacts, _type_autotune_artifacts, _type_aot_autograd_artifacts, _type_pgo_artifacts, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_inductor_artifacts, _dflt_autotune_artifacts, _dflt_aot_autograd_artifacts, _dflt_pgo_artifacts, _return_type):
+ def __init__(self,inductor_artifacts:_type_inductor_artifacts=_HAS_DEFAULT_FACTORY,autotune_artifacts:_type_autotune_artifacts=_HAS_DEFAULT_FACTORY,aot_autograd_artifacts:_type_aot_autograd_artifacts=_HAS_DEFAULT_FACTORY,pgo_artifacts:_type_pgo_artifacts=_HAS_DEFAULT_FACTORY)->_return_type:
+  self.inductor_artifacts=_dflt_inductor_artifacts() if inductor_artifacts is _HAS_DEFAULT_FACTORY else inductor_artifacts
+  self.autotune_artifacts=_dflt_autotune_artifacts() if autotune_artifacts is _HAS_DEFAULT_FACTORY else autotune_artifacts
+  self.aot_autograd_artifacts=_dflt_aot_autograd_artifacts() if aot_autograd_artifacts is _HAS_DEFAULT_FACTORY else aot_autograd_artifacts
+  self.pgo_artifacts=_dflt_pgo_artifacts() if pgo_artifacts is _HAS_DEFAULT_FACTORY else pgo_artifacts
+ return __init__

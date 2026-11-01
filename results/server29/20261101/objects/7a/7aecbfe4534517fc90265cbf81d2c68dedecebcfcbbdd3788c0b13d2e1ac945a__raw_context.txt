@@ -1,0 +1,1320 @@
+src/main/java/io/github/redwallhp/athenagm/commands/MatchCommands.java
+public class MatchCommands implements CommandExecutor {
+
+
+    private AthenaGM plugin;
+
+
+    public MatchCommands(AthenaGM plugin) {
+        this.plugin = plugin;
+        plugin.getCommand("teams").setExecutor(this);
+        plugin.getCommand("team").setExecutor(this);
+        plugin.getCommand("autojoin").setExecutor(this);
+        plugin.getCommand("spectate").setExecutor(this);
+        plugin.getCommand("score").setExecutor(this);
+        plugin.getCommand("players").setExecutor(this);
+        plugin.getCommand("timeleft").setExecutor(this);
+        plugin.getCommand("tmsg").setExecutor(this);
+    }
+
+
+    public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
+
+        if (cmd.getName().equalsIgnoreCase("teams")) {
+            listTeams(sender);
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("team")) {
+            joinTeam(sender, args);
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("autojoin")) {
+            autoJoinTeam(sender);
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("spectate")) {
+            String[] arguments = { "spectator" };
+            joinTeam(sender, arguments);
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("score")) {
+            printPlayerScore(sender);
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("players")) {
+            printPlayersList(sender);
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("timeleft")) {
+            timeLeft(sender, args);
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("tmsg")) {
+            teamChat(sender, args);
+            return true;
+        }
+
+        return false;
+
+    }
+
+
+    private void listTeams(CommandSender sender) {
+
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "You must join an arena to list teams.");
+            return;
+        }
+
+        Player player = (Player) sender;
+        Arena arena = plugin.getArenaHandler().getArenaForPlayer(player);
+
+        if (arena == null) {
+            sender.sendMessage(ChatColor.RED + "You must join an arena to list teams.");
+            return;
+        }
+
+        List<String> teamStrings = new ArrayList<String>();
+        for (Team team : arena.getMatch().getTeams().values()) {
+            teamStrings.add(String.format("%s%s (%d/%d)%s", team.getChatColor(), team.getId(), team.getPlayers().size(), team.getSize(), ChatColor.RESET));
+        }
+
+        String list = StringUtil.joinList(", ", teamStrings);
+        sender.sendMessage(String.format("%sTeams: %s", ChatColor.DARK_AQUA, list));
+
+    }
+
+
+    private void joinTeam(CommandSender sender, String[] args) {
+
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Console can't join a team.");
+            return;
+        }
+
+        if (args.length != 1) {
+            sender.sendMessage(ChatColor.RED + "Usage: /team <team id>");
+            return;
+        }
+
+        Player player = (Player) sender;
+        Arena arena = plugin.getArenaHandler().getArenaForPlayer(player);
+
+        if (arena == null) {
+            sender.sendMessage(ChatColor.RED + "You must join an arena first.");
+            return;
+        }
+
+        for (Team team : arena.getMatch().getTeams().values()) {
+            if (team.getId().equalsIgnoreCase(args[0])) {
+                team.add(player, false);
+                return;
+            }
+        }
+
+        sender.sendMessage(ChatColor.RED + "Invalid team id.");
+
+    }
+
+
+    private void autoJoinTeam(CommandSender sender) {
+
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Console can't join a team.");
+            return;
+        }
+
+        Player player = (Player) sender;
+        Arena arena = plugin.getArenaHandler().getArenaForPlayer(player);
+
+        if (arena == null) {
+            sender.sendMessage(ChatColor.RED + "You must join an arena first.");
+            return;
+        }
+
+        Team lowest = null;
+        for (Team t : arena.getMatch().getTeams().values()) {
+            if (t.isSpectator()) continue;
+            if (t.getPlayers().size() >= t.getSize()) continue;
+            if (lowest == null || t.getPlayers().size() < lowest.getPlayers().size()) {
+                lowest = t;
+            }
+        }
+
+        if (lowest != null) {
+            lowest.add(player, false);
+        } else {
+            sender.sendMessage(ChatColor.RED + "Unable to join team.");
+        }
+
+    }
+
+
+    private void printPlayerScore(CommandSender sender) {
+
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Console can't have a score.");
+            return;
+        }
+
+        Player player = (Player) sender;
+        Arena arena = plugin.getArenaHandler().getArenaForPlayer(player);
+        if (arena == null) {
+            sender.sendMessage(ChatColor.RED + "You must join an arena first.");
+            return;
+        }
+        Team team = PlayerUtil.getTeamForPlayer(arena.getMatch(), player);
+        if (team == null || team.isSpectator()) {
+            sender.sendMessage(ChatColor.RED + "You must join a team to have a score.");
+            return;
+        }
+        PlayerScore playerScore = team.getPlayerScore(player);
+
+        LinkedHashMap<String, Integer> values = new LinkedHashMap<String, Integer>();
+        values.put("Points", playerScore.getPoints());
+        values.put("Kills", playerScore.getKills());
+        values.put("Deaths", playerScore.getDeaths());
+        try {
+            values.put("KDR", (playerScore.getKills() / playerScore.getDeaths()));
+        } catch(ArithmeticException ex) {
+            if (playerScore.getKills() > 0) {
+                values.put("KDR", playerScore.getKills());
+            } else {
+                values.put("KDR", 0);
+            }
+        }
+
+        StringBuilder sb = new StringBuilder(ChatColor.DARK_AQUA + "Personal score: ");
+        for (Map.Entry<String, Integer> pair : values.entrySet()) {
+            sb.append(String.format("%s%s: %s%d", ChatColor.AQUA, pair.getKey(), ChatColor.GREEN, pair.getValue()));
+            sb.append(" ");
+        }
+        sender.sendMessage(sb.toString());
+
+    }
+
+
+    private void printPlayersList(CommandSender sender) {
+
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Console can't join a team.");
+            return;
+        }
+
+        Player player = (Player) sender;
+        Arena arena = plugin.getArenaHandler().getArenaForPlayer(player);
+
+        if (arena == null) {
+            sender.sendMessage(ChatColor.RED + "You must join an arena first.");
+            return;
+        }
+
+        for (Team team : arena.getMatch().getTeams().values()) {
+
+            if (team.getPlayers().size() < 1) continue;
+
+            TreeMap<Integer, PlayerScore> ranking = new TreeMap<Integer, PlayerScore>();
+            for (Player p : team.getPlayers()) {
+                PlayerScore ps = team.getPlayerScore(p);
+                ranking.put(ps.getOverallScore(), ps);
+            }
+
+            StringBuilder sb = new StringBuilder(team.getColoredName() + ChatColor.RESET + ": ");
+            for (PlayerScore ps : ranking.values()) {
+                sb.append(String.format("%s %s(%d)%s", ps.getPlayer().getName(), ChatColor.GRAY, ps.getOverallScore(), ChatColor.RESET));
+                if (ranking.lastEntry().getValue() != ps) {
+                    sb.append(", ");
+                }
+            }
+            sender.sendMessage(sb.toString());
+
+        }
+
+    }
+
+
+    private void timeLeft(CommandSender sender, String[] args) {
+
+        Arena arena = null;
+
+        if (!(sender instanceof Player) && args.length < 1) {
+            sender.sendMessage(ChatColor.RED + "Specify an arena name to see the time left in the match. (/timeleft <arena>)");
+            return;
+        }
+
+        if (args.length == 1) {
+            for (Arena a : plugin.getArenaHandler().getArenas()) {
+                if (a.getId().equalsIgnoreCase(args[0])) {
+                    arena = a;
+                    break;
+                }
+            }
+        } else {
+            Player player = (Player) sender;
+            arena = plugin.getArenaHandler().getArenaForPlayer(player);
+        }
+
+        if (arena != null) {
+            String secString = "00";
+            String minString = "00";
+            if (arena.getMatch().getTimer() != null) {
+                long secondsLeft = arena.getMatch().getTimer().timeLeftInSeconds();
+                long sec = secondsLeft % 60;
+                long min = (secondsLeft / 60) % 60;
+                secString = String.format("%02d", sec);
+                minString = String.format("%02d", min);
+            }
+            sender.sendMessage(String.format("%s%s:%s", ChatColor.DARK_AQUA, minString, secString));
+        } else {
+            sender.sendMessage(ChatColor.RED + "You must join an arena first, or use /timeleft <arena>");
+        }
+
+    }
+
+
+    private void teamChat(CommandSender sender, String[] args) {
+
+        if (!(sender instanceof Player) || args.length < 1) {
+            sender.sendMessage(ChatColor.RED + "Send a message to your team: /t <msg>");
+            return;
+        } else {
+            ChatModule cm = (ChatModule) plugin.getModule("chat");
+            boolean success = cm.sendTeamMessage((Player) sender, StringUtil.joinArray(" ", args));
+            if (!success) {
+                sender.sendMessage(ChatColor.RED + "You must be on a team to do that.");
+            }
+        }
+
+    }
+
+
+}
+src/main/java/io/github/redwallhp/athenagm/hub/Hub.java
+public class Hub {
+
+
+    private AthenaGM plugin;
+    private HubListener listener;
+    private HubConfiguration config;
+    private WeakReference<World> world;
+    private ItemStack helpBookItem;
+
+
+    public Hub(AthenaGM plugin) {
+
+        this.plugin = plugin;
+        this.world = null;
+        this.listener = new HubListener(plugin, this);
+        this.helpBookItem = loadHelpBookItem();
+
+        try {
+            config = new HubConfiguration(this, new File(plugin.getDataFolder(), "hub.yml"));
+        } catch (IOException ex) {
+            plugin.getLogger().warning(ex.getMessage());
+        }
+
+        Bukkit.getScheduler().runTask(this.plugin, new Runnable() {
+            public void run() {
+                loadWorld();
+                loadPortalRegions();
+                updatePortalSigns();
+            }
+        });
+
+    }
+
+
+    /**
+     * Loads the world from disk and prepares it for use
+     */
+    private void loadWorld() {
+        if (config.getWorldName() == null || config.getWorldName().equalsIgnoreCase("")) return;
+        File file = new File(Bukkit.getWorldContainer(), config.getWorldName());
+        if (file.exists()) {
+            try {
+                WorldCreator creator = new WorldCreator(config.getWorldName());
+                creator.generator(new VoidGenerator());
+                creator.environment(World.Environment.NORMAL);
+                creator.generateStructures(false);
+                World world = creator.createWorld();
+                world.setPVP(false);
+                world.setSpawnFlags(false, false); //no mobs
+                world.setKeepSpawnInMemory(false);
+                this.world = new WeakReference<World>(world);
+            } catch (Exception ex) {
+                plugin.getLogger().warning("Error loading hub world: " + ex.getMessage());
+                if (plugin.config.DEBUG) {
+                    ex.printStackTrace();
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Set up the Hub portals.
+     * Creates new Regions for the Hub world, and applies a StringFlag with the value of the arena ID, which
+     * the Region system's PlayerMovementListener can watch for.
+     */
+    private void loadPortalRegions() {
+        if (getWorld() == null || config.getPortals() == null) return;
+        for (HubPortal portal : config.getPortals()) {
+            CuboidRegion region = new CuboidRegion(portal.getArena().getId(), getWorld(), portal.getStart(), portal.getEnd());
+            StringFlag portalFlag = new StringFlag("join_arena");
+            portalFlag.setValue(portal.getArena().getId());
+            region.setFlag(portalFlag);
+            plugin.getRegionHandler().addRegion(region);
+        }
+    }
+
+
+    /**
+     * Update the arena information on Hub signs every couple of seconds
+     */
+    private void updatePortalSigns() {
+        if (config.getSigns() == null || config.getSigns().size() < 1 || getWorld() == null) return;
+        Bukkit.getScheduler().runTaskTimer(this.plugin, new Runnable() {
+            public void run() {
+                for (HubSign sign : config.getSigns()) {
+                    sign.update();
+                }
+            }
+        }, 40L, 40L);
+    }
+
+
+    /**
+     * Handle player spawning on join. Ensures a player rejoining will always go to the Hub and not a stale Match.
+     * Order of priority:
+     * 1. If dedicated mode is on, put the player directly in the specified arena if it exists. Fall back to defaul world.
+     * 2. If the world specified in hub.yml exists and is loaded, spawn the player there.
+     * 3. If all else fails, teleport them to the default world.
+     */
+    public void spawnPlayer(Player player) {
+        playerSetUp(player);
+        if (plugin.config.DEDICATED_ARENA != null) {
+            // If dedicated mode is on, put the player directly in an arena, as a hub is not desired
+            for (Arena arena : plugin.getArenaHandler().getArenas()) {
+                if (arena.getId().equalsIgnoreCase(plugin.config.DEDICATED_ARENA)) {
+                    player.teleport(arena.getWorld().getSpawnLocation());
+                    return;
+                }
+            }
+            player.teleport(Bukkit.getWorld("world").getSpawnLocation());
+        } else if (getWorld() != null) {
+            // Spawn the player in the loaded hub world if the world specified in hub.yml exists
+            player.teleport(getWorld().getSpawnLocation());
+        } else {
+            // Spawn the player in the default world if all else fails
+            player.teleport(Bukkit.getWorld("world").getSpawnLocation());
+        }
+    }
+
+
+    /**
+     * Reset player attributes and visibility
+     */
+    public void playerSetUp(Player player) {
+        PlayerUtil.resetPlayer(player);
+        player.setGameMode(GameMode.ADVENTURE);
+        player.spigot().setCollidesWithEntities(false);
+        player.setScoreboard(Bukkit.getScoreboardManager().getNewScoreboard());
+        for (Player p : Bukkit.getServer().getOnlinePlayers()) p.showPlayer(player);
+        for (Player p : Bukkit.getServer().getOnlinePlayers()) player.showPlayer(p);
+        if (config.isHelpBook()) {
+            player.getInventory().addItem(helpBookItem);
+        }
+    }
+
+
+    /**
+     * Load the help book for the Hub
+     */
+    private ItemStack loadHelpBookItem() {
+        File file = new File(plugin.getDataFolder(), "helpbook.txt");
+        BookBuilder bookBuilder = new BookBuilder("Help");
+        bookBuilder.setDefaultContents("This book will be populated with the contents of a &lhelpbook.txt&0 file in the plugin directory.");
+        bookBuilder.setPagesFromFile(file);
+        this.helpBookItem = bookBuilder.getBook(); //cache to avoid hitting the disk all the time
+        return bookBuilder.getBook();
+    }
+
+
+    /**
+     * Get an instance of the Hub world
+     * @return Returns the World if applicable or null if a World is not loaded
+     */
+    public World getWorld() {
+        if (world != null) {
+            return world.get();
+        } else {
+            return null;
+        }
+    }
+
+
+    /**
+     * Convenience method to check if a player is in the Hub world
+     * @param player Player to check
+     * @return True if the player is in the Hub world
+     */
+    public boolean hasPlayer(Player player) {
+        return getWorld() != null && player.getWorld().equals(getWorld());
+    }
+
+
+    /**
+     * Get the plugin instance
+     */
+    public AthenaGM getPlugin() {
+        return this.plugin;
+    }
+
+
+    /**
+     * Get the HubConfiguration instance
+     */
+    public HubConfiguration getConfig() {
+        return config;
+    }
+
+
+}
+src/main/java/io/github/redwallhp/athenagm/modules/Module.java
+public interface Module extends Listener {
+
+
+    /**
+     * A string identifier for the module, to be used for getting instances with
+     * the getModule() method.
+     * @see ModuleLoader
+     */
+    String getModuleName();
+
+
+    /**
+     * Called when the plugin unloads. This is a good place to clean up database connections, etc.
+     */
+    void unload();
+
+
+}
+src/main/java/io/github/redwallhp/athenagm/commands/AdminCommands.java
+public class AdminCommands implements CommandExecutor {
+
+
+    private AthenaGM plugin;
+
+
+    public AdminCommands(AthenaGM plugin) {
+        this.plugin = plugin;
+        plugin.getCommand("athena").setExecutor(this);
+        plugin.getCommand("region").setExecutor(this);
+    }
+
+
+    public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
+
+        if (cmd.getName().equalsIgnoreCase("athena")) {
+            if (args.length == 0) {
+                sender.sendMessage(ChatColor.RED + "Valid subcommands: reload, forcestart, changemap, checkperms");
+            }
+            else if (args[0].equalsIgnoreCase("reload")) {
+                reloadCommand(sender, args);
+            }
+            else if (args[0].equalsIgnoreCase("forcestart")) {
+                forceStartCommand(sender, args);
+            }
+            else if (args[0].equalsIgnoreCase("changemap")) {
+                changeMapCommand(sender, args);
+            }
+            else if (args[0].equalsIgnoreCase("checkperms")) {
+                checkPerms(sender, args);
+            }
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("region")) {
+            if (args.length == 0) {
+                sender.sendMessage(ChatColor.RED + "Valid subcommands: info, select");
+            }
+            else if (args[0].equalsIgnoreCase("info")) {
+                regionInfoCommand(sender, args);
+            }
+            else if (args[0].equalsIgnoreCase("select")) {
+                regionSelectCommand(sender, args);
+            }
+            return true;
+        }
+
+        return false;
+
+    }
+
+
+    private void reloadCommand(CommandSender sender, String[] args) {
+
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /athena reload <what>");
+            sender.sendMessage(ChatColor.RED + "What: permissions, helpbook");
+            return;
+        }
+
+        String what = args[1];
+
+        if (what.equalsIgnoreCase("permissions")) {
+            PermissionsModule module = (PermissionsModule) plugin.getModule("permissions");
+            module.reloadPermissions();
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "Permissions reloaded.");
+        }
+
+        if (what.equalsIgnoreCase("helpbook")) {
+            SpectatorModule module = (SpectatorModule) plugin.getModule("spectator");
+            module.getHelpBookItem();
+            sender.sendMessage(ChatColor.LIGHT_PURPLE + "Spectator help book reloaded.");
+        }
+
+    }
+
+
+    private void forceStartCommand(CommandSender sender, String[] args) {
+
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /athena forcestart <arena>");
+            return;
+        }
+
+        for (Arena arena : plugin.getArenaHandler().getArenas()) {
+            if (arena.getId().equalsIgnoreCase(args[1])) {
+                sender.sendMessage(ChatColor.DARK_AQUA + "Forcing match start.");
+                arena.getMatch().startCountdown();
+                break;
+            }
+        }
+
+    }
+
+
+    private void changeMapCommand(CommandSender sender, String[] args) {
+
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /athena changemap <arena> <map>");
+            return;
+        }
+
+        for (Arena arena : plugin.getArenaHandler().getArenas()) {
+            if (arena.getId().equalsIgnoreCase(args[1])) {
+                boolean success = arena.forceMapChange(args[2]);
+                if (!success) {
+                    sender.sendMessage(ChatColor.RED + "There is no configured map by that name.");
+                }
+                break;
+            }
+        }
+
+    }
+
+
+    private void checkPerms(CommandSender sender, String[] args) {
+
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /athena checkperms <player>");
+        }
+
+        Player player = plugin.getServer().getPlayer(args[1]);
+        if (player != null) {
+            PermissionsModule module = (PermissionsModule) plugin.getModule("permissions");
+            sender.sendMessage("Results printed to console.");
+            plugin.getServer().getLogger().info(String.format("--- Permission Check for %s ---", player.getName()));
+            plugin.getServer().getLogger().info("UUID: " + player.getUniqueId());
+            if (module.getUsers().containsKey(player.getUniqueId())) {
+                String group = module.getUsers().get(player.getUniqueId()).getGroup();
+                plugin.getServer().getLogger().info("Group: " + group);
+            }
+            for (PermissionAttachmentInfo info : player.getEffectivePermissions()) {
+                plugin.getServer().getLogger().info("* " + info.getPermission());
+            }
+            plugin.getServer().getLogger().info("--- End Permission Check ---");
+        } else {
+            sender.sendMessage(ChatColor.RED + "Could not find online player.");
+        }
+
+    }
+
+
+    private void regionInfoCommand(CommandSender sender, String[] args) {
+
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Console can't run this command.");
+            return;
+        }
+
+        Player player = (Player) sender;
+
+        Location loc = player.getLocation();
+        CuboidRegion rg = plugin.getRegionHandler().getApplicableRegion(loc.getWorld(), loc.toVector());
+        if (rg != null) {
+            StringBuilder inherited = new StringBuilder();
+            List<CuboidRegion> all = plugin.getRegionHandler().getAllApplicableRegions(loc);
+            for (CuboidRegion ir : all) {
+                inherited.append(ir.getName());
+                if (all.indexOf(ir) < all.size() - 1) inherited.append(", ");
+            }
+            sender.sendMessage(String.format("%sYou are standing in '%s'", ChatColor.DARK_AQUA, rg.getName()));
+            sender.sendMessage(String.format("%sInherits from: %s", ChatColor.DARK_AQUA, inherited.toString()));
+            sender.sendMessage(String.format("%sStart: %s, End: %s", ChatColor.DARK_AQUA, rg.getStart().toString(), rg.getEnd().toString()));
+        }
+
+    }
+
+
+    private void regionSelectCommand(CommandSender sender, String[] args) {
+
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Console can't run this command.");
+            return;
+        }
+
+        Player player = (Player) sender;
+
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /region select <name>");
+            return;
+        }
+
+        CuboidRegion rg = plugin.getRegionHandler().getRegion(player.getWorld(), args[1]);
+        if (rg == null) {
+            sender.sendMessage(String.format("%sCould not find region \"%s\"", ChatColor.RED, args[1]));
+            return;
+        }
+
+        if (plugin.getWE() == null) {
+            sender.sendMessage(ChatColor.RED + "WorldEdit does not appear to be installed.");
+        } else {
+            WorldEditUtil.setPlayerSelection(player, rg.getWorld(), rg.getMin(), rg.getMax());
+            sender.sendMessage(String.format("%sSelected region \"%s\"", ChatColor.DARK_AQUA, rg.getName()));
+        }
+
+    }
+
+
+}
+src/main/java/io/github/redwallhp/athenagm/arenas/ArenaHandler.java
+public class ArenaHandler {
+
+
+    private AthenaGM plugin;
+    private Map<String, Arena> arenas;
+
+
+    public ArenaHandler(AthenaGM plugin) {
+        this.plugin = plugin;
+        this.arenas = new HashMap<>();
+        MapLoader.cleanUpWorldInstances(plugin.getMatchesDirectory());
+        loadArenas();
+        plugin.getServer().getPluginManager().registerEvents(new ArenaListener(this), plugin);
+    }
+
+
+    private void loadArenas() {
+        for (ConfiguredArena ca : plugin.config.ARENAS.values()) {
+            Arena arena = new Arena(this, ca);
+            this.arenas.put(arena.getId(), arena);
+        }
+    }
+
+
+    public AthenaGM getPluginInstance() {
+        return this.plugin;
+    }
+
+
+    public Set<Arena> getArenas() {
+        return new HashSet<>(this.arenas.values());
+    }
+
+
+    public Arena getArenaForPlayer(Player player) {
+        for (Arena arena : this.arenas.values()) {
+            if (player.getWorld().equals(arena.getWorld())) {
+                return arena;
+            }
+        }
+        return null;
+    }
+
+
+    public Arena getArenaById(String id) {
+        if (this.arenas.containsKey(id)) {
+            return this.arenas.get(id);
+        }
+        return null;
+    }
+
+
+}
+src/main/java/io/github/redwallhp/athenagm/commands/ArenaCommands.java
+public class ArenaCommands implements CommandExecutor {
+
+
+    private AthenaGM plugin;
+
+
+    public ArenaCommands(AthenaGM plugin) {
+        this.plugin = plugin;
+        plugin.getCommand("hub").setExecutor(this);
+        plugin.getCommand("arenas").setExecutor(this);
+        plugin.getCommand("join").setExecutor(this);
+        plugin.getCommand("votemap").setExecutor(this);
+        plugin.getCommand("votenext").setExecutor(this);
+        plugin.getCommand("vote").setExecutor(this);
+    }
+
+
+    public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
+
+        if (cmd.getName().equalsIgnoreCase("hub")) {
+            if (sender instanceof Player) {
+                plugin.getHub().spawnPlayer((Player) sender);
+            }
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("arenas")) {
+            listArenas(sender);
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("join")) {
+            if (args.length == 1) {
+                joinArena(sender, args[0]);
+            } else {
+                sender.sendMessage(ChatColor.RED + "Usage: /join <arena id>");
+            }
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("votemap")) {
+            voteMap(sender, args);
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("votenext")) {
+            voteNext(sender);
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("vote")) {
+            if (args.length == 1) {
+                vote(sender, args[0]);
+            } else {
+                sender.sendMessage(ChatColor.RED + "Usage: /vote <choice>");
+            }
+            return true;
+        }
+
+        return false;
+
+    }
+
+
+    private void listArenas(CommandSender sender) {
+        for (Arena arena : plugin.getArenaHandler().getArenas()) {
+            int players = arena.getMatch().getTotalPlayers();
+            StringBuilder head = new StringBuilder("" + ChatColor.STRIKETHROUGH);
+            head.append("--- ");
+            head.append(ChatColor.GRAY);
+            head.append(ChatColor.BOLD);
+            head.append(arena.getName());
+            head.append(ChatColor.RESET);
+            head.append(ChatColor.STRIKETHROUGH);
+            head.append(" ---");
+            String id = String.format("%sID: %s%s", ChatColor.GRAY, ChatColor.WHITE, arena.getId());
+            String map = String.format("%sMap: %s%s", ChatColor.GRAY, ChatColor.WHITE, arena.getMatch().getMap().getName());
+            String pl = String.format("%sPlayers: %s%d/%d", ChatColor.GRAY, ChatColor.WHITE, players, arena.getMaxPlayers());
+            sender.sendMessage(head.toString());
+            sender.sendMessage(id + " " + map + " " + pl);
+        }
+        sender.sendMessage(ChatColor.DARK_AQUA + String.format("Use %s/join <id>%s to join an arena.", ChatColor.GREEN, ChatColor.DARK_AQUA));
+    }
+
+
+    private void joinArena(CommandSender sender, String id) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Console can't join an arena.");
+            return;
+        }
+        for (Arena arena : plugin.getArenaHandler().getArenas()) {
+            if (arena.getId().equals(id)) {
+                Player player = (Player) sender;
+                Location loc = arena.getMatch().getSpawnPoint(player);
+                player.teleport(loc);
+                return;
+            }
+        }
+        sender.sendMessage(ChatColor.RED + String.format("Could not find arena '%s'", id));
+    }
+
+
+    private void voteMap(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Console can't vote.");
+            return;
+        }
+        Player player = (Player) sender;
+        Arena arena = plugin.getArenaHandler().getArenaForPlayer(player);
+        String map = (args.length == 1) ? args[0] : "";
+        VotingModule module = (VotingModule) plugin.getModule("voting");
+        if (arena != null) {
+            module.createMapVote(arena, player, map);
+        }
+    }
+
+
+    private void voteNext(CommandSender sender) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Console can't vote.");
+            return;
+        }
+        Player player = (Player) sender;
+        Arena arena = plugin.getArenaHandler().getArenaForPlayer(player);
+        VotingModule module = (VotingModule) plugin.getModule("voting");
+        if (arena != null) {
+            module.createNextMapVote(arena, player);
+        }
+    }
+
+
+    private void vote(CommandSender sender, String choice) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Console can't vote.");
+            return;
+        }
+        Player player = (Player) sender;
+        Arena arena = plugin.getArenaHandler().getArenaForPlayer(player);
+        VotingModule module = (VotingModule) plugin.getModule("voting");
+        if (arena != null) {
+            module.vote(arena, player, choice);
+        }
+    }
+
+
+}
+src/main/java/io/github/redwallhp/athenagm/regions/RegionHandler.java
+public class RegionHandler {
+
+
+    private AthenaGM plugin;
+    private HashMap<UUID, LinkedHashMap<String, CuboidRegion>> regions;
+
+
+    public RegionHandler(AthenaGM plugin) {
+        this.plugin = plugin;
+        this.regions = new HashMap<UUID, LinkedHashMap<String, CuboidRegion>>();
+        listen();
+    }
+
+
+    private void listen() {
+        new BlockPlaceListener(this);
+        new BlockBreakListener(this);
+        new PlayerMovementListener(this);
+        new PlayerInteractListener(this);
+        new EnvironmentalListener(this);
+        new PistonListener(this);
+    }
+
+
+    /**
+     * Add a region to the map of currently loaded regions
+     */
+    public void addRegion(CuboidRegion region) {
+        UUID worldId = region.getWorld().getUID();
+        if (!regions.containsKey(worldId)) regions.put(worldId, new LinkedHashMap<String, CuboidRegion>());
+        regions.get(worldId).put(region.getName(), region);
+    }
+
+
+    /**
+     * Remove a region from the map of currently loaded regions
+     */
+    public void removeRegion(CuboidRegion region) {
+        UUID worldId = region.getWorld().getUID();
+        if (regions.containsKey(worldId)) {
+            regions.get(worldId).remove(region.getName());
+            if (regions.get(worldId).size() < 1) regions.remove(worldId);
+        }
+    }
+
+
+    /**
+     * Get a region by its name
+     */
+    public CuboidRegion getRegion(World world, String name) {
+        if (regions.containsKey(world.getUID())) {
+            return regions.get(world.getUID()).get(name);
+        } else {
+            return null;
+        }
+    }
+
+
+    /**
+     * Returns a list of all regions that intersect a given vector point in a world.
+     * @param world The world the vector is in
+     * @param vector The point to check for applicable regions
+     * @return A list of region objects
+     */
+    public List<CuboidRegion> getAllApplicableRegions(World world, Vector vector) {
+        List<CuboidRegion> inRegions = new ArrayList<CuboidRegion>();
+        if (regions.containsKey(world.getUID())) {
+            for (CuboidRegion region : regions.get(world.getUID()).values()) {
+                if (region.contains(world, vector)) inRegions.add(region);
+            }
+        }
+        return inRegions;
+    }
+
+
+    /**
+     * Alternate getAllApplicableRegions() method that takes a Location instead of a Vector.
+     * Returns a list of all regions that intersect a given vector point in a world.
+     * @param location A Location to check for applicable regions.
+     * @return A list of region objects
+     */
+    public List<CuboidRegion> getAllApplicableRegions(Location location) {
+        return getAllApplicableRegions(location.getWorld(), location.toVector());
+    }
+
+
+    /**
+     * Returns the region with the highest priority that intersects a given vector point.
+     * Priority is determined by the priority value in the YAML. If a priority is not specified,
+     * it will try to fall back to the configured ordinal index.
+     * Regions with a positive priority will take priority over all that don't specify one.
+     * @param world The world the vector is in
+     * @param vector The point to check for an applicable region
+     * @return A region object, or null if one does not exist at the vector's location
+     */
+    public CuboidRegion getApplicableRegion(World world, Vector vector) {
+
+        // Get the highest priority region
+        List<CuboidRegion> applicableRegions = getAllApplicableRegions(world, vector);
+        TreeMap<Integer, CuboidRegion> regionMap = new TreeMap<Integer, CuboidRegion>();
+        int i = 0;
+        for (CuboidRegion rg : applicableRegions) {
+            if (rg.getPriority() > 0) {
+                regionMap.put(rg.getPriority()+applicableRegions.size()+1, rg);
+            } else {
+                regionMap.put(i, rg);
+            }
+            i++;
+        }
+        if (regionMap.size() < 1) return null;
+        CuboidRegion r = regionMap.lastEntry().getValue();
+
+        // Create and return a compound region that inherits flags from lower regions
+        CuboidRegion compound = new CuboidRegion(r.getName(), r.getWorld(), r.getStart(), r.getEnd());
+        for (CuboidRegion rg : regionMap.values()) {
+            for (Map.Entry<String, Flag<?>> flag : rg.getFlags().entrySet()) {
+                compound.setFlag(flag.getValue());
+            }
+        }
+        return compound;
+
+    }
+
+
+    /**
+     * Alternate getApplicableRegion method that takes a Location instead of a Vector.
+     * Returns the region with the highest priority that intersects a given vector point.
+     * If the regions have equal priority, their ordinal index will be used instead, with
+     * later regions superseding previous ones.
+     * @param location A Location to check for an applicable region.
+     * @return A region object, or null if one does not exist at the vector's location
+     */
+    public CuboidRegion getApplicableRegion(Location location) {
+        return getApplicableRegion(location.getWorld(), location.toVector());
+    }
+
+
+    /**
+     * Load configured regions for a map. This is called when a new match starts.
+     */
+    public void loadRegions(World world, GameMap map) {
+        for (MapInfoRegion mir : map.getRegions().values()) {
+            CuboidRegion region = new CuboidRegion(mir.getName(), world, mir.getStart(), mir.getEnd());
+            region.setFlags(mir.getFlags());
+            region.setPriority(mir.getPriority());
+            addRegion(region);
+        }
+    }
+
+
+    /**
+     * Unload regions belonging to a world. Called when a match world is destructed.
+     */
+    public void unloadRegions(World world) {
+        if (regions.containsKey(world.getUID())) {
+            Iterator<CuboidRegion> iterator = regions.get(world.getUID()).values().iterator();
+            while (iterator.hasNext()) {
+                CuboidRegion region = iterator.next();
+                if (region.getWorld().getUID() == world.getUID()) {
+                    iterator.remove();
+                }
+            }
+            if (regions.get(world.getUID()).size() < 1) regions.remove(world.getUID());
+        }
+    }
+
+
+    /**
+     * Get the plugin reference
+     */
+    public AthenaGM getPlugin() {
+        return plugin;
+    }
+
+
+}
+src/main/java/io/github/redwallhp/athenagm/maps/VoidGenerator.java
+public class VoidGenerator extends ChunkGenerator {
+
+    @Override
+    public byte[][] generateBlockSections(World world, Random random, int x, int z, BiomeGrid biomes) {
+        return new byte[16][];
+    }
+
+}
+src/main/java/io/github/redwallhp/athenagm/modules/ModuleLoader.java
+public class ModuleLoader {
+
+
+    /**
+     * List of module classes to load
+     */
+    private static Class[] moduleClasses = {
+            PermissionsModule.class,
+            SpectatorModule.class,
+            KitsModule.class,
+            ScoreboardModule.class,
+            FriendlyFireModule.class,
+            BroadcastsModule.class,
+            PlayerFreezeModule.class,
+            DeathMessageModule.class,
+            WorldBorderModule.class,
+            ChatModule.class,
+            VotingModule.class
+    };
+
+
+    private AthenaGM plugin;
+    private HashMap<String, Module> modules;
+
+
+    public ModuleLoader(AthenaGM plugin) {
+        this.plugin = plugin;
+        this.modules = new HashMap<String, Module>();
+        load();
+    }
+
+
+    /**
+     * Build and load modules, registering their events and stashing references for later use.
+     * Modules are cast to their Module interface to make this sorcery work, but can be
+     * recast to their original class later in order to access methods.
+     */
+    @SuppressWarnings("unchecked")
+    public void load() {
+        for (Class c : moduleClasses) {
+            try {
+                plugin.getLogger().info(String.format("Loading module: %s", c.getName()));
+                Module module = (Module) c.getConstructor(AthenaGM.class).newInstance(plugin); //evil sorcery
+                plugin.getServer().getPluginManager().registerEvents(module, plugin);
+                modules.put(module.getModuleName(), module);
+            } catch (Exception ex) {
+                plugin.getLogger().warning(String.format("Error loading module '%s", c.getName()));
+                ex.printStackTrace();
+            }
+        }
+    }
+
+
+    /**
+     * Iterate the loaded modules and call the unload() method each one implements.
+     */
+    public void unload() {
+        for (Module module : modules.values()) {
+            module.unload();
+        }
+    }
+
+
+    /**
+     * Get the module with a specified name.
+     * The returned object will be a Module, but you can recast it to the module's original class
+     * in order to access its methods. e.g. casting the module found by getting "permissions"
+     * to be a PermissionsModule will allow you to access its member methods.
+     * @param name Name of the module, as returned by its getModuleName() method
+     */
+    public Module getModule(String name) {
+        return modules.get(name);
+    }
+
+
+}
+src/main/java/io/github/redwallhp/athenagm/configuration/Configuration.java
+public class Configuration {
+
+    private final AthenaGM plugin;
+    public boolean DEBUG;
+    public String NETWORK_NAME;
+    public String DEDICATED_ARENA;
+    public boolean VOTING;
+    public HashMap<String, ConfiguredArena> ARENAS;
+
+    public Configuration(AthenaGM instance) {
+        plugin = instance;
+        plugin.saveDefaultConfig();
+        this.load();
+    }
+
+    /**
+     * Save the config out to disk
+     */
+    public void save() {
+        plugin.saveConfig();
+    }
+
+    /**
+     * Load the configuration from disk and set the simple keys to public properties
+     */
+    public void load() {
+        plugin.reloadConfig();
+        DEBUG = plugin.getConfig().getBoolean("debug", false);
+        NETWORK_NAME = plugin.getConfig().getString("network_name", "Server");
+        DEDICATED_ARENA = plugin.getConfig().getString("dedicated_arena", null);
+        VOTING = plugin.getConfig().getBoolean("voting", true);
+        getArenas();
+    }
+
+    /**
+     * Handle the loading of arena configuration blocks, creating ConfiguredArena objects
+     */
+    private void getArenas() {
+        this.ARENAS = new HashMap<String, ConfiguredArena>();
+        Set<String> ids = plugin.getConfig().getConfigurationSection("arenas").getKeys(false);
+        if (ids.size() > 0) {
+            for (String id : ids) {
+                String name = plugin.getConfig().getString(String.format("arenas.%s.name", id), "Default Arena");
+                String gameMode = plugin.getConfig().getString(String.format("arenas.%s.gamemode", id), "deathmatch");
+                Integer timeLimit = plugin.getConfig().getInt(String.format("arenas.%s.time_limit", id), 600);
+                List<String> mapList = plugin.getConfig().getStringList(String.format("arenas.%s.maps", id));
+                ConfiguredArena arena = new ConfiguredArena(id, name, gameMode, timeLimit, mapList);
+                this.ARENAS.put(id, arena);
+            }
+        }
+    }
+
+}
+src/main/java/io/github/redwallhp/athenagm/tracker/Tracker.java
+public class Tracker implements Listener {
+
+
+    private AthenaGM plugin;
+    private HashMap<UUID, PlayerDamagePlayerEvent> lastDamage;
+
+
+    public Tracker(AthenaGM plugin) {
+        this.plugin = plugin;
+        this.lastDamage = new HashMap<UUID, PlayerDamagePlayerEvent>();
+        plugin.getServer().getPluginManager().registerEvents(this, plugin);
+    }
+
+
+    /**
+     * Fire PlayerDamagePlayerEvent when a player attacks another player
+     * while in an ongoing match.
+     * @see PlayerDamagePlayerEvent
+     */
+    @EventHandler(priority = EventPriority.LOW)
+    public void triggerPlayerDamagePlayerEvent(EntityDamageByEntityEvent event) {
+
+        Player victim = null;
+        Player attacker = null;
+        boolean ranged = false;
+
+        // Melee
+        if (event.getEntityType().equals(EntityType.PLAYER) && event.getDamager().getType().equals(EntityType.PLAYER)) {
+            victim = (Player) event.getEntity();
+            attacker = (Player) event.getDamager();
+        }
+
+        // Projectile
+        if (event.getEntityType().equals(EntityType.PLAYER) && event.getCause().equals(EntityDamageEvent.DamageCause.PROJECTILE)) {
+            Projectile a = (Projectile) event.getDamager();
+            if (a.getShooter() instanceof Player) {
+                victim = (Player) event.getEntity();
+                attacker = (Player) a.getShooter();
+                ranged = true;
+            }
+        }
+
+        // Potion
+        if (event.getEntityType().equals(EntityType.PLAYER) && event.getCause().equals(EntityDamageEvent.DamageCause.MAGIC)) {
+            ThrownPotion potion = (ThrownPotion) event.getDamager();
+            if (potion.getShooter() instanceof Player) {
+                victim = (Player) event.getEntity();
+                attacker = (Player) potion.getShooter();
+                ranged = true;
+            }
+        }
+
+        if (attacker == null || victim == null) return;
+        Arena arena = plugin.getArenaHandler().getArenaForPlayer(victim);
+        if (arena == null) return;
+
+        PlayerDamagePlayerEvent e = new PlayerDamagePlayerEvent(arena.getMatch(), attacker, victim, ranged, event);
+        Bukkit.getPluginManager().callEvent(e);
+        if (e.isCancelled()) {
+            event.setCancelled(true);
+        } else {
+            lastDamage.put(victim.getUniqueId(), e);
+        }
+
+    }
+
+
+    /**
+     * Fire AthenaDeathEvent when a player dies during a match.
+     * @see AthenaDeathEvent
+     */
+    @EventHandler(priority = EventPriority.LOW)
+    public void triggerAthenaDeathEvent(PlayerDeathEvent event) {
+
+        Player player = event.getEntity();
+        Arena arena = plugin.getArenaHandler().getArenaForPlayer(player);
+        if (arena == null) return;
+        AthenaDeathEvent e;
+
+        PlayerDamagePlayerEvent damage = lastDamage.get(player.getUniqueId());
+        boolean wasPlayer = damage != null && System.currentTimeMillis() - damage.getTime() <= 7500;
+        if (wasPlayer) {
+            e = new AthenaDeathEvent(arena.getMatch(), damage.getVictim(), damage.getDamager(), damage, event);
+        } else {
+            e = new AthenaDeathEvent(arena.getMatch(), player, event);
+        }
+
+        Bukkit.getPluginManager().callEvent(e);
+
+    }
+
+
+}

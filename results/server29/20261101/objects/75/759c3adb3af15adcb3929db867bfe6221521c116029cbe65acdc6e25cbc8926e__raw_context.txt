@@ -1,0 +1,2255 @@
+rhythm/src/main/java/com/actinarium/rhythm/layer/DimensionsLabel.java
+public class DimensionsLabel implements RhythmSpecLayer {
+
+    public static final int DEFAULT_BACKGROUND = 0x80000000;
+    public static final int DEFAULT_TEXT_COLOR = 0xA0FFFFFF;
+    public static final float DEFAULT_SCALE_FACTOR = 1f;
+    public static final int DEFAULT_TEXT_SIZE = 12;              // px
+
+    // Pretty print chars
+    public static final char ONE_HALF = '\u00bd';
+    public static final char ONE_FOURTH = '\u00bc';
+    public static final char THREE_FOURTHS = '\u00be';
+    public static final char ONE_THIRD = '\u2153';
+    public static final char TWO_THIRDS = '\u2154';
+    public static final char MULTIPLY = '\u00d7';
+
+    protected static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#.##");
+
+    @FloatRange(from = 0.0, fromInclusive = false)
+    protected float mScaleFactor;
+    @SuppressLint("RtlHardcoded")
+    protected int mGravity = Gravity.BOTTOM | Gravity.RIGHT;
+    protected Paint mBackgroundPaint;
+    protected TextPaint mTextPaint;
+
+    private Rect mTemp = new Rect();
+
+    public DimensionsLabel() {
+        mBackgroundPaint = new Paint();
+        mBackgroundPaint.setStyle(Paint.Style.FILL);
+        mTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+
+        mScaleFactor = DEFAULT_SCALE_FACTOR;
+        mBackgroundPaint.setColor(DEFAULT_BACKGROUND);
+        mTextPaint.setTextSize(DEFAULT_TEXT_SIZE);
+    }
+
+    /**
+     * Set a scale factor that will be applied to width and height of provided bounds
+     *
+     * @param scaleFactor Scale factor to divide pixels by. Provide {@link DisplayMetrics#density} here to display
+     *                    dimensions as dips, {@link DisplayMetrics#scaledDensity} to display them as <code>sp</code>,
+     *                    or {@link #DEFAULT_SCALE_FACTOR} (<code>1f</code>) to get pixels.
+     * @return this for chaining
+     */
+    public DimensionsLabel setScaleFactor(@FloatRange(from = 0.0, fromInclusive = false) float scaleFactor) {
+        mScaleFactor = scaleFactor;
+        return this;
+    }
+
+    /**
+     * Set label gravity. Default is bottom right.
+     *
+     * @param gravity Desired gravity. Can be combinations, e.g. <code>{@link Gravity#BOTTOM} | {@link
+     *                Gravity#LEFT}</code>
+     * @return this for chaining
+     */
+    public DimensionsLabel setGravity(int gravity) {
+        mGravity = gravity;
+        return this;
+    }
+
+    /**
+     * Set label background color
+     *
+     * @param color Label background color, in #AARRGGBB format as usual
+     * @return this for chaining
+     */
+    public DimensionsLabel setBackgroundColor(@ColorInt int color) {
+        mBackgroundPaint.setColor(color);
+        return this;
+    }
+
+    /**
+     * Set the color of the label text itself
+     *
+     * @param color Label text color, in #AARRGGBB format as usual
+     * @return this for chaining
+     */
+    public DimensionsLabel setTextColor(@ColorInt int color) {
+        mTextPaint.setColor(color);
+        return this;
+    }
+
+    /**
+     * Set text size
+     *
+     * @param size Text size, in pixels
+     * @return this for chaining
+     */
+    public DimensionsLabel setTextSize(@FloatRange(from = 0.0, fromInclusive = false) float size) {
+        mTextPaint.setTextSize(size);
+        return this;
+    }
+
+    @Override
+    public void draw(Canvas canvas, Rect drawableBounds) {
+        final int intWidth = drawableBounds.width();
+        // Make the label text based on width, height, and scale factor
+        String text = prettyPrintDips(intWidth, mScaleFactor) + ' ' + MULTIPLY + ' '
+                + prettyPrintDips(drawableBounds.height(), mScaleFactor);
+
+        // Use StaticLayout, which will calculate text dimensions nicely, then position the box using Gravity.apply()
+        // (although that's one instantiation per draw call...)
+        // This is what happens if you're obsessed with perfection like me
+        StaticLayout layout = new StaticLayout(text, mTextPaint, intWidth, Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false);
+        Gravity.apply(mGravity, (int) (layout.getLineMax(0) + 0.5), layout.getHeight(), drawableBounds, mTemp);
+
+        // Draw background
+        canvas.drawRect(mTemp, mBackgroundPaint);
+
+        // We have to translate the canvas ourselves, since layout can only draw itself at (0, 0)
+        canvas.save();
+        canvas.translate(mTemp.left, mTemp.top);
+        layout.draw(canvas);
+        canvas.restore();
+    }
+
+    /**
+     * Sophisticated conversion of pixels to dips with the use of vulgar fractions (to save screen space)
+     *
+     * @param px          Pixels to convert to dips
+     * @param scaleFactor Scale factor, should be equal to {@link DisplayMetrics#density} for px to dp conversion
+     * @return String formatted with vulgar fraction if needed and possible
+     */
+    public static String prettyPrintDips(int px, float scaleFactor) {
+        String dip;
+        if (scaleFactor == 1f) {
+            dip = String.valueOf(px);
+        } else if (scaleFactor == 2f) {
+            dip = String.valueOf(px / 2);
+            if (px % 2 == 1) {
+                dip += ONE_HALF;
+            }
+        } else if (scaleFactor == 3f) {
+            dip = String.valueOf(px / 3);
+            if (px % 3 == 1) {
+                dip += ONE_THIRD;
+            } else if (px % 3 == 2) {
+                dip += TWO_THIRDS;
+            }
+        } else if (scaleFactor == 4f) {
+            dip = String.valueOf(px / 4);
+            if (px % 4 == 1) {
+                dip += ONE_FOURTH;
+            } else if (px % 4 == 2) {
+                dip += ONE_HALF;
+            } else if (px % 4 == 3) {
+                dip += THREE_FOURTHS;
+            }
+        } else {
+            // Very hard to determine exactly, so falling back to decimals
+            dip = DECIMAL_FORMAT.format(px / scaleFactor);
+        }
+        return dip;
+    }
+
+    /**
+     * A default factory that creates new {@link DimensionsLabel} layers from config lines according to <a
+     * href="https://github.com/Actinarium/Rhythm/wiki/Declarative-configuration#dimensions-label">the docs</a>
+     */
+    public static class Factory implements RhythmSpecLayerFactory<DimensionsLabel> {
+
+        public static final String LAYER_TYPE = "dimensions-label";
+        public static final String ARG_GRAVITY = "gravity";
+        public static final String ARG_COLOR = "color";
+        public static final String ARG_TEXT_COLOR = "text-color";
+        public static final String ARG_TEXT_SIZE = "text-size";
+
+        @SuppressLint("RtlHardcoded")
+        @Override
+        public DimensionsLabel getForArguments(ArgumentsBundle argsBundle) {
+            DimensionsLabel label = new DimensionsLabel();
+
+            final float density = argsBundle.getDisplayMetrics().density;
+            label.mScaleFactor = density;
+
+            label.mGravity = argsBundle.getGravity(ARG_GRAVITY, Gravity.BOTTOM | Gravity.RIGHT);
+            label.mBackgroundPaint.setColor(argsBundle.getColor(ARG_COLOR, DEFAULT_BACKGROUND));
+            label.mTextPaint.setColor(argsBundle.getColor(ARG_TEXT_COLOR, DEFAULT_TEXT_COLOR));
+            // todo: it shouldn't be the factory's concern to pre-multiply default text size by density - think of how to handle this gracefully
+            label.mTextPaint.setTextSize(argsBundle.getDimensionPixelExact(ARG_TEXT_SIZE, DEFAULT_TEXT_SIZE * density));
+
+            return label;
+        }
+    }
+}
+rhythm/src/main/java/com/actinarium/rhythm/layer/Columns.java
+public class Columns extends AbstractSpecLayerGroup<Columns> {
+
+    @IntRange(from = 1)
+    protected int mColumnCount;
+
+    private Rect mTemp = new Rect();
+
+    /**
+     * Create spec layer that will evenly divide current bounds in given number of columns and then draw all child
+     * layers in each
+     *
+     * @param columnCount number of columns, must be a positive integer
+     */
+    public Columns(@IntRange(from = 1) int columnCount) {
+        super();
+        mColumnCount = columnCount;
+    }
+
+    /**
+     * Create spec layer that will evenly divide current bounds in given number of columns and then draw all child
+     * layers in each
+     *
+     * @param columnCount     number of columns, must be a positive integer
+     * @param initialCapacity anticipated number of child layers
+     */
+    public Columns(@IntRange(from = 1) int columnCount, int initialCapacity) {
+        super(initialCapacity);
+        mColumnCount = columnCount;
+    }
+
+    /**
+     * <p>Create spec layer that will evenly divide current bounds in given number of columns and then draw all child
+     * layers in each.</p> <p>This is a minimum constructor for the factory &mdash; only paints and reusable objects are
+     * initialized. Developers extending this class are responsible for setting all fields to proper argument
+     * values.</p>
+     */
+    protected Columns() {
+        super();
+    }
+
+    /**
+     * Set the number of columns
+     *
+     * @param columnCount number of columns, must be a positive integer
+     * @return this for chaining
+     */
+    public Columns setColumnCount(@IntRange(from = 1) int columnCount) {
+        mColumnCount = columnCount;
+        return this;
+    }
+
+    @Override
+    public void draw(Canvas canvas, Rect drawableBounds) {
+        mTemp.set(drawableBounds);
+        final int left = drawableBounds.left;
+        final float width = drawableBounds.width();
+        for (int i = 1; i <= mColumnCount; i++) {
+            // Always adding rounded i/count fraction of width to the fixed left to ensure symmetry
+            // and that the bounds don't overflow overall width
+            mTemp.right = left + (int) Math.floor(width * i / mColumnCount + 0.5f);
+
+            // Draw all children into the column
+            super.draw(canvas, mTemp);
+
+            // Offset the temporary rect
+            mTemp.left = mTemp.right;
+        }
+    }
+
+    /**
+     * A default factory that creates new {@link Columns} layers from config lines according to <a
+     * href="https://github.com/Actinarium/Rhythm/wiki/Declarative-configuration#columns">the docs</a>
+     */
+    public static class Factory implements RhythmSpecLayerFactory<Columns> {
+
+        public static final String LAYER_TYPE = "columns";
+        public static final String ARG_COUNT = "count";
+
+        @Override
+        public Columns getForArguments(ArgumentsBundle argsBundle) {
+            Columns columns = new Columns();
+
+            columns.mColumnCount = argsBundle.getInt(ARG_COUNT, 0);
+            if (columns.mColumnCount <= 0) {
+                throw new RhythmInflationException(
+                        "Error in columns config: 'count' argument is mandatory and must be greater than 0"
+                );
+            }
+
+            return columns;
+        }
+    }
+}
+rhythm/src/main/java/com/actinarium/rhythm/layer/RatioKeyline.java
+public class RatioKeyline implements RhythmSpecLayer {
+
+    public static final int DEFAULT_FILL_COLOR = 0xB03F51B5;
+    public static final int DEFAULT_TEXT_COLOR = 0xC0FFFFFF;
+
+    public static final int DEFAULT_THICKNESS = 2;         // px
+
+    // todo: all defaults must be in px, not depending on density
+    public static final int DEFAULT_TEXT_SIZE = 10;        // dp
+    protected static final int DEFAULT_LABEL_HEIGHT = 12;  // dp
+
+    @IntRange(from = 0)
+    protected int mRatioX;
+    @IntRange(from = 0)
+    protected int mRatioY;
+    @IntRange(from = 1)
+    protected int mThickness;
+
+    protected String mText;
+    protected Paint mBackgroundPaint;
+    protected TextPaint mTextPaint;
+    protected Rect mTempRect;
+    protected Path mLabelPath;
+
+    // Text adjustment
+    protected int mLabelRectWidth;
+    protected int mLabelHeight;
+    protected int mLabelSideWidth;
+
+    public RatioKeyline(@IntRange(from = 0) int ratioX, @IntRange(from = 0) int ratioY, DisplayMetrics metrics) {
+        this(metrics);
+        mRatioX = ratioX;
+        mRatioY = ratioY;
+        mBackgroundPaint.setColor(DEFAULT_FILL_COLOR);
+        mTextPaint.setColor(DEFAULT_TEXT_COLOR);
+    }
+
+    protected RatioKeyline(DisplayMetrics metrics) {
+        mTempRect = new Rect();
+        mBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        mBackgroundPaint.setStyle(Paint.Style.FILL);
+        mTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        mLabelPath = new Path();
+
+        // Hard-coded defaults
+        mTextPaint.setTextSize((int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, DEFAULT_TEXT_SIZE, metrics));
+
+        // Make default keyline path
+        mLabelHeight = (int) ((DEFAULT_LABEL_HEIGHT) * metrics.density);
+        mLabelRectWidth = mLabelHeight * 2;
+        mLabelSideWidth = mLabelHeight * 3 / 4;
+
+        mLabelPath.rLineTo(0, -mLabelHeight);
+        mLabelPath.rLineTo(-mLabelRectWidth, 0);
+        mLabelPath.rLineTo(-mLabelSideWidth, mLabelHeight);
+        mLabelPath.close();
+    }
+
+    /**
+     * Set ratio of the box this keyline should define, in form of two terms
+     *
+     * @param ratioX antecedent, horizontal component of the ratio (e.g. 16 in 16:9)
+     * @param ratioY consequent, vertical component of the ratio (e.g. 9 in 16:9)
+     * @return this for chaining
+     */
+    public RatioKeyline setRatio(@IntRange(from = 0) int ratioX, @IntRange(from = 0) int ratioY) {
+        mRatioX = ratioX;
+        mRatioY = ratioY;
+        return this;
+    }
+
+    /**
+     * Set arbitrary label text to this ratio keyline. Defaults to displaying ratio.
+     *
+     * @param text Text to display in keyline label. Set null to reset the label to display ratio.
+     * @return this for chaining
+     */
+    public RatioKeyline setText(@Nullable String text) {
+        mText = text;
+        return this;
+    }
+
+    /**
+     * Set ratio keyline thickness
+     *
+     * @param thickness Ratio keyline thickness, in pixels. At the moment, ratio keyline will be drawn within enclosed
+     *                  bounds, so that regardless of thickness it doesn't cover pixels not within ratio box.
+     * @return this for chaining
+     */
+    public RatioKeyline setThickness(@IntRange(from = 1) int thickness) {
+        mThickness = thickness;
+        return this;
+    }
+
+    /**
+     * Set the color of ratio keyline and label background
+     *
+     * @param color Ratio keyline color, in #AARRGGBB format as usual
+     * @return this for chaining
+     */
+    public RatioKeyline setKeylineColor(@ColorInt int color) {
+        mBackgroundPaint.setColor(color);
+        return this;
+    }
+
+    /**
+     * Set ratio keyline label text color
+     *
+     * @param color Label text color, in #AARRGGBB format as usual
+     * @return this for chaining
+     */
+    public RatioKeyline setTextColor(@ColorInt int color) {
+        mTextPaint.setColor(color);
+        return this;
+    }
+
+    @Override
+    public void draw(Canvas canvas, Rect drawableBounds) {
+        final int distanceTop;
+        if (mRatioX == 0) {
+            distanceTop = drawableBounds.top;
+        } else {
+            distanceTop = drawableBounds.top + drawableBounds.width() * mRatioY / mRatioX;
+        }
+        if (distanceTop > drawableBounds.height()) {
+            return;
+        }
+
+        // Draw keyline
+        canvas.drawRect(drawableBounds.left, distanceTop - mThickness, drawableBounds.right, distanceTop, mBackgroundPaint);
+
+        // If no special text is set, display ratio
+        if (mText == null) {
+            mText = String.format(Locale.getDefault(), "%d:%d", mRatioX, mRatioY);
+        }
+
+        // Determine keyline label size/bounds
+        StaticLayout layout = new StaticLayout(mText, mTextPaint, Integer.MAX_VALUE, Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false);
+        int labelTextWidth = (int) (layout.getLineMax(0) + 0.5);
+
+        // If text too big, re-measure
+        while (labelTextWidth > mLabelRectWidth) {
+            mTextPaint.setTextSize(mTextPaint.getTextSize() * 0.8f);
+            layout = new StaticLayout(mText, mTextPaint, Integer.MAX_VALUE, Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false);
+            labelTextWidth = (int) (layout.getLineMax(0) + 0.5);
+        }
+
+        // Draw label
+        canvas.save();
+        canvas.clipRect(drawableBounds.left, 0, drawableBounds.right, distanceTop - mThickness);
+        canvas.translate(drawableBounds.right, distanceTop);
+        canvas.drawPath(mLabelPath, mBackgroundPaint);
+        canvas.restore();
+
+        // Determine text position (on the baseline, in the center of
+        canvas.save();
+        mTempRect.set(-mLabelRectWidth, -mLabelHeight, 0, 0);
+        Gravity.apply(Gravity.CENTER, labelTextWidth, layout.getHeight(), mTempRect, mTempRect);
+        canvas.translate(drawableBounds.right + mTempRect.left, distanceTop + mTempRect.top);
+        layout.draw(canvas);
+        canvas.restore();
+    }
+
+    /**
+     * A default factory that creates new {@link RatioKeyline} layers from config lines according to <a
+     * href="https://github.com/Actinarium/Rhythm/wiki/Declarative-configuration#ratio-keyline">the docs</a>
+     */
+    public static class Factory implements RhythmSpecLayerFactory<RatioKeyline> {
+
+        public static final String LAYER_TYPE = "ratio-keyline";
+        public static final String ARG_RATIO = "ratio";
+        public static final String ARG_TEXT = "text";
+        public static final String ARG_THICKNESS = "thickness";
+        public static final String ARG_COLOR = "color";
+        public static final String ARG_TEXT_COLOR = "text-color";
+
+        private static Pattern RATIO_VALUE_PATTERN = Pattern.compile("(\\d+):(\\d+)");
+
+        @Override
+        public RatioKeyline getForArguments(ArgumentsBundle argsBundle) {
+            RatioKeyline keyline = new RatioKeyline(argsBundle.getDisplayMetrics());
+
+            String ratio = argsBundle.getString(ARG_RATIO);
+            if (ratio == null) {
+                throw new RhythmInflationException(
+                        "Error when inflating ratio-keyline: 'ratio' argument is missing"
+                );
+            }
+            Matcher matcher = RATIO_VALUE_PATTERN.matcher(ratio);
+            if (!matcher.matches()) {
+                throw new RhythmInflationException(
+                        "Error when inflating ratio-keyline: 'ratio' argument is invalid, expected \"x:y\" pattern"
+                );
+            }
+            keyline.mRatioX = Integer.parseInt(matcher.group(1));
+            keyline.mRatioY = Integer.parseInt(matcher.group(2));
+            keyline.mText = argsBundle.getString(ARG_TEXT, ratio);
+
+            keyline.mThickness = argsBundle.getDimensionPixelSize(ARG_THICKNESS, DEFAULT_THICKNESS);
+            keyline.mBackgroundPaint.setColor(argsBundle.getColor(ARG_COLOR, DEFAULT_FILL_COLOR));
+            keyline.mTextPaint.setColor(argsBundle.getColor(ARG_TEXT_COLOR, DEFAULT_TEXT_COLOR));
+
+            return keyline;
+        }
+    }
+
+}
+rhythm/src/main/java/com/actinarium/rhythm/layer/Fill.java
+public class Fill implements RhythmSpecLayer {
+
+    public static final int DEFAULT_FILL_COLOR = 0x400091EA;
+
+    protected Paint mPaint;
+
+    /**
+     * Create a layer that fills current bounds with solid color
+     */
+    public Fill() {
+        mPaint = new Paint();
+        mPaint.setStyle(Paint.Style.FILL);
+        mPaint.setColor(DEFAULT_FILL_COLOR);
+    }
+
+    /**
+     * Set fill color
+     *
+     * @param color Fill color, in #AARRGGBB format as usual
+     * @return this for chaining
+     */
+    public Fill setColor(@ColorInt int color) {
+        mPaint.setColor(color);
+        return this;
+    }
+
+    @Override
+    public void draw(Canvas canvas, Rect drawableBounds) {
+        canvas.drawRect(drawableBounds, mPaint);
+    }
+
+    /**
+     * A default factory that creates new {@link Fill} layers from config lines according to <a
+     * href="https://github.com/Actinarium/Rhythm/wiki/Declarative-configuration#fill">the docs</a>
+     */
+    public static class Factory implements RhythmSpecLayerFactory<Fill> {
+
+        public static final String LAYER_TYPE = "fill";
+        public static final String ARG_COLOR = "color";
+
+        @Override
+        public Fill getForArguments(ArgumentsBundle argsBundle) {
+            Fill fill = new Fill();
+            fill.setColor(argsBundle.getColor(ARG_COLOR, DEFAULT_FILL_COLOR));
+            return fill;
+        }
+    }
+
+}
+rhythm/src/main/java/com/actinarium/rhythm/layer/Inset.java
+public class Inset extends AbstractSpecLayerGroup<Inset> {
+
+    /**
+     * Inset the bounds and clip the overlay. Default behavior
+     */
+    public static final int MODE_DEFAULT = 0;
+    /**
+     * Inset the bounds but don't clip drawing to the overlay. Best used for margins
+     */
+    public static final int MODE_NO_CLIP = 1;
+    /**
+     * Clip the group according to inset rect but keep the coordinates. Best for clipping an absolutely positioned
+     * overlay
+     */
+    public static final int MODE_CLIP_ONLY = 2;
+
+    /**
+     * Dimension specified in pixels
+     */
+    public static final boolean UNITS_PX = false;
+    /**
+     * Dimension specified in percent of container
+     */
+    public static final boolean UNITS_PERCENT = true;
+
+    @Mode
+    protected int mMode = MODE_DEFAULT;
+
+    // Insets
+    protected boolean mIsLeftPercent;
+    protected boolean mIsTopPercent;
+    protected boolean mIsRightPercent;
+    protected boolean mIsBottomPercent;
+    protected int mLeft;
+    protected int mTop;
+    protected int mRight;
+    protected int mBottom;
+
+    // Dimensions - override insets
+    protected boolean mIsWidthPercent;
+    protected boolean mIsHeightPercent;
+    protected int mWidth;
+    protected int mHeight;
+
+    // Flags for set values - determine how insets are calculated
+    protected boolean mIsLeftSet;
+    protected boolean mIsRightSet;
+    protected boolean mIsTopSet;
+    protected boolean mIsBottomSet;
+    protected boolean mIsWidthSet;
+    protected boolean mIsHeightSet;
+
+    // Reusable resulting rect
+    protected Rect mInsetRect = new Rect();
+
+    /**
+     * Create a layer group that clips and/or insets its child layers
+     */
+    public Inset() {
+        super();
+    }
+
+    /**
+     * Create a layer group that clips and/or insets its child layers
+     *
+     * @param initialCapacity anticipated number of child layers
+     */
+    public Inset(int initialCapacity) {
+        super(initialCapacity);
+    }
+
+    /**
+     * Set inset mode &mdash; whether the group should also clip the children, translate the coordinates, or both
+     *
+     * @param mode one of {@link #MODE_NO_CLIP}, {@link #MODE_CLIP_ONLY}, or {@link #MODE_DEFAULT}
+     * @return this for chaining
+     * @see #MODE_DEFAULT
+     * @see #MODE_NO_CLIP
+     * @see #MODE_CLIP_ONLY
+     */
+    public Inset setMode(@Mode int mode) {
+        mMode = mode;
+        return this;
+    }
+
+    /**
+     * Set top inset
+     *
+     * @param value     pixels or percent
+     * @param isPercent <code>true</code> if value is in percent, <code>false</code> if in pixels
+     * @return this for chaining
+     */
+    public Inset setTop(int value, boolean isPercent) {
+        mIsTopSet = true;
+        mTop = value;
+        mIsTopPercent = isPercent;
+        return this;
+    }
+
+    /**
+     * Set bottom inset
+     *
+     * @param value     pixels or percent
+     * @param isPercent <code>true</code> if value is in percent, <code>false</code> if in pixels
+     * @return this for chaining
+     */
+    public Inset setBottom(int value, boolean isPercent) {
+        mIsBottomSet = true;
+        mBottom = value;
+        mIsBottomPercent = isPercent;
+        return this;
+    }
+
+    /**
+     * Set left inset
+     *
+     * @param value     pixels or percent
+     * @param isPercent <code>true</code> if value is in percent, <code>false</code> if in pixels
+     * @return this for chaining
+     */
+    public Inset setLeft(int value, boolean isPercent) {
+        mIsLeftSet = true;
+        mLeft = value;
+        mIsLeftPercent = isPercent;
+        return this;
+    }
+
+    /**
+     * Set right inset
+     *
+     * @param value     pixels or percent
+     * @param isPercent <code>true</code> if value is in percent, <code>false</code> if in pixels
+     * @return this for chaining
+     */
+    public Inset setRight(int value, boolean isPercent) {
+        mIsRightSet = true;
+        mRight = value;
+        mIsRightPercent = isPercent;
+        return this;
+    }
+
+    /**
+     * Set width. If both width, left inset, and right inset are set, right inset is ignored
+     *
+     * @param value     pixels or percent
+     * @param isPercent <code>true</code> if value is in percent, <code>false</code> if in pixels
+     * @return this for chaining
+     */
+    public Inset setWidth(int value, boolean isPercent) {
+        mIsWidthSet = true;
+        mWidth = value;
+        mIsWidthPercent = isPercent;
+        return this;
+    }
+
+    /**
+     * Set height. If both height, top inset, and bottom inset are set, bottom inset is ignored
+     *
+     * @param value     pixels or percent
+     * @param isPercent <code>true</code> if value is in percent, <code>false</code> if in pixels
+     * @return this for chaining
+     */
+    public Inset setHeight(int value, boolean isPercent) {
+        mIsHeightSet = true;
+        mHeight = value;
+        mIsHeightPercent = isPercent;
+        return this;
+    }
+
+    @Override
+    public void draw(Canvas canvas, Rect drawableBounds) {
+        // Assume this is a) not called very often, and b) is a fast operation anyway
+        recalculateInsetRect(drawableBounds);
+
+        final int state = canvas.save();
+        if (mMode != MODE_NO_CLIP) {
+            canvas.clipRect(mInsetRect);
+        }
+
+        if (mMode == MODE_CLIP_ONLY) {
+            // Draw sub-layers within original bounds
+            super.draw(canvas, drawableBounds);
+        } else {
+            // Draw sub-layers within new bounds
+            super.draw(canvas, mInsetRect);
+        }
+
+        canvas.restoreToCount(state);
+    }
+
+    /**
+     * Update the inset bounds based on provided outer bounds and this layer's state
+     *
+     * @param outerBounds Outer bounds provided to this inset layer to modify
+     */
+    protected void recalculateInsetRect(Rect outerBounds) {
+        final int parentWidth = outerBounds.width();
+        final int parentHeight = outerBounds.height();
+
+        if (!mIsWidthSet) {
+            // No width - inset based on left and right. Assume those are set, otherwise those are 0 anyway
+            mInsetRect.left = outerBounds.left + (mIsLeftPercent ? parentWidth * mLeft / 100 : mLeft);
+            mInsetRect.right = outerBounds.right - (mIsRightPercent ? parentWidth * mRight / 100 : mRight);
+        } else if (mIsRightSet && !mIsLeftSet) {
+            // Width and right are set, left not set but calculated from width
+            mInsetRect.right = outerBounds.right - (mIsRightPercent ? parentWidth * mRight / 100 : mRight);
+            mInsetRect.left = mInsetRect.right - (mIsWidthPercent ? parentWidth * mWidth / 100 : mWidth);
+        } else {
+            // If right not set, or all three are set, right is ignored and calculated as left + width
+            mInsetRect.left = outerBounds.left + (mIsLeftPercent ? parentWidth * mLeft / 100 : mLeft);
+            mInsetRect.right = mInsetRect.left + (mIsWidthPercent ? parentWidth * mWidth / 100 : mWidth);
+        }
+
+        if (!mIsHeightSet) {
+            // No height - inset based on top and bottom. Assume those are set, otherwise those are 0 anyway
+            mInsetRect.top = outerBounds.top + (mIsTopPercent ? parentHeight * mTop / 100 : mTop);
+            mInsetRect.bottom = outerBounds.bottom - (mIsBottomPercent ? parentHeight * mBottom / 100 : mBottom);
+        } else if (mIsBottomSet && !mIsTopSet) {
+            // Height and bottom are set, top not set but calculated from height
+            mInsetRect.bottom = outerBounds.bottom - (mIsBottomPercent ? parentHeight * mBottom / 100 : mBottom);
+            mInsetRect.top = mInsetRect.bottom - (mIsHeightPercent ? parentHeight * mHeight / 100 : mHeight);
+        } else {
+            // If bottom not set, or all three are set, bottom is ignored and calculated as top + height
+            mInsetRect.top = outerBounds.top + (mIsTopPercent ? parentHeight * mTop / 100 : mTop);
+            mInsetRect.bottom = mInsetRect.top + (mIsHeightPercent ? parentHeight * mHeight / 100 : mHeight);
+        }
+    }
+
+    /**
+     * A default factory that creates new {@link Inset} layers from config lines according to <a
+     * href="https://github.com/Actinarium/Rhythm/wiki/Declarative-configuration#inset">the docs</a>
+     */
+    public static class Factory implements RhythmSpecLayerFactory<Inset> {
+
+        public static final String LAYER_TYPE = "inset";
+        public static final String ARG_NO_CLIP = "no-clip";
+        public static final String ARG_CLIP_ONLY = "clip-only";
+        public static final String ARG_TOP = "top";
+        public static final String ARG_BOTTOM = "bottom";
+        public static final String ARG_LEFT = "left";
+        public static final String ARG_RIGHT = "right";
+        public static final String ARG_WIDTH = "width";
+        public static final String ARG_HEIGHT = "height";
+
+        @Override
+        public Inset getForArguments(ArgumentsBundle argsBundle) {
+            Inset inset = new Inset();
+
+            if (argsBundle.hasArgument(ARG_NO_CLIP)) {
+                inset.mMode = MODE_NO_CLIP;
+            } else if (argsBundle.hasArgument(ARG_CLIP_ONLY)) {
+                inset.mMode = MODE_CLIP_ONLY;
+            } else {
+                inset.mMode = MODE_DEFAULT;
+            }
+
+            if (argsBundle.hasArgument(ARG_TOP)) {
+                boolean isPercent = argsBundle.getDimensionUnits(ARG_TOP) == ArgumentsBundle.UNITS_PERCENT;
+                int value = argsBundle.getDimensionPixelOffset(ARG_TOP, 0);
+                inset.setTop(value, isPercent);
+            }
+            if (argsBundle.hasArgument(ARG_BOTTOM)) {
+                boolean isPercent = argsBundle.getDimensionUnits(ARG_BOTTOM) == ArgumentsBundle.UNITS_PERCENT;
+                int value = argsBundle.getDimensionPixelOffset(ARG_BOTTOM, 0);
+                inset.setBottom(value, isPercent);
+            }
+            if (argsBundle.hasArgument(ARG_LEFT)) {
+                boolean isPercent = argsBundle.getDimensionUnits(ARG_LEFT) == ArgumentsBundle.UNITS_PERCENT;
+                int value = argsBundle.getDimensionPixelOffset(ARG_LEFT, 0);
+                inset.setLeft(value, isPercent);
+            }
+            if (argsBundle.hasArgument(ARG_RIGHT)) {
+                boolean isPercent = argsBundle.getDimensionUnits(ARG_RIGHT) == ArgumentsBundle.UNITS_PERCENT;
+                int value = argsBundle.getDimensionPixelOffset(ARG_RIGHT, 0);
+                inset.setRight(value, isPercent);
+            }
+            if (argsBundle.hasArgument(ARG_WIDTH)) {
+                boolean isPercent = argsBundle.getDimensionUnits(ARG_WIDTH) == ArgumentsBundle.UNITS_PERCENT;
+                int value = argsBundle.getDimensionPixelSize(ARG_WIDTH, 0);
+                inset.setWidth(value, isPercent);
+            }
+            if (argsBundle.hasArgument(ARG_HEIGHT)) {
+                boolean isPercent = argsBundle.getDimensionUnits(ARG_HEIGHT) == ArgumentsBundle.UNITS_PERCENT;
+                int value = argsBundle.getDimensionPixelSize(ARG_HEIGHT, 0);
+                inset.setHeight(value, isPercent);
+            }
+
+            return inset;
+        }
+    }
+
+    /**
+     * Type definition for inset group type
+     */
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({MODE_DEFAULT, MODE_NO_CLIP, MODE_CLIP_ONLY})
+    public @interface Mode {
+    }
+}
+rhythm/src/main/java/com/actinarium/rhythm/RhythmOverlayInflater.java
+public class RhythmOverlayInflater {
+
+    /**
+     * Initial capacity of {layer type} -&gt; {factory} map.
+     */
+    private static final int INITIAL_FACTORIES_CAPACITY = 16;
+
+    /**
+     * A regex to search for arguments in configuration string by a following template: key[=value]
+     */
+    protected static final Pattern PATTERN_ARGUMENTS = Pattern.compile("([^\\s=]+)(?:=([^\\s]+))?");
+
+    /**
+     * A regex to validate and parse variables in configuration string by a following template: @variable=value
+     */
+    protected static final Pattern PATTERN_VARIABLES = Pattern.compile("(@[\\w]+)=(.*)");
+
+    /**
+     * Used internally to indicate that there's no overlay block started at the moment of evaluating current line
+     */
+    private static final int NOT_STARTED = -1;
+
+    protected Context mContext;
+    protected DisplayMetrics mDisplayMetrics;
+    protected Map<String, RhythmSpecLayerFactory> mFactories;
+    protected boolean mAreMagicVariablesEnabled = false;
+
+    /**
+     * <p>Create a new instance of default overlay inflater. It comes pre-configured to inflate all bundled {@link
+     * RhythmSpecLayer} types, and you can add custom factories for your custom spec layers.</p><p>By default, {@link
+     * GridLines}, {@link Keyline}, {@link RatioKeyline}, and {@link Fill} layer instances are cached and reused for the
+     * same configuration lines &mdash; if you don't want this behavior (e.g. if you want to mutate the inflated layers
+     * individually afterwards), create an empty inflater and register the factories yourself like this:</p>
+     * <pre><code>
+     * RhythmOverlayInflater inflater = new RhythmOverlayInflater(context);
+     * inflater.registerFactory(GridLines.Factory.LAYER_TYPE, new GridLines.Factory());
+     * inflater.registerFactory(Keyline.Factory.LAYER_TYPE, new Keyline.Factory());
+     * inflater.registerFactory(RatioKeyline.Factory.LAYER_TYPE, new RatioKeyline.Factory());
+     * inflater.registerFactory(Fill.Factory.LAYER_TYPE, new Fill.Factory());
+     * inflater.registerFactory(Inset.Factory.LAYER_TYPE, new Inset.Factory());
+     * inflater.registerFactory(Columns.Factory.LAYER_TYPE, new Columns.Factory());
+     * inflater.registerFactory(DimensionsLabel.Factory.LAYER_TYPE, new DimensionsLabel.Factory());
+     * </code></pre>
+     *
+     * @param context Context
+     * @return a new overlay inflater instance configured to inflate bundled spec layers
+     * @see #RhythmOverlayInflater(Context)
+     */
+    public static RhythmOverlayInflater createDefault(Context context) {
+        final RhythmOverlayInflater inflater = new RhythmOverlayInflater(context);
+
+        // Register bundled spec layers. Wrap keyline, fill, grid, and ratio keyline factories in caching decorators
+        inflater.mFactories.put(GridLines.Factory.LAYER_TYPE, new SimpleCacheFactory<>(new GridLines.Factory()));
+        inflater.mFactories.put(Keyline.Factory.LAYER_TYPE, new SimpleCacheFactory<>(new Keyline.Factory()));
+        inflater.mFactories.put(RatioKeyline.Factory.LAYER_TYPE, new SimpleCacheFactory<>(new RatioKeyline.Factory()));
+        inflater.mFactories.put(Fill.Factory.LAYER_TYPE, new SimpleCacheFactory<>(new Fill.Factory()));
+        inflater.mFactories.put(Inset.Factory.LAYER_TYPE, new Inset.Factory());
+        inflater.mFactories.put(Columns.Factory.LAYER_TYPE, new Columns.Factory());
+        inflater.mFactories.put(DimensionsLabel.Factory.LAYER_TYPE, new DimensionsLabel.Factory());
+
+        return inflater;
+    }
+
+    /**
+     * Create a new instance of overlay inflater with no factories registered. Call this constructor only if you need a
+     * blank inflater that you are going to configure from scratch (i.e. by registering all the required factories with
+     * {@link #registerFactory(String, RhythmSpecLayerFactory)}). If you need an inflater with all bundled spec layers
+     * pre-configured, use {@link #createDefault(Context)} instead.
+     *
+     * @param context Context
+     * @see #createDefault(Context)
+     */
+    public RhythmOverlayInflater(Context context) {
+        mContext = context.getApplicationContext();
+        mDisplayMetrics = mContext.getResources().getDisplayMetrics();
+        mFactories = new HashMap<>(INITIAL_FACTORIES_CAPACITY);
+    }
+
+    /**
+     * <p>Enable or disable &ldquo;magic variables&rdquo; support in this inflater instance. Enabling this will allow to
+     * specify default arguments for spec layers by defining global and local variables named with the following
+     * pattern: <code>@{layer_name}_{arg_name}</code>, where dashes are replaced with underscores.</p>
+     * <p><b>Warning:</b>&ldquo;magic variables&rdquo; is an experimental feature and therefore disabled by default.
+     * Normally it shouldn't have significant impact on performance, yet it's advised to only enable it if using magic
+     * variables is really desirable over explicitly setting values to spec layers individually.</p>
+     *
+     * @param enabled true to enable magic variables support, false to disable it.
+     * @return this for chaining
+     */
+    public RhythmOverlayInflater setMagicVariablesEnabled(boolean enabled) {
+        mAreMagicVariablesEnabled = enabled;
+        return this;
+    }
+
+    /**
+     * Register a factory for provided layer type. Use this method to register factories for your custom spec layers or
+     * override default behavior. You can add the same factory for multiple layer types, e.g. for aliasing.
+     *
+     * @param layerType string that identifies a specific spec layer class; the first argument in each config line
+     * @param factory   a factory object that will inflate config line into a layer
+     * @return this for chaining
+     */
+    public RhythmOverlayInflater registerFactory(@NonNull String layerType, @NonNull RhythmSpecLayerFactory factory) {
+        mFactories.put(layerType, factory);
+        return this;
+    }
+
+    /**
+     * Add an alias for arbitrary layer type. This will make multiple layer type strings map to the same factory. For
+     * custom layers, a slightly more efficient way would be to simply call {@link #registerFactory(String,
+     * RhythmSpecLayerFactory)} multiple times with different strings and the same factory objects to avoid lookups.
+     *
+     * @param existingLayerType layer type string for layer to alias (used for lookup)
+     * @param aliasLayerType    layer type string to map to the same factory
+     * @return this for chaining
+     */
+    public RhythmOverlayInflater addAlias(@NonNull String existingLayerType, @NonNull String aliasLayerType) {
+        RhythmSpecLayerFactory factory = mFactories.get(existingLayerType);
+        if (factory != null) {
+            mFactories.put(aliasLayerType, factory);
+        } else {
+            throw new IllegalArgumentException("No factory registered for type \"" + existingLayerType + "\"");
+        }
+        return this;
+    }
+
+    /**
+     * Inflate a Rhythm configuration file into a list of {@link RhythmOverlay RhythmOverlays}, which you can then
+     * assign to a group, or make sub-lists of and assign to different groups.
+     *
+     * @param rawResId Raw configuration file with syntax according to the docs
+     * @return A list of inflated Rhythm overlays
+     * @see #inflate(List)
+     */
+    public List<RhythmOverlay> inflate(@RawRes int rawResId) {
+        List<String> lines = ReaderUtils.readLines(mContext, rawResId);
+        return inflate(lines);
+    }
+
+    /**
+     * Same as {@link #inflate(int)}, but accepts a string for the whole overlay configuration file. This method may
+     * come in handy if you need to bulk inflate several overlays from strings known at runtime.
+     *
+     * @param configString Configuration file passed in whole as a string. Must follow the same syntax rules as the
+     *                     configuration file, e.g. overlays must be separated by an empty line
+     * @return A list of inflated Rhythm overlays
+     * @see #inflate(int)
+     * @see #inflate(List)
+     */
+    public List<RhythmOverlay> inflate(String configString) {
+        List<String> configStrings = Arrays.asList(configString.split("\\r?\\n"));
+        return inflate(configStrings);
+    }
+
+    /**
+     * <p>Same as {@link #inflate(int)}, but accepts the configuration file already split in lines as strings.</p>
+     * <p>This method walks over the lines and determines how the config should be split into separate overlays.</p>
+     *
+     * @param configStrings Configuration file split as separate lines. Must follow the same syntax rules as the
+     *                      configuration file, that is, no <code>null</code> strings, and overlays being separated by
+     *                      an empty line
+     * @return A list of inflated Rhythm overlays
+     * @see #inflate(int)
+     * @see #inflate(String)
+     */
+    public List<RhythmOverlay> inflate(List<String> configStrings) {
+        List<RhythmOverlay> overlays = new ArrayList<>();
+        Map<String, String> globalVars = new HashMap<>();
+        final int len = configStrings.size();
+        int overlayStart = NOT_STARTED;
+
+        // Line index
+        int i = 0;
+
+        // First let's read global variables, which must be placed in the beginning of the file
+        for (; i < len; i++) {
+            final String line = configStrings.get(i);
+
+            if (isEmptyOrComment(line.trim())) {
+                continue;
+            }
+
+            if (line.charAt(0) == '@') {
+                // Variable declaration. Let's check and parse it
+                Matcher matcher = PATTERN_VARIABLES.matcher(line);
+                if (!matcher.matches()) {
+                    // Oops, bad variable syntax
+                    throw new RhythmInflationException(
+                            "Malformed variable declaration.\nExpected syntax is @name=value where name may contain only letters, digits, and/or underscores."
+                    ).setLineNumber(i);
+                }
+
+                // Otherwise we're fine
+                String name = matcher.group(1);
+                String value = resolveVariableInternal(globalVars, matcher.group(2), i);
+
+                globalVars.put(name, value);
+            } else {
+                // Found a non-variable-declaration, non-empty line
+                break;
+            }
+        }
+
+        // Now read the remaining lines, separating blocks by empty lines, and inflate the blocks as we go
+        for (; i < len; i++) {
+            final String line = configStrings.get(i);
+            if (line.trim().length() == 0) {
+                // We encountered an empty line, meaning this is the end of the previous block if the latter is present
+                if (overlayStart != NOT_STARTED) {
+                    // There was a block, so now it's terminated and we should inflate it.
+                    final RhythmOverlay previousBlock = inflateOverlayInternal(configStrings.subList(overlayStart, i), globalVars, overlayStart);
+                    overlays.add(previousBlock);
+                    overlayStart = NOT_STARTED;
+                }
+            } else if (overlayStart == NOT_STARTED && !isEmptyOrComment(line)) {
+                // It's a title, a var, or a layer, which starts a new block
+                overlayStart = i;
+            }
+        }
+
+        // If we reached the end of the file, and have a block started, inflate it
+        if (overlayStart != NOT_STARTED) {
+            final RhythmOverlay previousBlock = inflateOverlayInternal(configStrings.subList(overlayStart, len), globalVars, overlayStart);
+            overlays.add(previousBlock);
+        }
+
+        return overlays;
+    }
+
+    /**
+     * Inflate a single overlay from overlay configuration string according to the syntax spec.
+     *
+     * @param configString layer configuration string, following the syntax rules
+     * @return inflated Rhythm overlay
+     */
+    @SuppressWarnings("unchecked")
+    public RhythmOverlay inflateOverlay(String configString) {
+        List<String> configStrings = Arrays.asList(configString.split("\\r?\\n"));
+        return inflateOverlayInternal(configStrings, Collections.EMPTY_MAP, 0);
+    }
+
+    /**
+     * Inflate a single overlay from overlay configuration string according to the syntax spec.
+     *
+     * @param configString layer configuration string, following the syntax rules
+     * @param vars         the @key-&gt;value map of the values that can be referenced within this overlay (see the
+     *                     docs)
+     * @return inflated Rhythm overlay
+     */
+    public RhythmOverlay inflateOverlay(String configString, @NonNull Map<String, String> vars) {
+        List<String> configStrings = Arrays.asList(configString.split("\\r?\\n"));
+        return inflateOverlayInternal(configStrings, vars, 0);
+    }
+
+    /**
+     * Inflate a single overlay from overlay configuration already presented as separate lines.
+     *
+     * @param configStrings layer configuration split in lines
+     * @return inflated Rhythm overlay
+     */
+    @SuppressWarnings("unchecked")
+    public RhythmOverlay inflateOverlay(List<String> configStrings) {
+        return inflateOverlayInternal(configStrings, Collections.EMPTY_MAP, 0);
+    }
+
+    /**
+     * Inflate a single overlay from overlay configuration already presented as separate lines.
+     *
+     * @param configStrings layer configuration split in lines
+     * @param vars          the @key-&gt;value map of the values that can be referenced within this overlay (see the
+     *                      docs)
+     * @return inflated Rhythm overlay
+     */
+    public RhythmOverlay inflateOverlay(List<String> configStrings, @NonNull Map<String, String> vars) {
+        return inflateOverlayInternal(configStrings, vars, 0);
+    }
+
+    /**
+     * Internal method for inflating an overlay from separate config lines, with provided global variables map, and
+     * possibly as a part of an overlay config file.
+     *
+     * @param configStrings layer configuration split in lines
+     * @param globalVars    map of global variables
+     * @param offset        index of the line where this overlay starts in the context of an outer config. Pass 0 if
+     *                      inflating this overlay on its own
+     * @return inflated Rhythm overlay
+     */
+    protected RhythmOverlay inflateOverlayInternal(List<String> configStrings, @NonNull Map<String, String> globalVars, int offset) {
+        // initialize stacks for parents and indents. Since there's no adequate stack implementations out there for API 8+, make own.
+        // Assume there rarely will be more than 4-deep hierarchy
+        int size = 4;
+        int[] indents = new int[size];
+        RhythmSpecLayerParent[] parents = new RhythmSpecLayerParent[size];
+        int headIndex = 0;
+
+        // at the bottom of the stack we have the new RhythmOverlay object
+        final RhythmOverlay overlay = new RhythmOverlay();
+        parents[0] = overlay;
+        indents[0] = -1;
+
+        // At first assume there are no local overrides, so reusing global vars map for now
+        Map<String, String> localVars = globalVars;
+        boolean hasLocalVars = false;
+
+        // Read line by line, evaluate line types, parse and nest
+        for (int i = 0, lines = configStrings.size(); i < lines; i++) {
+            String line = configStrings.get(i);
+
+            if (isEmptyOrComment(line.trim())) {
+                // Empty or comment line, no-op (btw there should be no empty lines here if inflating the whole file)
+                continue;
+            }
+
+            final int lineNumber = i + offset;
+            if (line.charAt(0) == '@') {
+                // This is a local variable. And all variables must be declared before any overlay lines.
+                if (overlay.size() != 0) {
+                    throw new RhythmInflationException(
+                            "Unexpected variable declaration.\nVariables must be declared before spec layers."
+                    ).setLineNumber(lineNumber);
+                }
+
+                // If it's the first local var, copy the global vars map where we'll be adding/overwriting values
+                if (!hasLocalVars) {
+                    localVars = new HashMap<>(globalVars);
+                    hasLocalVars = true;
+                }
+
+                // Let's check and parse
+                Matcher matcher = PATTERN_VARIABLES.matcher(line);
+                if (matcher.matches()) {
+                    String name = matcher.group(1);
+                    String value = resolveVariableInternal(localVars, matcher.group(2), lineNumber);
+                    localVars.put(name, value);
+                } else {
+                    // Oops, bad variable syntax
+                    throw new RhythmInflationException(
+                            "Malformed variable declaration: \"" + line + "\".\nExpected syntax is @name=value where name may contain only letters, digits, and/or underscores."
+                    ).setLineNumber(lineNumber);
+                }
+            } else if (line.charAt(0) == '#') {
+                // Looks like a title. A title should be the first non-empty line, and there should be no multiple titles per block
+                if (overlay.getTitle() != null || hasLocalVars || overlay.size() != 0) {
+                    throw new RhythmInflationException(
+                            "Unexpected overlay title.\nThere can be only one title per overlay, and it must be the first line. Did you forget an empty newline before starting a new overlay?"
+                    ).setLineNumber(lineNumber);
+                }
+
+                // Otherwise OK, we probably have a title
+                String title = line.substring(1).trim();
+                if (title.length() != 0) {
+                    overlay.setTitle(title);
+                }
+            } else {
+                // Otherwise assume the line is a spec layer, try parsing and inflating it as a separate layer
+                LayerConfig config = parseConfigInternal(line, localVars, lineNumber);
+
+                // If indent is <= indent of parent layer, then go up the hierarchy. Won't underflow b/c indents[0] is -1
+                while (config.getIndent() <= indents[headIndex]) {
+                    headIndex--;
+                    // we could clean up the stacks but there's really no need
+                }
+
+                RhythmSpecLayer thisLayer = inflateLayerInternal(config, lineNumber);
+                parents[headIndex].addLayer(thisLayer);
+
+                // if this is a layer group, add it to the stack
+                if (thisLayer instanceof RhythmSpecLayerParent) {
+                    headIndex++;
+                    // if arrays run out of space, grow it twice (a-la ArrayList)
+                    if (headIndex >= size) {
+                        int newSize = size * 2;
+                        int[] newIndents = new int[newSize];
+                        RhythmSpecLayerParent[] newParents = new RhythmSpecLayerParent[newSize];
+                        System.arraycopy(indents, 0, newIndents, 0, size);
+                        System.arraycopy(parents, 0, newParents, 0, size);
+                        indents = newIndents;
+                        parents = newParents;
+                        size = newSize;
+                    }
+                    parents[headIndex] = (RhythmSpecLayerParent) thisLayer;
+                    indents[headIndex] = config.getIndent();
+                }
+            }
+        }
+
+        // If there are only variables and nothing else, seems like the user tried to declare global variables between overlay blocks
+        if (hasLocalVars && overlay.size() == 0 && overlay.getTitle() == null) {
+            throw new RhythmInflationException(
+                    "Unexpected variable declaration.\nGlobal variables must be declared before all overlay blocks."
+            ).setLineNumber(offset);
+        }
+
+        return overlay;
+    }
+
+    /**
+     * Inflate an individual layer from raw configuration string and optional variables
+     *
+     * @param configString configuration string to parse and feed to layer's factory
+     * @param vars         map of @key-&gt;value mappings used to resolve argument references (e.g.
+     *                     <code>@primary=#FF0000</code> to use in <code>color=@primary</code>). Cannot be
+     *                     <code>null</code> &mdash; pass {@link Collections#EMPTY_MAP} if there are no variables.
+     * @return inflated layer
+     */
+    public RhythmSpecLayer inflateLayer(String configString, @NonNull Map<String, String> vars) {
+        return inflateLayerInternal(parseConfigInternal(configString, vars, 0), 0);
+    }
+
+    /**
+     * Inflate an individual layer from already parsed layer configuration.
+     *
+     * @param config     parsed layer configuration
+     * @param lineNumber number of the configuration line we're inflating. Required for error reporting.
+     * @return inflated layer
+     */
+    protected RhythmSpecLayer inflateLayerInternal(LayerConfig config, int lineNumber) {
+        RhythmSpecLayerFactory factory = mFactories.get(config.getLayerType());
+        if (factory == null) {
+            Object[] knownLayers = mFactories.keySet().toArray();
+            throw new RhythmInflationException(
+                    "Unknown layer type \"" + config.getLayerType() + "\".\nAvailable types are: " + Arrays.toString(knownLayers)
+            ).setLineNumber(lineNumber);
+        }
+        try {
+            return factory.getForArguments(config.getArgumentsBundle());
+        } catch (RhythmInflationException e) {
+            // Set line number and rethrow
+            throw e.setLineNumber(lineNumber);
+        } catch (Exception e) {
+            // Catch all other exceptions (e.g. IllegalArgument etc) and wrap'em in RhythmInflationException
+            throw new RhythmInflationException(
+                    "Error inflating layer: " + e.getMessage(), e
+            ).setLineNumber(lineNumber);
+        }
+    }
+
+    /**
+     * Parses a line with single layer configuration. Resolves referenced variables into values for consistency.
+     * Developers can override this method to perform parsing differently or return a different implementation of {@link
+     * LayerConfig} or enclosed {@link ArgumentsBundle}.
+     *
+     * @param configString configuration string, indented with spaces if required, starting with layer title and
+     *                     containing args or key=value pairs
+     * @param vars         map of @key-&gt;value mappings used to resolve argument references (e.g.
+     *                     <code>@primary=#FF0000</code> to use in <code>color=@primary</code>)
+     * @param lineNumber   Line number to report in case of error
+     * @return layer config object with layer configuration and metadata
+     */
+    protected LayerConfig parseConfigInternal(String configString, @NonNull Map<String, String> vars, int lineNumber) {
+        // We can parse everything using pattern matcher. The first match would be our layer name
+        Matcher matcher = PATTERN_ARGUMENTS.matcher(configString);
+
+        if (!matcher.find()) {
+            // The whole layer line is malformed
+            throw new RhythmInflationException(
+                    "Malformed spec layer declaration.\nExpected format is <layer_name> <arg1>=<val1> <arg2>=<val2>..."
+            ).setLineNumber(lineNumber);
+        }
+
+        final String specLayerType = matcher.group();
+        final int spaces = matcher.start();
+        final Map<String, String> arguments = new HashMap<>();
+
+        while (matcher.find()) {
+            String key = matcher.group(1);
+            // Since we're already resolving variables in inflater and not lazily upon reading from arguments,
+            // let's be consistent and do the same for individual args as well.
+            String value = resolveVariableInternal(vars, matcher.group(2), lineNumber);
+            arguments.put(key, value);
+        }
+
+        // Experimental magic variables support integrated here:
+        ArgumentsBundle argumentsBundle = mAreMagicVariablesEnabled ?
+                new MagicVariablesArgumentsBundle(arguments, vars, specLayerType, mDisplayMetrics) :
+                new SimpleArgumentsBundle(arguments, mDisplayMetrics);
+
+        return new LayerConfig(specLayerType, spaces, argumentsBundle);
+    }
+
+    /**
+     * Resolve variable value: if it's a reference to another variable (i.e. starts with '@'), try resolving its value,
+     * otherwise return as is. There's no need to resolve references recursively, as all previously declared variables
+     * already have their values resolved.
+     *
+     * @param vars       Variables map, as resolved at the moment
+     * @param value      Value that's either a reference to resolve or a concrete value
+     * @param lineNumber Line number to report in case of error
+     * @return variable value
+     */
+    protected String resolveVariableInternal(@NonNull Map<String, String> vars, String value, int lineNumber) {
+        if (value != null && value.length() != 0 && value.charAt(0) == '@') {
+            if (vars.containsKey(value)) {
+                value = vars.get(value);
+            } else {
+                throw new RhythmInflationException(
+                        "Cannot resolve variable " + value
+                ).setLineNumber(lineNumber);
+            }
+        }
+        return value;
+    }
+
+    /**
+     * Utility method that determines whether the line is empty or a comment one (starts with <code>//</code>) and thus
+     * should be ignored.
+     *
+     * @param line line to test, should be pre-trimmed
+     * @return true if empty or comment
+     */
+    public static boolean isEmptyOrComment(String line) {
+        return line.length() == 0 || (line.charAt(0) == '/' && line.length() >= 2 && line.charAt(1) == '/');
+    }
+
+    /**
+     * A spec layer descriptor holding arguments and metadata, used internally by {@link RhythmOverlayInflater} to carry
+     * values needed to inflate individual layers and their hierarchies.
+     *
+     * @author Paul Danyliuk
+     */
+    public static class LayerConfig {
+
+        protected String mLayerType;
+        protected int mIndent;
+        protected ArgumentsBundle mArgumentsBundle;
+
+        /**
+         * Create layer config object for layer of given type, with known indent, and with pre-filled arguments bag
+         *
+         * @param layerType       spec layer type, used for appropriate factory lookup
+         * @param indent          number of leading spaces in the config line, used to resolve layer hierarchy
+         * @param argumentsBundle an object describing parsed layer configuration (arguments and values)
+         */
+        public LayerConfig(@NonNull String layerType, int indent, @NonNull ArgumentsBundle argumentsBundle) {
+            mLayerType = layerType;
+            mIndent = indent;
+            mArgumentsBundle = argumentsBundle;
+        }
+
+        /**
+         * Get the name of {@link RhythmSpecLayer spec layer} to inflate with these arguments
+         *
+         * @return spec layer type
+         */
+        public String getLayerType() {
+            return mLayerType;
+        }
+
+        /**
+         * Get the number of spaces this config line was indented with. Used internally to resolve grouping
+         *
+         * @return number of spaces
+         */
+        public int getIndent() {
+            return mIndent;
+        }
+
+        /**
+         * Get the configuration of this layer presented by an {@link ArgumentsBundle} object
+         *
+         * @return layer configuration bundle
+         */
+        public ArgumentsBundle getArgumentsBundle() {
+            return mArgumentsBundle;
+        }
+    }
+}
+rhythm/src/main/java/com/actinarium/rhythm/RhythmOverlay.java
+public class RhythmOverlay extends AbstractSpecLayerGroup<RhythmOverlay> {
+
+    protected String mTitle;
+
+    /**
+     * Create a new overlay
+     */
+    public RhythmOverlay() {
+        super();
+    }
+
+    /**
+     * Create a new overlay with initial capacity
+     *
+     * @param initialCapacity anticipated number of child layers
+     */
+    public RhythmOverlay(int initialCapacity) {
+        super(initialCapacity);
+    }
+
+    /**
+     * Set the title for this overlay. The title is only displayed in Rhythm control notification &mdash; you don't need
+     * it in programmatically created anonymous overlays.
+     *
+     * @param title A convenient title for this overlay.
+     * @return this for chaining
+     */
+    public RhythmOverlay setTitle(String title) {
+        mTitle = title;
+        return this;
+    }
+
+    /**
+     * Get overlay title
+     *
+     * @return overlay title of <code>null</code> if the overlay is anonymous
+     */
+    public String getTitle() {
+        return mTitle;
+    }
+
+    /**
+     * <p>Add all layers to this overlay from another. Convenient if you have a common set of layers that you wish to
+     * include in multiple overlays, or want to create an overlay that combines a few others.</p> <p><b>Warning:</b> for
+     * simplicity and performance reasons the same layer objects are used, therefore it’s strongly advised that you
+     * don’t mutate them after adding.</p>
+     *
+     * @param source Existing overlay to add all layers from
+     * @return this for chaining
+     */
+    public RhythmOverlay addLayersFrom(@NonNull RhythmOverlay source) {
+        mLayers.addAll(source.mLayers);
+        return this;
+    }
+
+    @Override
+    public String toString() {
+        return mTitle != null ? mTitle : "Untitled overlay@" + Integer.toHexString(hashCode());
+    }
+}
+rhythm/src/main/java/com/actinarium/rhythm/layer/GridLines.java
+public class GridLines implements RhythmSpecLayer {
+
+    public static final int DEFAULT_GRID_COLOR = 0x800091EA;
+    /**
+     * Default grid line thickness (1px)
+     */
+    public static final int DEFAULT_THICKNESS = 1;       // px
+
+    @FloatRange(from = 0f, fromInclusive = false)
+    protected float mStep;
+    @IntRange(from = 1)
+    protected int mThickness = DEFAULT_THICKNESS;
+    protected int mLimit = Integer.MAX_VALUE;
+
+    protected int mOffset;
+    @ArgumentsBundle.EdgeAffinity
+    protected int mEdgeAffinity;
+    protected Paint mPaint;
+
+    /**
+     * Create a layer that draws horizontal or vertical grid lines. Unless offset is applied, horizontal lines are
+     * always drawn <i>below</i> the delimited pixel row, and vertical lines are always drawn <i>to the right</i> of the
+     * delimited column: e.g. if a child view is fully aligned to the grid on all edges, top and bottom grid lines will
+     * overdraw the view, whereas bottom and right grid lines will touch the view.
+     *
+     * @param edgeAffinity Controls grid alignment <b>and</b> orientation. {@link Gravity#TOP} and {@link
+     *                     Gravity#BOTTOM} mean horizontal lines, and {@link Gravity#LEFT} and {@link Gravity#RIGHT}
+     *                     mean vertical lines, and the difference between those is from what edge of the view the steps
+     *                     are counted. A good example where this can be useful is having a left-aligned and a
+     *                     right-aligned layer on the left and the right half of the view when its width is not an exact
+     *                     multiple of the step.
+     * @param step         Grid step, in pixels. Allows for float values to properly accommodate devices with non-round
+     *                     dip-to-pixel ratio (1.5x on hdpi, 2.5x on Nexus 5X etc)
+     */
+    public GridLines(@ArgumentsBundle.EdgeAffinity int edgeAffinity, @FloatRange(from = 0f, fromInclusive = false) float step) {
+        this();
+        mStep = step;
+        mEdgeAffinity = edgeAffinity;
+        mPaint.setColor(DEFAULT_GRID_COLOR);
+    }
+
+    /**
+     * <p>Create a spec layer that displays dimensions label.</p> <p>This is a minimum constructor for the factory
+     * &mdash; only paints and reusable objects are initialized. Developers extending this class are responsible for
+     * setting all fields to proper argument values.</p>
+     */
+    protected GridLines() {
+        mPaint = new Paint();
+        mPaint.setStyle(Paint.Style.FILL);
+    }
+
+    /**
+     * Set the step of grid lines
+     *
+     * @param step Grid step, in pixels. Allows for float values to properly accommodate devices with non-round
+     *             dip-to-pixel ratio (1.5x on hdpi, 2.5x on Nexus 5X etc)
+     * @return this for chaining
+     */
+    public GridLines setStep(@FloatRange(from = 0f, fromInclusive = false) float step) {
+        mStep = step;
+        return this;
+    }
+
+    /**
+     * Set edge affinity of the grid
+     *
+     * @param edgeAffinity Controls grid alignment <b>and</b> orientation. Use {@link Gravity#TOP} or {@link
+     *                     Gravity#BOTTOM} for horizontal lines counting from top or bottom, and {@link Gravity#LEFT} or
+     *                     {@link Gravity#RIGHT} for vertical lines cointing from left or right edge of the screen
+     *                     respectively.
+     * @return this for chaining
+     */
+    public GridLines setEdgeAffinity(@ArgumentsBundle.EdgeAffinity int edgeAffinity) {
+        mEdgeAffinity = edgeAffinity;
+        return this;
+    }
+
+    /**
+     * Set grid line color
+     *
+     * @param color Grid line color, in #AARRGGBB format as usual
+     * @return this for chaining
+     */
+    public GridLines setColor(@ColorInt int color) {
+        mPaint.setColor(color);
+        return this;
+    }
+
+    /**
+     * Set grid line thickness
+     *
+     * @param thickness Grid line thickness, in pixels
+     * @return this for chaining
+     */
+    public GridLines setThickness(@IntRange(from = 1) int thickness) {
+        mThickness = thickness;
+        return this;
+    }
+
+    /**
+     * Set the maximum number of steps to outline, respecting layer’s gravity (i.e. if gravity is set to {@link
+     * Gravity#BOTTOM} and the limit is 4, this layer will draw four lines enclosing 4 cells. Default is no limit.
+     *
+     * @param limit Number of lines to draw. Setting zero or less means no limit.
+     * @return this for chaining
+     */
+    public GridLines setLimit(int limit) {
+        mLimit = limit > 0 ? limit : Integer.MAX_VALUE;
+        return this;
+    }
+
+    /**
+     * Set additional grid offset. Might be useful if you need to tweak the position of the grid just a few pixels up or
+     * down, or prevent overdraw when combining a few interleaving grids (e.g. to add a 4dp baseline grid to a 8dp
+     * regular grid you only need to draw each second baseline, which is done with a 8dp step and a 4dp offset).
+     *
+     * @param offset Grid offset in pixels. Regardless of gravity, positive offset means right/down, negative means
+     *               left/up
+     * @return this for chaining
+     */
+    public GridLines setOffset(int offset) {
+        mOffset = offset;
+        return this;
+    }
+
+    @SuppressLint("RtlHardcoded")
+    @Override
+    public void draw(Canvas canvas, Rect drawableBounds) {
+        // Depending on gravity the orientation, the order of drawing, and the starting point are different
+        if (mEdgeAffinity == Gravity.TOP) {
+            final float top = drawableBounds.top + mOffset + 0.5f;
+            for (int i = 0; i <= mLimit; i++) {
+                int y = (int) (top + mStep * i);
+                if (y >= drawableBounds.bottom) {
+                    return;
+                }
+                canvas.drawRect(drawableBounds.left, y, drawableBounds.right, y + mThickness, mPaint);
+            }
+        } else if (mEdgeAffinity == Gravity.BOTTOM) {
+            final float bottom = drawableBounds.bottom + mOffset + 0.5f;
+            for (int i = 0; i <= mLimit; i++) {
+                int y = (int) (bottom - mStep * i);
+                if (y < drawableBounds.top) {
+                    return;
+                }
+                canvas.drawRect(drawableBounds.left, y, drawableBounds.right, y + mThickness, mPaint);
+            }
+        } else if (mEdgeAffinity == Gravity.LEFT) {
+            final float left = drawableBounds.left + mOffset + 0.5f;
+            for (int i = 0; i <= mLimit; i++) {
+                int x = (int) (left + mStep * i);
+                if (x >= drawableBounds.right) {
+                    return;
+                }
+                canvas.drawRect(x, drawableBounds.top, x + mThickness, drawableBounds.bottom, mPaint);
+            }
+        } else if (mEdgeAffinity == Gravity.RIGHT) {
+            final float right = drawableBounds.right + mOffset + 0.5f;
+            for (int i = 0; i <= mLimit; i++) {
+                int x = (int) (right - mStep * i);
+                if (x < drawableBounds.left) {
+                    return;
+                }
+                canvas.drawRect(x, drawableBounds.top, x + mThickness, drawableBounds.bottom, mPaint);
+            }
+        }
+    }
+
+    /**
+     * A default factory that creates new {@link GridLines} layers from config lines according to <a
+     * href="https://github.com/Actinarium/Rhythm/wiki/Declarative-configuration#grid-lines">the docs</a>
+     */
+    public static class Factory implements RhythmSpecLayerFactory<GridLines> {
+
+        public static final String LAYER_TYPE = "grid-lines";
+        public static final String ARG_EDGE = "from";
+        public static final String ARG_STEP = "step";
+        public static final String ARG_COLOR = "color";
+        public static final String ARG_THICKNESS = "thickness";
+        public static final String ARG_LIMIT = "limit";
+        public static final String ARG_OFFSET = "offset";
+
+        @Override
+        public GridLines getForArguments(ArgumentsBundle argsBundle) {
+            GridLines gridLines = new GridLines();
+
+            gridLines.mEdgeAffinity = argsBundle.getEdgeAffinity(ARG_EDGE, Gravity.NO_GRAVITY);
+            if (gridLines.mEdgeAffinity == Gravity.NO_GRAVITY) {
+                throw new RhythmInflationException(
+                        "Error in grid-lines config: 'from' argument is mandatory and must be either 'left', 'right', 'top', 'bottom'"
+                );
+            }
+
+            final float step = argsBundle.getDimensionPixelExact(ARG_STEP, 0f);
+            if (step <= 0) {
+                throw new RhythmInflationException(
+                        "Error in grid-lines config: 'step' argument is mandatory and must be greater than 0"
+                );
+            }
+            gridLines.mStep = step;
+
+            gridLines.mPaint.setColor(argsBundle.getColor(ARG_COLOR, DEFAULT_GRID_COLOR));
+            gridLines.mThickness = argsBundle.getDimensionPixelSize(ARG_THICKNESS, DEFAULT_THICKNESS);
+            gridLines.setLimit(argsBundle.getInt(ARG_LIMIT, Integer.MAX_VALUE));
+            gridLines.mOffset = argsBundle.getDimensionPixelOffset(ARG_OFFSET, 0);
+
+            return gridLines;
+        }
+    }
+
+}
+rhythm-control/src/main/java/com/actinarium/rhythm/control/RhythmFrameLayout.java
+public class RhythmFrameLayout extends FrameLayout {
+
+    /**
+     * Use this value to indicate that this view is not connected to any {@link RhythmGroup} and shouldn’t display any
+     * overlay
+     */
+    public static final int NO_GROUP = -1;
+
+    // The following are to control where the overlay will be drawn
+    // todo: test how overlay position affects its properties on view's translation, rotation, scaling etc
+    /**
+     * Draw the overlay under the background of this view. Pretty useless if this view has opaque background.
+     */
+    public static final int OVERLAY_POSITION_UNDER_BACKGROUND = 0;
+    /**
+     * Draw the overlay over view’s background but under child views. Default choice: useful yet non-obtrusive.
+     */
+    public static final int OVERLAY_POSITION_UNDER_CONTENT = 1;
+    /**
+     * Draw the overlay over the view’s content (sans foreground). Use this mode if you have nested opaque views that
+     * occlude the overlay, and there are elements within, which you still need to align.
+     */
+    public static final int OVERLAY_POSITION_OVER_CONTENT = 2;
+    /**
+     * Same as {@link #OVERLAY_POSITION_OVER_CONTENT}, but this also draws over any foreground (ripples, touch
+     * highlights etc).
+     */
+    public static final int OVERLAY_POSITION_OVER_FOREGROUND = 3;
+
+    /**
+     * Index of the group this view should get its {@link RhythmDrawable} from, or {@link #NO_GROUP}.
+     */
+    protected int mRhythmGroupIndex;
+    @OverlayPosition
+    protected int mOverlayPosition;
+
+    /**
+     * Obtained from {@link RhythmGroup}, which then controls this drawable, telling it what {@link RhythmOverlay} to
+     * draw. Or <code>null</code>.
+     */
+    protected RhythmDrawable mRhythmDrawable;
+    /**
+     * Overlay bounds, relative to this view (since canvas is already translated to the origin point of this view)
+     */
+    protected Rect mBounds = new Rect();
+
+    // Constructors
+
+    public RhythmFrameLayout(Context context) {
+        super(context);
+        mRhythmGroupIndex = NO_GROUP;
+        mOverlayPosition = OVERLAY_POSITION_UNDER_CONTENT;
+        setWillNotDraw(false);
+    }
+
+    public RhythmFrameLayout(Context context, AttributeSet attrs) {
+        super(context, attrs);
+        initFromAttrs(context, attrs, 0, 0);
+    }
+
+    public RhythmFrameLayout(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
+        initFromAttrs(context, attrs, defStyleAttr, 0);
+    }
+
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    public RhythmFrameLayout(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+        super(context, attrs, defStyleAttr, defStyleRes);
+        initFromAttrs(context, attrs, defStyleAttr, defStyleRes);
+    }
+
+    private void initFromAttrs(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+        TypedArray array = context
+                .getTheme()
+                .obtainStyledAttributes(attrs, R.styleable.RhythmFrameLayout, defStyleAttr, defStyleRes);
+        try {
+            int position = array.getInteger(R.styleable.RhythmFrameLayout_overlayPosition, OVERLAY_POSITION_UNDER_CONTENT);
+            if (position == OVERLAY_POSITION_UNDER_BACKGROUND
+                    || position == OVERLAY_POSITION_UNDER_CONTENT
+                    || position == OVERLAY_POSITION_OVER_CONTENT
+                    || position == OVERLAY_POSITION_OVER_FOREGROUND) {
+                //noinspection ResourceType
+                mOverlayPosition = position;
+                // We need to ensure draw()/onDraw() is called when overlay position is other than over content (otherwise it's drawn elsewhere)
+                setWillNotDraw(position == OVERLAY_POSITION_OVER_CONTENT);
+            } else {
+                mOverlayPosition = OVERLAY_POSITION_UNDER_CONTENT;
+                setWillNotDraw(false);
+            }
+
+            mRhythmGroupIndex = array.getInteger(R.styleable.RhythmFrameLayout_rhythmGroup, NO_GROUP);
+        } finally {
+            array.recycle();
+        }
+    }
+
+    @Override
+    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        super.onLayout(changed, left, top, right, bottom);
+
+        if (changed) {
+            mBounds.set(0, 0, right - left, bottom - top);
+        }
+
+        if (mRhythmDrawable != null && changed) {
+            // If there's a drawable, and layout has changed, we need to update its bounds
+            mRhythmDrawable.setBounds(mBounds);
+        } else if (mRhythmDrawable == null && mRhythmGroupIndex != NO_GROUP) {
+            // If the group is set but there's no drawable yet, try to pull it from the group
+            onRhythmGroupSet();
+        }
+    }
+
+    @Override
+    public void draw(Canvas canvas) {
+        // Draw before or after everything? (if there's anything to draw)
+        if (mRhythmDrawable == null) {
+            super.draw(canvas);
+        } else if (mOverlayPosition == OVERLAY_POSITION_UNDER_BACKGROUND) {
+            mRhythmDrawable.draw(canvas);
+            super.draw(canvas);
+        } else if (mOverlayPosition == OVERLAY_POSITION_OVER_FOREGROUND) {
+            super.draw(canvas);
+            mRhythmDrawable.draw(canvas);
+        } else {
+            super.draw(canvas);
+        }
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        // Draw before content? (if there's anything to draw)
+        if (mRhythmDrawable != null && mOverlayPosition == OVERLAY_POSITION_UNDER_CONTENT) {
+            mRhythmDrawable.draw(canvas);
+        }
+        super.onDraw(canvas);
+    }
+
+    @Override
+    protected void dispatchDraw(Canvas canvas) {
+        super.dispatchDraw(canvas);
+        // Draw over content and children? (if there's anything to draw)
+        if (mRhythmDrawable != null && mOverlayPosition == OVERLAY_POSITION_OVER_CONTENT) {
+            mRhythmDrawable.draw(canvas);
+        }
+    }
+
+    @Override
+    protected boolean verifyDrawable(Drawable who) {
+        return (mRhythmDrawable != null && mRhythmDrawable == who) || super.verifyDrawable(who);
+    }
+
+    // Getters/setters
+
+    /**
+     * @return Current Rhythm drawable
+     */
+    public RhythmDrawable getRhythmDrawable() {
+        return mRhythmDrawable;
+    }
+
+    /**
+     * Set a different {@link RhythmDrawable} to this view.
+     *
+     * @param drawable Rhythm drawable to set, or <code>null</code> to unlink this view from Rhythm
+     */
+    public void setRhythmDrawable(@Nullable RhythmDrawable drawable) {
+        doSetRhythmDrawable(drawable);
+        invalidate();
+    }
+
+    /**
+     * @return Index of the Rhythm group this view is linked to, or {@link #NO_GROUP}
+     */
+    public int getRhythmGroupIndex() {
+        return mRhythmGroupIndex;
+    }
+
+    /**
+     * Link this drawable to a different {@link RhythmGroup} (identified by index), or to no group at all.
+     *
+     * @param rhythmGroupIndex Index of required {@link RhythmGroup} in {@link RhythmControl}, or {@link #NO_GROUP}
+     */
+    public void setRhythmGroupIndex(int rhythmGroupIndex) {
+        mRhythmGroupIndex = rhythmGroupIndex;
+        if (mRhythmGroupIndex != NO_GROUP) {
+            onRhythmGroupSet();
+        } else {
+            doSetRhythmDrawable(null);
+        }
+        invalidate();
+    }
+
+    /**
+     * @return Overlay position
+     * @see #OVERLAY_POSITION_UNDER_BACKGROUND
+     * @see #OVERLAY_POSITION_UNDER_CONTENT
+     * @see #OVERLAY_POSITION_OVER_CONTENT
+     * @see #OVERLAY_POSITION_OVER_FOREGROUND
+     */
+    public int getOverlayPosition() {
+        return mOverlayPosition;
+    }
+
+    /**
+     * Set overlay position
+     *
+     * @param overlayPosition New overlay position, one of overlay position constants
+     * @see #OVERLAY_POSITION_UNDER_BACKGROUND
+     * @see #OVERLAY_POSITION_UNDER_CONTENT
+     * @see #OVERLAY_POSITION_OVER_CONTENT
+     * @see #OVERLAY_POSITION_OVER_FOREGROUND
+     */
+    public void setOverlayPosition(@OverlayPosition int overlayPosition) {
+        if (mOverlayPosition != overlayPosition) {
+            mOverlayPosition = overlayPosition;
+            setWillNotDraw(overlayPosition == OVERLAY_POSITION_OVER_CONTENT);
+            invalidate();
+        }
+    }
+
+    /**
+     * Retrieves proper drawable from current group and links it to this view
+     */
+    private void onRhythmGroupSet() {
+        // Request rhythm group from application context
+        Context context = getContext().getApplicationContext();
+        if (context instanceof RhythmControl.Host) {
+            // This may fail with index out of bounds exception if incorrect group index is provided
+            // But, IMHO, it is better to throw the exception than suppress it and leave the developer clueless
+            final RhythmDrawable drawable = ((RhythmControl.Host) context).getRhythmControl()
+                    .getGroup(mRhythmGroupIndex)
+                    .makeDrawable();
+            doSetRhythmDrawable(drawable);
+        } else {
+            // Uh-oh
+            throw new ClassCastException(this + " cannot connect to RhythmControl. " +
+                    "Check if your Application implements RhythmControl.Host");
+        }
+    }
+
+    /**
+     * Links new drawable to this view
+     */
+    private void doSetRhythmDrawable(@Nullable RhythmDrawable drawable) {
+        if (mRhythmDrawable != null) {
+            mRhythmDrawable.setCallback(null);
+        }
+        mRhythmDrawable = drawable;
+        if (mRhythmDrawable != null) {
+            mRhythmDrawable.setBounds(mBounds);
+            mRhythmDrawable.setCallback(this);
+        }
+    }
+
+    /**
+     * Type def annotation for overlay position enum
+     */
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({OVERLAY_POSITION_UNDER_BACKGROUND, OVERLAY_POSITION_UNDER_CONTENT, OVERLAY_POSITION_OVER_CONTENT, OVERLAY_POSITION_OVER_FOREGROUND})
+    public @interface OverlayPosition {
+    }
+
+}
+rhythm/src/main/java/com/actinarium/rhythm/layer/Keyline.java
+public class Keyline implements RhythmSpecLayer {
+
+    public static final int DEFAULT_KEYLINE_COLOR = 0x60F50057;
+    /**
+     * Default keyline thickness (2px)
+     */
+    public static final int DEFAULT_THICKNESS = 2;    // px
+
+    public static final boolean ALIGN_INSIDE = false;
+    public static final boolean ALIGN_OUTSIDE = true;
+
+    @ArgumentsBundle.EdgeAffinity
+    protected int mEdgeAffinity;
+    protected int mDistance;
+    @IntRange(from = 1)
+    protected int mThickness;
+    protected boolean mAlignOutside;
+    protected Paint mPaint;
+
+    /**
+     * Create a layer that draws a horizontal or vertical keyline at a specified distance from required edge
+     *
+     * @param edgeAffinity Defines the edge of the view this keyline must be anchored to. Values ({@link Gravity#LEFT}
+     *                     and {@link Gravity#RIGHT}) will result in a vertical keyline, and values ({@link Gravity#TOP}
+     *                     and {@link Gravity#BOTTOM}) will result in a horizontal keyline.
+     * @param distance     Distance of this keyline from the specified edge, in pixels
+     * @see #setAlignOutside(boolean)
+     */
+    public Keyline(@ArgumentsBundle.EdgeAffinity int edgeAffinity, int distance) {
+        this();
+        mEdgeAffinity = edgeAffinity;
+        mDistance = distance;
+        mThickness = DEFAULT_THICKNESS;
+        mPaint.setColor(DEFAULT_KEYLINE_COLOR);
+    }
+
+    /**
+     * <p>Create a layer that draws a horizontal or vertical keyline at a specified distance from required edge.</p>
+     * <p>This is a minimum constructor for the factory &mdash; only paints and reusable objects are initialized.
+     * Developers extending this class are responsible for setting all fields to proper argument values.</p>
+     */
+    protected Keyline() {
+        mPaint = new Paint();
+        mPaint.setStyle(Paint.Style.FILL);
+    }
+
+    /**
+     * Set the distance of the keyline from specified edge
+     *
+     * @param distance Distance of this keyline from the specified edge, in pixels
+     * @return this for chaining
+     */
+    public Keyline setDistance(int distance) {
+        mDistance = distance;
+        return this;
+    }
+
+    /**
+     * Set edge affinity of the keyline
+     *
+     * @param edgeAffinity Defines the edge of the view this keyline must be anchored to. Values ({@link Gravity#LEFT}
+     *                     and {@link Gravity#RIGHT}) will result in a vertical keyline, and values ({@link Gravity#TOP}
+     *                     and {@link Gravity#BOTTOM}) will result in a horizontal keyline.
+     * @return this for chaining
+     */
+    public Keyline setEdgeAffinity(int edgeAffinity) {
+        mEdgeAffinity = edgeAffinity;
+        return this;
+    }
+
+    /**
+     * Set keyline color
+     *
+     * @param color Grid line color, in #AARRGGBB format as usual
+     * @return this for chaining
+     */
+    public Keyline setColor(@ColorInt int color) {
+        mPaint.setColor(color);
+        return this;
+    }
+
+    /**
+     * Set keyline thickness
+     *
+     * @param thickness Keyline thickness, in pixels. For keylines keep thickness around a few pixels, whereas for
+     *                  highlights feel free to use as many dips as required.
+     * @return this for chaining
+     * @see #setAlignOutside(boolean)
+     */
+    public Keyline setThickness(@IntRange(from = 1) int thickness) {
+        mThickness = thickness;
+        return this;
+    }
+
+    /**
+     * Set keyline alignment. By default, the keyline is drawn towards the specified edge, i.e. if edge affinity is
+     * BOTTOM, distance is 24px and thickness is 6px, the keyline will appear as a horizontal rectangle starting at the
+     * 18th and ending at the 23rd pixel row from the bottom. You can use this method to override that behavior and make
+     * the keyline face outwards (24th to 29th pixel rows in aforementioned example).
+     *
+     * @param alignOutside either <code>false</code> ({@link #ALIGN_INSIDE}, default) for the keyline to extend towards
+     *                     the edge defined by edge affinity, or <code>true</code> ({@link #ALIGN_OUTSIDE}) to extend
+     *                     away from the edge
+     * @return this for chaining
+     */
+    public Keyline setAlignOutside(boolean alignOutside) {
+        mAlignOutside = alignOutside;
+        return this;
+    }
+
+    @SuppressLint("RtlHardcoded")
+    @Override
+    public void draw(Canvas canvas, Rect drawableBounds) {
+        if (mEdgeAffinity == Gravity.LEFT) {
+            // Vertical line at offset points from the left
+            final int rightX = drawableBounds.left + mDistance + (mAlignOutside ? mThickness : 0);
+            canvas.drawRect(rightX - mThickness, drawableBounds.top, rightX, drawableBounds.bottom, mPaint);
+        } else if (mEdgeAffinity == Gravity.RIGHT) {
+            // Vertical line at offset points from the right
+            final int leftX = drawableBounds.right - mDistance - (mAlignOutside ? mThickness : 0);
+            canvas.drawRect(leftX, drawableBounds.top, leftX + mThickness, drawableBounds.bottom, mPaint);
+        } else if (mEdgeAffinity == Gravity.TOP) {
+            // Horizontal line at offset points from the top
+            final int bottomY = drawableBounds.top + mDistance + (mAlignOutside ? mThickness : 0);
+            canvas.drawRect(drawableBounds.left, bottomY - mThickness, drawableBounds.right, bottomY, mPaint);
+        } else if (mEdgeAffinity == Gravity.BOTTOM) {
+            // Horizontal line at offset points from the top
+            final int topY = drawableBounds.bottom - mDistance - (mAlignOutside ? mThickness : 0);
+            canvas.drawRect(drawableBounds.left, topY, drawableBounds.right, topY + mThickness, mPaint);
+        }
+    }
+
+    /**
+     * A default factory that creates new {@link Keyline} layers from config lines according to <a
+     * href="https://github.com/Actinarium/Rhythm/wiki/Declarative-configuration#keyline">the docs</a>
+     */
+    public static class Factory implements RhythmSpecLayerFactory<Keyline> {
+
+        public static final String LAYER_TYPE = "keyline";
+        public static final String ARG_EDGE = "from";
+        public static final String ARG_DISTANCE = "distance";
+        public static final String ARG_COLOR = "color";
+        public static final String ARG_THICKNESS = "thickness";
+        public static final String ARG_OUTSIDE = "outside";
+
+        @Override
+        public Keyline getForArguments(ArgumentsBundle argsBundle) {
+            Keyline keyline = new Keyline();
+
+            keyline.mEdgeAffinity = argsBundle.getEdgeAffinity(ARG_EDGE, Gravity.NO_GRAVITY);
+            if (keyline.mEdgeAffinity == Gravity.NO_GRAVITY) {
+                throw new RhythmInflationException(
+                        "Error in keyline config: 'from' argument is mandatory and must be either 'left', 'right', 'top', 'bottom'"
+                );
+            }
+
+            if (!argsBundle.hasArgument(ARG_DISTANCE)) {
+                throw new RhythmInflationException(
+                        "Error in keyline config: 'distance' argument is mandatory and must be a dimension value (e.g. 'distance=16dp')"
+                );
+            }
+            keyline.mDistance = argsBundle.getDimensionPixelOffset(ARG_DISTANCE, 0);
+
+            keyline.mPaint.setColor(argsBundle.getColor(ARG_COLOR, DEFAULT_KEYLINE_COLOR));
+            keyline.mThickness = argsBundle.getDimensionPixelSize(ARG_THICKNESS, DEFAULT_THICKNESS);
+            keyline.mAlignOutside = argsBundle.getBoolean(ARG_OUTSIDE, ALIGN_INSIDE);
+
+            return keyline;
+        }
+    }
+
+}
+rhythm/src/main/java/com/actinarium/rhythm/RhythmDrawable.java
+public class RhythmDrawable extends Drawable {
+
+    protected RhythmOverlay mOverlay;
+    protected Drawable mDecorated;
+
+    /**
+     * Create a Rhythm drawable for given Rhythm overlay. You can then change the displayed overlay via {@link
+     * #setOverlay(RhythmOverlay)} method.
+     *
+     * @param overlay Rhythm overlay to render into this drawable, can be <code>null</code>.
+     */
+    public RhythmDrawable(@Nullable RhythmOverlay overlay) {
+        mOverlay = overlay;
+    }
+
+    @Override
+    public void draw(Canvas canvas) {
+        // Draw decorated drawable if present
+        if (mDecorated != null) {
+            mDecorated.draw(canvas);
+        }
+
+        // Draw overlay if present
+        if (mOverlay != null) {
+            mOverlay.draw(canvas, getBounds());
+        }
+    }
+
+    /**
+     * Get current overlay
+     *
+     * @return Currently active Rhythm overlay, or <code>null</code> if no overlay is set
+     */
+    public RhythmOverlay getOverlay() {
+        return mOverlay;
+    }
+
+    /**
+     * Set a {@link RhythmOverlay} for this drawable. Will request redraw of this drawable’s view.
+     *
+     * @param overlay Overlay to draw. Provide <code>null</code> to disable overlay.
+     */
+    public void setOverlay(@Nullable RhythmOverlay overlay) {
+        mOverlay = overlay;
+        invalidateSelf();
+    }
+
+    /**
+     * Get decorated drawable (the one drawn under the overlay) if present
+     *
+     * @return Decorated drawable or <code>null</code>
+     */
+    public Drawable getDecorated() {
+        return mDecorated;
+    }
+
+    /**
+     * Set a {@link Drawable} to decorate. Should be used when decorating an existing background or foreground of a view
+     * &mdash; this way the original drawable will be preserved and the overlay will be drawn atop. <b>Note:</b> to
+     * function properly, the decorated drawable’s {@link Drawable#setCallback(Callback) callbacks} must be set. Also
+     * see {@link RhythmDrawable the class’ description} for more info on decoration support.
+     *
+     * @param decorated A drawable to draw below the overlay. Set <code>null</code> to remove decorated drawable.
+     */
+    public void setDecorated(@Nullable Drawable decorated) {
+        mDecorated = decorated;
+        if (mDecorated != null) {
+            mDecorated.setBounds(getBounds());
+        }
+        invalidateSelf();
+    }
+
+    @Override
+    public void setAlpha(int alpha) {
+        // No-op for the overlay for simplicity reasons - propagate to decorated drawable only
+        if (mDecorated != null) {
+            mDecorated.setAlpha(alpha);
+        }
+    }
+
+    @Override
+    public void setColorFilter(ColorFilter colorFilter) {
+        // No-op for the overlay for simplicity reasons - propagate to decorated drawable only
+        if (mDecorated != null) {
+            mDecorated.setColorFilter(colorFilter);
+        }
+    }
+
+    @Override
+    public int getOpacity() {
+        final int overlayOpacity = mOverlay == null ? PixelFormat.TRANSPARENT : PixelFormat.TRANSLUCENT;
+        return mDecorated != null ? Drawable.resolveOpacity(mDecorated.getOpacity(), overlayOpacity) : overlayOpacity;
+    }
+
+    @Override
+    public boolean isStateful() {
+        return mDecorated != null && mDecorated.isStateful();
+    }
+
+    @Override
+    public boolean setState(int[] stateSet) {
+        return mDecorated != null && mDecorated.setState(stateSet);
+    }
+
+    @Override
+    public int[] getState() {
+        return mDecorated != null ? mDecorated.getState() : super.getState();
+    }
+
+    @Override
+    public boolean getPadding(@NonNull Rect padding) {
+        if (mDecorated == null) {
+            padding.set(0, 0, 0, 0);
+            return false;
+        } else {
+            return mDecorated.getPadding(padding);
+        }
+    }
+
+    @Override
+    protected boolean onStateChange(int[] state) {
+        return mDecorated != null && mDecorated.setState(state);
+    }
+
+    @Override
+    protected boolean onLevelChange(int level) {
+        return mDecorated != null && mDecorated.setLevel(level);
+    }
+
+    @Override
+    protected void onBoundsChange(Rect bounds) {
+        if (mDecorated != null) {
+            mDecorated.setBounds(bounds);
+        }
+    }
+}

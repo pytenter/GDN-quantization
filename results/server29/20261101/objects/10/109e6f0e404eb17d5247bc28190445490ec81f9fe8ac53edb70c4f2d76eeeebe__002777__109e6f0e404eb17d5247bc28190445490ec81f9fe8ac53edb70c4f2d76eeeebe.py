@@ -1,0 +1,1 @@
+lambda _cls, num_ops, used_ops, read_buffers, nontrivial_read_count: _tuple_new(_cls, (num_ops, used_ops, read_buffers, nontrivial_read_count))

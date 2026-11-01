@@ -1,0 +1,3282 @@
+yasme/src/main/java/de/fau/cs/mad/yasme/android/controller/Log.java
+public class Log {
+    static final boolean LOG_I = BuildConfig.DEBUG;
+    static final boolean LOG_E = BuildConfig.DEBUG;
+    static final boolean LOG_D = BuildConfig.DEBUG;
+    static final boolean LOG_V = BuildConfig.DEBUG;
+    static final boolean LOG_W = BuildConfig.DEBUG;
+
+    public static void i(String tag, String string) {
+        if (LOG_I) android.util.Log.i(tag, string);
+    }
+    public static void e(String tag, String string) {
+        if (LOG_E) android.util.Log.e(tag, string);
+    }
+    public static void d(String tag, String string) {
+        if (LOG_D) android.util.Log.d(tag, string);
+    }
+    public static void v(String tag, String string) {
+        if (LOG_V) android.util.Log.v(tag, string);
+    }
+    public static void w(String tag, String string) {
+        if (LOG_W) android.util.Log.w(tag, string);
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/entities/Message.java
+@DatabaseTable(tableName = DatabaseConstants.MESSAGE_TABLE)
+public class Message implements Serializable {
+
+    @DatabaseField(columnName = DatabaseConstants.MESSAGE_ID, id = true)
+    private long id;
+
+    @DatabaseField(columnName = DatabaseConstants.CHAT, canBeNull = false, foreign = true,
+            foreignAutoCreate=true, foreignAutoRefresh=true)
+    private Chat chat;
+
+    @DatabaseField(columnName = DatabaseConstants.SENDER, foreign = true,
+            foreignAutoCreate=true, foreignAutoRefresh=true)
+    private User sender;
+
+    @DatabaseField(columnName = DatabaseConstants.DATE, dataType = DataType.DATE_LONG)
+    private Date dateSent;
+
+    @DatabaseField(columnName = DatabaseConstants.MESSAGE)
+    private String message;
+
+    @DatabaseField(columnName = DatabaseConstants.MESSAGE_MESSAGEKEY_ID)
+    private long messageKeyId;
+
+    @DatabaseField(columnName = DatabaseConstants.AUTHENTICATED)
+    private byte authenticated = 0;
+
+    @DatabaseField(columnName = DatabaseConstants.ERROR_ID)
+    private int errorId = MessageEncryption.ErrorType.OK;
+
+    @DatabaseField(columnName = DatabaseConstants.READ)
+    private boolean read = false;
+
+    @DatabaseField(columnName = DatabaseConstants.SENT)
+    private boolean sent = false;
+
+    @DatabaseField(columnName = DatabaseConstants.RECEIVED)
+    private boolean received = false;
+
+    @DatabaseField(columnName = DatabaseConstants.MIMETYPE)
+    private String mimeType
+            = DatabaseManager.INSTANCE.getContext().getResources().getString(R.string.mime_image);
+
+    private MessageKey messageKey;
+
+    /**
+     * Constructors *
+     */
+    public Message() {
+        // ORMLite needs a no-arg constructor
+    }
+
+    public Message(long id, Date dateSent, User sender, String message, Chat chat, long messageKeyId) {
+        this.id = id;
+        this.dateSent = dateSent;
+        this.sender = sender;
+        this.message = message;
+        this.chat = chat;
+        this.messageKeyId = messageKeyId;
+    }
+
+    public Message(User sender, String message, Chat chat, long messageKeyId) {
+        //Chat chat = new Chat();
+        //chat.setId(chatId);
+
+        this.chat = chat;
+        this.sender = sender;
+        this.message = message;
+        this.messageKeyId = messageKeyId;
+    }
+    public Message(User sender, String message, Chat chat, long messageKeyId, String mimeType) {
+        this.chat = chat;
+        this.sender = sender;
+        this.message = message;
+        this.messageKeyId = messageKeyId;
+        this.mimeType = mimeType;
+    }
+    /**
+     * Getters *
+     */
+    @JsonIgnoreProperties({ "pw", "email", "name", "devices", "lastModified", "created" })
+    public User getSender() {
+        return sender;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public Date getDateSent() {
+        return dateSent;
+    }
+
+    public MessageKey getMessageKey() {
+        return messageKey;
+    }
+
+    @JsonIgnore
+    public long getChatId() {
+        return chat.getId();
+    }
+
+    @JsonIgnoreProperties({ "participants", "status", "name", "owner", "lastModified", "created", "profilePicture", "messages" })
+    public Chat getChat() {
+        return chat;
+    }
+
+    public long getId() {
+        return id;
+    }
+
+    public long getMessageKeyId() {
+        return messageKeyId;
+    }
+
+    @JsonIgnore
+    public boolean getAuthenticity(){
+        if (authenticated == 1) return true;
+        else return false;
+    }
+
+    @JsonIgnore
+    public int getErrorId() {
+        return errorId;
+    }
+
+    public String getMimeType() {
+        return this.mimeType;
+    }
+
+    @JsonIgnore
+    public boolean wasRead() {
+        return read;
+    }
+
+    @JsonIgnore
+    public boolean wasSent() {
+        return sent;
+    }
+
+    @JsonIgnore
+    public boolean wasReceived() {
+        return received;
+    }
+
+    /**
+     * Setters
+     */
+
+    @JsonIgnore
+    public void setChatAndId(long chatId) {
+        this.chat = new Chat();
+        this.chat.setId(chatId);
+    }
+
+    public void setChat(Chat chat) {
+        this.chat = chat;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    public void setDateSent(Date dateSent) {
+        this.dateSent = dateSent;
+    }
+
+    public void setSender(User sender) {
+        this.sender = sender;
+    }
+
+    public void setMessageKey(MessageKey messageKey) {
+        this.messageKey = messageKey;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    public void setMessageKeyId(long messageKeyId) {
+        this.messageKeyId = messageKeyId;
+    }
+
+    @JsonIgnore
+    public boolean setAuthenticity(boolean bool){
+        if (bool){
+            authenticated = 1;
+            return true;
+        }
+        else {
+            authenticated = 0;
+            return false;
+        }
+    }
+
+    @JsonIgnore
+    public void setErrorId(int id) {
+        this.errorId = id;
+    }
+
+    public void setRead(boolean read) {
+        this.read = read;
+    }
+
+    public void setSent(boolean sent) {
+        this.sent = sent;
+    }
+
+    public void setReceived(boolean received) {
+        this.received = received;
+    }
+
+    public void setMimeType(String mimeType) {
+        this.mimeType = mimeType;
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/controller/SpinnerObservable.java
+public class SpinnerObservable {
+    private Set<AsyncTask> backgroundTasks;
+    private Set<AbstractYasmeActivity> activities;
+    private boolean spinning = false;
+
+    private static SpinnerObservable instance;
+
+    public static SpinnerObservable getInstance() {
+        if (instance == null) {
+            instance = new SpinnerObservable();
+        }
+        return instance;
+    }
+
+    private SpinnerObservable() {
+        backgroundTasks = new HashSet<>();
+        activities = new HashSet<>();
+    }
+
+    public void registerActivity(AbstractYasmeActivity activity) {
+        Log.d(getClass().getSimpleName(), "Register activity");
+        activities.add(activity);
+        if (spinning) {
+            Log.d(getClass().getSimpleName(), "Start spinning");
+            activity.startSpinning();
+        } else {
+            Log.d(getClass().getSimpleName(), "No spinning");
+        }
+    }
+
+    public void removeActivity(AbstractYasmeActivity activity) {
+        Log.d(getClass().getSimpleName(), "Remove activity");
+        activities.remove(activity);
+    }
+
+    public void registerBackgroundTask(AsyncTask backgroundTask) {
+        Log.d(getClass().getSimpleName(), "Register backgroundTask: " + backgroundTask.getClass().getSimpleName());
+        backgroundTasks.add(backgroundTask);
+        spinning = true;
+        startSpinning();
+    }
+
+    public void removeBackgroundTask(AsyncTask backgroundTask) {
+        Log.d(getClass().getSimpleName(), "Remove backgroundTask: " + backgroundTask.getClass().getSimpleName());
+        backgroundTasks.remove(backgroundTask);
+        if (backgroundTasks.size() == 0) {
+            spinning = false;
+            stopSpinning();
+        }
+    }
+
+    public void startSpinning() {
+        Log.d(getClass().getSimpleName(), "Start spinning");
+        for (AbstractYasmeActivity activity : activities) {
+            activity.startSpinning();
+        }
+    }
+
+    public void stopSpinning() {
+        Log.d(getClass().getSimpleName(), "Stop spinning");
+        for (AbstractYasmeActivity activity : activities) {
+            activity.stopSpinning();
+        }
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/ui/fragments/ChatFragment.java
+public class ChatFragment extends Fragment implements NotifiableFragment<List<Message>> {
+    public static final String RESTORE_LATEST_MESSAGE_ON_DISPLAY = "LATEST_MESSAGE_ON_DISPLAY";
+    public static final String RESTORE_CHAT_ID = "CHAT_ID";
+    public static final String RESTORE_IMAGE_URI = "imageUri";
+
+    private ChatAdapter mAdapter;
+    private Chat chat;
+    private AtomicLong latestMessageOnDisplay;
+    private Context mContext;
+
+    //UI references
+    private Button imageCancel;
+    private ImageView imageView;
+    private EditText editMessage;
+    private ListView list;
+
+    private static final int RESULT_LOAD_IMAGE = 100;
+    private static final int CAPTURE_IMAGE_ACTIVITY_REQUEST_CODE = 200;
+
+    private Uri imageUri;
+    private Bitmap bitmap;
+
+    public ChatFragment() {
+    }
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        // Retrain instance variables!
+        // setRetainInstance(true);
+
+        ChatActivity activity = (ChatActivity) getActivity();
+        mContext = DatabaseManager.INSTANCE.getContext();
+
+        Intent intent = activity.getIntent();
+        long chatId = intent.getLongExtra(AbstractYasmeActivity.CHAT_ID, -1);
+        if (chatId <= 0) {
+            throw new ExceptionInInitializerError("chatId <= 0");
+        }
+
+        //add the fragments own menu items
+        setHasOptionsMenu(true);
+
+        //trying to get chat with chatId from local DB
+        try {
+            chat = DatabaseManager.INSTANCE.getChatDAO().get(chatId);
+            // Assuming that the messages are sorted by id
+            latestMessageOnDisplay = new AtomicLong(0);
+        } catch (NullPointerException e) {
+            // Occurs when new chat has been generated, but id hasn't been returned by the server yet
+            chat = null;
+            Log.e(this.getClass().getSimpleName(), "get chat from DB failed");
+        }
+        if (chat == null) {
+            Toaster.getInstance().toast(R.string.unable_open_chat, Toast.LENGTH_SHORT);
+            activity.finish();
+        }
+    }
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, ViewGroup container,
+                             Bundle savedInstanceState) {
+
+        View rootView = inflater.inflate(R.layout.fragment_chat, container, false);
+
+        // Restore saved state if member variables are null
+        // These lines would better fit to onRestoreView but this method requires a higher API level
+        if (null != savedInstanceState) {
+            if (null == latestMessageOnDisplay) {
+                long latestMessageOnDisplayId = savedInstanceState.getLong(RESTORE_LATEST_MESSAGE_ON_DISPLAY);
+                latestMessageOnDisplay = new AtomicLong(latestMessageOnDisplayId);
+            }
+            if (null == chat) {
+                long chatId = savedInstanceState.getLong(RESTORE_CHAT_ID);
+                chat = DatabaseManager.INSTANCE.getChatDAO().get(chatId);
+                if (null == chat) {
+                    Log.e(this.getClass().getSimpleName(), "Oh no, looks like this chat has been deleted in the meantime");
+                    return rootView;
+                }
+            }
+            // Restore the image uri if the device is rotated while capturing an image
+            if (null == imageUri && savedInstanceState.containsKey(RESTORE_IMAGE_URI)) {
+                imageUri = Uri.fromFile(new File(savedInstanceState.getString(RESTORE_IMAGE_URI)));
+            }
+        }
+
+        list = (ListView) rootView.findViewById(R.id.chat_messageList);
+        imageCancel = (Button) rootView.findViewById(R.id.button_cancel_image);
+        imageCancel.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                imageView.setImageResource(android.R.color.transparent);
+                imageCancel.setVisibility(View.GONE);
+                imageView.setVisibility(View.GONE);
+                editMessage.setVisibility(View.VISIBLE);
+                editMessage.requestFocus();
+            }
+        });
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        LinearLayout layoutTextView = (LinearLayout) rootView.findViewById(R.id.text_view_layout);
+        final EditTextWithImage ownEdit = new EditTextWithImage(DatabaseManager.INSTANCE.getContext());
+        editMessage = ownEdit.getEditText();
+        imageView = ownEdit.getImageView();
+        imageView.setMinimumHeight(256);
+        imageView.setMinimumWidth(256);
+        imageView.setMaxHeight(256);
+        imageView.setMaxWidth(256);
+        imageView.setVisibility(View.GONE);
+
+        editMessage.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent motionEvent) {
+                if (editMessage.getCompoundDrawables()[2] == null) {
+                    return false;
+                }
+                if (motionEvent.getAction() != MotionEvent.ACTION_UP) {
+                    return false;
+                }
+                if (motionEvent.getX() > editMessage.getWidth() - editMessage.getPaddingRight()
+                        - ownEdit.getIntrinsicWidth()) {
+                    Log.d(this.getClass().getSimpleName(), "picture-button pressed");
+                    //button pressed
+                    showSelectionDialog();
+                }
+                return false;
+            }
+        });
+        layoutTextView.addView(imageView, 0, params);
+        layoutTextView.addView(editMessage, 0, params);
+
+        Button buttonSend = (Button) rootView.findViewById(R.id.button_send);
+        buttonSend.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                send(v);
+            }
+        });
+
+        AbstractYasmeActivity activity = (AbstractYasmeActivity) getActivity();
+        mAdapter = new ChatAdapter(activity, R.layout.chat_item_other, new ArrayList<Message>());
+        list.setAdapter(mAdapter);
+        mAdapter.setNotifyOnChange(true);
+        notifyFragment(chat.getMessages());
+
+        ((ChatActivity) getActivity()).setActionBarTitle(chat.getName(), chat.getStatus());
+
+        return rootView;
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        //Register at observer
+        Log.d(this.getClass().getSimpleName(), "Try to get ChatListObservableInstance");
+        FragmentObservable<ChatFragment, List<Message>> obs = ObservableRegistry.getObservable(ChatFragment.class);
+        Log.d(this.getClass().getSimpleName(), "... successful");
+
+        obs.register(this);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        Log.d(getClass().getSimpleName(), "Update Chat");
+        // Ask server for new messages
+        Log.d(getClass().getSimpleName(), "GetMessageTask started from ChatFragment");
+        new GetMessageTask(this.getClass()).execute();
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        FragmentObservable<ChatFragment, List<Message>> obs = ObservableRegistry.
+                getObservable(ChatFragment.class);
+        Log.d(this.getClass().getSimpleName(), "Remove from observer");
+        obs.remove(this);
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle savedInstanceState) {
+        super.onSaveInstanceState(savedInstanceState);
+
+        // Save states
+        savedInstanceState.putLong(RESTORE_LATEST_MESSAGE_ON_DISPLAY, latestMessageOnDisplay.get());
+        savedInstanceState.putLong(RESTORE_CHAT_ID, chat.getId());
+        if (null != imageUri) {
+            savedInstanceState.putString(RESTORE_IMAGE_URI, imageUri.getPath());
+        }
+    }
+
+    private void showSelectionDialog() {
+        AlertDialog.Builder alert = new AlertDialog.Builder(getActivity());
+        alert.setTitle(getString(R.string.select_image_source_title));
+        alert.setMessage(getString(R.string.select_image_source_message));
+        if (mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA)) {
+            alert.setNeutralButton(R.string.select_camera, new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialogInterface, int i) {
+                    // create Intent to take a picture and return control to the calling application
+                    Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+
+                    //create temp file
+                    File file = null;
+                    try {
+                        file = PictureManager.getOutputMediaFilePath();
+                    } catch (IOException e) {
+                        Log.e(this.getClass().getSimpleName(), "Error during creating the file");
+                        return;
+                    }
+                    imageUri = Uri.fromFile(file);
+
+                    try {
+                        intent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
+                        intent.putExtra("data", true);
+                        // start the image capture Intent
+                        startActivityForResult(intent, CAPTURE_IMAGE_ACTIVITY_REQUEST_CODE);
+                    } catch (Exception e) {
+                        Log.e(this.getClass().getSimpleName(), "Error during capturing an image");
+                    }
+                }
+            });
+        }
+        alert.setPositiveButton(R.string.select_gallery, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                Intent intent = new Intent(Intent.ACTION_PICK,
+                        android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                startActivityForResult(intent, RESULT_LOAD_IMAGE);
+            }
+        });
+        alert.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                dialogInterface.cancel();
+            }
+        });
+        Log.d(this.getClass().getSimpleName(), "show selection dialog");
+        alert.show();
+    }
+
+    @Override
+    public void notifyFragment(List<Message> messages) {
+        Log.d(super.getClass().getSimpleName(), "I have been notified. Yeeha!");
+        if (messages == null) {
+            // Notified from GetMessageTask, new Messages are stored in the DB
+            // Note that retrieved messages will be ordered ascending by id
+            new GetNewMessagesForChatTask(latestMessageOnDisplay.get(), chat.getId(), this.getClass())
+                    .execute(this.getClass().getName());
+            // And don't stop the progress bar
+            return;
+        } else {
+            //Notified from GetNewMessageForChatTask
+            updateViews(messages);
+        }
+        Log.d(this.getClass().getSimpleName(), "Received " + messages.size() + " messages");
+    }
+
+    public Chat getChat() {
+        return chat;
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == RESULT_LOAD_IMAGE && null != data && resultCode == Activity.RESULT_OK) {
+            Uri selectedImage = data.getData();
+            String[] filePathColumn = {MediaStore.Images.Media.DATA};
+
+            Cursor cursor = mContext.getContentResolver().query(selectedImage,
+                    filePathColumn, null, null, null);
+            cursor.moveToFirst();
+
+            int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
+            String picturePath = cursor.getString(columnIndex);
+            cursor.close();
+
+            User user = new User();
+            user.setProfilePicture(picturePath);
+            bitmap = PictureManager.INSTANCE.getPicture(user, 256, 256);
+
+            if (bitmap != null) {
+                editMessage.setVisibility(View.GONE);
+                imageCancel.setVisibility(View.VISIBLE);
+                imageView.setVisibility(View.VISIBLE);
+                imageView.setImageBitmap(ThumbnailUtils.extractThumbnail(bitmap, 128, 128));
+            }
+        }
+        if (requestCode == CAPTURE_IMAGE_ACTIVITY_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
+            String path = imageUri.getPath();
+
+            User user = new User();
+            user.setProfilePicture(path);
+            bitmap = PictureManager.INSTANCE.getPicture(user, 256, 256);
+        }
+        if (bitmap != null) {
+            editMessage.setVisibility(View.GONE);
+            imageCancel.setVisibility(View.VISIBLE);
+            imageView.setVisibility(View.VISIBLE);
+            imageView.setImageBitmap(ThumbnailUtils.extractThumbnail(bitmap, 128, 128));
+        }
+    }
+
+    public void send(View view) {
+        if (editMessage.getVisibility() != View.GONE) {
+            //case message
+            String msgText = editMessage.getText().toString();
+            if (msgText.isEmpty()) {
+                Log.d(this.getClass().getSimpleName(), "Nichts eingegeben");
+                return;
+            }
+            if (msgText.length() > 10000) {
+                Toaster.getInstance().toast(R.string.text_to_long, Toast.LENGTH_LONG);
+                return;
+            }
+
+            // Send trimmed message without whitespaces and get new messages afterwards
+            AbstractYasmeActivity activity = (AbstractYasmeActivity) getActivity();
+            Log.d(getClass().getSimpleName(), "GetMessageTask started from ChatFragment (send)");
+            new SendMessageTask(chat, activity.getSelfUser(),
+                    new GetMessageTask(this.getClass()), SendMessageTask.Mime.PLAIN).execute(msgText.trim());
+
+            Log.d(this.getClass().getSimpleName(), "Send message in bg");
+            // Empty the input field after send button was pressed
+            editMessage.setText("");
+        } else {
+            // case picture
+            AbstractYasmeActivity activity = (AbstractYasmeActivity) getActivity();
+            imageView.setImageResource(android.R.color.transparent);
+            imageView.setVisibility(View.GONE);
+            imageCancel.setVisibility(View.GONE);
+            editMessage.setVisibility(View.VISIBLE);
+            editMessage.requestFocus();
+
+            String imageMessage = PictureManager.INSTANCE.bitMapToString(bitmap);
+            new SendMessageTask(chat, activity.getSelfUser(), new GetMessageTask(this.getClass()),
+                    SendMessageTask.Mime.IMAGE).execute(imageMessage);
+        }
+    }
+
+    public void updateViews(List<Message> messages) {
+        if (messages == null) {
+            Log.d(this.getClass().getSimpleName(), "Keine Nachrichten zum Ausgeben");
+            return;
+        }
+
+        List<Message> newMessages = new ArrayList<>();
+
+        // Even if this fragment will be notified with same messages several times, it should not display them more than once
+        // Synchronize the write access on latestMessageOnDisplay in case the fragment can be notified by more than one thread
+        synchronized (this) {
+            long newLatestMessageOnDisplay = latestMessageOnDisplay.get();
+            for (Message msg : messages) {
+                // Ignore messages which were not meant for this chat
+                if (msg.getChat().getId() == chat.getId() && msg.getId() > latestMessageOnDisplay.get()) {
+                    newMessages.add(msg);
+                    newLatestMessageOnDisplay = Math.max(newLatestMessageOnDisplay, msg.getId());
+                }
+            }
+            latestMessageOnDisplay.set(newLatestMessageOnDisplay);
+        }
+
+        int count = 0;
+        ArrayList<Message> newNewMessages = new ArrayList<>();
+        for (int i = 0; i < newMessages.size(); i++) {
+            Message msg = newMessages.get(i);
+            if (msg.getErrorId() == MessageEncryption.ErrorType.DECRYPTION_FAILED) {
+                count++;
+                if (i >= newMessages.size() - 1 || newMessages.get(i + 1).getErrorId() != MessageEncryption.ErrorType.DECRYPTION_FAILED) {
+                    msg.setMessage(String.valueOf(count) + " " + getResources().getString(R.string.decryption_failed));
+                    msg.setErrorId(0);
+                    newNewMessages.add(msg);
+                }
+            } else {
+                newNewMessages.add(msg);
+            }
+        }
+
+        mAdapter.addAll(newNewMessages);
+        editMessage.requestFocus();
+    }
+
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Handle action bar item clicks here. The action bar will
+        // automatically handle clicks on the Home/Up button, so long
+        // as you specify a parent activity in AndroidManifest.xml.
+        int itemId = item.getItemId();
+        if (itemId == R.id.action_chat_settings) {
+            Intent intent = new Intent(getActivity(), ChatSettingsActivity.class);
+            intent.putExtra(ChatSettingsActivity.CHAT_ID, chat.getId());
+            startActivity(intent);
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/connection/MessageKeyTask.java
+public class MessageKeyTask extends ConnectionTask {
+
+    private static MessageKeyTask instance;
+
+
+    public static MessageKeyTask getInstance() {
+        if (instance == null) {
+            synchronized (MessageKeyTask.class) {
+                if (null == instance) {
+                    instance = new MessageKeyTask();
+                }
+            }
+        }
+        return instance;
+    }
+
+    private MessageKeyTask() {
+
+        try {
+            this.uri = new URIBuilder(baseURI).setPath(ConnectionTask.APIVERSION + "/msgkey").build();
+        } catch (URISyntaxException e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+        }
+    }
+
+    public MessageKey saveKeys(ArrayList<MessageKey> messageKeys) throws IncompleteKeyException {
+        try {
+            Log.d(this.getClass().getSimpleName(), "Keys sent");
+            if (messageKeys.size() >= 1) {
+                Log.d(getClass().getSimpleName(), "MessageKey: " + messageKeys.get(0).getMessageKey());
+            }
+            HttpResponse httpResponse = executeRequest(Request.POST, "", messageKeys);
+
+            Log.d(this.getClass().getSimpleName(), "Analyze Response");
+            MessageKey messageKey = new ObjectMapper().readValue(new BufferedReader(new InputStreamReader(
+                    httpResponse.getEntity().getContent())).readLine(), MessageKey.class);
+
+            return messageKey;
+        } catch (RestServiceException e) {
+            Log.e(this.getClass().getSimpleName(), e.getMessage());
+            if (e.getCode() == Error.INCOMPLETE_REQUEST.getNumber()) {
+                throw new IncompleteKeyException();
+            }
+        } catch (IOException e) {
+            Log.e(this.getClass().getSimpleName(), e.getMessage());
+        }
+        return null;
+    }
+
+    public boolean deleteKey(long keyId) throws RestServiceException {
+        executeRequest(Request.DELETE, String.valueOf(keyId));
+        return true;
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/encryption/KeyEncryption.java
+public class KeyEncryption {
+
+    public static final String RSAKEY_STORAGE = "rsaKeyStorage"; //Storage for Private and Public Keys from user
+    public static final String PRIVATEKEY = "privateKey";
+    public static final String PUBLICKEY = "publicKey";
+    private final byte CREATOR = 0;
+    private final byte RECIPIENT = 1;
+    private RSAEncryption rsa;
+    private DatabaseManager db = DatabaseManager.INSTANCE;
+
+    public KeyEncryption() {
+        this.rsa = new RSAEncryption();
+    }
+
+    /**
+     * generate a random RSA-KeyPair (Private and Public Key)
+     */
+    public void generateRSAKeys(){
+        rsa.generateKeyPair();
+    }
+
+    /**
+     * encode generated RSA-KeyPair to base64 and store it to local storage (SharedPreferences)
+     * there is a own SharedPreference for every user on the device
+     *
+     * @param deviceId deviceId from the user logged in currently
+     * @return true/false
+     */
+    public boolean saveRSAKeys(long deviceId){
+
+        String RSAKEY_STORAGE_USER = RSAKEY_STORAGE + "_" + deviceId;
+
+        try {
+
+            Context context = DatabaseManager.INSTANCE.getContext();
+            SharedPreferences privKeyStorage = context.getSharedPreferences(RSAKEY_STORAGE_USER, Context.MODE_PRIVATE);
+            SharedPreferences.Editor keyeditor = privKeyStorage.edit();
+
+            //delete existing keys
+            if (privKeyStorage.getString(PRIVATEKEY, "") != ""){
+                keyeditor.remove(PRIVATEKEY);
+            }
+            if (privKeyStorage.getString(PUBLICKEY, "") != ""){
+                keyeditor.remove(PUBLICKEY);
+            }
+
+            keyeditor.putString(PRIVATEKEY, rsa.getPrivKeyinBase64());
+            keyeditor.putString(PUBLICKEY, rsa.getPubKeyinBase64());
+
+            keyeditor.commit();
+
+            // For Developer-Devices only
+            if (DebugManager.INSTANCE.isDebugMode()) {
+                Log.d(getClass().getSimpleName(), "Store keys to external storage");
+                DebugManager.INSTANCE.storePrivatePublicKeyToExternalStorage(rsa.getPrivKeyinBase64(),rsa.getPubKeyinBase64());
+            }
+
+            Log.d(this.getClass().getSimpleName(), "RSA Keys generated and saved");
+
+
+            return true;
+        } catch (Exception e){
+            Log.e(this.getClass().getSimpleName(), "saving rsa keys failed");
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * get the generated RSA Public Key in Base64
+     * method is needed in registration when the Public Key needs to be sent to the server
+     *
+     * @return base64 encoded string
+     */
+    public String getGeneratedPubKeyInBase64(){
+        return rsa.getPubKeyinBase64();
+    }
+
+    /**
+     * encrypt the given messageKey using the RSA PublicKey from the recipient
+     *
+     * @param messageKey messageKey containing the AES-Key that should be encrypted
+     * @return messageKey containing the RSA-encrypted AES-Key
+     */
+    public MessageKey encrypt(MessageKey messageKey){
+
+        PublicKey pubKey = getPubKeyFromUser(messageKey, RECIPIENT);
+
+        if (pubKey != null){
+            String keyEncrypted = rsa.encrypt(messageKey.getMessageKey(), pubKey);
+            messageKey.setKey(keyEncrypted);
+            return messageKey;
+        }
+
+        return null;
+    }
+
+    /**
+     * encrypt the given messageKey using the own RSA Private Key
+     *
+     * @param messageKey messageKey containing the encrypted AES-Key that should be decrypted
+     * @return messageKey containing the decrypted AES-Key
+     */
+    public MessageKey decrypt(MessageKey messageKey){
+
+        long selfDeviceId = messageKey.getRecipientDevice().getId();
+        PrivateKey privKey = getPrivateRSAKeyFromStorage(selfDeviceId);
+
+        if (privKey != null) {
+            String key = rsa.decrypt(messageKey.getMessageKey(), privKey);
+            if (key == null) {
+                return null;
+            }
+            messageKey.setKey(key);
+            return messageKey;
+        }
+
+        return null;
+    }
+
+    /**
+     * sign an AES-Key using the own RSA Private Key
+     *
+     * @param messageKey messageKey containing the AES-Key that should be signed
+     * @return  messageKey containing the signature
+     */
+    public MessageKey sign(MessageKey messageKey){
+
+        long selfDeviceId = messageKey.getCreatorDevice().getId();
+        PrivateKey privKey = getPrivateRSAKeyFromStorage(selfDeviceId);
+
+        if (privKey != null) {
+            String keySigned = rsa.sign(messageKey.getMessageKey(), privKey);
+            messageKey.setSign(keySigned);
+            return messageKey;
+        }
+
+        return null;
+    }
+
+    /**
+     * verify the signature from given messageKey using the RSA Public Key from the creatorDevice
+     *
+     * @param messageKey messageKey containing the signature
+     * @return true/false
+     */
+    public boolean verify(MessageKey messageKey){
+
+        PublicKey pubKey = getPubKeyFromUser(messageKey, CREATOR);
+
+        if (pubKey != null) {
+            Log.d(getClass().getSimpleName(), "Verify key");
+            return rsa.verify(messageKey.getSign(), messageKey.getMessageKey(), pubKey);
+        }
+        Log.d(getClass().getSimpleName(), "PubKey is null");
+        return false;
+    }
+
+    /**
+     * load own RSA Private Key from local storage
+     *
+     * @param selfDeviceId deviceId from the user logged in currently
+     * @return PrivateKey
+     */
+    public PrivateKey getPrivateRSAKeyFromStorage(long selfDeviceId){
+
+        String RSAKEY_STORAGE_USER = RSAKEY_STORAGE + "_" + selfDeviceId;
+
+        Context context = DatabaseManager.INSTANCE.getContext();
+        SharedPreferences privKeyStorage = context.getSharedPreferences(RSAKEY_STORAGE_USER, Context.MODE_PRIVATE);
+        String privKeyInBase64 = privKeyStorage.getString(PRIVATEKEY, "");
+
+        Log.d(this.getClass().getSimpleName(),"Load private Key from storage: " + RSAKEY_STORAGE_USER);
+
+        //if Key is available
+        if (privKeyInBase64 != "") {
+
+            PrivateKey privKey = rsa.convertBase64toPrivKey(privKeyInBase64);
+
+            if (privKey != null){
+                Log.d(this.getClass().getSimpleName(),"Private Key was successfully loaded from storage");
+                return privKey;
+            }
+
+            Log.d(this.getClass().getSimpleName(), "Getting private key from storage failed");
+            return null;
+        }
+
+            Log.d(this.getClass().getSimpleName(), "Private Key could not be found.");
+            return null;
+
+    }
+
+    /**
+     * load the needed RSA Public Key from local storage/Device-Object
+     *
+     * @param messageKey messageKey containing the information about creatorDevice and recipientDevice
+     * @param type define, the RSA Public Key from the recipient or the creator is needed
+     * @return PublicKey
+     */
+    public PublicKey getPubKeyFromUser(MessageKey messageKey, byte type) {
+
+        String pubKeyInBase64 = null;
+
+        //try to extract Public Key from MessageKey
+        if (type == CREATOR){
+                pubKeyInBase64 = messageKey.getCreatorDevice().getPublicKey();
+        }
+        else if (type == RECIPIENT){
+                pubKeyInBase64 = messageKey.getRecipientDevice().getPublicKey();
+        }
+        else{
+            Log.d(this.getClass().getSimpleName(), "Wrong use of function: getPubKeyFromUser()");
+            return null;
+        }
+
+        //convert Base64toPublicKey
+        if (pubKeyInBase64 != null) {
+            PublicKey pubKey = rsa.convertBase64toPubKey(pubKeyInBase64);
+            if (pubKey != null) return pubKey;
+        }
+
+        Log.d(this.getClass().getSimpleName(), "Getting public key from storage failed");
+        return null;
+    }
+
+    /*
+    //get own PublicKey in Base64
+    public String getPublicRSAKeyInBase64FromStorage(long selfDeviceId){
+
+        String RSAKEY_STORAGE_USER = RSAKEY_STORAGE + "_" + selfDeviceId;
+
+        Context context = DatabaseManager.INSTANCE.getContext();
+        SharedPreferences privKeyStorage = context.getSharedPreferences(RSAKEY_STORAGE_USER, Context.MODE_PRIVATE);
+        String pubKeyInBase64 = privKeyStorage.getString(PUBLICKEY, "");
+
+        return pubKeyInBase64;
+    }
+    */
+
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/storage/dao/ChatDAO.java
+public interface ChatDAO extends DAO<Chat> {
+
+    /**
+     * Creates a chat item but only if the ID does not already exist in the table. This
+     * extracts the id from the chat parameter, queries for it's id, returning the data if it
+     * exists. If it does not exist create will be called with the parameter.
+     * @param chat to be added
+     * @return given chat or null if an error occurs
+     */
+    public Chat addIfNotExists(Chat chat);
+
+
+    /**
+     * This method is a combination of addIfNotExists and update for the sake of convenience.
+     * Queries for a chat item with the specified id. If there is none, addIfNotExists is called, otherwise update.
+     * @param chat to be added or updated
+     * @return given chat after insertion / update
+     */
+    public Chat addOrUpdate(Chat chat);
+
+    /**
+     * Retrieves an object associated with a specific ID.
+     * @param id Identifier that matches a specific row in the database to find and return.
+     * @return The object that has the ID field which equals id or null if no matches.
+     */
+    public Chat get(long id);
+
+    /**
+     * Query for all of the items in the object table
+     * @return list of all chats or null on error
+     */
+    public List<Chat> getAll();
+
+
+    /**
+     * Retrieves all chats from the database which are held between the exact list of given users
+     * @param users who participate in the chat to return. Don't forget that you are a participant as well and thus should be present in the list
+     * @return list of chats which matched the conditions
+     */
+    public List<Chat> getByParticipantsExact(Set<User> users);
+
+
+    /**
+     * Retrieves all chats from the database which are held between the given users or more
+     * @param users who participate in the chat to look for
+     * @return list of chats which have the given users (and more) as participants
+     */
+    public List<Chat> getByTheseParticipantsOrMore(Set<User> users);
+
+    /**
+     * Store the fields from an object to the database row corresponding to the id from the data parameter. If you have
+     * made changes to an object, this is how you persist those changes to the database. You cannot use this method to
+     * update the id field
+     * @param chat to be updated
+     * @return given chat or null on error
+     */
+    public Chat update(Chat chat);
+
+
+    /**
+     * Delete the database row corresponding to the id from the data parameter.
+     * @param chat to be deleted
+     * @return true on success, false otherwise
+     */
+    public boolean delete(Chat chat);
+
+
+    /**
+     * Replaces all currently stored chats with given ones. Updates old chats with the values from the new one if their id matches.
+     * @param newChats to be stored
+     * @return true if successful, false otherwise
+     */
+    public boolean refreshAll(List<Chat> newChats);
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/controller/ObservableRegistry.java
+public class ObservableRegistry {
+
+    private static ArrayList<ObservableRegistryEntry> entries = new ArrayList<ObservableRegistryEntry>();
+
+    public static <T extends NotifiableFragment<P>, P> FragmentObservable<T, P> getObservable(Class fragmentClass) {
+        for (ObservableRegistryEntry entry : entries) {
+            if (entry.check(fragmentClass)) {
+                Log.d("ObserverRegistry","Returned existing observable");
+                return (FragmentObservable<T,P>) entry.getObs(); // no idea how to solve this... 
+            }
+        }
+
+        FragmentObservable<T, P> res = new FragmentObservable<T, P>();
+        Log.d("ObserverRegistry","Created new observable");
+        entries.add(new ObservableRegistryEntry<P>(res,fragmentClass));
+        return res;
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/storage/DatabaseManager.java
+public enum DatabaseManager {
+    INSTANCE;
+
+    private boolean mInitialized = false;
+    private boolean mDBInitialized = false;
+    private DatabaseHelper mHelper;
+    private Context mContext;
+    private long mUserId = -1;
+    private long mDeviceId = -1;
+    private String mAccessToken = null;
+    private long serverInfoUpdateTime = -1;
+    private ServerInfo serverInfo = null;
+    private SharedPreferences mSharedPreferences, mSettings;
+    private String mUserEmail;
+    private NewMessageNotificationManager notifier = null;
+
+    private UserDAO userDAO;
+    private ChatDAO chatDAO;
+    private MessageDAO messageDAO;
+    private MessageKeyDAO messageKeyDAO;
+    private DeviceDAO deviceDAO;
+
+
+    public void init(Context context, SharedPreferences sharedPreferences,
+                     SharedPreferences settings, long userId) {
+        mContext = context;
+        mSharedPreferences = sharedPreferences;
+        mSettings = settings;
+        mUserId = userId;
+        initDB(context, userId);
+        initializeDAOs();
+        mInitialized = true;
+    }
+
+    public void initDB(Context context, long userId) {
+        mHelper = new DatabaseHelper(context, userId);
+        mDBInitialized = true;
+    }
+
+    public boolean isInitialized() {
+        return mInitialized;
+    }
+
+    public boolean isDBInitialized() {
+        return mDBInitialized;
+    }
+
+    private DatabaseHelper getHelper() {
+        return mHelper;
+    }
+
+    public SharedPreferences getSharedPreferences() {
+        return mSharedPreferences;
+    }
+
+    public SharedPreferences getSettings() {
+        return mSettings;
+    }
+
+    public Context getContext() {
+        return mContext;
+    }
+
+    private void initializeDAOs() {
+        UserDAOImpl.INSTANCE.setDatabaseHelper(mHelper);
+        userDAO = UserDAOImpl.INSTANCE;
+
+        ChatDAOImpl.INSTANCE.setDatabaseHelper(mHelper);
+        chatDAO = ChatDAOImpl.INSTANCE;
+
+        MessageDAOImpl.INSTANCE.setDatabaseHelper(mHelper);
+        messageDAO = MessageDAOImpl.INSTANCE;
+
+        MessageKeyDAOImpl.INSTANCE.setDatabaseHelper(mHelper);
+        messageKeyDAO = MessageKeyDAOImpl.INSTANCE;
+
+        DeviceDAOImpl.INSTANCE.setDatabaseHelper(mHelper);
+        deviceDAO = DeviceDAOImpl.INSTANCE;
+    }
+
+    public UserDAO getUserDAO() {
+        return userDAO;
+    }
+
+    public ChatDAO getChatDAO() {
+        return chatDAO;
+    }
+
+    public MessageDAO getMessageDAO() {
+        return messageDAO;
+    }
+
+    public MessageKeyDAO getMessageKeyDAO() {
+        return messageKeyDAO;
+    }
+
+    public DeviceDAO getDeviceDAO() {
+        return deviceDAO;
+    }
+
+    public long getUserId() {
+        if (-1 == mUserId) {
+            mUserId = getSharedPreferences().getLong(AbstractYasmeActivity.USER_ID, -1);
+        }
+        return mUserId;
+    }
+
+    public void setUserId(long mUserId) {
+        this.mUserId = mUserId;
+        SharedPreferences.Editor editor = getSharedPreferences().edit();
+        editor.putLong(AbstractYasmeActivity.USER_ID, mUserId);
+        editor.apply();
+    }
+
+    public long getDeviceId() {
+        if (-1 == mDeviceId) {
+            mDeviceId = getSharedPreferences().getLong(AbstractYasmeActivity.DEVICE_ID, -1);
+        }
+        return mDeviceId;
+    }
+
+    public void setDeviceId(long mDeviceId) {
+        this.mDeviceId = mDeviceId;
+        SharedPreferences.Editor editor = getSharedPreferences().edit();
+        editor.putLong(AbstractYasmeActivity.DEVICE_ID, mDeviceId);
+        editor.apply();
+    }
+
+    public String getAccessToken() {
+        if (null == mAccessToken) {
+            mAccessToken = getSharedPreferences().getString(AbstractYasmeActivity.ACCESSTOKEN, null);
+        }
+        return mAccessToken;
+    }
+
+    public void setAccessToken(String accessToken) {
+        this.mAccessToken = accessToken;
+        SharedPreferences.Editor editor = getSharedPreferences().edit();
+        editor.putString(AbstractYasmeActivity.ACCESSTOKEN, mAccessToken);
+        editor.commit();
+    }
+
+    public long getServerInfoUpdateTime() {
+        if (-1 == serverInfoUpdateTime) {
+            serverInfoUpdateTime = getSharedPreferences().getLong(AbstractYasmeActivity.SERVERINFOUPDATETIME, -1);
+        }
+        return serverInfoUpdateTime;
+    }
+
+    public void setServerInfoUpdateTime() {
+        this.serverInfoUpdateTime = System.currentTimeMillis();
+        SharedPreferences.Editor editor = getSharedPreferences().edit();
+        editor.putLong(AbstractYasmeActivity.SERVERINFOUPDATETIME, serverInfoUpdateTime);
+        editor.commit();
+    }
+
+    public ServerInfo getServerInfo() {
+        return serverInfo;
+    }
+
+    public void setServerInfo(ServerInfo serverInfo) {
+        this.serverInfo = serverInfo;
+    }
+
+    public String getUserEmail() {
+        if (null == mUserEmail || "" == mUserEmail) {
+            mUserEmail = getSharedPreferences().getString(AbstractYasmeActivity.USER_MAIL, null);
+        }
+        return mUserEmail;
+    }
+
+    public void setUserEmail(String mUserEmail) {
+        this.mUserEmail = mUserEmail;
+        SharedPreferences.Editor editor = getSharedPreferences().edit();
+        editor.putString(AbstractYasmeActivity.USER_MAIL, mUserEmail);
+        editor.commit();
+    }
+
+    public NewMessageNotificationManager getNotifier() {
+        if (notifier == null) {
+            notifier = new NewMessageNotificationManager();
+        }
+        return notifier;
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/entities/Chat.java
+@JsonIgnoreProperties(ignoreUnknown = true)
+@DatabaseTable(tableName = DatabaseConstants.CHAT_TABLE)
+public class Chat implements Serializable {
+
+    @DatabaseField(columnName = DatabaseConstants.CHAT_ID, id = true)
+    private long id;
+
+    private List<User> participants;
+
+    @DatabaseField(columnName = DatabaseConstants.NAME_CHANGED)
+    private boolean nameChanged = false;
+
+    @DatabaseField(columnName = DatabaseConstants.STATUS_CHANGED)
+    private boolean statusChanged = false;
+
+    @DatabaseField(columnName = DatabaseConstants.CHAT_STATUS)
+    private String status;
+
+    @DatabaseField(columnName = DatabaseConstants.CHAT_NAME)
+    private String name;
+
+    @DatabaseField(columnName = DatabaseConstants.OWNER, foreign = true)
+    private User owner;
+
+    @DatabaseField(columnName = DatabaseConstants.CHAT_LAST_MODIFIED, dataType = DataType.DATE)
+    private Date lastModified;
+
+    @DatabaseField(columnName = DatabaseConstants.CHAT_CREATED)
+    private Date created;
+
+    @JsonIgnore
+    private String profilePicture;
+
+    @JsonIgnore
+    @ForeignCollectionField(columnName = DatabaseConstants.MESSAGES)
+    private Collection<Message> messages;
+
+    @JsonIgnore
+    @DatabaseField(columnName = DatabaseConstants.LAST_MESSAGE, foreign = true)
+    private Message lastMessage;
+
+    /**
+     * Constructors *
+     */
+    public Chat(long id) {
+        this.id = id;
+        this.participants = new ArrayList<User>();
+        this.messages = new ArrayList<Message>();
+    }
+
+    /**
+     * It is needed to set an id after calling this constructor!
+     *
+     * @param owner
+     * @param status
+     * @param name
+     */
+    public Chat(User owner, String status, String name) {
+        new Chat(0, new ArrayList<User>(), status, name, owner, new ArrayList<Message>());
+    }
+
+    public Chat(long id, List<User> participants, String status, String name,
+                User owner) {
+        new Chat(id, participants, status, name, owner, new ArrayList<Message>());
+    }
+
+    public Chat() {
+        // ORMLite needs a no-arg constructor
+    }
+
+    public Chat(long id, List<User> participants, String status, String name, User owner,
+                Collection<Message> messages) {
+        this.id = id;
+        this.participants = participants;
+        this.status = status;
+        this.name = name;
+        this.owner = owner;
+        this.messages = messages;
+    }
+
+    public Chat(Chat origin) throws IllegalAccessException {
+        Field[] fields = this.getClass().getDeclaredFields();
+        for (Field field : fields) {
+            field.set(this, field.get(origin));
+        }
+    }
+
+    /**
+     * Getters *
+     */
+    public long getId() {
+        return id;
+    }
+
+    /**
+     * Setters *
+     */
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    public int size() {
+        if (null == participants) {
+            Log.e(((Object) this).getClass().getSimpleName(), "Participants are null");
+            return -1;
+        }
+        return participants.size();
+    }
+
+    @JsonIgnoreProperties({"pw", "email", "name", "devices", "lastModified", "created"})
+    public ArrayList<User> getParticipants() {
+        if (participants == null) {
+            participants = new ArrayList<>();
+            User mDummy = new User("Dummy", 12);
+            participants.add(mDummy);
+            // Without cast IntelliJ is not happy
+            Log.e(((Object) this).getClass().getSimpleName(), "Participants are null");
+        }
+        return new ArrayList<User>(participants);
+    }
+
+    public void setParticipants(List<User> participants) {
+        this.participants = participants;
+    }
+
+    public void setNameChanged(boolean nameChanged) {
+        this.nameChanged = nameChanged;
+    }
+
+    public void setStatusChanged(boolean statusChanged) {
+        this.statusChanged = statusChanged;
+    }
+
+    public boolean addParticipant(User newUser) {
+        if (participants == null) {
+            Log.e(((Object) this).getClass().getSimpleName(), "Participants are null");
+            return false;
+        }
+        participants.add(newUser);
+        return true;
+    }
+
+    public boolean removeParticipant(User delUser) {
+        if (participants == null) {
+            Log.e(((Object) this).getClass().getSimpleName(), "Participants are null, sry.");
+            return false;
+        }
+        boolean ret = false;
+        for (User u : participants) {
+            if (u.getId() != delUser.getId()) {
+                continue;
+            }
+            ret = participants.remove(u);
+            break;
+        }
+        return true;
+    }
+
+    public String getStatus() {
+        if (!this.statusChanged || this.status == null || this.status.isEmpty()) {
+            return (getNumberOfParticipants() + " YASMEs");
+        }
+        return this.status;
+    }
+
+    public void setStatus(String status, boolean isNotDefault) {
+        this.statusChanged = isNotDefault;
+        this.status = status;
+    }
+
+    public boolean getStatusChanged() {
+        return this.statusChanged;
+    }
+
+    public boolean getNameChanged() {
+        return this.nameChanged;
+    }
+
+    @JsonProperty("name")
+    public String getName() {
+        if (this.nameChanged && this.name != null && this.name.length() > 0) {
+            return name;
+        }
+        // Create a new name
+        String returnName = "";
+        try {
+            int size = getParticipants().size();
+            for (int i = 0; i < size; i++) {
+                returnName += participants.get(i).getName();
+                if (i < size - 1) {
+                    returnName += ", ";
+                }
+            }
+        } catch (Exception e) {
+            Log.d(this.getClass().getSimpleName(), e.getMessage());
+        }
+        return returnName;
+    }
+
+    public void setName(String name, boolean isNotDefault) {
+        this.nameChanged = isNotDefault;
+        this.name = name;
+    }
+
+    public Date getLastModified() {
+        return lastModified;
+    }
+
+    public void setLastModified(Timestamp lastModified) {
+        this.lastModified = lastModified;
+    }
+
+    public Date getCreated() {
+        return created;
+    }
+
+    public void setCreated(Timestamp created) {
+        this.created = created;
+    }
+
+    public String getProfilePicture() {
+        return profilePicture;
+    }
+
+    public void setProfilePicture(String profilePicture) {
+        this.profilePicture = profilePicture;
+    }
+
+    @JsonIgnoreProperties({"pw", "email", "name", "devices", "lastModified", "created"})
+    public User getOwner() {
+        if (owner == null) {
+            owner = new User("Dummy", 12);
+        }
+        return owner;
+    }
+
+    public void setOwner(User owner) {
+        this.owner = owner;
+    }
+
+    @JsonIgnore
+    public int getNumberOfParticipants() {
+        if (participants != null) {
+            return participants.size();
+        }
+        return 0;
+    }
+
+    @JsonIgnore
+    public ArrayList<Message> getMessages() {
+        if (messages == null) {
+            return new ArrayList<Message>();
+        }
+        return new ArrayList<Message>(messages);
+    }
+
+    public void setMessages(ArrayList<Message> messages) {
+        this.messages = messages;
+    }
+
+    public void setLastModified(Date lastModified) {
+        this.lastModified = lastModified;
+    }
+
+    /**
+     * Other Methods
+     */
+    @JsonIgnore
+    public boolean isOwner(long userId) {
+        if (owner.getId() == userId) {
+            return true;
+        }
+        return false;
+    }
+
+    public Message getLastMessage() {
+        return lastMessage;
+    }
+
+    public void setLastMessage(Message lastMessage) {
+        this.lastMessage = lastMessage;
+    }
+
+    public Chat clone() {
+        try {
+            return new Chat(this);
+        } catch (IllegalAccessException e) {
+            Log.e(this.getClass().getSimpleName(), e.getMessage());
+            return null;
+        }
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/storage/DebugManager.java
+public enum DebugManager {
+    INSTANCE;
+
+    private final String OWNDEVICE = "owndevice";
+    private final String MESSAGEKEYS = "messagekeys";
+
+    private boolean debugMode = false;
+    private OwnDevice ownDevice = new OwnDevice();
+
+    public boolean isDebugMode() {
+        return debugMode;
+    }
+
+    public boolean storeDeviceId(long deviceId) {
+        ownDevice.setId(deviceId);
+        return storeOwnDeviceToExternalStorage();
+    }
+
+
+    public boolean storePrivatePublicKeyToExternalStorage(String privateKey, String publicKey) {
+        ownDevice.setPrivateKey(privateKey);
+        ownDevice.setPublicKey(publicKey);
+        return storeOwnDeviceToExternalStorage();
+    }
+
+    public boolean storePushId(String pushId) {
+        ownDevice.setPushId(pushId);
+        return storeOwnDeviceToExternalStorage();
+    }
+
+    private boolean storeOwnDeviceToExternalStorage() {
+        return storeToExternalStorage(OWNDEVICE, ownDevice, false);
+    }
+
+    public boolean storeMessageKeyToExternalStorage(MessageKey data) {
+        return storeToExternalStorage(MESSAGEKEYS, data, true);
+    }
+
+    private boolean storeToExternalStorage(String name, Object data, boolean append) {
+        try {
+            String state = Environment.getExternalStorageState();
+            Log.d(getClass().getSimpleName(), "Check state");
+            if (!Environment.MEDIA_MOUNTED.equals(state)) {
+                return false;
+            }
+            Log.d(getClass().getSimpleName(), "Open dir");
+            File dir = getDir();
+            Log.d(getClass().getSimpleName(), "Mkdir");
+            if (!dir.exists() && !dir.mkdirs()) {
+                Log.d(getClass().getSimpleName(), "... failed");
+               return false;
+            }
+            Log.d(getClass().getSimpleName(), "Open file");
+            File file = new File(dir,name + ".txt");
+            Log.d(getClass().getSimpleName(), "Write file");
+
+            ObjectWriter objectWriter = new ObjectMapper().writer();
+            String json = objectWriter.writeValueAsString(data);
+            Log.d(getClass().getSimpleName(),"Generated JSON: " + json);
+
+            FileOutputStream f = new FileOutputStream(file,append);
+            PrintWriter pw = new PrintWriter(f);
+            if (append) {
+                pw.println(json + ",");
+            } else {
+                pw.println(json);
+            }
+            pw.flush();
+            pw.close();
+            f.close();
+        } catch (Exception e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+            return false;
+        }
+        return true;
+    }
+
+    public boolean restoreData() {
+        Log.d(getClass().getSimpleName(),"Restoring data");
+        if (!restoreOwnDeviceFromExternalStorage()) {
+            Log.d(getClass().getSimpleName(), "Restoring OwnDevice failed");
+            return false;
+        }
+        if (!restoreMessageKeysFromExternalStorage()) {
+            Log.d(getClass().getSimpleName(), "Restoring MessageKeys failed");
+            return false;
+        }
+        Log.d(getClass().getSimpleName(), "Restoring successful");
+        Toaster.getInstance().toast("Restoring Debug-Data successful", Toast.LENGTH_LONG);
+        return true;
+    }
+
+
+    private boolean restoreOwnDeviceFromExternalStorage() {
+         final String RSAKEY_STORAGE = "rsaKeyStorage"; //Storage for Private and Public Keys from user
+         final String PRIVATEKEY = "privateKey";
+         final String PUBLICKEY = "publicKey";
+
+        try {
+            OwnDevice device = getOwnDeviceFromExternalStorage();
+            if (device == null) {
+                Log.d(getClass().getSimpleName(), "Device is null");
+                return false;
+            }
+
+            // Restore devId
+            Log.d(getClass().getSimpleName(), "Restore devId");
+            SharedPreferences.Editor editor1 = DatabaseManager.INSTANCE.getSharedPreferences().edit();
+            editor1.putLong(AbstractYasmeActivity.DEVICE_ID, ownDevice.getId());
+            editor1.commit();
+
+            // Restore pushId and app version
+            Log.d(getClass().getSimpleName(), "Restore pushId");
+            SharedPreferences prefs = DatabaseManager.INSTANCE.getContext().getSharedPreferences(LoginActivity.class.getSimpleName(), Context.MODE_PRIVATE);
+            SharedPreferences.Editor editor2 = prefs.edit();
+            editor2.putString(AbstractYasmeActivity.PROPERTY_REG_ID, ownDevice.getPushId());
+            editor2.commit();
+
+            // Restore PrivatePublicKey
+            Log.d(getClass().getSimpleName(), "Restore PrivPubKeys");
+            String RSAKEY_STORAGE_USER = RSAKEY_STORAGE + "_" + ownDevice.getId();
+            Context context = DatabaseManager.INSTANCE.getContext();
+            SharedPreferences privKeyStorage = context.getSharedPreferences(RSAKEY_STORAGE_USER, Context.MODE_PRIVATE);
+            SharedPreferences.Editor keyeditor = privKeyStorage.edit();
+
+            keyeditor.putString(PRIVATEKEY, device.getPrivateKey());
+            keyeditor.putString(PUBLICKEY,device.getPublicKey());
+            keyeditor.commit();
+        } catch (Exception e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+            return false;
+        }
+        return true;
+    }
+
+    private OwnDevice getOwnDeviceFromExternalStorage() {
+        String text = readText(OWNDEVICE);
+        if (text == null || text == "") {
+            return null;
+        }
+        Log.d(getClass().getSimpleName(), "Device-Text: " + text);
+        try {
+            OwnDevice device = new ObjectMapper().readValue(text, OwnDevice.class);
+            Log.d(getClass().getSimpleName(), "PubKey: " + device.getPublicKey());
+            return device;
+        } catch (Exception e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+            return null;
+        }
+    }
+
+    private boolean restoreMessageKeysFromExternalStorage() {
+        String text = readText(MESSAGEKEYS);
+        if (text == null) {
+            return false;
+        }
+        if (text == "") {
+            // No messageKey stored yet
+            return true;
+        }
+        String json = "[" + text + "{}]";
+        Log.d(getClass().getSimpleName(), "MessageKeys-Text: " + text);
+        try {
+            Log.d(getClass().getSimpleName(), "JSON: " + json);
+            JSONArray jsonArray = new JSONArray(json);
+
+            for (int i = 0; i < jsonArray.length() - 1; i++) {
+                MessageKey messageKey = new ObjectMapper().readValue((jsonArray.getJSONObject(i)).
+                        toString(), MessageKey.class);
+                messageKey.setAuthenticity(true);
+                DatabaseManager.INSTANCE.getMessageKeyDAO().addOrUpdate(messageKey);
+            }
+
+            return true;
+        } catch (Exception e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+            return false;
+        }
+    }
+
+    private String readText(String name) {
+        String filename = "";
+        try {
+            Log.d(getClass().getSimpleName(), "Open dir");
+            File dir = getDir();
+            if (!dir.exists()) {
+                return null;
+            }
+            Log.d(getClass().getSimpleName(), "Open file");
+            filename = dir.getAbsolutePath() + "/" + name + ".txt";
+
+
+            BufferedReader br = new BufferedReader(new FileReader(filename));
+            StringBuilder sb = new StringBuilder();
+            String line = br.readLine();
+
+            while (line != null) {
+                sb.append(line);
+                line = br.readLine();
+            }
+            br.close();
+            return sb.toString();
+        } catch (FileNotFoundException e) {
+            Log.e(getClass().getSimpleName(), "File " + filename + " not found.");
+            return "";
+        }
+        catch (Exception e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+            return null;
+        }
+    }
+
+    private File getDir() {
+        return new File(Environment.getExternalStoragePublicDirectory("yasme"), String.valueOf(DatabaseManager.INSTANCE.getUserId()));
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/exception/RestServiceException.java
+public class RestServiceException extends Exception {
+
+	private static final long serialVersionUID = 1L;
+	private int code;
+
+	public RestServiceException(ErrorCode error) {
+
+		this(error.getDescription(), error.getNumber());
+
+	}
+
+	public RestServiceException(String message, int code) {
+		super(message);
+		this.code = code;
+
+		System.err.println("Code: " + this.code + "  " + "Message: "
+				+ this.getMessage());
+	}
+
+    public int getCode() {
+        return code;
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/connection/MessageTask.java
+public class MessageTask extends ConnectionTask {
+
+    private static MessageTask instance;
+    private MessageKeyDAO keyDAO = DatabaseManager.INSTANCE.getMessageKeyDAO();
+    private ChatDAO chatDAO = DatabaseManager.INSTANCE.getChatDAO();
+    private UserDAO userDAO = DatabaseManager.INSTANCE.getUserDAO();
+
+    public static MessageTask getInstance() {
+        if (instance == null) {
+            synchronized (MessageTask.class) {
+                if (null == instance) {
+                    instance = new MessageTask();
+                }
+            }
+        }
+        return instance;
+    }
+
+    private MessageTask() {
+        try {
+            this.uri = new URIBuilder(baseURI).setPath(ConnectionTask.APIVERSION + "/msg").build();
+        } catch (URISyntaxException e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+        }
+    }
+
+    /**
+     * Send the given message to the server. It's id is generated by the server and send back
+     *
+     * @param message to send
+     * @return given message with generated id
+     * @throws RestServiceException
+     */
+    public Message sendMessage(Message message) throws KeyOutdatedException {
+        try {
+            if (message == null) {
+                return null;
+            }
+
+            // Send
+            HttpResponse httpResponse = executeRequest(Request.POST, "", message);
+            Message result = new ObjectMapper().readValue(new BufferedReader(new InputStreamReader(
+                    httpResponse.getEntity().getContent())).readLine(), Message.class);
+
+            message.setId(result.getId());
+            return message;
+
+        } catch (RestServiceException e) {
+            Log.e(this.getClass().getSimpleName(), e.getMessage());
+            if (e.getCode() == Error.OUTDATED.getNumber()) {
+                throw new KeyOutdatedException();
+            }
+        } catch (IOException e) {
+            Log.e(this.getClass().getSimpleName(), e.getMessage());
+        }
+        return null;
+    }
+
+    public List<Message> getMessages(long lastMessageId) throws RestServiceException {
+        List<Message> messages = new ArrayList<Message>();
+
+        try {
+            HttpResponse httpResponse = executeRequest(Request.GET, Long.toString(lastMessageId));
+            String json = new BufferedReader(new InputStreamReader(
+                    httpResponse.getEntity().getContent())).readLine();
+            Log.d(getClass().getSimpleName(), "JSON: " + json);
+            JSONArray jsonArray = new JSONArray(json);
+
+            for (int i = 0; i < jsonArray.length(); i++) {
+                Message message = new ObjectMapper().readValue((jsonArray.getJSONObject(i)).
+                        toString(), Message.class);
+                messages.add(message);
+            }
+        } catch (IOException e) {
+            throw new RestServiceException(Error.CONNECTION_ERROR);
+        } catch (JSONException e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+        }
+
+        Log.d(this.getClass().getSimpleName(), "Number new Messages: " + messages.size());
+        return messages;
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/connection/DeviceTask.java
+public class DeviceTask extends ConnectionTask {
+
+    private static DeviceTask instance;
+
+    public static DeviceTask getInstance() {
+        if (instance == null) {
+            synchronized (DeviceTask.class) {
+                if (null == instance) {
+                    instance = new DeviceTask();
+                }
+            }
+        }
+        return instance;
+    }
+
+    private DeviceTask() {
+        try {
+            this.uri = new URIBuilder(baseURI).setPath(ConnectionTask.APIVERSION + "/device").build();
+        } catch (URISyntaxException e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+        }
+    }
+
+    public Long registerDevice(OwnDevice device) throws RestServiceException {
+
+        try {
+            HttpResponse httpResponse = executeRequest(Request.POST, "", device);
+
+            //Log.d(this.getClass().getSimpleName(), "Device registration was successful");
+
+            long deviceId = (new JSONObject((new BufferedReader(
+                    new InputStreamReader(httpResponse.getEntity()
+                            .getContent())
+            )).readLine())).getLong("id");
+            DatabaseManager.INSTANCE.setDeviceId(deviceId);
+            return deviceId;
+
+        } catch (IOException e) {
+            throw new RestServiceException(Error.CONNECTION_ERROR);
+        } catch (JSONException e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+        }
+        return null;
+    }
+
+    public Device getDevice(long devId) throws RestServiceException {
+
+        try {
+            HttpResponse httpResponse = executeRequest(Request.GET, String.valueOf(devId));
+            return new ObjectMapper().readValue(new BufferedReader(new InputStreamReader(httpResponse.getEntity()
+                    .getContent())).readLine(), Device.class);
+
+        } catch (IOException e) {
+            throw new RestServiceException(Error.CONNECTION_ERROR);
+        }
+    }
+
+    public ArrayList<Device> getAllDevices(Long userId) throws RestServiceException {
+
+        ArrayList<Device> devices = new ArrayList<Device>();
+
+        try {
+            HttpResponse httpResponse = executeRequest(Request.GET, "all/" + userId);
+
+            JSONArray jsonArray = new JSONArray(new BufferedReader(new InputStreamReader(
+                    httpResponse.getEntity().getContent())).readLine());
+
+            for (int i = 0; i < jsonArray.length(); i++)
+                devices.add(new ObjectMapper().readValue((jsonArray.getJSONObject(i)).
+                        toString(), Device.class));
+
+        } catch (IOException e) {
+            throw new RestServiceException(Error.CONNECTION_ERROR);
+        } catch (JSONException e) {
+            Log.e(this.getClass().getSimpleName(),e.getMessage());
+        }
+
+        //Log.d(this.getClass().getSimpleName(), "No.Devices: " + devices.size());
+        return devices;
+    }
+
+    public void deleteDevice(long deviceId) throws RestServiceException {
+        executeRequest(Request.DELETE, Long.toString(deviceId));
+        //Log.d(this.getClass().getSimpleName(), "Device removed!");
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/ui/fragments/ChatListFragment.java
+public class ChatListFragment extends ListFragment implements NotifiableFragment<List<Chat>> {
+    private List<Chat> chatRooms;
+    private ChatListAdapter adapter;
+
+    public ChatListFragment() {
+
+    }
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        AbstractYasmeActivity activity = (AbstractYasmeActivity) getActivity();
+        chatRooms = new ArrayList<Chat>();
+        adapter = new ChatListAdapter(activity, R.layout.chatlist_item, chatRooms);
+        this.setListAdapter(adapter);
+
+        String name = activity.getSelfName();
+        if (name != null || !name.isEmpty()) {
+            activity.setTitle(activity.getSelfName());
+        }
+
+        //holt vor allem den Namen des Users ab
+        if (DatabaseManager.INSTANCE.isInitialized()) {
+            new GetProfileDataTask().execute();
+        }
+    }
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        View rootView = inflater.inflate(R.layout.fragment_chatlist, container, false);
+        rootView.findViewById(android.R.id.empty).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent = new Intent(getActivity(), ContactActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                startActivity(intent);
+            }
+        });
+
+        return rootView;
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+
+        //Register at observer
+        Log.d(this.getClass().getSimpleName(), "Try to get ChatListObservableInstance");
+        FragmentObservable<ChatListFragment, List<Chat>> obs = ObservableRegistry.getObservable(ChatListFragment.class);
+        Log.d(this.getClass().getSimpleName(), "... successful");
+        obs.register(this);
+
+        //register for context menu
+        registerForContextMenu(this.getListView());
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+
+        // At first, retrieve the chats from the database
+        ChatDAO chatDAO = DatabaseManager.INSTANCE.getChatDAO();
+        new GetAllTask<Chat,ChatDAO>(chatDAO, this.getClass()).execute();
+
+        // Dann beim Server nachfragen, ob es neue gibt, und in der Datenbank abspeichern
+        // Aktualisiert die Datenbank auf den aktuellen Stand des Servers
+        Log.d(getClass().getSimpleName(), "GetMyChatsTask started from ChatListFragment");
+        new GetMyChatsTask(this.getClass()).startIfNecessary();
+        Log.d(getClass().getSimpleName(), "GetMessageTask started from ChatListFragment");
+        new GetMessageTask(this.getClass()).execute();
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        //De-Register at observer
+        FragmentObservable<ChatListFragment, List<Chat>> obs = ObservableRegistry.getObservable(ChatListFragment.class);
+        Log.d(this.getClass().getSimpleName(), "Remove from observer");
+        obs.remove(this);
+    }
+
+    @Override
+    public void onListItemClick(ListView l, View view, int pos, long id) {
+        Chat chat = (Chat) getListAdapter().getItem(pos);
+        showChat(chat.getId());
+    }
+
+    @Override
+    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo) {
+        super.onCreateContextMenu(menu, v, menuInfo);
+
+        MenuInflater inflater = this.getActivity().getMenuInflater();
+        inflater.inflate(R.menu.chatlist_context, menu);
+    }
+
+    @Override
+    public boolean onContextItemSelected(MenuItem item) {
+        AdapterView.AdapterContextMenuInfo info = (AdapterView.AdapterContextMenuInfo) item.getMenuInfo();
+        final Chat chat = (Chat) getListAdapter().getItem(info.position);
+        switch (item.getItemId()) {
+            case R.id.context_settings:
+                Intent intent = new Intent(getActivity(), ChatSettingsActivity.class);
+                intent.putExtra(ChatSettingsActivity.CHAT_ID, chat.getId());
+                startActivity(intent);
+                return true;
+            case R.id.context_leave:
+                handleLeaveChat(chat);
+                return true;
+            default:
+                return super.onContextItemSelected(item);
+        }
+    }
+
+    private void handleLeaveChat(final Chat chat) {
+        AbstractYasmeActivity activity = (AbstractYasmeActivity) getActivity();
+        if (chat.isOwner(DatabaseManager.INSTANCE.getUserId())) {
+            AlertDialog.Builder alert = new AlertDialog.Builder(activity);
+            alert.setTitle(activity.getString(R.string.alert_owner));
+
+            LinearLayout layout = new LinearLayout(activity);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT);
+
+            TextView text = new TextView(activity);
+            text.setText(activity.getString(R.string.alert_owner_message));
+
+            final ListView list = new ListView(activity);
+            list.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+            List<String> participantNames = new ArrayList<String>();
+            for (User u : chat.getParticipants()) {
+                if (u.getId() == DatabaseManager.INSTANCE.getUserId()) {
+                    continue;
+                }
+                participantNames.add(u.getName());
+            }
+            final ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+                activity,
+                android.R.layout.simple_list_item_single_choice,
+                participantNames
+            );
+            list.setAdapter(adapter);
+
+            layout.addView(text, layoutParams);
+            layout.addView(list, layoutParams);
+            alert.setView(layout);
+
+            alert.setPositiveButton(R.string.change_and_leave_chat,
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int whichButton) {
+                            int position = list.getCheckedItemPosition();
+                            if (position != AdapterView.INVALID_POSITION) {
+                                Long newOwnerId = chat.getParticipants().get(position).getId();
+                                Long leaveChat = 1L; // leaveChat rest call
+                                new ChangeOwnerAndLeaveTask(chat).execute(newOwnerId, leaveChat);
+                            }
+                        }
+                    }
+            );
+            alert.setNegativeButton(R.string.cancel,
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int whichButton) {
+                            dialog.cancel();
+                        }
+                    }
+            );
+            alert.show();
+        } else {
+            AlertDialog.Builder alert = new AlertDialog.Builder(activity);
+            alert.setTitle(activity.getString(R.string.alert_leave));
+            alert.setMessage(activity.getString(R.string.alert_leave_message));
+
+            alert.setPositiveButton(R.string.leave_chat,
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.dismiss();
+                            // This can fail with IllegalStateException: the task has already been executed (a task can be executed only once)
+                            new LeaveChatTask(chat).execute();
+                            dialog.dismiss();
+                        }
+                    });
+            alert.setNegativeButton(R.string.cancel,
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.cancel();
+                        }
+                    });
+            alert.show();
+        }
+    }
+
+    public void showChat(long chatId) {
+        AbstractYasmeActivity activity = (AbstractYasmeActivity) getActivity();
+        Log.d(this.getClass().getSimpleName(), "ShowChat: " + chatId);
+        Intent intent = new Intent(activity, ChatActivity.class);
+        intent.putExtra(activity.USER_MAIL, activity.getUserMail());
+        intent.putExtra(activity.USER_ID, activity.getUserId());
+        intent.putExtra(activity.CHAT_ID, chatId);
+        intent.putExtra(activity.USER_NAME, activity.getSelfUser().getName());
+        startActivity(intent);
+    }
+
+    @Override
+    public void notifyFragment(List<Chat> chatRooms) {
+        Log.d(super.getClass().getSimpleName(), "I have been notified. Yeeha!");
+        if (chatRooms == null) {
+            return;
+        }
+        this.chatRooms = chatRooms;
+        adapter.clear();
+        adapter.addAll(chatRooms);
+        adapter.notifyDataSetChanged();
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/entities/User.java
+@JsonIgnoreProperties(ignoreUnknown = true)
+@DatabaseTable(tableName = DatabaseConstants.USER_TABLE)
+public class User implements Serializable {
+
+    @DatabaseField(columnName = DatabaseConstants.USER_ID, id = true)
+    private long id;
+
+    @DatabaseField(columnName = DatabaseConstants.USER_NAME)
+    private String name;
+
+    //@DatabaseField(columnName = DatabaseConstants.USER_EMAIL)
+    private String email;
+
+    private String pw;
+
+    @JsonIgnore
+    private List<Device> devices;   // Just for convenience
+
+    @DatabaseField(columnName = DatabaseConstants.USER_LAST_MODIFIED)
+    private Date lastModified;
+
+    @DatabaseField(columnName = DatabaseConstants.USER_CREATED)
+    private Date created;
+
+    @JsonIgnore
+    @DatabaseField(columnName = DatabaseConstants.USER_PICTURE)
+    private String profilePicture;
+
+
+    @JsonIgnore
+    @DatabaseField(columnName = DatabaseConstants.CONTACT)
+    private int contactFlag = 0;
+
+
+    public User(String pw, String name, String email) {
+        this.pw = pw;
+        this.name = name;
+        this.email = email;
+    }
+
+    public User(String email, String pw) {
+        this.email = email;
+        this.pw = pw;
+    }
+
+    public User(String name, long id) {
+        this.name = name;
+        this.id = id;
+    }
+
+    public User(long id) {
+        this.id = id;
+    }
+
+    public User(String name, String email, long id) {
+        this.name = name;
+        this.email = email;
+        this.id = id;
+    }
+
+    public User() {
+        // ORMLite needs a no-arg constructor
+    }
+
+    /*
+     * Getters
+     */
+
+    @JsonIgnoreProperties({"id", "user", "publicKey", "product", "lastModified"})
+    public List<Device> getDevices() {
+        return devices;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getPw() {
+        return pw;
+    }
+
+    public long getId() {
+        return id;
+    }
+
+    public Date getLastModified() {
+        return lastModified;
+    }
+
+    public Date getCreated() {
+        return created;
+    }
+
+    public String getProfilePicture() {
+        return profilePicture;
+    }
+
+    /*
+     * Setters
+     */
+
+    public void setDevices(List<Device> devices) {
+        this.devices = devices;
+    }
+
+    public void setPw(String pw) {
+        this.pw = pw;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    public void setLastModified(Date lastModified) {
+        this.lastModified = lastModified;
+    }
+
+    public void setCreated(Date created) {
+        this.created = created;
+    }
+
+    public void setProfilePicture(String profilePicture) {
+        this.profilePicture = profilePicture;
+    }
+
+    @JsonIgnore
+    public void addToContacts() {
+        contactFlag = 1;
+    }
+
+    @JsonIgnore
+    public void removeFromContacts() {
+        contactFlag = 0;
+    }
+
+    @JsonIgnore
+    public boolean isContact() {
+        return contactFlag == 1;
+    }
+
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/entities/MessageKey.java
+@DatabaseTable(tableName = DatabaseConstants.MESSAGE_KEY_TABLE)
+public class MessageKey implements Serializable {
+
+    @DatabaseField(columnName = DatabaseConstants.KEY_ID, id = true)
+    private long id = -1;
+
+    @DatabaseField(columnName = DatabaseConstants.KEY_CHAT, canBeNull = false, foreign = true)
+    private Chat chat = null;
+
+    @DatabaseField(columnName = DatabaseConstants.VECTOR)
+    private String initVector = "";
+
+    @DatabaseField(columnName = DatabaseConstants.KEY)
+    private String messageKey = "";
+
+    @DatabaseField(columnName = DatabaseConstants.KEY_CREATED)
+    private Date created;
+
+    @DatabaseField(columnName = DatabaseConstants.AUTHENTICATED)
+    private byte authenticated = 0;
+
+    public static MessageKey last;
+
+	private Device creatorDevice = null;   // fuer Auswahl des oeffentlichen Schluessels
+	private Device recipientDevice = null; // fuer Auswahl des DH-Anteils
+	private byte encType = 0;
+	private long encInfoId = -1;
+	private String encInfo = "";
+	private String sign = "";
+
+	/** Constructors **/
+	public MessageKey(long id, Device creatorDevice, Device recipientDevice,
+			Chat chat, String key, String initVector, byte encType, long encInfoId,
+			String encInfo, String sign, Date created) {
+		this.id = id;
+		this.creatorDevice = creatorDevice;
+		this.recipientDevice = recipientDevice;
+		this.chat = chat;
+		this.messageKey = key;
+        this.initVector = initVector;
+		this.encType = encType;
+		this.encInfoId = encInfoId;
+		this.encInfo = encInfo;
+		this.sign = sign;
+        this.created = created;
+	}
+
+	public MessageKey(long id, Device creatorDevice, Device recipientDevice,
+			Chat chat, String key, String initVector) {
+		this.id = id;
+		this.creatorDevice = creatorDevice;
+		this.recipientDevice = recipientDevice;
+		this.chat = chat;
+		this.messageKey = key;
+        this.initVector = initVector;
+		this.encType = encType;
+		this.sign = sign;
+	}
+
+    public MessageKey(long id, Chat chat, String key,String initVector) {
+        this.id = id;
+        this.chat = chat;
+        this.messageKey = key;
+        this.initVector = initVector;
+        encType = 0; // unencrypted
+    }
+
+	public MessageKey() {
+        // ORMLite needs a no-arg constructor
+    }
+
+	/** Getters **/
+	public long getId() {
+		return id;
+	}
+
+    @JsonIgnoreProperties({ "user", "publicKey", "product", "lastModified" })
+	public Device getCreatorDevice() {
+		return creatorDevice;
+	}
+
+    @JsonIgnoreProperties({ "user", "publicKey", "product", "lastModified" })
+	public Device getRecipientDevice() {
+		return recipientDevice;
+	}
+
+    @JsonIgnoreProperties({ "participants", "status", "name", "owner", "lastModified", "created", "profilePicture", "messages" })
+	public Chat getChat() {
+		return chat;
+	}
+
+	public String getMessageKey() {
+		return messageKey;
+	}
+
+	public byte getEncType() {
+		return encType;
+	}
+
+	public long getEncInfoId() {
+		return encInfoId;
+	}
+
+	public String getEncInfo() {
+		return encInfo;
+	}
+
+	public String getSign() {
+		return sign;
+	}
+
+    public String getInitVector(){ return initVector; }
+
+    public Date getCreated() { return created; }
+
+    @JsonIgnore
+    public boolean getAuthenticity(){
+        if (authenticated == 1) return true;
+        else return false;
+    }
+
+	/** Setters **/
+	public void setId(long id) {
+		this.id = id;
+	}
+
+	public void setCreatorDevice(Device creator) {
+		this.creatorDevice = creator;
+	}
+
+	public void setRecipientDevice(Device recipient) {
+		this.recipientDevice = recipient;
+	}
+
+	public void setChat(Chat chat) {
+		this.chat = chat;
+	}
+
+	public void setKey(String key) {
+		this.messageKey = key;
+	}
+
+    public void setInitVector(String initVector) { this.initVector = initVector; }
+
+	public void setEncType(byte encType) {
+		this.encType = encType;
+	}
+
+	public void setEncInfoId(long encInfoId) {
+		this.encInfoId = encInfoId;
+	}
+
+	public void setEncInfo(String encInfo) {
+		this.encInfo = encInfo;
+	}
+
+	public void setSign(String sign) {
+		this.sign = sign;
+	}
+
+    public void setCreated(Date created) { this.created = created; }
+
+    @JsonIgnore
+    public boolean setAuthenticity(boolean bool){
+        if (bool){
+            authenticated = 1;
+            return true;
+        }
+        else {
+            authenticated = 0;
+            return false;
+        }
+    }
+
+    @JsonIgnore
+	public Boolean isValid() {
+		if (id < 0) {
+			return false;
+		}
+
+		if (recipientDevice == null || creatorDevice.getId() < 0) {
+            return false;
+		}
+		if (creatorDevice == null || recipientDevice.getId() < 0) {
+            return false;
+		}
+		if (chat == null  || chat.getId() < 0) {
+            return false;
+		}
+		if (messageKey.length() <= 0) {
+            return false;
+		}
+		if (encType < 0) {
+            return false;
+		}
+		if (sign.length() <= 0) {
+            return false;
+		}
+        if (initVector.length() <= 0) {
+            return false;
+        }
+		return true;
+	}
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/ui/AbstractYasmeActivity.java
+public abstract class AbstractYasmeActivity extends Activity implements Toastable {
+    public final static String USER_ID = "de.fau.cs.mad.yasme.android.USER_ID";
+    public final static String USER_NAME = "de.fau.cs.mad.yasme.android.USER_NAME";
+    public final static String USER_MAIL = "de.fau.cs.mad.yasme.android.USER_MAIL";
+    public final static String USER_PW = "de.fau.cs.mad.yasme.android.USER_PW";
+    public final static String DEVICE_ID = "de.fau.cs.mad.yasme.android.DEVICE_ID";
+    public final static String PROFILE_PICTURE = "de.fau.cs.mad.yasme.android.PROFILE_PICTURE";
+
+    public final static String CHAT_ID = "de.fau.cs.mad.yasme.android.CHAT_ID";
+    public final static String LAST_MESSAGE_ID = "de.fau.cs.mad.yasme.android.LAST_MESSAGE_ID";
+
+    public final static String ACCESSTOKEN = "de.fau.cs.mad.yasme.android.ACCESSTOKEN";
+    public final static String SIGN_IN = "de.fau.cs.mad.yasme.android.SIGN_IN";
+
+    public final static String SERVERINFOUPDATETIME = "de.fau.cs.mad.yasme.android.SERVERINFOUPDATETIME";
+    public final static String SERVERMESSAGE = "de.fau.cs.mad.yasme.android.SERVERMESSAGE";
+
+    public final static String STORAGE_PREFS = "de.fau.cs.mad.yasme.android.STORAGE_PREFS";
+    public final static String SETTINGS_PREFS = "de.fau.cs.mad.yasme.android.SETTINGS_PREFS";
+    public final static String DEVICE_PREFS = "de.fau.cs.mad.yasme.android.DEVICE_PREFS";
+    public final static String PUSH_PREFS = "de.fau.cs.mad.yasme.android.PUSH_PREFS";
+
+    public final static String NOTIFICATION_VIBRATE = "de.fau.cs.mad.yasme.android.NOTIFICATION_VIBRATE";
+    public final static String NOTIFICATION_SOUND = "de.fau.cs.mad.yasme.android.NOTIFICATION_SOUND";
+
+
+    //GCM Properties
+    public static final String PROPERTY_REG_ID = "registration_id";
+    public static final String PROPERTY_APP_VERSION = "appVersion";
+    public static final String SENDER_ID = "688782154540"; //"104759172131";
+    public static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
+    public static final String TAG = "YasmeGCM";
+
+    protected User selfUser;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        if (!ConnectionTask.isInitialized()) {
+            String server = getResources().getString(R.string.server_host);
+            if (BuildConfig.DEBUG) {
+                server = getResources().getString(R.string.server_host_debug);
+            }
+            Log.d(getClass().getSimpleName(), "YASME-Server: " + server);
+            ConnectionTask.initParams(getResources().getString(R.string.server_scheme),
+                    server,
+                    getResources().getString(R.string.server_port), getResources().getString(R.string.language), getVersion());
+        }
+
+        SharedPreferences storage = getSharedPreferences(STORAGE_PREFS, MODE_PRIVATE);
+        SharedPreferences settings = getSharedPreferences(SETTINGS_PREFS, MODE_PRIVATE);
+        Long userId = storage.getLong(USER_ID, 0);
+        String userName = storage.getString(USER_NAME, "");
+        String userMail = storage.getString(USER_MAIL, "");
+        String userPw = storage.getString(USER_PW, "password");
+
+        if(selfUser==null) {
+            selfUser = new User();
+        }
+        selfUser.setId(userId);
+        selfUser.setName(userName);
+        selfUser.setEmail(userMail);
+        selfUser.setPw(userPw);
+
+
+        //Initialize databaseManager (once in application)
+        if (!DatabaseManager.INSTANCE.isInitialized()) {
+            DatabaseManager.INSTANCE.init(this, storage, settings, userId);
+        }
+        //Init QR-Code
+        QR.init(false);
+
+        String accessToken = DatabaseManager.INSTANCE.getAccessToken();
+        if ((accessToken == null || accessToken.length() <= 0) && !this.getClass().equals(LoginActivity.class)) {
+            Log.i(this.getClass().getSimpleName(), "Not logged in, starting login activity");
+            Intent intent = new Intent(this, LoginActivity.class);
+            startActivity(intent);
+            finish();
+            return;
+        }
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        Toaster.getInstance().register(this);
+        stopSpinning();
+        SpinnerObservable.getInstance().registerActivity(this);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        String accessToken = DatabaseManager.INSTANCE.getAccessToken();
+        if ((accessToken == null || accessToken.length() <= 0) && !this.getClass().equals(LoginActivity.class)) {
+            Log.i(this.getClass().getSimpleName(), "Not logged in, starting login activity");
+            Intent intent = new Intent(this, LoginActivity.class);
+            startActivity(intent);
+            finish();
+            return;
+        }
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        Toaster.getInstance().remove(this);
+        SpinnerObservable.getInstance().removeActivity(this);
+    }
+
+    public void setActionBarTitle(String title) {
+        getActionBar().setTitle(title);
+    }
+
+    public void setActionBarTitle(String title, String subtitle) {
+        getActionBar().setTitle(title);
+        getActionBar().setSubtitle(subtitle);
+    }
+
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Handle action bar item clicks here. The action bar will
+        // automatically handle clicks on the Home/Up button, so long
+        // as you specify a parent activity in AndroidManifest.xml.
+        Intent intent;
+        int itemId = item.getItemId();
+        switch (itemId) {
+            case android.R.id.home:
+                if (NavUtils.getParentActivityName(this) != null) {
+                    NavUtils.navigateUpFromSameTask(this);
+                }
+                return true;
+            case R.id.action_settings:
+                intent = new Intent(this, SettingsActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                startActivity(intent);
+                return true;
+            case R.id.action_chats:
+                intent = new Intent(this, ChatListActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                startActivity(intent);
+                return true;
+            case R.id.action_add_chat:
+                intent = new Intent(this, InviteToChatActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                startActivity(intent);
+                return true;
+            case R.id.action_contacts:
+                intent = new Intent(this, ContactActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                startActivity(intent);
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+
+        }
+    }
+
+    public String getSelfName() {
+
+        if(selfUser==null) {
+            SharedPreferences storage = getSharedPreferences(STORAGE_PREFS, MODE_PRIVATE);
+            Long userId = storage.getLong(USER_ID, 0);
+            String userName = storage.getString(USER_NAME, "");
+            String userMail = storage.getString(USER_MAIL, "");
+            String userPw = storage.getString(USER_PW, "password");
+
+            selfUser = new User();
+            selfUser.setId(userId);
+            selfUser.setName(userName);
+            selfUser.setEmail(userMail);
+            selfUser.setPw(userPw);
+        }
+        if (selfUser.getName().isEmpty()) {
+            String name = getSharedPreferences(STORAGE_PREFS, MODE_PRIVATE).getString(USER_NAME, "");
+            selfUser.setName(name);
+        }
+        return selfUser.getName();
+    }
+
+    public User getSelfUser() {
+        return selfUser;
+    }
+
+    public String getUserMail() {
+        if (selfUser == null || selfUser.getEmail().isEmpty()) {
+            String mail = getSharedPreferences(STORAGE_PREFS, MODE_PRIVATE).getString(USER_MAIL, "");
+            selfUser.setEmail(mail);
+        }
+        return selfUser.getEmail();
+    }
+
+    public long getUserId() {
+        return selfUser.getId();
+    }
+
+    public String getOwnProfilePicture() {
+        String path = selfUser.getProfilePicture();
+        if (path == null || path.isEmpty()) {
+            path = getSharedPreferences(STORAGE_PREFS, MODE_PRIVATE).getString(PROFILE_PICTURE, null);
+        }
+        return path;
+    }
+
+    public void setOwnProfilePicture(String ownProfilePicture) {
+        selfUser.setProfilePicture(ownProfilePicture);
+        SharedPreferences.Editor editor = getSharedPreferences(STORAGE_PREFS, MODE_PRIVATE).edit();
+        editor.putString(AbstractYasmeActivity.PROFILE_PICTURE, ownProfilePicture);
+        editor.commit();
+    }
+
+    public String getAccessToken() {
+        return DatabaseManager.INSTANCE.getAccessToken();
+    }
+
+    public void toast(final int messageId, final int duration) {
+        String text = getApplicationContext().getResources().getString(messageId);
+        toast(text, duration, -1);
+    }
+
+    public void toast(final String text, final int duration) {
+        toast(text, duration, -1);
+    }
+
+    public void toast(final String text, final int duration, final int gravity) {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                Toast toast = Toast.makeText(getApplicationContext(), text, duration);
+                if (-1 != gravity) {
+                    toast.setGravity(gravity, 0, 0);
+                }
+                // otherwise use default position
+                Log.d(getClass().getSimpleName(), "Toast: " + text);
+                toast.show();
+            }
+        });
+    }
+
+    public void startSpinning() {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                setProgressBarIndeterminateVisibility(true);
+            }
+        });
+    }
+
+    public void stopSpinning() {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                setProgressBarIndeterminateVisibility(false);
+            }
+        });
+    }
+
+    public int getVersion() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+        } catch (Exception e) {
+            Log.e(this.getClass().getSimpleName(), e.getMessage());
+            return 0;
+        }
+    }
+
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/controller/NewMessageNotificationManager.java
+public class NewMessageNotificationManager {
+    private int numberOfMessages;
+    private Context mContext;
+    private NotificationManager mNotificationManager;
+    private NotificationCompat.Builder mBuilder;
+    private SharedPreferences mSettings;
+    // mId allows you to update the notification later on.
+    private int mId;
+
+    public NewMessageNotificationManager() {
+        mContext = DatabaseManager.INSTANCE.getContext();
+        numberOfMessages = 0;
+        mSettings = DatabaseManager.INSTANCE.getSettings();
+        try {
+            mNotificationManager = (NotificationManager) mContext
+                    .getSystemService(Context.NOTIFICATION_SERVICE);
+        } catch (NullPointerException e) {
+            Log.e(this.getClass().getSimpleName(), "NullPointerException");
+            return;
+        }
+        mBuilder = new NotificationCompat.Builder(mContext)
+                .setContentTitle("Yasme")
+                .setContentText(mContext.getString(R.string.notification_message))
+                .setSmallIcon(R.drawable.ic_notify_y)
+                .setPriority(1)
+                .setAutoCancel(true)
+                .setLargeIcon(getIcon(mContext));
+        mId = 1;
+    }
+
+    public void clearMessages() {
+        this.numberOfMessages = 0;
+    }
+
+    private boolean isForeground() {
+        //get Context
+        Context mContext = DatabaseManager.INSTANCE.getContext();
+
+        // Get the Activity Manager
+        ActivityManager manager = (ActivityManager) mContext.
+                getSystemService(mContext.ACTIVITY_SERVICE);
+
+        // Get a list of running tasks, we are only interested in the last one,
+        // the top most so we give a 1 as parameter so we only get the topmost.
+        List<ActivityManager.RunningTaskInfo> task = manager.getRunningTasks(1);
+
+        // Get the info we need for comparison.
+        ComponentName componentInfo = task.get(0).topActivity;
+
+        // Check if it matches our package name.
+        if (componentInfo.getPackageName().equals(mContext.getPackageName())) {
+            return true;
+        }
+
+        // If not then our app is not on the foreground.
+        return false;
+    }
+
+    public void mNotify(final int numberOfNewMessages, final long chatId) {
+        if (isForeground()) {
+            Log.i(this.getClass().getSimpleName(), "App in foreground");
+            return;
+        }
+        mNotificationManager.cancel(mId);
+        numberOfMessages += numberOfNewMessages;
+
+        // Creates an explicit intent for an Activity in your app
+        Intent resultIntent = new Intent(mContext, ChatActivity.class);
+        resultIntent.putExtra(AbstractYasmeActivity.CHAT_ID, chatId);
+
+        // Creates a back stack builder
+        TaskStackBuilder stackBuilder = TaskStackBuilder.create(mContext);
+
+        // Adds the back stack for the Intent (but not the Intent itself)
+        stackBuilder.addParentStack(ChatListActivity.class);
+
+        // Adds the Intent that starts the Activity to the top of the stack
+        stackBuilder.addNextIntent(resultIntent);
+
+        PendingIntent resultPendingIntent = stackBuilder
+                .getPendingIntent(0, PendingIntent.FLAG_UPDATE_CURRENT);
+
+/*
+        resultIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent resultPendingIntent = PendingIntent.getActivity(mContext, 0,
+                resultIntent, 0);
+*/
+        int soundAndOrVibration = 0;
+        if (mSettings.getBoolean(AbstractYasmeActivity.NOTIFICATION_VIBRATE, false)) {
+            soundAndOrVibration |= NotificationCompat.DEFAULT_VIBRATE;
+            Log.d(this.getClass().getSimpleName(), "Vibration should be activated");
+        }
+        if (mSettings.getBoolean(AbstractYasmeActivity.NOTIFICATION_SOUND, false)) {
+            soundAndOrVibration |= NotificationCompat.DEFAULT_SOUND;
+            Log.d(this.getClass().getSimpleName(), "Sound should be activated");
+        }
+        mBuilder.setDefaults(soundAndOrVibration);
+        mBuilder.setContentIntent(resultPendingIntent);
+        mBuilder.setContentInfo("" + numberOfMessages);
+
+        mNotificationManager.notify(mId, mBuilder.build());
+    }
+
+    private Bitmap getIcon(Context mContext) {
+        return BitmapFactory.decodeResource(mContext.getResources(), R.drawable.ic_launcher);
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/encryption/MessageEncryption.java
+public class MessageEncryption {
+    Chat chat;
+    User creator;
+    private DatabaseManager db = DatabaseManager.INSTANCE;
+
+    /**
+     * initialize Encryption for the given chat
+     *
+     * @param chat chat the encryption should be initialized for
+     * @param creator user who is using the chat
+     */
+    public MessageEncryption(Chat chat, User creator) {
+        this.chat = chat;
+        this.creator = creator;
+    }
+
+    /**
+     * For Encryption the latest generated key is needed
+     * This method load the latest key from database
+     *
+     * @return MessageKey-Object containing the latest AES-Key with the corresponding InitalVector
+     */
+    public MessageKey getCurrentKey() {
+        try {
+            //Log.d(this.getClass().getSimpleName(),"Try to use a local Key");
+            MessageKey key = db.getMessageKeyDAO().getCurrentKeyByChat(chat.getId());
+            if (key != null) {
+                //Log.d(this.getClass().getSimpleName(),"... success");
+                return key;
+            } else {
+                //Log.d(this.getClass().getSimpleName(),"... failed");
+                return generateKey();
+            }
+        }
+        catch (Exception e){
+            Log.e(this.getClass().getSimpleName(),"... failed with exception");
+            return null;
+        }
+    }
+
+    /**
+     * generate a random AES-Key/InitialVector and encode it to base64
+     * call method sendKey: send it to the server and save it locally
+     *
+     * @return MessageKey containing the generated AES-Key/Inital Vector and the Keyid the server has assigned
+     */
+    public MessageKey generateKey() {
+        //Log.d(this.getClass().getSimpleName(),"Generate Key");
+        Toaster.getInstance().toast(R.string.generate_key, Toast.LENGTH_LONG);
+
+        // Generate key
+        AESEncryption aes = new AESEncryption();
+        String key = aes.getKeyinBase64();
+        String iv = aes.getIVinBase64();
+
+        return sendKey(key, iv, true);
+    }
+
+    /**
+     * load AES-Key and Initial Vector for given KeyId
+     *
+     * @param keyId KeyId of the key that is needed
+     * @return MessageKey-Object containing the needed AES-Key/InitalVector
+     */
+    public MessageKey getKey(long keyId) {
+        //Log.d(getClass().getSimpleName(), "Get key from DB: " + keyId);
+        return db.getMessageKeyDAO().get(keyId);
+    }
+
+    /**
+     * encrypt a Message with the latest generated AES-Key loaded from database
+     *
+     * @param message message that should be encrypted
+     * @return message-object containing the encrypted message and the used KeyId
+     */
+    public Message encrypt(Message message) {
+        return encrypt(message,getCurrentKey());
+    }
+
+    /**
+     * encrypt a Message and force to generate a new AES-Key
+     *
+     * @param message message that should be encrypted
+     * @return message-object containing the encrypted message and the used KeyId
+     */
+    public Message encryptGenerated(Message message) {
+        return encrypt(message,generateKey());
+    }
+
+    /**
+     * encrypt a message with a given MessageKey
+     *
+     * @param message message that should be encrypted
+     * @param messageKey messageKey that should be used for encryption
+     * @return message-object containing the encrypted message and the used KeyId
+     */
+    private Message encrypt (Message message, MessageKey messageKey) {
+        if (messageKey == null) {
+            Log.e(getClass().getSimpleName(), "Message could not be encrypted");
+            Toaster.getInstance().toast(R.string.key_generation_failed,Toast.LENGTH_LONG);
+            return null;
+        }
+        AESEncryption aes = new AESEncryption(messageKey);
+        message.setMessage(aes.encrypt(message.getMessage()));
+        message.setMessageKeyId(messageKey.getId());
+        return message;
+    }
+
+    /**
+     * decrypt a message using the KeyId that is stored in the message-object
+     * check, if the used Key is confidable
+     *
+     * @param message message that should be decrypted
+     * @return message-object containing the decrypted message
+     */
+    public Message decrypt(Message message) {
+        MessageKey messageKey = getKey(message.getMessageKeyId());
+        if (messageKey == null) {
+            message.setMessage("");
+            message.setErrorId(ErrorType.DECRYPTION_FAILED);
+            return message;
+        }
+        AESEncryption aes = new AESEncryption(messageKey);
+        message.setMessage(aes.decrypt(message.getMessage()));
+
+        //is the message successfully authenticated?
+        message.setAuthenticity(messageKey.getAuthenticity());
+        if (message.getErrorId() == 0 && !messageKey.getAuthenticity()) {
+            message.setErrorId(ErrorType.AUTHENTICATION_FAILED);
+        }
+
+        return message;
+    }
+
+    /**
+     * get all devices the generated messagekey need to be sent to (all devices from all participants in the chat)
+     * that is necessary because a messagekey needs to be encrypted using RSA for every single device the key is sent to
+     *
+     * @param local define, if the devices should be loaded from local storage or if the devices should be loaded from the server
+     * @return list of all devices
+     */
+    private List<Device> getRecipientDevices(boolean local) {
+        if (local) {
+            //Log.d(this.getClass().getSimpleName(),"Get local stored devices");
+            List<Device> devices = new ArrayList<>();
+            //Log.d(this.getClass().getSimpleName(),"Generate keys for " + chat.getParticipants().size() + " users");
+            for (User user : chat.getParticipants()) {
+                //Log.d(this.getClass().getSimpleName(),"Add Devices for User " + user.getId());
+                for (Device device : DatabaseManager.INSTANCE.getDeviceDAO().getAll(user)) {
+                    //Log.d(this.getClass().getSimpleName(),"Local-device: " + device.getId());
+                    //Log.d(this.getClass().getSimpleName(),"Add Device" + device.getId() + " from User " + device.getUser().getName());
+                    devices.add(device);
+                }
+            }
+            return devices;
+        } else {
+            try {
+                //Log.d(this.getClass().getSimpleName(),"Get devices from Server");
+                return ChatTask.getInstance().getAllDevicesForChat(chat.getId());
+            } catch (Exception e) {
+                Log.e(this.getClass().getSimpleName(),e.getMessage());
+                return new ArrayList<>();
+            }
+
+        }
+    }
+
+
+    /**
+     * this method send a generated Key/InitalVector to all devices of the chat participants
+     * for every device the key needs to be encrypted using the public RSA-Key from the recipientDevice
+     * this encrypted key also is signed by the private key of the creatorDevice (sender)
+     *
+     * when the server received the encrypted key for all known devices, he returns a messageKey-Object with an assigned KeyId
+     * now the method saves the generated Key with this KeyId on the local database
+     *
+     * @param key generated AES-Key encoded in base64
+     * @param iv generated InitalVector encoded in base64
+     * @param local define, if the devices should be loaded from local storage or if the devices should be loaded from the server
+     * @return  MessageKey-Object containing the assigned KeyId and Timestamp for the generated Key
+     *          null, if sending/saving key was not successful
+     */
+    public MessageKey sendKey(String key, String iv, boolean local) {
+        try {
+            long deviceId = DatabaseManager.INSTANCE.getDeviceId();
+            Device sender = new Device(deviceId);
+            ArrayList<MessageKey> messageKeys = new ArrayList<MessageKey>();
+            List<Device> devices = getRecipientDevices(local);
+            if (local && devices.size() == 0) {
+                local = false;
+                devices = getRecipientDevices(false);
+            }
+
+            if (!local) {
+                RefreshTask refreshTask = new RefreshTask(RefreshTask.RefreshType.CHAT, chat.getId(), true);
+                refreshTask.execute();
+            }
+
+            for (Device recipientDevice : devices) {
+                //Log.d(this.getClass().getSimpleName(),"Send Key for Device" + recipientDevice.getId() + " from User " + recipientDevice.getUser().getName());
+
+
+                // Do not store the key on the server for the creating device
+                if (recipientDevice.getId() == deviceId) {
+                    //Log.d(this.getClass().getSimpleName(),"Ignored Key for Device" + recipientDevice.getId());
+                    continue;
+                }
+
+                //Log.d(this.getClass().getSimpleName(),"Generate Key for Device" + recipientDevice.getId());
+
+                MessageKey messageKey = new MessageKey(0, sender, recipientDevice, chat, key, iv);
+                Log.d(getClass().getSimpleName(), "MessageKey1: " + messageKey.getMessageKey());
+                KeyEncryption keyEncryption = new KeyEncryption();
+                Log.d(getClass().getSimpleName(), "MessageKey2: " + messageKey.getMessageKey());
+                MessageKey messageKeyEncrypted = keyEncryption.encrypt(messageKey);
+                Log.d(getClass().getSimpleName(), "MessageKey3: " + messageKeyEncrypted.getMessageKey());
+                //Log.d(this.getClass().getSimpleName(), "MessageKey has successfully been encrypted.");
+                MessageKey messageKeySigned = keyEncryption.sign(messageKeyEncrypted);
+                Log.d(getClass().getSimpleName(), "MessageKey4: " + messageKeySigned.getMessageKey());
+                //Log.d(this.getClass().getSimpleName(), "MessageKey has successfully been signed.");
+
+                messageKeys.add(messageKeySigned);
+                //Log.d(this.getClass().getSimpleName(),"Key from " + deviceId + " for device " + recipientDevice.getId() + "created");
+            }
+
+            MessageKey result = MessageKeyTask.getInstance().saveKeys(messageKeys);
+
+            if (result == null) {
+                //Log.d(this.getClass().getSimpleName(),"Error sending key to server");
+                return null;
+            }
+
+            MessageKey messageKey = new MessageKey(result.getId(),sender,sender,chat,key,iv);
+            messageKey.setCreated(result.getCreated());
+
+            //Log.d(this.getClass().getSimpleName(),"Key was send to server, id is: "+ messageKey.getId());
+
+            // If you can trust yourself
+            messageKey.setAuthenticity(true);
+            db.getMessageKeyDAO().addIfNotExists(messageKey);
+            return messageKey;
+
+        } catch (IncompleteKeyException e) {
+            if (local) {
+                Log.e(this.getClass().getSimpleName(),"Create key");
+                return sendKey(key,iv,false);
+            } else {
+                Log.e(this.getClass().getSimpleName(),"Key was not sent to server");
+                return null;
+            }
+        } catch (Exception e) {
+            Log.e(this.getClass().getSimpleName(),"Failed to send key: "+e.getMessage());
+            return null;
+        }
+    }
+
+    public static class ErrorType {
+        public static final int OK = 0;
+        public static final int DECRYPTION_FAILED = 10;
+        public static final int AUTHENTICATION_FAILED = 20;
+    }
+}
+yasme/src/main/java/de/fau/cs/mad/yasme/android/entities/Device.java
+@JsonIgnoreProperties(ignoreUnknown = true)
+@DatabaseTable(tableName = DatabaseConstants.DEVICE_TABLE)
+public class Device {
+
+    @DatabaseField(columnName = DatabaseConstants.DEVICE_ID, id = true)
+    private long id;
+
+    @DatabaseField(columnName = DatabaseConstants.DEVICE_USER, foreign = true)
+    private User user;
+
+    @DatabaseField(columnName = DatabaseConstants.DEVICE_PUBLIC_KEY)
+    private String publicKey;
+
+    @DatabaseField(columnName = DatabaseConstants.DEVICE_PRODUCT)
+    private String product; // product name e.g. Google Nexus 5
+
+    @DatabaseField(columnName = DatabaseConstants.DEVICE_LAST_MODIFIED, dataType = DataType.DATE)
+    private Date lastModified;
+
+    @DatabaseField(columnName = DatabaseConstants.DEVICE_TRUSTED)
+    private boolean trusted = false;
+
+    public Device() {
+    }
+
+    public Device(long id) {
+        this.id = id;
+    }
+
+
+    // Getter
+    public long getId() {
+        return id;
+    }
+
+    @JsonIgnoreProperties({ "pw", "email", "name", "devices", "lastModified", "created" })
+    public User getUser() {
+        return user;
+    }
+
+    public String getProduct(){return this.product;}
+
+    public String getPublicKey() {
+        return publicKey;
+    }
+
+    public Date getLastModified() {
+        return this.lastModified;
+    }
+
+    public boolean isTrusted() {
+        return this.trusted;
+    }
+
+
+    // Setter
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public void setProduct(String product){this.product = product;}
+
+    public void setLastModified(Date lastModified) {
+        this.lastModified = lastModified;
+    }
+
+    public void setPublicKey(String publicKey) {
+        this.publicKey = publicKey;
+    }
+
+    public void setTrusted(boolean trusted) {
+        this.trusted=trusted;
+    }
+}

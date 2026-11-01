@@ -1,0 +1,50 @@
+# qwen_gdn_group64_four_codec_aime26_seed1_v1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/qwen_gdn_group64_four_codec_aime26_seed1_v1`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`revisions/cross_host_v4/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/three_gpu_continuation_v5/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/three_gpu_ledger_repair_v6/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/three_gpu_reuse57_resume_v7/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/cross_host_v4/EXECUTION_PLAN.md`](../../objects/10/10a4fb0a58d250a4e218de7e3063ed85d6a61c23a482a3c940c7d6446133bfa7__EXECUTION_PLAN.md)
+- [`revisions/cross_host_v4/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`revisions/cross_host_v4/scripts/score_pass_cpu.py`](../../objects/7b/7b3749bfadf5fad792a9c3abd8ab9fdb1f5ddcab8855317ba872b8ea8727ce8b__score_pass_cpu.py)
+- [`revisions/cross_host_v4/AIME26_SEED1_PROTOCOL.json`](../../objects/6e/6e3bb415ec84641da0b676107265c6bb920763abf40f1f57babf9b4ba1535055__AIME26_SEED1_PROTOCOL.json)
+- [`revisions/cross_host_v4/history/group32/HANDOFF.md`](../../objects/74/74958b92f476f24b75e9e060dfa939ee309a96ba7abf250f86cdac1157014de4__HANDOFF.md)
+- [`revisions/cross_host_v4/scripts/finalize_offline.py`](../../objects/fa/fa6c51c0a86f991be931e96e3c976d42c6736533026378f739bacc646214a7a7__finalize_offline.py)
+- [`revisions/cross_host_v4/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`revisions/three_gpu_continuation_v5/EXECUTION_PLAN.md`](../../objects/10/10a4fb0a58d250a4e218de7e3063ed85d6a61c23a482a3c940c7d6446133bfa7__EXECUTION_PLAN.md)
+- [`revisions/cross_host_v4/scripts/finalize_global_cpu.py`](../../objects/cd/cde61fbad62ee16997317d9e98e805c5944ed32e2f24517daccd7e226322756a__finalize_global_cpu.py)
+- [`revisions/three_gpu_ledger_repair_v6/EXECUTION_PLAN.md`](../../objects/10/10a4fb0a58d250a4e218de7e3063ed85d6a61c23a482a3c940c7d6446133bfa7__EXECUTION_PLAN.md)
+- [`revisions/three_gpu_reuse57_resume_v7/EXECUTION_PLAN.md`](../../objects/10/10a4fb0a58d250a4e218de7e3063ed85d6a61c23a482a3c940c7d6446133bfa7__EXECUTION_PLAN.md)
+- [`revisions/cross_host_v4/scripts/score_global_pass_cpu.py`](../../objects/ac/ac04982ce4b68a1a2e1ad91d93ecd93f9b48873db62bbad9ab0e304fbb17201e__score_global_pass_cpu.py)
+- [`revisions/cross_host_v4/AIME26_SEED1_PROTOCOL_FREEZE.json`](../../objects/6e/6e3bb415ec84641da0b676107265c6bb920763abf40f1f57babf9b4ba1535055__AIME26_SEED1_PROTOCOL.json)
+- [`revisions/cross_host_v4/history/group32/EXECUTION_PLAN.md`](../../objects/bd/bdae9cdcd8f38068e7d60a52a93488137d1369f5dfd803844a3773234649733f__EXECUTION_PLAN.md)
+- [`revisions/cross_host_v4/history/group32/SCORE_PASS_0.json`](../../objects/8d/8d7867b548ded4df2f14361f1c011aa7fcb3ee7bbe86590165e9b72a807c093e__P0_Q2_ORIGINAL_SCORE_PASS_0.json)
+- [`revisions/cross_host_v4/history/group32/SCORE_PASS_1.json`](../../objects/8d/8d7867b548ded4df2f14361f1c011aa7fcb3ee7bbe86590165e9b72a807c093e__P0_Q2_ORIGINAL_SCORE_PASS_0.json)
+- [`revisions/cross_host_v4/runtime/qwen35_gdn_quant/README.md`](../../objects/89/8908284334600b0cfbd2adf6f1cda8ff32a32c5d8d184e8083ab791f02415ea1__README.md)
+- [`revisions/cross_host_v4/RESOURCE_AND_THROUGHPUT_ESTIMATE.md`](../../objects/26/265a9fc0e7a0082a387fed36ce814cb4a016f8b9c97fece94c0b4c28b1d4beb4__RESOURCE_AND_THROUGHPUT_ESTIMATE.md)
+- [`revisions/three_gpu_continuation_v5/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`revisions/three_gpu_ledger_repair_v6/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`revisions/cross_host_v4/runtime/transformers-qwen35/AGENTS.md`](../../objects/13/13285a5fd29ed8e73d122d3630397ada4bcda9971d5dd88d968ac9156114d762__AGENTS.md)
+- [`revisions/cross_host_v4/runtime/transformers-qwen35/CLAUDE.md`](../../objects/13/13285a5fd29ed8e73d122d3630397ada4bcda9971d5dd88d968ac9156114d762__AGENTS.md)
+- [`revisions/cross_host_v4/runtime/transformers-qwen35/ISSUES.md`](../../objects/89/89442f58e56a275edfeb64d8ad11bcb8ef861d94d55847cf278dceb7a4a008f8__ISSUES.md)
+- [`revisions/cross_host_v4/runtime/transformers-qwen35/README.md`](../../objects/9f/9f745fda7e49125b047e41f99ff1bf67b1c092c34c61bdfda1c3460feaa95382__README.md)
+- [`revisions/three_gpu_continuation_v5/scripts/score_pass_cpu.py`](../../objects/7b/7b3749bfadf5fad792a9c3abd8ab9fdb1f5ddcab8855317ba872b8ea8727ce8b__score_pass_cpu.py)
+- [`revisions/three_gpu_reuse57_resume_v7/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`revisions/cross_host_v4/GROUP64_SYM_ASYM_NUMERICAL_CONTRACT.md`](../../objects/84/8414b8acc43a523a950a0c6344d05076213916c0e00b1fdbb4fcc85279e4299b__GROUP64_SYM_ASYM_NUMERICAL_CONTRACT.md)
+- [`revisions/cross_host_v4/history/group32/FINALIZER_STARTED.json`](../../objects/ec/ec1f1e49b2d403ab89ba82e967656b5d57ed4ff292c3464c47e341e81f3732b1__FINALIZER_STARTED.json)
+- [`revisions/cross_host_v4/history/group32/FINAL_TASK_STATUS.json`](../../objects/be/beebeb4fc780f037cc686bcc95dd0d22a21c8bb3a7d8c2f0318db7bd1b8fe8b9__FINAL_TASK_STATUS.json)
+- [`revisions/three_gpu_continuation_v5/AIME26_SEED1_PROTOCOL.json`](../../objects/4f/4ff97aa16067538c9031d8abad2ecca4d19957278a87bcaa83b212093cc6da9d__AIME26_SEED1_PROTOCOL.json)
+- [`revisions/three_gpu_continuation_v5/history/group32/HANDOFF.md`](../../objects/74/74958b92f476f24b75e9e060dfa939ee309a96ba7abf250f86cdac1157014de4__HANDOFF.md)
+- [`revisions/three_gpu_ledger_repair_v6/LEDGER_REPAIR_CONTRACT.md`](../../objects/78/782ff7da218903b411bf193f9c9ce902d827df1bf74128fd6863c40801471931__LEDGER_REPAIR_CONTRACT.md)
+- [`revisions/three_gpu_ledger_repair_v6/scripts/score_pass_cpu.py`](../../objects/7b/7b3749bfadf5fad792a9c3abd8ab9fdb1f5ddcab8855317ba872b8ea8727ce8b__score_pass_cpu.py)
+- [`revisions/cross_host_v4/history/group32/FINAL_SEAL_RECEIPT.json`](../../objects/61/617e4e5ed2593c55951c7cbf470b297273b22ce7aa79b2e039e493ac4b45361c__FINAL_SEAL_RECEIPT.json)
+- [`revisions/cross_host_v4/history/group32/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`revisions/cross_host_v4/runtime/transformers-qwen35/SECURITY.md`](../../objects/e7/e774a4809fe39d34259a40f14eb4b8d2e8b01c3435b93f673e83661b3716bcca__SECURITY.md)

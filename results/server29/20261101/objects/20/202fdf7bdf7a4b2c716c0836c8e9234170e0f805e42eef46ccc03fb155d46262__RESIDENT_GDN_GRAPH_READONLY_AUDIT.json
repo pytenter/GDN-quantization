@@ -1,0 +1,107 @@
+{
+  "GPU_dispatched": 0,
+  "P1_modified": false,
+  "exact_actual_model_source_sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a",
+  "graph": [
+    {
+      "behavior": "Mask then QKV projection; causal Conv and SiLU remain native; split and shape unique16 Q/K and32 Value heads",
+      "lines": "440-496"
+    },
+    {
+      "behavior": "beta=b.sigmoid(); g=-exp(A_log.float())*softplus(a.float()+dt_bias); per recurrent-head scalars; no rotation of beta/g/Value",
+      "lines": "498-500"
+    },
+    {
+      "behavior": "Original Q/K repeat_interleave2 produces recurrent-to-unique map h//2; safe to postpone duplication until after identical unique-head normalization and rotation",
+      "lines": "501-503"
+    },
+    {
+      "behavior": "Original normalization x*rsqrt(sum(x*x)+1e-6) occurs in incoming BF16 dtype before .float(); new path must keep it exactly once before FP32 dense rotation",
+      "lines": "242-245;263-267;343-348"
+    },
+    {
+      "behavior": "Original Torch helper scales Query by128**-0.5 after FP32 cast; do not scale in new QK preparation",
+      "lines": "278-279;352-353"
+    },
+    {
+      "behavior": "alpha=exp(g); decay S; mem=sum_Key(decayedS*k); delta=(v-mem)*beta; S+=k outer delta; y=sum_Key(S*qscaled)",
+      "lines": "364-375"
+    },
+    {
+      "behavior": "First q_length1 prompt input uses chunk helper with padding64; cached q_length1 uses recurrent helper; returned state goes directly into original cache",
+      "lines": "505-535"
+    },
+    {
+      "behavior": "Native post-readout gated RMSNorm and out_proj remain unchanged",
+      "lines": "537-543"
+    }
+  ],
+  "history_precision": {
+    "old_C1": "Actual prior RotationPatch already rotated Q/K byA and keptGDNState residentA; no per-token full-State dense rotation observed in that source",
+    "old_S3": "Prior QDQ permuted Key rows and inverse-permuted reconstructed State aroundB1; new UHPresident architecture removes those full-State permutation copies",
+    "old_history_mutated": false
+  },
+  "implementation_design": {
+    "instance_local": true,
+    "no_global_dynamic_library_mutation": true,
+    "no_per_head_rotation_loop": true,
+    "no_per_token_full_State_matmul": true,
+    "unique_interface": "normalize unique16 BF16 Q/K once -> stack Q/K head-batched bmm using A32/A32[:,P] -> repeat_interleave2 -> original helper normFalse and original scale"
+  },
+  "numerical_acceptance": {
+    "CPU_only": true,
+    "FP32": "record differences and componentwise local arithmetic budgets; no empirical4Hmaxabs or2e-6diagonal gate; full9B diagnostic still required",
+    "FP64_reference": "all384heads, explicit orthogonality-defect term, independent dense GDN linearoperator and rankone update/readout identities, operation-count gamma budgets",
+    "GPU_claim": false,
+    "structural_hard_failures": [
+      "wrong matrix direction",
+      "wrong h//2 mapping",
+      "duplicate/missing normalization",
+      "duplicate/missing Query scaling",
+      "PBR twice",
+      "cacheState in wrongcoordinates",
+      "changed gate/beta/Value semantics",
+      "QDQ not consumed"
+    ]
+  },
+  "resident_contract": {
+    "C1": "R=A32=single_FP32_cast(U64@H64)",
+    "H_input": "Actual selected forward receives native Q/K; directA avoids any secondHadamard. Only if a future interface truly receives H-coordinates use T=H.T@U@H once, not bothH andA.",
+    "S3": "R=A32[:,PBR]; qS3=qC1[...,PBR]; SS3=PBR.T@SC1",
+    "column_vector": "S_R=R.T@S_native; q_R=R.T@q_native; k_R=R.T@k_native",
+    "initialization": "Native helper initializes +0 FP32 resident State directly; no full-State transform required",
+    "permutation": "7-bit reversal128, bijective and selfinverse; apply only once in coordinate definition, never again in QDQ",
+    "readout": "q_R.T@S_R=q_native.T@S_native for exact orthogonalR, with helper Query scale unchanged",
+    "row_tensor": "q_R=q_native@R; k_R=k_native@R",
+    "state_axes": [
+      "batch",
+      "recurrent32",
+      "Key128",
+      "Value128"
+    ],
+    "update": "Same unchanged native Torch recurrence, direct unchanged B1 SymINT8 KeyGroup32 encode/decode/writeback on resident State"
+  },
+  "source_files": [
+    {
+      "path": "/Users/pytenter/Documents/\u4e34\u65f6\u9879\u76ee1/QWEN_GDN_OSCAR_SYM32_P1_C1_S3_UNIFIED_RECOVERY_AIME26_V2_RERUN_20261022/inherited/group32/inherited/historical_port_payload/candidate/source_tree/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py",
+      "sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a"
+    },
+    {
+      "path": "/Users/pytenter/Documents/\u4e34\u65f6\u9879\u76ee1/QWEN_GDN_OSCAR_SYM32_P1_C1_S3_UNIFIED_RECOVERY_AIME26_V2_RERUN_20261022/src/rotation_adapter.py",
+      "sha256": "4ed0c21318d2a09ed207d36df0a2f5a3920523c381fb039ef482d6316288a6bd"
+    },
+    {
+      "path": "/Users/pytenter/Documents/\u4e34\u65f6\u9879\u76ee1/QWEN_GDN_OSCAR_SYM32_P1_C1_S3_UNIFIED_RECOVERY_AIME26_V2_RERUN_20261022/src/rotation_codec.py",
+      "sha256": "4c34d459ba4689a33f7e5f9205b45a54366b57f480d3a2ae50dab9d92c4a78c2"
+    },
+    {
+      "path": "/Users/pytenter/Documents/\u4e34\u65f6\u9879\u76ee1/QWEN_GDN_OSCAR_SYM32_P1_C1_S3_UNIFIED_RECOVERY_AIME26_V2_RERUN_20261022/inherited/group32/src/canonical_h128.py",
+      "sha256": "4be73decd604b9139d4dfbaed82a2e03cf40e353b4359837cf8eeeacc2aa3883"
+    },
+    {
+      "path": "/Users/pytenter/Documents/\u4e34\u65f6\u9879\u76ee1/QWEN_GDN_OSCAR_SYM32_P1_C1_S3_UNIFIED_RECOVERY_AIME26_V2_RERUN_20261022/inherited/group32/src/group_codecs.py",
+      "sha256": "110a3e928ffe9d81fa2db6fcfb0fecdfd39bd478dde7e41dc9d9209807c731de"
+    }
+  ],
+  "status": "READ_ONLY_SOURCE_GRAPH_AUDIT_COMPLETE_CPU_GPU_QUALIFICATION_PENDING"
+}

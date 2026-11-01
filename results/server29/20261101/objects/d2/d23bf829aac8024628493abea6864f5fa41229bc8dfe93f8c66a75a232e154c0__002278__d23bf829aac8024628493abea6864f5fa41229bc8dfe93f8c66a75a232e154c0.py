@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self._fx_graph_cache_key,self._time_taken_ns,self.current_callable,self.cache_key,self.source_code,self.cache_linemap,self.device_types,self.device_idxs,self.mutated_inputs,self.mutated_input_idxs,self.constants,self.frozen_param_names,self.torchbind_constants,self.output_strides,self.disabled_cudagraphs_reason,self.metrics_deltas,self.counter_deltas,self.guards_expr,self.cudagraph_info,self.fx_kwargs,self.inputs_to_check,self.boxed_forward_device_index,self._boxed_call,self._triton_bundle,)==(other._fx_graph_cache_key,other._time_taken_ns,other.current_callable,other.cache_key,other.source_code,other.cache_linemap,other.device_types,other.device_idxs,other.mutated_inputs,other.mutated_input_idxs,other.constants,other.frozen_param_names,other.torchbind_constants,other.output_strides,other.disabled_cudagraphs_reason,other.metrics_deltas,other.counter_deltas,other.guards_expr,other.cudagraph_info,other.fx_kwargs,other.inputs_to_check,other.boxed_forward_device_index,other._boxed_call,other._triton_bundle,)
+  return NotImplemented
+ return __eq__

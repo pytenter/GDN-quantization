@@ -1,0 +1,2402 @@
+Data/Analysis.py
+class Analysis(IdObject, Parameters):
+	def __init__(self, name, analysisType, document):
+		IdObject.__init__(self)
+		Parameters.__init__(self, name, document.get_parameters())
+		self._analysisType = analysisType
+		self._doc = document
+Data/Drawings.py
+class PartView(View):
+	def __init__(self, drawing, part=None, scale=1, offset=Vertex()):
+		View.__init__(self, drawing, "New View", scale, offset)
+		self._part = part
+		self._view_type = ViewType.PartView
+		self._sketch = Sketch(drawing)
+		if part is not None:
+			self._name = part.name
+			self._part.add_change_handler(self.on_part_changed)
+			self.update_sketch()
+
+	@property
+	def sketch(self):
+		return self._sketch
+
+	@property
+	def part(self):
+		return self._part
+
+	def update_sketch(self):
+		if self._part.update_needed:
+			self._part.update_geometry()
+		section_datas = []
+		if self._part is not None:
+			self._sketch.clear()
+			for surface in self._part.get_surfaces():
+				plane = Plane()
+				section_data = surface.get_section_by_plane(plane)
+				if section_data is not None:
+					section_datas.append(section_data)
+			for section_data in section_datas:
+				coords = section_data['coords']
+				if len(coords) > 2:
+					kp1 = self._sketch.create_keypoint(coords[0][0], coords[0][1], coords[0][2])
+					for i in range(1, len(coords)):
+						kp2 = self._sketch.create_keypoint(coords[i][0], coords[i][1], coords[i][2])
+						self._sketch.create_line_edge(kp1, kp2)
+						kp1 = kp2
+			self.changed(ChangeEvent(self, ChangeEvent.ObjectChanged, self))
+
+	def delete(self):
+		self.changed(ChangeEvent(self, ChangeEvent.Deleted, self))
+
+	def on_part_changed(self, event):
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectChanged, self._part))
+		self.update_sketch()
+
+	def serialize_json(self):
+		return {
+			'view': View.serialize_json(self),
+			'part': self._part.uid
+		}
+
+	@staticmethod
+	def deserialize(data, drawing):
+		part_view = PartView(drawing)
+		if data is not None:
+			part_view.deserialize_data(data)
+		return part_view
+
+	def deserialize_data(self, data):
+		doc = self._drawing.document
+		View.deserialize_data(self, data['view'])
+		self._part = doc.get_geometries().get_geometry(data['part'])
+		self._part.add_change_handler(self.on_part_changed)
+		self.update_sketch()
+Data/Proformer.py
+class ProformerType(Enum):
+	Circular = 0
+	Diamond = 1
+	Triangular = 2
+	Square = 3
+	Rectangular = 4
+	Mirror = 5
+	MirrorX = 6
+	MirrorY = 7
+	MirrorXY = 8
+Data/Sketch.py
+class Sketch(Geometry):
+class Alignment(Enum):
+class Text(IdObject, ObservableObject):
+class Attribute(Text):
+class SketchInstance(ParametersInstance):
+	def __init__(self, params_parent):
+	def add_edge(self, edge):
+	def clear(self):
+	def get_limits(self):
+	def key_point_count(self):
+	def edges_count(self):
+	def sketch_instances(self):
+	def proformers(self):
+	def get_sketch(self, uid):
+	def get_edge(self, uid):
+	def get_edge_by_name(self, name):
+	def get_keypoint(self, uid):
+	def get_area(self, uid):
+	def get_edges(self):
+	def get_keypoints(self):
+	def get_texts(self):
+	def get_areas(self):
+	def get_fillet(self, uid):
+	def get_parent(self):
+	def get_next_edge_naming_index(self):
+	def remove_areas(self, areas):
+	def remove_edge(self, edge):
+	def remove_edges(self, edges):
+	def remove_key_points(self, key_points):
+	def get_keypoint_by_location(self, x, y, z, ts=None):
+	def create_keypoint(self, x, y, z):
+	def add_keypoint(self, key_point):
+	def create_proformer(self, type, name):
+	def create_sketch_instance(self, sketch_to_insert, kp):
+	def create_circle_edge(self, kp, radius_param):
+	def create_fillet_edge(self, kp, radius_param):
+	def create_nurbs_edge(self, kp):
+	def create_text(self, key_point, value, height):
+	def create_attribute(self, kp, name, default_value, height):
+	def create_line_edge(self, key_point1, key_point2):
+	def create_arc_edge(self, center_key_point, start_angle, end_angle, radius):
+	def get_new_unique_area_name(self, name):
+	def create_area(self):
+	def create_composite_area(self):
+	def clear_areas(self):
+	def on_kp_changed(self, event):
+	def on_text_changed(self, event):
+	def on_edge_changed(self, event):
+	def on_area_changed(self, event: ChangeEvent):
+	def on_sketch_instance_changed(self, event: ChangeEvent):
+	def on_proformer_changed(self, event: ChangeEvent):
+	def delete(self):
+	def serialize_json(self):
+	def deserialize(data, param_parent):
+	def deserialize_data(self, data):
+	def __init__(self, sketch):
+	def text_type(self):
+	def name(self):
+	def key_point(self):
+	def key_point(self, value):
+	def value(self):
+	def value(self, value):
+	def vertical_alignment(self):
+	def vertical_alignment(self, value):
+	def horizontal_alignment(self):
+	def horizontal_alignment(self, value):
+	def height(self):
+	def height(self, value):
+	def angle(self):
+	def on_kp_changed(self, event):
+	def delete(self):
+	def serialize_json(self):
+	def deserialize(sketch, data):
+	def deserialize_data(self, data):
+	def __init__(self, sketch):
+	def text_type(self):
+	def name(self):
+	def name(self, name):
+	def serialize_json(self):
+	def deserialize(param_parent, data):
+	def deserialize_data(self, data):
+	def __init__(self, parent, name="New sketch instance"):
+	def delete(self):
+	def name(self):
+	def sketch(self):
+	def sketch(self, value):
+	def offset(self):
+	def offset(self, value):
+	def rotation(self):
+	def rotation(self, value):
+	def scale(self):
+	def scale(self, value):
+	def inside(self, vertex):
+	def serialize_json(self):
+	def deserialize(parent, data):
+	def deserialize_data(self, data):
+Data/Drawings.py
+class Drawings(ObservableObject):
+	def __init__(self, document):
+		ObservableObject.__init__(self)
+		self._headers = []
+		self._borders = []
+		self._drawings = []
+		self._doc = document
+
+	def create_header(self):
+		header = Sketch(self._doc)
+		header.name = "New Header"
+		self.changed(ChangeEvent(self, ChangeEvent.BeforeObjectAdded, header))
+		self._doc.get_geometries().add_geometry(header)
+		self._headers.append(header)
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectAdded, header))
+		return header
+
+	def create_drawing(self, size, name, header, orientation):
+		drawing = Drawing(self._doc, size, name, header, orientation)
+		self.changed(ChangeEvent(self, ChangeEvent.BeforeObjectAdded, drawing))
+		self._drawings.append(drawing)
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectAdded, drawing))
+		drawing.add_change_handler(self.drawing_changed)
+		return drawing
+
+	def get_headers(self):
+		return list(self._headers)
+
+	@property
+	def name(self):
+		return "Drawings"
+
+	@property
+	def items(self):
+		return list(self._drawings)
+
+	@property
+	def length(self):
+		return len(self._drawings)
+
+	@property
+	def item(self, index):
+		return self._drawings[index]
+
+	def get_header_uids(self):
+		uids = []
+		for header in self._headers:
+			uids.append(header.uid)
+		return uids
+
+	def serialize_json(self):
+		return {
+			'headers': self.get_header_uids(),
+			'drawings': self._drawings
+		}
+
+	def drawing_changed(self, event):
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectChanged, event.sender))
+		if event.type == ChangeEvent.Deleted:
+			self.changed(ChangeEvent(self, ChangeEvent.BeforeObjectRemoved, event.sender))
+			if type(event.sender) is Drawing:
+				self._drawings.remove(event.sender)
+			self.changed(ChangeEvent(self, ChangeEvent.ObjectRemoved, event.sender))
+
+	@staticmethod
+	def deserialize(data, document):
+		drawings = Drawings(document)
+		if data is not None:
+			drawings.deserialize_data(data)
+		return drawings
+
+	def deserialize_data(self, data):
+		for uid in data['headers']:
+			header = self._doc.get_geometries().get_geometry(uid)
+			self._headers.append(header)
+		for dwg_data in data['drawings']:
+			drawing = Drawing.deserialize(dwg_data, self._doc)
+			self._drawings.append(drawing)
+			drawing.add_change_handler(self.drawing_changed)
+Data/CalcTableAnalysis.py
+class CalcTableAnalysis(Analysis):
+	def __init__(self, name, document):
+		Analysis.__init__(self, name, AnalysisType.CalcTable, document)
+		self._row_count = 0
+		self._col_count = 0
+		self._rows = {}
+
+	def get_cell(self, row, col):
+		if row in self._rows.keys():
+			if col in self._rows[row].keys():
+				return self._rows[row][col]
+		return None
+
+	def set_cell_value(self, row, col, value):
+		cell = self.get_cell(row, col)
+		if cell is None:
+			if value != "":
+				cell = self.create_parameter(col_index_to_letter(col) + str(row + 1))
+				if row not in self._rows.keys():
+					self._rows[row] = {}
+				self._rows[row][col] = cell
+		if value == "" and cell is not None:
+			self.delete_parameter(cell.uid)
+			self._rows[row].pop(col)
+		elif cell is not None:
+			cell.value = value
+
+	def serialize_rows(self):
+		rows = {}
+		for row_tuple in self._rows.items():
+			row_index = row_tuple[0]
+			rows[row_index] = {}
+			for col_tuple in row_tuple[1].items():
+				col_index = col_tuple[0]
+				parm = col_tuple[1]
+				rows[row_index][col_index] = parm.uid
+		return rows
+
+	def deserialize_rows(self, data):
+		for row_index in data:
+			cols = data[row_index]
+			for col_index in cols:
+				uid = cols[col_index]
+				cell = self.get_parameter_by_uid(uid)
+				if row_index not in self._rows.keys():
+					self._rows[int(row_index)] = {}
+				self._rows[int(row_index)][int(col_index)] = cell
+
+	def serialize_json(self):
+		return {
+			'uid': IdObject.serialize_json(self),
+			'parameters': Parameters.serialize_json(self),
+			'rows': self.serialize_rows(),
+			'type': self._analysisType.value
+		}
+
+	@staticmethod
+	def deserialize(data, document):
+		sketch = CalcTableAnalysis("", document)
+		if data is not None:
+			sketch.deserialize_data(data)
+		return sketch
+
+	def deserialize_data(self, data):
+		IdObject.deserialize_data(self, data['uid'])
+		Parameters.deserialize_data(self, data['parameters'])
+		self.deserialize_rows(data['rows'])
+GUI/Icons.py
+def get_icon(name):
+	global icons_instance
+	if not icons_instance:
+		icons_instance = Icons()
+	return icons_instance.icon(name)
+Data/Events.py
+class ChangeEvent(Event):
+	ObjectAdded = 1
+	ObjectRemoved = 2
+	ValueChanged = 3
+	BeforeObjectAdded = 4
+	BeforeObjectRemoved = 5
+	Cleared = 6
+	Deleted = 7
+	HiddenChanged = 8
+	ObjectChanged = 9
+	BeforeCleared = 10
+
+	def __init__(self, sender, type, object):
+		Event.__init__(self, sender)
+		self.type = type
+		self.object = object
+Data/Style.py
+class EdgeStyle(NamedObservableObject, IdObject):
+	Black = [0, 0, 0]
+
+	def __init__(self, name="New style", thickness=0.00033, color=Black, line_type=EdgeLineType.Continous):
+		NamedObservableObject.__init__(self, name)
+		IdObject.__init__(self)
+		self._thickness = thickness
+		self._color = color
+		self._line_type = line_type
+
+	@property
+	def color(self):
+		return self._color
+
+	@property
+	def thickness(self):
+		return self._thickness
+
+	@thickness.setter
+	def thickness(self, value):
+		old_value = self._thickness
+		self._thickness = float(value)
+		self.changed(ValueChangeEvent(self, 'thickness', old_value, self._thickness))
+
+	@property
+	def line_type(self):
+		return self._line_type
+
+	@line_type.setter
+	def line_type(self, value):
+		if value is EdgeLineType:
+			self._line_type = value
+		else:
+			self._line_type = EdgeLineType(value)
+
+	def serialize_json(self):
+		return {
+			'uid': IdObject.serialize_json(self),
+			'no': NamedObservableObject.serialize_json(self),
+			'thk': self._thickness,
+			'color': self._color,
+			'lt': self._line_type.value
+		}
+
+	@staticmethod
+	def deserialize(data):
+		edge_style = EdgeStyle()
+		if data is not None:
+			edge_style.deserialize_data(data)
+		return edge_style
+
+	def deserialize_data(self, data):
+		IdObject.deserialize_data(self, data['uid'])
+		NamedObservableObject.deserialize_data(self, data['no'])
+		self._color = data['color']
+		self._thickness = data['thk']
+		self._line_type = EdgeLineType(data['lt'])
+Data/Style.py
+class Brush(NamedObservableObject, IdObject):
+	def __init__(self, name="New Brush", thickness=0.00033, type=BrushType.Line):
+		NamedObservableObject.__init__(self, name)
+		IdObject.__init__(self)
+		self._type = type
+		self._color = [0, 0, 0]
+
+	@property
+	def color(self):
+		return self._color
+
+	@property
+	def type(self):
+		return self._type
+
+	@type.setter
+	def type(self, value):
+		if type(value) is int:
+			self._type = BrushType(value)
+		else:
+			self._type = value
+
+	@property
+	def type_name(self):
+		return self._type.name
+
+	def serialize_json(self):
+		return {
+			'uid': IdObject.serialize_json(self),
+			'no': NamedObservableObject.serialize_json(self),
+			'type': self.type.value,
+			'color': self._color
+		}
+
+	@staticmethod
+	def deserialize(data):
+		brush = Brush()
+		if data is not None:
+			brush.deserialize_data(data)
+		return brush
+
+	def deserialize_data(self, data):
+		IdObject.deserialize_data(self, data['uid'])
+		NamedObservableObject.deserialize_data(self, data['no'])
+		self._color = data.get("color", [0, 0, 0])
+		self._type = BrushType(data.get("type", 0))
+Data/Parameters.py
+class Parameter(IdObject, ObservableObject):
+	def __init__(self, parent, name='new parameter', value=0.0):
+		IdObject.__init__(self)
+		ObservableObject.__init__(self)
+		self._parent = parent
+		self._name = name
+		self._value = value
+		self._instance_values = {}
+		self._instance_formula = {}
+		self._formula = str(value)
+		self._change_senders = []
+		self._instance_change_senders = {}
+		self._hidden = False
+		self._arguments = []
+		self._base_unit = False
+		self._units = {}
+		self._locked = False
+
+	@property
+	def name(self):
+		return self._name
+
+	@name.setter
+	def name(self, value):
+		old_name = self._name
+		if '(' in value:
+			args = re.findall("\((.*?)\)", value)
+			self._arguments = str.split(args[0], ',')
+			self._name = value.replace("(" + args[0] + ")", "")
+		else:
+			self._name = value
+		self.changed(ChangeEvent(self, ChangeEvent.ValueChanged, {'old_name': old_name, 'new_name': self._name}))
+
+	@property
+	def full_name(self):
+		args = ""
+		if len(self._arguments) > 0:
+			args = "("
+			first = True
+			for arg in self._arguments:
+				if first:
+					first = False
+				else:
+					args += ","
+				args += arg
+			args += ")"
+		return self._name + args
+
+	@property
+	def parent(self):
+		return self._parent
+
+	@property
+	def locked(self):
+		return self._locked
+
+	@locked.setter
+	def locked(self, value):
+		if type(value) is not bool:
+			value = boolean(value)
+		self._locked = value
+
+	@property
+	def hidden(self):
+		return self._hidden
+
+	@hidden.setter
+	def hidden(self, value):
+		old_val = self._hidden
+		if type(value) is not bool:
+			value = boolean(value)
+		self._hidden = value
+		if value != old_val:
+			self.changed(ChangeEvent(self, ChangeEvent.HiddenChanged, {'new value': value, 'old value': old_val}))
+
+	@property
+	def value_view(self):
+		return self._value
+
+	@property
+	def value(self):
+		return self._value
+
+	@value.setter
+	def value(self, value):
+		self.set_instance_value(None, value)
+
+	def get_instance_value(self, instance_uid):
+		if instance_uid in self._instance_values:
+			return self._instance_values[instance_uid]
+		return self._value
+
+	def create_value_change_object(self, new_value, old_value, old_formula, instance_uid):
+		change_object = {
+			'new value': new_value,
+			'old value': old_value,
+			'new formula': self.get_instance_internal_formula(instance_uid),
+			'old formula': old_formula,
+			'instance': instance_uid
+		}
+		return change_object
+
+	def set_instance_value(self, instance_uid, value):
+		if self._base_unit:
+			raise ValueError("Base unit can only have value = 1")
+		elif self._locked:
+			raise ValueError("This parameter " + self.name + " has been locked")
+		old_value = self.get_instance_value(instance_uid)
+		old_formula = self.get_instance_internal_formula(instance_uid)
+		if value is None and instance_uid is not None:
+			if instance_uid in self._instance_values:
+				self._instance_values.pop(instance_uid)
+			if instance_uid in self._instance_formula:
+				self._instance_formula.pop(instance_uid)
+		else:
+			self.clear_change_handler(instance_uid)
+			if isinstance(value, str):
+				formula = " " + insert_spaces(value) + " "
+				params = self._parent.get_all_parameters()
+				for param in params:
+					if " " + param.name + " " in formula:
+						if param is self:
+							raise Exception("Formula may not reference it self.")
+						formula = formula.replace(" " + param.name + " ", '{' + param.uid + '}')
+						param.add_change_handler(self.on_parameter_changed)
+						self._change_senders.append(param)
+				if instance_uid is None:
+					self._formula = formula.replace(' ', '')
+					new_value = self.evaluate(instance_uid)
+					if type(new_value) is str:
+						new_value = value
+						self._formula = value
+					self._value = new_value
+				else:
+					self.set_instance_internal_formula(instance_uid, formula.replace(' ', ''))
+					new_value = self.evaluate(instance_uid)
+					if type(new_value) is str:
+						new_value = value
+						self.set_instance_internal_formula(instance_uid, value)
+					self.set_instance_internal_value(instance_uid, new_value)
+			else:
+				if instance_uid is None:
+					self._formula = str(value)
+					new_value = value
+					self._value = value
+				else:
+					self.set_instance_internal_formula(instance_uid, str(value))
+					new_value = value
+					self.set_instance_internal_value(instance_uid, value)
+		change_object = self.create_value_change_object(new_value, old_value, old_formula, instance_uid)
+		self.changed(ChangeEvent(self, ChangeEvent.ValueChanged, change_object))
+
+	@property
+	def formula(self):
+		return self.get_instance_formula(None)
+
+	def get_instance_formula(self, instance_uid):
+		formula = ""
+		if instance_uid is None:
+			formula = self._formula
+		else:
+			if instance_uid in self._instance_formula:
+				formula = self._instance_formula[instance_uid]
+			else:
+				formula = self._formula
+		uids = re.findall("{(.*?)}", formula)
+		expr = formula
+		if formula != "":
+			for uid in uids:
+				param = self._parent.get_parameter_by_uid(uid)
+				expr = expr.replace('{' + uid + '}', param.name)
+		return expr
+
+	@property
+	def internal_formula(self):
+		return self._formula
+
+	@internal_formula.setter
+	def internal_formula(self, value):
+		self._formula = value
+
+	@property
+	def internal_value(self):
+		return self._value
+
+	@internal_value.setter
+	def internal_value(self, value):
+		self._value = value
+
+	def get_instance_internal_formula(self, instance_uid):
+		if instance_uid in self._instance_formula:
+			return self._instance_formula[instance_uid]
+		return self._formula
+
+	def set_instance_internal_formula(self, instance_uid, value):
+		if instance_uid in self._instance_formula:
+			if value == self._formula:
+				self._instance_formula.pop(instance_uid)
+			else:
+				self._instance_formula[instance_uid] = value
+		else:
+			if value != self._formula:
+				self._instance_formula[instance_uid] = value
+
+	def get_instance_internal_value(self, instance_uid):
+		if instance_uid in self._instance_values:
+			return self._instance_values[instance_uid]
+		return self._value
+
+	def set_instance_internal_value(self, instance_uid, value):
+		if instance_uid in self._instance_values:
+			if value == self._value:
+				self._instance_values.pop(instance_uid)
+			else:
+				self._instance_values[instance_uid] = value
+		else:
+			if value != self._formula:
+				self._instance_values[instance_uid] = value
+
+	@property
+	def base_unit(self):
+		return self._base_unit
+
+	@base_unit.setter
+	def base_unit(self, value):
+		if type(value) is not bool:
+			value = boolean(value)
+		if value:
+			if len(self._units) == 0:
+				self._base_unit = value
+				self._value = 1
+				self._formula = "1"
+				self._units[self.uid] = [1, self]
+			else:
+				raise Exception("Base unit can not be based on other units.")
+		else:
+			self._units.clear()
+			self._base_unit = value
+
+	@property
+	def units(self):
+		return self._units.values()
+
+	def formula_factored(self, factor):
+		sets = []
+		expr = ""
+		for set1 in self._formula.split("{"):
+			for set2 in set1.split("}"):
+				sets.append(set2)
+
+		for i in range(len(sets)):
+			if i % 2 == 0:
+				try:
+					expr += re.sub(r'([0-9]*\.[0-9]+|[0-9]+)', lambda m: str(float(m.groups()[0]) * factor), sets[i])
+				except ValueError:
+					pass
+			else:
+				expr += "{" + sets[i] + "}"
+		uids = re.findall("{(.*?)}", self._formula)
+		for uid in uids:
+			param = self._parent.get_parameter_by_uid(uid)
+			expr = expr.replace('{' + uid + '}', param.name)
+		return expr
+
+	def get_depend_params(self):
+		depends = []
+		uids = re.findall("{(.*?)}", self._formula)
+		for uid in uids:
+			param = self._parent.get_parameter_by_uid(uid)
+			sub_params = param.get_depend_params()
+			for sub_param in sub_params:
+				depends.append(sub_param)
+			depends.append(param)
+		return depends
+
+	def evaluate(self, instance_uid=None):
+		if instance_uid is None:
+			formula = self._formula
+		else:
+			if instance_uid in self._instance_formula:
+				formula = self._instance_formula[instance_uid]
+			else:
+				formula = self._formula
+		uids = re.findall("{(.*?)}", formula)
+		expr = formula
+		for uid in uids:
+			param = self._parent.get_parameter_by_uid(uid)
+			expr = expr.replace('{' + uid + '}', str(param.get_instance_value(instance_uid)))
+		try:
+			return eval_expr(expr)
+		except (TypeError):
+			return expr
+
+	def clear_change_handler(self, instance_uid):
+		if instance_uid is None:
+			for param in self._change_senders:
+				param.remove_change_handler(self.on_parameter_changed)
+			self._change_senders = []
+		else:
+			if instance_uid in self._instance_change_senders:
+				for param in self._instance_change_senders[instance_uid]:
+					param.remove_change_handler(self.on_parameter_changed)
+				self._instance_change_senders[instance_uid] = []
+
+	def on_parameter_changed(self, event):
+		if event.type == ChangeEvent.Deleted:
+			self._formula = self._formula.replace('{' + event.object.uid + '}', event.object.name)
+		if 'instance' in event.object:
+			instance_uid = event.object['instance']
+		else:
+			instance_uid = None
+
+		if instance_uid is None:
+			old_value = self._value
+			self._value = self.evaluate(instance_uid)
+			new_value = self._value
+			for formula_tuple in self._instance_formula.items():
+				uid = formula_tuple[0]
+				if event.sender.uid in formula_tuple[1]:
+					self.set_instance_internal_value(uid, self.evaluate(uid))
+		else:
+			old_value = self.get_instance_value(instance_uid)
+			new_value = self.evaluate(instance_uid)
+			if new_value != self._value:
+				self._instance_values[instance_uid] = new_value
+			else:
+				if instance_uid in self._instance_values:
+					self._instance_values.pop(instance_uid)
+
+		self.changed(ChangeEvent(self, ChangeEvent.ValueChanged, {'new value': new_value, 'old value': old_value, 'instance': instance_uid}))
+
+	def serialize_json(self):
+		return {
+			'uid': IdObject.serialize_json(self),
+			'name': self.name,
+			'value': self._value,
+			'inval': self._instance_values,
+			'formula': self._formula,
+			'inform': self._instance_formula,
+			'hidden': self._hidden
+		}
+
+	@staticmethod
+	def deserialize(data, parameters):
+		param = Parameter(parameters)
+		param.deserialize_data(data)
+		return param
+
+	def deserialize_data(self, data):
+		IdObject.deserialize_data(self, data['uid'])
+		self._value = data.get('value', 0.0)
+		self._formula = data.get('formula', "")
+		self.name = data.get('name', 'name missing')
+		self._hidden = data.get('hidden', False)
+		self._instance_values = data.get('inval', {})
+		self._instance_formula = data.get('inform', {})
+Business/Undo.py
+def change_name(doc, named_object, new_name):
+	old_name = named_object.name
+	named_object.name = new_name
+	doc.undo_stack.append(ChangeNameDoObject(named_object, old_name, new_name))
+Data/Geometry.py
+class Geometry(Parameters, IdObject):
+	Sketch = 0
+	Part = 1
+	Assembly = 2
+
+	def __init__(self, parent, name, geometry_type):
+		IdObject.__init__(self)
+		Parameters.__init__(self, name, parent)
+		self._parent = parent
+		self._geometry_type = geometry_type
+Data/Drawings.py
+class Drawing(Paper, Parameters):
+	def __init__(self, document, size=[1, 1], name="New Drawing", header=None, orientation=Paper.Landscape):
+		Paper.__init__(self, size, orientation)
+		Parameters.__init__(self, name, document.get_parameters())
+		self._doc = document
+		self._views = []
+		self._border_sketch = Sketch(self)
+		self._header_sketch = header
+		self._margins = [0.02, 0.02, 0.02, 0.02]
+		self._fields = {}
+		self._annotations = []
+		self.generate_border()
+		Paper.add_change_handler(self, self.on_paper_changed)
+
+	def on_paper_changed(self, event):
+		if event.object is not None:
+			if hasattr(event.object, '__iter__'):
+				if "name" in event.object:
+					if event.object['name'] == "margins" or event.object['name'] == "size":
+						print("paper changed")
+						self.generate_border()
+
+	@property
+	def document(self):
+		return self._doc
+
+	@property
+	def header_sketch(self):
+		return self._header_sketch
+
+	@property
+	def header(self):
+		return self._header_sketch.name
+
+	@property
+	def border_sketch(self):
+		return self._border_sketch
+
+	def generate_border(self):
+		alpha = "ABCDEFGHIJKLMNOP"
+		sketch = self._border_sketch
+		sketch.clear()
+		self._doc.styles.get_edge_style_by_name("border").thickness = 0.0005
+		m = self._margins
+		sz = self.size
+		border_width = sz[0] - m[0] - m[2]
+		max_len = 0.1
+		divisions = round(border_width / max_len)
+		length = border_width / divisions
+
+		pnt1 = sketch.create_keypoint(m[0], m[3], 0)
+		pnt2 = sketch.create_keypoint(sz[0] - m[2], m[3], 0)
+		pnt3 = sketch.create_keypoint(sz[0] - m[2], sz[1] - m[1], 0)
+		pnt4 = sketch.create_keypoint(m[0], sz[1] - m[1], 0)
+
+		sketch.create_line_edge(pnt1, pnt2).style_name = "border"
+		sketch.create_line_edge(pnt2, pnt3).style_name = "border"
+		sketch.create_line_edge(pnt3, pnt4).style_name = "border"
+		sketch.create_line_edge(pnt4, pnt1).style_name = "border"
+
+		for i in range(0, divisions):
+			tkp = sketch.create_keypoint(m[0] + (i + 0.5) * length , 2 * m[3] / 3, 0)
+			sketch.create_text(tkp, alpha[i], 0.005)
+			tkp = sketch.create_keypoint(m[0] + (i + 0.5) * length,sz[1] - 2 * m[1] / 3, 0)
+			sketch.create_text(tkp, alpha[i], 0.005)
+			if i > 0:
+				pnt1 = sketch.create_keypoint(m[0]  + i * length ,  m[3], 0)
+				pnt2 = sketch.create_keypoint(m[0] + i * length , m[3] / 2, 0)
+				sketch.create_line_edge(pnt1, pnt2).style_name = "border"
+				pnt1 = sketch.create_keypoint(m[0] + i * length , sz[1] - m[1], 0)
+				pnt2 = sketch.create_keypoint(m[0] + i * length , sz[1] - m[1] / 2, 0)
+				sketch.create_line_edge(pnt1, pnt2).style_name = "border"
+
+		border_height = sz[1] - m[1] - m[3]
+		divisions = round(border_height / max_len)
+		length = border_height / divisions
+		for i in range(0, divisions):
+			tkp = sketch.create_keypoint(2 * m[0] / 3, m[3] + (i + 0.5) * length, 0)
+			sketch.create_text(tkp, str(i+1), 0.005)
+			tkp = sketch.create_keypoint(sz[0] - 2 * m[2] / 3, m[3] + (i + 0.5) * length, 0)
+			sketch.create_text(tkp, str(i+1), 0.005)
+			if i > 0:
+				pnt1 = sketch.create_keypoint(m[0], m[3] + i * length, 0)
+				pnt2 = sketch.create_keypoint(m[0] / 2, m[3] + i * length, 0)
+				sketch.create_line_edge(pnt1, pnt2).style_name = "border"
+				pnt1 = sketch.create_keypoint(sz[0] - m[2], m[3] + i * length, 0)
+				pnt2 = sketch.create_keypoint(sz[0] - m[2] / 2, m[3] + i * length, 0)
+				sketch.create_line_edge(pnt1, pnt2).style_name = "border"
+
+	def create_sketch_view(self, sketch, scale, offset):
+		view = SketchView(self, sketch, scale, offset)
+		self.changed(ChangeEvent(self, ChangeEvent.BeforeObjectAdded, view))
+		self._views.append(view)
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectAdded, view))
+		view.add_change_handler(self.on_view_changed)
+		return view
+
+	def create_part_view(self, part, scale, offset):
+		view = PartView(self, part, scale, offset)
+		self.changed(ChangeEvent(self, ChangeEvent.BeforeObjectAdded, view))
+		self._views.append(view)
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectAdded, view))
+		view.add_change_handler(self.on_view_changed)
+		return view
+
+	def delete(self):
+		self.changed(ChangeEvent(self, ChangeEvent.Deleted, self))
+
+	def add_field(self, name, value):
+		field = Field(name, value)
+		self.changed(ChangeEvent(self, ChangeEvent.BeforeObjectAdded, field))
+		self._fields[name] = field
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectAdded, field))
+		field.add_change_handler(self.on_field_changed)
+
+	def get_field(self, name):
+		if name in self._fields:
+			return self._fields[name]
+		else:
+			return None
+
+	def get_fields(self):
+		return dict(self._fields)
+
+	def get_views(self):
+		return list(self._views)
+
+	def on_view_changed(self, event):
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectChanged, event.sender))
+		if event.type == ChangeEvent.Deleted:
+			self.changed(ChangeEvent(self, ChangeEvent.BeforeObjectRemoved, event.sender))
+			self._views.remove(event.sender)
+			self.changed(ChangeEvent(self, ChangeEvent.ObjectRemoved, event.sender))
+			event.sender.remove_change_handler(self.on_view_changed)
+
+	def on_field_changed(self, event):
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectChanged, event.sender))
+		if event.object == "name":
+			self._fields.pop(event.old_value)
+			self._fields[event.sender.name] = event.sender
+
+	def serialize_json(self):
+		print("test")
+		return {
+			'paper': Paper.serialize_json(self),
+			'name': self._name,
+			'views': self._views,
+			'border_sketch': self._border_sketch,
+			'header_sketch': self._header_sketch.uid,
+			'fields': self._fields
+		}
+
+	@staticmethod
+	def deserialize(data, document):
+		drawing = Drawing(document)
+		if data is not None:
+			drawing.deserialize_data(data)
+		return drawing
+
+	def deserialize_data(self, data):
+		Paper.deserialize_data(self, data['paper'])
+		self._name = data.get('name', "No name")
+
+		self._header_sketch = self._doc.get_geometries().get_geometry(data['header_sketch'])
+		for field_data_tuple in data.get('fields', {}).items():
+			field_data = field_data_tuple[1]
+			field = Field.deserialize(field_data)
+			self._fields[field.name] = field
+			field.add_change_handler(self.on_field_changed)
+		for view_data in data.get('views', []):
+			if view_data['view']['type'] == ViewType.SketchView.value:
+				view = SketchView.deserialize(view_data, self)
+				self._views.append(view)
+				view.add_change_handler(self.on_view_changed)
+			if view_data['view']['type'] == ViewType.PartView.value:
+				view = PartView.deserialize(view_data, self)
+				self._views.append(view)
+				view.add_change_handler(self.on_view_changed)
+		self.generate_border()
+Data/CalcSheetAnalysis.py
+class CalcSheetAnalysis(Analysis):
+	def __init__(self, name, document):
+		Analysis.__init__(self, name, Analysis.CalcSheetAnalysisType, document)
+		self._calcs = []
+		self._size = Vertex(1, 1)
+
+	def get_calculations(self):
+		return self._calcs
+
+	def create_calculation(self):
+		pass
+
+	@property
+	def size(self):
+		return [self._size.x, self._size.y]
+GUI/init.py
+def tr(string, context_name='app'):
+	value = QCoreApplication.translate(context_name, string)
+	try:
+		context = contexts[context_name]
+	except KeyError:
+		contexts[context_name] = {}
+		context = contexts[context_name]
+	context[string] = value
+	return value
+Data/Parameters.py
+class Parameters(ParametersBase):
+	def __init__(self, name, parent=None):
+		ParametersBase.__init__(self, name)
+		self._parameter_list = []
+		self._params = {}
+		self._parent = parent
+		self._custom_name_getter = None
+		self._standards = {}
+		self._current_standard_name = "Normal"
+		self._current_type_name = "Default"
+		self._current_type = self.make_type(self._current_standard_name, self._current_type_name)
+
+	@property
+	def document(self):
+		if self._parent is None:
+			return self
+		else:
+			return self._parent.document
+
+	@property
+	def parent(self):
+		return self._parent
+
+	def param_in_current_type(self, param):
+		if self._current_type is None:
+			return False
+		return param.uid in self._current_type
+
+	def make_standard(self, name):
+		standard = {}
+		self._standards[name] = standard
+		return standard
+
+	@property
+	def standards(self):
+		return list(self._standards.keys())
+
+	@property
+	def standard(self):
+		return self._current_standard_name
+
+	@standard.setter
+	def standard(self, value):
+		if value in self._standards:
+			self._current_standard_name = value
+			self._current_type_name = ""
+			self._current_type = None
+
+	@property
+	def types(self):
+		return self._standards[self._current_standard_name].keys()
+
+	def get_types_from_standard(self, standard):
+		if standard in self._standards:
+			return list(self._standards[standard].keys())
+		return []
+
+	def make_type(self, standard_name, type_name):
+		if standard_name not in self._standards:
+			standard = {}
+			self._standards[standard_name] = standard
+		else:
+			standard = self._standards[standard_name]
+		type = {}
+		standard[type_name] = type
+		return type
+
+	@property
+	def type(self):
+		return self._current_type_name
+
+	@type.setter
+	def type(self, type_name):
+		if type_name in self._standards[self._current_standard_name]:
+			self._current_type = self._standards[self._current_standard_name][type_name]
+			self._current_type_name = type_name
+			if self._current_type is None:
+				return
+			for param_definition_tuple in self._current_type.items():
+				uid = param_definition_tuple[0]
+				val = param_definition_tuple[1]
+				if uid in self._params:
+					param = self._params[uid]
+					old_value = param.value
+					param.internal_formula = val['if']
+					param.internal_value = param.evaluate(None)
+					change_object = {
+						'new value': param.value,
+						'old value': old_value,
+						'instance': None
+					}
+					param.changed(ChangeEvent(param, ChangeEvent.ValueChanged, change_object))
+			self.changed(ChangeEvent(self, ChangeEvent.ObjectChanged, self))
+
+	def _add_parameter_object(self, param):
+		param.add_change_handler(self.on_parameter_changed)
+		self.changed(ChangeEvent(self, ChangeEvent.BeforeObjectAdded, param))
+		self._params[param.uid] = param
+		self._parameter_list.append(param.uid)
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectAdded, param))
+
+	def _remove_parameter_object(self, uid):
+		if uid in self._params:
+			self._params.pop(uid)
+
+	def get_parameter_by_uid(self, uid) -> Parameter:
+		if uid in self._params:
+			return self._params[uid]
+		elif self._parent is not None:
+			return self._parent.get_parameter_by_uid(uid)
+		else:
+			return None
+
+	def get_parameter_by_name(self, name) -> Parameter:
+		param = None
+		for prm in self._params.values():
+			if prm.name == name:
+				param = prm
+		if param is None and self._custom_name_getter is not None:
+			param = self._custom_name_getter(name)
+		if param is None and self._parent is not None:
+			param = self._parent.get_parameter_by_name(name)
+
+		return param
+
+	def get_all_local_parameters(self):
+		params = list(self._params.items())
+		return params
+
+	def get_all_parameters(self):
+		params = list(self._params.values())
+		if self._parent is not None:
+			params.extend(self._parent.get_all_parameters())
+		return params
+
+	def create_parameter(self, name=None, value=0.0):
+		if name is None:
+			if self._parent is None:
+				name = "Global" + str(len(self._parameter_list))
+			else:
+				name = self.name + str(len(self._parameter_list))
+		param = Parameter(self, name, value)
+		self._add_parameter_object(param)
+		return param
+
+	def delete_parameter(self, uid):
+		param = self.get_parameter_by_uid(uid)
+		if param is not None:
+			param.remove_change_handler(self.on_parameter_changed)
+			self.changed(ChangeEvent(self, ChangeEvent.BeforeObjectRemoved, param))
+			self._parameter_list.remove(uid)
+			self.changed(ChangeEvent(self, ChangeEvent.ObjectRemoved, param))
+			self._remove_parameter_object(uid)
+			param.changed(ChangeEvent(param, ChangeEvent.Deleted, param))
+
+	def delete_parameters(self, params):
+		for param in params:
+			if param.uid in self._parameter_list:
+				self.delete_parameter(param.uid)
+
+	def on_parameter_changed(self, event):
+		param = event.sender
+		self.changed(ChangeEvent(self, event.type, event.sender))
+		if self._current_type is not None and param.uid in self._params:
+			if 'instance' in event.object and 'new formula' in event.object:
+				if event.object['instance'] is None and event.object['new formula'] != event.object['old formula']:
+
+					if param.uid in self._current_type:
+						predef = self._current_type[param.uid]
+					else:
+						predef = {}
+						self._current_type[param.uid] = predef
+					predef['if'] = param.internal_formula
+					predef['iv'] = param.internal_value
+
+	def get_index_of(self, parameter):
+		if parameter.uid in self._parameter_list:
+			return self._parameter_list.index(parameter.uid)
+		else:
+			return -1
+
+	@property
+	def length(self):
+		return len(self._parameter_list)
+
+	@property
+	def length_all(self):
+		if self._parent is not None:
+			return self._parent.length_all + self.length
+		else:
+			return self.length
+
+	def get_parameter_item(self, index):
+		if index >= self.length:
+			return self._parent.get_parameter_item(index - self.length)
+		else:
+			uid = self._parameter_list[index]
+		param = self.get_parameter_by_uid(uid)
+		return param
+
+	def serialize_json(self):
+		return {
+			'name': self._name,
+			'params': self._params,
+			'parameter_list': self._parameter_list,
+			'pps': self._standards,
+			'csn': self._current_standard_name,
+			'ctn': self._current_type_name
+		}
+
+	@staticmethod
+	def deserialize(data, parent):
+		param = Parameters(parent)
+		param.deserialize_data(data)
+		return param
+
+	def deserialize_data(self, data):
+		self._parameter_list = data.get('parameter_list', [])
+		self._name = data.get('name', 'name missing')
+		self._standards = data.get('pps', self._standards)
+		self._current_standard_name = data.get("csn", self._current_standard_name)
+		self._current_type_name = data.get("ctn", self._current_type_name)
+		self._current_type = self._standards[self._current_standard_name][self._current_type_name]
+		for param_data in data.get('params', {}).items():
+			param = Parameter.deserialize(param_data[1], self)
+			self._params[param.uid] = param
+			param.add_change_handler(self.on_parameter_changed)
+
+		for param_tuple in self._params.items():
+			if param_tuple[1].formula != '':
+				try:
+					param_tuple[1].value = param_tuple[1].formula
+				except Exception as e:
+					pass
+Data/Proformer.py
+class Proformer(IdObject, Parameters, MetaDataObject):
+	def __init__(self, sketch, type=ProformerType.Circular, name="New proformation"):
+		IdObject.__init__(self)
+		Parameters.__init__(self, name)
+		MetaDataObject.__init__(self, sketch)
+		self.add_change_handler(self.on_meta_param_changed)
+		self._sketch = sketch
+		self._type = type
+		self._control_kps = []
+		self._kps = set()
+		self._edges = set()
+		self._areas = set()
+		self._result_kps = {}
+		self._result_edges = {}
+		self._result_areas = {}
+		self._lookups_kps = []
+		self._lookups_edges = []
+		self._lookups_areas = []
+
+
+	def remove_change_handlers(self):
+		for kp in self._control_kps:
+			kp.remove_change_handler(self.on_control_kp_changed)
+		for kp in self._kps:
+			kp.remove_change_handler(self.kp_changed)
+		for edge in self._edges:
+			edge.remove_change_handler(self.edge_changed)
+		for area in self._areas:
+			area.remove_change_handler(self.area_changed)
+
+	def delete(self):
+		self.clear_all()
+		self.remove_change_handlers()
+		MetaDataObject.clear(self)
+		self.changed(ChangeEvent(self, ChangeEvent.Deleted, self))
+
+	def add_control_kp(self, kp):
+		self._control_kps.append(kp)
+		kp.add_change_handler(self.on_control_kp_changed)
+
+	@property
+	def base_keypoints(self):
+		return list(self._kps)
+
+	@base_keypoints.setter
+	def base_keypoints(self, value):
+		self._kps = set()
+		for kp in value:
+			self._kps.add(kp)
+
+	def get_keypoint(self, uid):
+		if uid in self._result_kps:
+			return self._result_kps[uid]
+		return None
+
+	@property
+	def base_edges(self):
+		return list(self._edges)
+
+	@base_edges.setter
+	def base_edges(self, value):
+		self._edges = set()
+		for edge in value:
+			self._edges.add(edge)
+
+	def get_edge(self, uid):
+		if uid in self._result_edges:
+			return self._result_edges[uid]
+		return None
+
+	@property
+	def base_areas(self):
+		return list(self._areas)
+
+	@base_areas.setter
+	def base_areas(self, value):
+		self._areas = set()
+		for area in value:
+			self._areas.add(area)
+
+	def get_area(self, uid):
+		if uid in self._result_areas:
+			return self._result_areas[uid]
+		return None
+
+	@property
+	def result_keypoints(self):
+		return self._result_kps.values()
+
+	@property
+	def result_edges(self):
+		return self._result_edges.values()
+
+	@property
+	def result_areas(self):
+		return self._result_areas.values()
+
+	def on_meta_param_changed(self, event: ChangeEvent):
+		if event.type == ChangeEvent.ValueChanged:
+			if 'param_change_event' in event.object:
+				if 'count' in event.object['name']:
+					self.resolve()
+				else:
+					if 'param_change_event' in event.object:
+						for kp in self._kps:
+							self.update_kp(kp, event.object['param_change_event'])
+
+	def on_control_kp_changed(self, event: ChangeEvent):
+		for kp in self._kps:
+			self.update_kp(kp, event)
+
+	def kp_changed(self, event: ChangeEvent):
+		self.update_kp(event.sender, event)
+
+	def edge_changed(self, event: ChangeEvent):
+		self.update_edge(event.sender, event)
+
+	def area_changed(self, event: ChangeEvent):
+		self.update_area(event.sender, event)
+
+	def clear_all(self):
+		for area in self._result_areas.values():
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.BeforeObjectRemoved, area))
+			area.delete()
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.ObjectRemoved, area))
+		for edge in self._result_edges.values():
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.BeforeObjectRemoved, edge))
+			edge.delete()
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.ObjectRemoved, edge))
+		for kp in self._result_kps.values():
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.BeforeObjectRemoved, kp))
+			kp.delete()
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.ObjectRemoved, kp))
+		self._result_kps = {}
+		self._result_edges = {}
+		self._result_areas = {}
+		self._lookups_kps = []
+		self._lookups_edges = []
+		self._lookups_areas = []
+		for parameter in self.get_all_parameters():
+			parameter.delete()
+
+	def update_kp(self, kp, event = None):
+		if event is not None:
+			if event.type == ChangeEvent.Deleted:
+				kp = event.object
+				kp.remove_change_handler(self.kp_changed)
+				if kp in self._kps:
+					self._kps.remove(kp)
+				for lookup_kps in self._lookups_kps:
+					if kp.uid in lookup_kps:
+						new_kp = lookup_kps[kp.uid]
+						self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.BeforeObjectRemoved, new_kp))
+						lookup_kps.pop(kp.uid)
+						if new_kp.uid in self._result_kps:
+							self._result_kps.pop(new_kp.uid)
+						new_kp.delete()
+						self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.ObjectRemoved, new_kp))
+				return
+		if self._type == ProformerType.MirrorX or self._type == ProformerType.MirrorY or self._type == ProformerType.Mirror:
+			self.update_kp_index(kp, event, 0)
+		elif self._type == ProformerType.MirrorXY:
+			self.update_kp_index(kp, event, 0)
+			self.update_kp_index(kp, event, 1)
+			self.update_kp_index(kp, event, 2)
+		else:
+			if self._type == ProformerType.Circular:
+				count = int(self._meta_data['count']-1)
+				for i in range(count):
+					self.update_kp_index(kp, event, i)
+
+			elif self._type == ProformerType.Square or self._type == ProformerType.Rectangular or self._type == ProformerType.Diamond or self._type == ProformerType.Triangular:
+				count1 = self._meta_data['count1']
+				count2 = self._meta_data['count2']
+				count = int(count1 * count2) - 1
+				for i in range(count):
+					self.update_kp_index(kp, event, i)
+
+
+	def update_kp_index(self, kp, event, p_index):
+		if event is None:
+			new_kp = self._lookups_kps[p_index][kp.uid]
+			coord = self.get_coordinate(kp.x, kp.y, p_index)
+			new_kp.x = coord[0]
+			new_kp.y = coord[1]
+			for vertext_instance_tuple in kp.instances:
+				coord = self.get_coordinate(vertext_instance_tuple[1].x, vertext_instance_tuple[1].y, p_index)
+				new_kp.set_instance_x(vertext_instance_tuple[0], coord[0])
+				new_kp.set_instance_y(vertext_instance_tuple[0], coord[1])
+		else:
+			if 'instance' in event.object:
+				instance = event.object['instance']
+				new_kp = self._lookups_kps[p_index][kp.uid]
+				coord = self.get_coordinate(kp.get_instance_x(instance), kp.get_instance_y(instance), p_index)
+				new_kp.set_instance_x(instance, coord[0])
+				new_kp.set_instance_y(instance, coord[1])
+
+
+	def get_coordinate(self, x, y, p_index):
+		coord = [0.0, 0.0]
+		if self._type == ProformerType.MirrorX:
+			coord[0] = x
+			coord[1] = -y
+		elif self._type == ProformerType.MirrorY:
+			coord[0] = -x
+			coord[1] = y
+		elif self._type == ProformerType.MirrorXY:
+			if p_index == 0:
+				coord[0] = x
+				coord[1] = -y
+			elif p_index == 1:
+				coord[0] = -x
+				coord[1] = y
+			elif p_index == 2:
+				coord[0] = -x
+				coord[1] = -y
+		elif self._type == ProformerType.Circular:
+			angle_increment = float(self._meta_data["dim"])
+			angle = (1+p_index)*angle_increment
+			c_kp = self._control_kps[0]
+			v = Vertex(x, y)
+			dist = c_kp.distance(v)
+			new_angle = c_kp.angle2d(v) + angle
+			coord[0] = c_kp.x + cos(new_angle)*dist
+			coord[1] = c_kp.y + sin(new_angle)*dist
+		elif self._type == ProformerType.Rectangular or self._type == ProformerType.Square or self._type == ProformerType.Diamond or self._type == ProformerType.Triangular:
+			count1 = self._meta_data['count1']
+			count2 = self._meta_data['count2']
+			length = self._meta_data['length']
+			angle = self._meta_data['angle']
+			count = int(count1 * count2) - 1
+			index1 = (p_index + 1) % count1
+			index2 =  floor ((p_index+1)/count1)
+
+			if self._type == ProformerType.Square:
+				coord[0] = x + index1 * length * cos(angle) - index2 * length * sin(angle)
+				coord[1] = y + index1 * length * sin(angle) + index2 * length * cos(angle)
+		else:
+			# todo: line mirror needs implementation
+			coord[0] = x
+			coord[1] = y
+		return coord
+
+	def update_edge(self, edge, event=None):
+		if event is None:
+			pass
+		else:
+			if event.type == ChangeEvent.Deleted:
+				edge.remove_change_handler(self.edge_changed)
+				if edge in self._edges:
+					self._edges.remove(edge)
+				for lookup_edges in self._lookups_edges:
+					if edge.uid in lookup_edges:
+						new_edge = lookup_edges[edge.uid]
+						self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.BeforeObjectRemoved, new_edge))
+						lookup_edges.pop(edge.uid)
+						if new_edge.uid in self._result_edges:
+							self._result_edges.pop(new_edge.uid)
+						new_edge.delete()
+						self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.ObjectRemoved, new_edge))
+				return
+
+	def update_area(self, area, event=None):
+		if event is None:
+			pass
+		else:
+			if event.type == ChangeEvent.Deleted:
+				area.remove_change_handler(self.area_changed)
+				if area in self._areas:
+					self._areas.remove(area)
+				for lookup_areas in self._lookups_areas:
+					if area.uid in lookup_areas:
+						new_area = lookup_areas[area.uid]
+						self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.BeforeObjectRemoved, new_area))
+						lookup_areas.pop(area.uid)
+						if new_area.uid in self._result_areas:
+							self._result_areas.pop(new_area.uid)
+						new_area.delete()
+						self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.ObjectRemoved, new_area))
+				return
+		i = 0
+		for lookup_areas in self._lookups_areas:
+			if area.uid in lookup_areas:
+				new_area = lookup_areas[area.uid]
+				new_area.name = area.name + self._type.name + str(i)
+				new_area.brush_name = area.brush_name
+				new_area.brush_rotation = area.brush_rotation
+			i += 1
+
+	def generate_kp(self, kp):
+		if self._type == ProformerType.MirrorX or self._type == ProformerType.MirrorY:
+			count = 1
+		elif self._type == ProformerType.MirrorXY:
+			count = 3
+		elif self._type == ProformerType.Circular:
+			count = int(self._meta_data['count']-1)
+		elif self._type == ProformerType.Rectangular or self._type == ProformerType.Square or self._type == ProformerType.Diamond:
+			count1 = self._meta_data['count1']
+			count2 = self._meta_data['count2']
+			count = int(count1 * count2) - 1
+		for i in range(count):
+			kp.add_change_handler(self.kp_changed)
+			new_kp = KeyPoint(self._sketch, name=kp.name+self._type.name+str(i))
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.BeforeObjectAdded, new_kp))
+			new_kp._uid = kp.uid + "-" + self._type.name + str(i)
+			new_kp.editable = False
+			self._result_kps[new_kp.uid] = new_kp
+			self._lookups_kps[i][kp.uid] = new_kp
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.ObjectAdded, new_kp))
+
+	def generate_edge(self, edge):
+		if self._type == ProformerType.MirrorX or self._type == ProformerType.MirrorY:
+			count = 1
+		elif self._type == ProformerType.MirrorXY:
+			count = 3
+		elif self._type == ProformerType.Circular:
+			count = int(self._meta_data['count']-1)
+		elif self._type == ProformerType.Rectangular or self._type == ProformerType.Square or self._type == ProformerType.Diamond:
+			count1 = self._meta_data['count1']
+			count2 = self._meta_data['count2']
+			count = int(count1 * count2) - 1
+		for i in range(count):
+			edge.add_change_handler(self.edge_changed)
+			new_edge = Edge(self._sketch, edge.type, edge.name+self._type.name + str(i))
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.BeforeObjectAdded, new_edge))
+			new_edge._uid = edge.uid + "-" + self._type.name + str(i)
+			new_edge.style_name = edge.style_name
+			for kp in edge.get_keypoints():
+				new_edge.add_key_point(self._lookups_kps[i][kp.uid])
+			if edge.type == EdgeType.FilletLineEdge or edge.type == EdgeType.CircleEdge or edge.type == EdgeType.ArcEdge:
+				r = edge.get_meta_data('r', None)
+				new_edge.set_meta_data('r', r)
+				r_param = edge.get_meta_data_parameter('r')
+				new_edge.set_meta_data_parameter('r', r_param)
+			elif edge.type == EdgeType.NurbsEdge:
+				n = edge.get_meta_data('n', 2)
+				new_edge.set_meta_data('n', n)
+			if edge.type == EdgeType.ArcEdge:
+				sa = edge.get_meta_data('sa', None)
+				new_edge.set_meta_data('sa', sa)
+				#sa_param = edge.get_meta_data_parameter('sa')
+				#new_edge.set_meta_data_parameter('sa', sa_param)
+				ea = edge.get_meta_data('ea', None)
+				new_edge.set_meta_data('ea', ea)
+				#ea_param = edge.get_meta_data_parameter('ea')
+				#new_edge.set_meta_data_parameter('ea', ea_param)
+			new_edge.editable = False
+			self._result_edges[new_edge.uid] = new_edge
+			self._lookups_edges[i][edge.uid] = new_edge
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.ObjectAdded, new_edge))
+
+	def generate_area(self, area):
+		if self._type == ProformerType.MirrorX or self._type == ProformerType.MirrorY:
+			count = 1
+		elif self._type == ProformerType.MirrorXY:
+			count = 3
+		elif self._type == ProformerType.Circular:
+			count = int(self._meta_data['count']-1)
+		elif self._type == ProformerType.Rectangular or self._type == ProformerType.Square or self._type == ProformerType.Diamond:
+			count1 = self._meta_data['count1']
+			count2 = self._meta_data['count2']
+			count = int(count1 * count2) - 1
+		for i in range(count):
+			if issubclass(type(area), CompositeArea):
+				area.add_change_handler(self.area_changed)
+				new_area = CompositeArea(self._sketch)
+				new_area._uid = area.uid + "-" + self._type.name + str(i)
+				self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.BeforeObjectAdded, new_area))
+				new_base_area = self._lookups_areas[i][area.base_area.uid]
+				new_area.base_area = new_base_area
+				for subtracted_area in area.subtracted_areas:
+					new_subtracted_area = self._lookups_areas[i][subtracted_area.uid]
+					new_area.add_subtract_area(new_subtracted_area)
+				new_area.brush_name = area.brush_name
+				new_area.name = area.name + self._type.name + str(i)
+				self._result_areas[new_area.uid] = new_area
+				self._lookups_areas[i][area.uid] = new_area
+			else:
+				area.add_change_handler(self.area_changed)
+				new_area = EdgeLoopArea(self._sketch)
+				new_area._uid = area.uid + "-" + self._type.name + str(i)
+				self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.BeforeObjectAdded, new_area))
+				for edge in area.get_edges():
+					new_edge = self._lookups_edges[i][edge.uid]
+					new_area.add_edge(new_edge)
+				new_area.name = area.name + self._type.name + str(i)
+				self._result_areas[new_area.uid] = new_area
+				self._lookups_areas[i][area.uid] = new_area
+				new_area.brush_name = area.brush_name
+
+			self._sketch.changed(ChangeEvent(self._sketch, ChangeEvent.ObjectAdded, new_area))
+
+	def generate_all(self):
+		base_areas = []
+		for area in self._areas:
+			if area.type == AreaType.Composite:
+				if area.base_area not in base_areas:
+					base_areas.append(area.base_area)
+				for c_area in area.subtracted_areas:
+					if c_area not in base_areas:
+						base_areas.append(c_area)
+		for area in self._areas:
+			if area not in base_areas:
+				base_areas.append(area)
+		for area in base_areas:
+			if area:
+				for edge in area.get_edges():
+					self._edges.add(edge)
+		for edge in self._edges:
+			for kp in edge.get_keypoints():
+				if kp not in self._kps:
+					self._kps.add(kp)
+
+		if self._type == ProformerType.MirrorX or self._type == ProformerType.MirrorY or self._type == ProformerType.Mirror:
+			self._lookups_kps.append({})
+			self._lookups_edges.append({})
+			self._lookups_areas.append({})
+		elif self._type == ProformerType.MirrorXY:
+			for i in range(3):
+				self._lookups_kps.append({})
+				self._lookups_edges.append({})
+				self._lookups_areas.append({})
+		elif self._type == ProformerType.Circular:
+			count = int(self._meta_data['count'])
+			for i in range(count):
+				self._lookups_kps.append({})
+				self._lookups_edges.append({})
+				self._lookups_areas.append({})
+		elif self._type == ProformerType.Square or self._type == ProformerType.Rectangular or self._type == ProformerType.Diamond or self._type == ProformerType.Triangular:
+			count1 = self._meta_data['count1']
+			count2 = self._meta_data['count2']
+			count = int(count1 * count2)-1
+			for i in range(count):
+				self._lookups_kps.append({})
+				self._lookups_edges.append({})
+				self._lookups_areas.append({})
+		for kp in self._kps:
+			self.generate_kp(kp)
+			self.update_kp(kp)
+		for edge in self._edges:
+			self.generate_edge(edge)
+			self.update_edge(edge)
+		for area in base_areas:
+			self.generate_area(area)
+			self.update_area(area)
+
+	def resolve(self):
+		self.clear_all()
+		self.generate_all()
+
+
+	def serialize_json(self):
+		return {
+			'uid': IdObject.serialize_json(self),
+			'no': NamedObservableObject.serialize_json(self),
+			'mdo': MetaDataObject.serialize_json(self),
+			'type': self._type.value,
+			'kps': get_uids(self._kps),
+			'edges': get_uids(self._edges),
+			'areas': get_uids(self._areas),
+			'ckps': get_uids(self._control_kps)
+		}
+
+	@staticmethod
+	def deserialize(parent, data):
+		proformer = Proformer(parent)
+		if data is not None:
+			proformer.deserialize_data(data)
+		return proformer
+
+	def deserialize_data(self, data):
+		IdObject.deserialize_data(self, data['uid'])
+		NamedObservableObject.deserialize_data(self, data['no'])
+		MetaDataObject.deserialize_data(self, data.get('mdo', None))
+		self._type = ProformerType(data['type'])
+		self._sketch.document.add_late_init_object(self)
+		for kp_uid in data['kps']:
+			kp = self._sketch.get_keypoint(kp_uid)
+			self._kps.add(kp)
+			kp.add_change_handler(self.kp_changed)
+		for edge_uid in data['edges']:
+			edge = self._sketch.get_edge(edge_uid)
+			self._edges.add(edge)
+			edge.add_change_handler(self.edge_changed)
+		for area_uid in data['areas']:
+			area = self._sketch.get_area(area_uid)
+			self._areas.add(area)
+			area.add_change_handler(self.area_changed)
+		for kp_uid in data.get('ckps', []):
+			kp = self._sketch.get_keypoint(kp_uid)
+			self._control_kps.append(kp)
+			kp.add_change_handler(self.on_control_kp_changed)
+		self.resolve()
+
+	def late_init(self):
+		pass
+Data/Document.py
+class Document(IdObject, Parameters):
+	def __init__(self):
+		IdObject.__init__(self)
+		Parameters.__init__(self, "Global Parameters")
+		# self._parameters = Parameters("Global Parameters")
+		self._styles = Styles()
+		self._geometries = Geometries(self)
+		self._axes = {}
+		self._margins = Margins(self)
+		self._materials = Materials(self)
+		self._components = Components(self)
+		self._mesh = Mesh(self)
+		self._sweeps = Sweeps(self)
+		self._drawings = Drawings(self)
+		self._analyses = Analyses(self)
+		self._undo_stack = ObservableList()
+		self._redo_stack = ObservableList()
+		self.path = ""
+		self.name = "New document.jadoc"
+		self.do_update = True
+		self.status_handler = None
+		self.init_change_handlers()
+		self._persistent_status_message = ""
+		self._persistent_status_progress = 100
+		self.is_modified = False
+		self._version = pracedru_design_version
+		self._late_initializing_object = []
+
+	def init_change_handlers(self):
+		# self.add_change_handler(self.on_parameters_changed)
+		self._styles.add_change_handler(self.on_object_changed)
+		self._geometries.add_change_handler(self.on_geometries_changed)
+		self._materials.add_change_handler(self.on_materials_changed)
+		self._components.add_change_handler(self.on_components_changed)
+		self._margins.add_change_handler(self.on_margins_changed)
+		self._mesh.add_change_handler(self.on_object_changed)
+		self._sweeps.add_change_handler(self.on_object_changed)
+		self._drawings.add_change_handler(self.on_object_changed)
+		self._undo_stack.add_change_handler(self._on_undo_stack_changed)
+		self._redo_stack.add_change_handler(self._on_redo_stack_changed)
+
+	@property
+	def undo_stack(self):
+		return self._undo_stack
+
+	@property
+	def redo_stack(self):
+		return self._redo_stack
+
+	def add_late_init_object(self, obj):
+		self._late_initializing_object.append(obj)
+
+	def get_axes(self):
+		return self._axes
+
+	@property
+	def styles(self):
+		return self._styles
+
+	def get_materials_object(self):
+		return self._materials
+
+	def get_geometries(self):
+		return self._geometries
+
+	def get_analyses(self):
+		return self._analyses
+
+	def get_materials(self):
+		return self._materials
+
+	def get_parameters(self):
+		return self
+
+	def get_components(self):
+		return self._components
+
+	def get_margins(self):
+		return self._margins
+
+	def get_mesh(self):
+		return self._mesh
+
+	def get_sweeps(self):
+		return self._sweeps
+
+	def get_drawings(self):
+		return self._drawings
+
+	def get_sketches(self):
+		return self._geometries.get_sketches()
+
+	def get_sketch_by_name(self, name):
+		return self._geometries.get_sketch_by_name(name)
+
+	def get_sketch(self, uid):
+		return self._geometries.get_geometry(uid)
+
+	def get_edge(self, uid):
+		return self._geometries.get_edge(uid)
+
+	def get_area(self, uid):
+		return self._geometries.get_area(uid)
+
+	def on_geometries_changed(self, event: ChangeEvent):
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectChanged, event.sender))
+
+	def on_areas_changed(self, event):
+		self.changed(event)
+
+	def on_materials_changed(self, event):
+		self.changed(event)
+
+	def on_components_changed(self, event):
+		self.changed(event)
+
+	def on_margins_changed(self, event):
+		self.changed(event)
+
+	def on_object_changed(self, event):
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectChanged, event.sender))
+
+	def set_status(self, message, progress=100, persistent=False):
+		if persistent:
+			self._persistent_status_message = message
+			self._persistent_status_progress = progress
+		if message == "":
+			message = self._persistent_status_message
+			progress = self._persistent_status_progress
+		if self.status_handler is not None:
+			self.status_handler(message, progress)
+
+	def add_status_handler(self, status_handler):
+		self.status_handler = status_handler
+
+	def _on_undo_stack_changed(self, event):
+		if event.type == ChangeEvent.ObjectAdded:
+			self._redo_stack.clear()
+		if event.type == ChangeEvent.ObjectRemoved:
+			self._redo_stack.append(event.object)
+
+	def _on_redo_stack_changed(self, event):
+		if event.type == ChangeEvent.ObjectRemoved:
+			self._undo_stack.sneak_append(event.object)
+			self._undo_stack.changed(ChangeEvent(self, ChangeEvent.ValueChanged, None))
+
+	def add_sketch(self, sketch):
+		self._geometries.add_geometry(sketch)
+
+	def serialize_json(self):
+		return \
+			{
+				'uid': IdObject.serialize_json(self),
+				'styles': self._styles,
+				'params': Parameters.serialize_json(self),
+				'geoms': self._geometries,
+				'axes': self._axes,
+				'name': self.name,
+				'materials': self._materials,
+				'components': self._components,
+				'margins': self._margins,
+				'mesh': self._mesh,
+				'sweeps': self._sweeps,
+				'drawings': self._drawings,
+				'analysees': self._analyses,
+				'path': self.path,
+				'version': self._version
+			}
+
+	@staticmethod
+	def deserialize(data, ignore_version=False):
+		if data.get('version', [0,0,0,0]) != pracedru_design_version:
+			if ignore_version:
+				print("Document saved in different version of PracedruDesign.")
+			else:
+				raise Exception("Document saved in different version of PracedruDesign.")
+		doc = Document()
+		doc.deserialize_data(data)
+		return doc
+
+	def deserialize_data(self, data):
+		IdObject.deserialize_data(self, data['uid'])
+		Parameters.deserialize_data(self, data.get('params', None))
+
+		self._styles = Styles.deserialize(data.get('styles', None))
+		self._geometries = Geometries.deserialize(data.get('geoms', None), self)
+		for axis_tuple in data.get('axes', {}).items():
+			axis = Axis.deserialize(axis_tuple[1], self)
+			self._axes[axis.uid] = axis
+		self._materials = Materials.deserialize(data.get('materials'), self)
+		self._components = Components.deserialize(data.get('components'), self)
+		self._margins = Margins.deserialize(data.get('margins'), self)
+		self._mesh = Mesh.deserialize(data.get('mesh'), self)
+		self._sweeps = Sweeps.deserialize(data.get('sweeps'), self)
+		self._drawings = Drawings.deserialize(data.get('drawings', None), self)
+		self._analyses = Analyses.deserialize(data.get('analysees', None), self)
+		self.name = data.get('name', "missing")
+		self.path = data.get('path', "missing")
+		self.init_change_handlers()
+		for late_init_obj in self._late_initializing_object:
+			late_init_obj.late_init()
+		self._late_initializing_object = []
+Data/Drawings.py
+class Field(NamedObservableObject):
+	def __init__(self, name="New Field", value="Field Value"):
+		NamedObservableObject.__init__(self, name)
+		self._value = value
+
+	@property
+	def value(self):
+		return self._value
+
+	@value.setter
+	def value(self, value):
+		old_value = self._value
+		self._value = value
+		self.changed(ValueChangeEvent(self, 'value', old_value, value))
+
+	def serialize_json(self):
+		return {
+			'name': NamedObservableObject.serialize_json(self),
+			'value': self.value
+		}
+
+	@staticmethod
+	def deserialize(data):
+		field = Field(data)
+		if data is not None:
+			field.deserialize_data(data)
+		return field
+
+	def deserialize_data(self, data):
+		NamedObservableObject.deserialize_data(self, data['name'])
+		self._value = data['value']
+Data/Areas.py
+class Area(IdObject, NamedObservableObject):
+	def __init__(self, sketch):
+		IdObject.__init__(self)
+		NamedObservableObject.__init__(self, "New Area")
+		self._sketch = sketch
+		self._brush = None
+		self._brush_rotation = 50
+		self._type = None
+
+	@property
+	def type(self):
+		return self._type
+
+	@property
+	def brush(self):
+		return self._brush
+
+	@property
+	def brush_name(self):
+		if self._brush is None:
+			return "None"
+		else:
+			return self._brush.name
+
+	@property
+	def brush_rotation(self):
+		return self._brush_rotation
+
+	@brush_rotation.setter
+	def brush_rotation(self, value):
+		self._brush_rotation = value
+		self.changed(ChangeEvent(self, ChangeEvent.ValueChanged, {'name': 'brush_rotation'}))
+
+	@brush_name.setter
+	def brush_name(self, value):
+		if value == "" or value is None or value == "None":
+			self._brush = None
+			self.changed(ChangeEvent(self, ChangeEvent.ValueChanged, {'name': 'brush_name'}))
+			return
+		styles = self._sketch.document.styles
+		brush = styles.get_brush_by_name(value)
+		self._brush = brush
+		self.changed(ChangeEvent(self, ChangeEvent.ValueChanged, {'name': 'brush_name'}))
+
+	@staticmethod
+	def deserialize(data, sketch):
+		if data['area']['type'] == AreaType.EdgeLoop.value:
+			area = EdgeLoopArea(sketch)
+			area.deserialize_data(data, sketch)
+			return area
+		elif data['area']['type'] == AreaType.Composite.value:
+			area = CompositeArea(sketch)
+			area.deserialize_data(data, sketch)
+			return area
+
+	def serialize_json(self):
+		brush_uid = None
+		if self._brush is not None:
+			brush_uid = self._brush.uid
+		return \
+			{
+				'uid': IdObject.serialize_json(self),
+				'no': NamedObservableObject.serialize_json(self),
+				'type': self._type.value,
+				'brush': brush_uid,
+				'brush_rot': self._brush_rotation
+			}
+
+	def deserialize_data(self, data):
+		IdObject.deserialize_data(self, data['uid'])
+		NamedObservableObject.deserialize_data(self, data.get('no', None))
+		brush_uid = data.get('brush')
+		self._brush = self._sketch.document.styles.get_brush(brush_uid)
+		self._brush_rotation = data.get("brush_rot", 50)
+Data/Part.py
+class Part(Geometry):
+	def __init__(self, parameters_parent, name="New part"):
+	def specular(self):
+	def specular(self, value):
+	def color(self):
+	def color(self, value):
+	def update_needed(self):
+	def get_keypoints(self):
+	def get_keypoint(self, uid):
+	def get_surfaces(self):
+	def get_edges(self):
+	def get_edge(self, uid):
+	def get_area(self, uid):
+	def get_texts(self):
+	def get_new_unique_feature_name(self, name):
+	def _add_feature(self, feature):
+	def create_nurbs_surface(self, sketch_feature, nurbs_edges):
+	def create_plane_feature(self, name, position, x_direction, y_direction):
+	def add_sketch(self, sketch):
+	def create_sketch_feature(self, sketch, plane_feature):
+	def create_extrude_feature(self, name, sketch_feature, area, length):
+	def create_revolve_feature(self, name, sketch_feature, area, length, revolve_axis):
+	def create_keypoint(self, x, y, z, ts=0.000001):
+	def create_arc_edge(self, center, r, sa, span, plane):
+	def create_line_edge(self, key_point1, key_point2):
+	def create_nurbs_edge(self, kp):
+	def create_surfaces_from_revolve(self, feature):
+	def create_surfaces_from_extrude(self, feature):
+	def create_surface_from_nurbs_feature(self, nurbs_surface_feature):
+	def update_geometry(self):
+	def get_sketch(self, uid):
+	def get_sketches(self):
+	def get_sketch_by_name(self, name):
+	def get_feature(self, uid):
+	def get_feature_progression(self):
+	def get_plane_features(self):
+	def get_features_list(self):
+	def get_sketch_features(self):
+	def _cal_limits(self):
+	def get_limits(self):
+	def get_lines(self):
+	def on_plane_feature_changed(self, event):
+	def on_nurbs_surface_feature_changed(self, event):
+	def on_sketch_changed(self, event):
+	def on_sketch_feature_changed(self, event):
+	def on_extrude_feature_changed(self, event):
+	def on_revolve_feature_changed(self, event):
+	def delete(self):
+	def serialize_json(self):
+	def deserialize(data, param_parent):
+	def deserialize_data(self, data):
+Data/Point3d.py
+class KeyPoint(Point3d, NamedObservableObject):
+	def __init__(self, parameters: Parameters, x=0.0, y=0.0, z=0.0, name="Keypoint"):
+		Point3d.__init__(self, x, y, z)
+		NamedObservableObject.__init__(self, name)
+		self._component_parameters = [None, None, None]
+		self._instances = {}
+		self._parameters = parameters
+		self._edges = []
+		self.editable = True
+		self._component_change_handlers = []
+		self._component_change_handlers.append(self.on_x_param_changed)
+		self._component_change_handlers.append(self.on_y_param_changed)
+		self._component_change_handlers.append(self.on_z_param_changed)
+
+	@property
+	def instances(self):
+		return self._instances.items()
+
+	@property
+	def parameters(self):
+		return self._parameters
+
+	def delete(self):
+		self.changed(ChangeEvent(self, ChangeEvent.Deleted, self))
+
+	def get_edges(self):
+		return list(self._edges)
+
+	def add_edge(self, edge):
+		if edge not in self._edges:
+			self._edges.append(edge)
+			edge.add_change_handler(self.edge_changed_handler)
+
+	def edge_changed_handler(self, event):
+		if event.type == ChangeEvent.Deleted:
+			self.remove_edge(event.object)
+
+	def remove_edge(self, edge):
+		if edge in self._edges:
+			edge.remove_change_handler(self.edge_changed_handler)
+			self._edges.remove(edge)
+
+	def get_x_parameter(self):
+		return self._component_parameters[0]
+
+	def get_y_parameter(self):
+		return self._component_parameters[1]
+
+	def get_z_parameter(self):
+		return self._component_parameters[2]
+
+	def create_value_change_object(self, new_value, old_value, component, instance_uid):
+		change_object = {
+			'new value': new_value,
+			'old value': old_value,
+			'name': components[component],
+			'component': component,
+			'instance': instance_uid
+		}
+		return change_object
+
+	def set_instance_generic(self, instance_uid, value, component):
+		changed = False
+		old_value = self.get_instance_generic(instance_uid, component)
+		if instance_uid is None:
+			self.xyz[component] = value
+			changed = True
+		else:
+			if instance_uid in self._instances:
+				instance_vertice = self._instances[instance_uid]
+				instance_vertice.xyz[component] = value
+				if self.equals(instance_vertice):
+					self._instances.pop(instance_uid)
+				changed = True
+			else:
+				if value != self.xyz[component]:
+					instance_vertice = Vertex(self.x, self.y, self.z)
+					instance_vertice.xyz[component] = value
+					self._instances[instance_uid] = instance_vertice
+					changed = True
+		if changed:
+			name = components[component]
+			change_object = self.create_value_change_object(value, old_value, component, instance_uid)
+			self.changed(ChangeEvent(self, ChangeEvent.ValueChanged, change_object))
+
+	def set_instance_x(self, instance_uid, value):
+		self.set_instance_generic(instance_uid, value, 0)
+
+	def set_instance_y(self, instance_uid, value):
+		self.set_instance_generic(instance_uid, value, 1)
+
+	def set_instance_z(self, instance_uid, value):
+		self.set_instance_generic(instance_uid, value, 2)
+
+	def get_instance_generic(self, instance_uid, component):
+		if self._component_parameters[component] is None:
+			if instance_uid in self._instances:
+				return self._instances[instance_uid].xyz[component]
+			return self.xyz[component]
+		else:
+			return self._component_parameters[component].get_instance_value(instance_uid)
+
+	def get_instance_x(self, instance_uid):
+		return self.get_instance_generic(instance_uid, 0)
+
+	def get_instance_y(self, instance_uid):
+		return self.get_instance_generic(instance_uid, 1)
+
+	def get_instance_z(self, instance_uid):
+		return self.get_instance_generic(instance_uid, 2)
+
+	def get_instance_xyz(self, instance_uid):
+		if instance_uid in self._instances:
+			return self._instances[instance_uid].xyz
+		return self.xyz
+
+	def get_instance(self, instance_uid):
+		if instance_uid in self._instances:
+			return self._instances[instance_uid]
+		return self
+
+	@property
+	def x(self):
+		return self.xyz[0]
+
+	@property
+	def y(self):
+		return self.xyz[1]
+
+	@property
+	def z(self):
+		return self.xyz[2]
+
+	@x.setter
+	def x(self, value):
+		self.set_instance_generic(None, value, 0)
+
+	@y.setter
+	def y(self, value):
+		self.set_instance_generic(None, value, 1)
+
+	@z.setter
+	def z(self, value):
+		self.set_instance_generic(None, value, 2)
+
+	def set_parameter_generic(self, param_uid, component):
+		old_value = self.get_instance_generic(None, component)
+		if self._component_parameters[component] is not None:
+			self._component_parameters[component].remove_change_handler(self._component_change_handlers[component])
+			self._component_parameters[component] = None
+		if param_uid is not None:
+			param =  self._parameters.get_parameter_by_uid(param_uid)
+			self._component_parameters[component] = param
+			if param is not None:
+				new_value = self.get_instance_generic(None, component)
+				param.add_change_handler(self._component_change_handlers[component])
+				change_object = self.create_value_change_object(new_value, old_value, component, None)
+				self._component_change_handlers[component](ChangeEvent(self, ChangeEvent.ValueChanged, change_object))
+
+	def set_x_parameter(self, param_uid):
+		self.set_parameter_generic(param_uid, 0)
+
+	def set_y_parameter(self, param_uid):
+		self.set_parameter_generic(param_uid, 1)
+
+	def set_z_parameter(self, param_uid):
+		self.set_parameter_generic(param_uid, 2)
+
+	def on_param_changed_generic(self, event, component):
+		instance = None
+		if 'instance' in event.object:
+			instance = event.object['instance']
+		old_value = self.get_instance_generic(instance, component)
+		new_value = float(self._component_parameters[component].evaluate(instance))
+		self.set_instance_generic(instance, new_value, component)
+		if event.type == ChangeEvent.Deleted:
+			event.object.remove_change_handler(self._component_change_handlers[component])
+			self._component_parameters[component] = None
+		change_object = self.create_value_change_object(new_value, old_value, component, instance)
+		self.changed(ChangeEvent(self, ChangeEvent.ValueChanged, change_object))
+
+	def on_x_param_changed(self, event):
+		self.on_param_changed_generic(event, 0)
+
+	def on_y_param_changed(self, event):
+		self.on_param_changed_generic(event, 1)
+
+	def on_z_param_changed(self, event):
+		self.on_param_changed_generic(event, 2)
+
+	def get_param_uid(self, param):
+		if param is None:
+			return None
+		else:
+			return param.uid
+
+	def serialize_json(self):
+		return \
+			{
+				'p3d': Point3d.serialize_json(self),
+				'no': NamedObservableObject.serialize_json(self),
+				'instances': self._instances,
+				'x_param_uid': self.get_param_uid(self._component_parameters[0]),
+				'y_param_uid': self.get_param_uid(self._component_parameters[1]),
+				'z_param_uid': self.get_param_uid(self._component_parameters[2])
+			}
+
+	@staticmethod
+	def deserialize(data, parameters):
+		key_point = KeyPoint(parameters)
+		key_point.deserialize_data(data)
+		return key_point
+
+	def deserialize_data(self, data):
+		Point3d.deserialize_data(self, data.get('p3d'))
+		if 'no' in data:
+			NamedObservableObject.deserialize_data(self, data['no'])
+		else:
+			self.name = "Keypoint"
+		for instance_tuple in data.get('instances', {}).items():
+			instance_uid = instance_tuple[0]
+			vertex = Vertex.deserialize(instance_tuple[1])
+			self._instances[instance_uid] = vertex
+		self.set_parameter_generic(data['x_param_uid'], 0)
+		self.set_parameter_generic(data['y_param_uid'], 1)
+		self.set_parameter_generic(data['z_param_uid'], 2)
+Data/Drawings.py
+class SketchView(View):
+	def __init__(self, drawing, sketch=None, scale=1, offset=Vertex()):
+		View.__init__(self, drawing, "New View", scale, offset)
+		self._sketch = sketch
+		self._view_type = ViewType.SketchView
+		if sketch is not None:
+			self._name = sketch.name
+			self._sketch.add_change_handler(self.on_sketch_changed)
+
+	@property
+	def sketch(self):
+		return self._sketch
+
+	@property
+	def limits(self):
+		if self._sketch is not None:
+			return self._sketch.get_limits()
+		return super.limits
+
+	def delete(self):
+		self.changed(ChangeEvent(self, ChangeEvent.Deleted, self))
+
+	def on_sketch_changed(self, event):
+		self.changed(ChangeEvent(self, ChangeEvent.ObjectChanged, self._sketch))
+
+	def serialize_json(self):
+		return {
+			'view': View.serialize_json(self),
+			'sketch': self._sketch.uid,
+		}
+
+	@staticmethod
+	def deserialize(data, drawing):
+		sketch_view = SketchView(drawing)
+		if data is not None:
+			sketch_view.deserialize_data(data)
+		return sketch_view
+
+	def deserialize_data(self, data):
+		document = self._drawing.document
+		View.deserialize_data(self, data['view'])
+		self._sketch = document.get_geometries().get_geometry(data['sketch'])
+		self._sketch.add_change_handler(self.on_sketch_changed)

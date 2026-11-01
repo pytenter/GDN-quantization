@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self.execution_successful,self.account,self.arguments,self.command_line,self.end_time_utc,self.environment_variables,self.executable_location,self.exit_code,self.exit_code_description,self.exit_signal_name,self.exit_signal_number,self.machine,self.notification_configuration_overrides,self.process_id,self.process_start_failure_message,self.properties,self.response_files,self.rule_configuration_overrides,self.start_time_utc,self.stderr,self.stdin,self.stdout,self.stdout_stderr,self.tool_configuration_notifications,self.tool_execution_notifications,self.working_directory,)==(other.execution_successful,other.account,other.arguments,other.command_line,other.end_time_utc,other.environment_variables,other.executable_location,other.exit_code,other.exit_code_description,other.exit_signal_name,other.exit_signal_number,other.machine,other.notification_configuration_overrides,other.process_id,other.process_start_failure_message,other.properties,other.response_files,other.rule_configuration_overrides,other.start_time_utc,other.stderr,other.stdin,other.stdout,other.stdout_stderr,other.tool_configuration_notifications,other.tool_execution_notifications,other.working_directory,)
+  return NotImplemented
+ return __eq__

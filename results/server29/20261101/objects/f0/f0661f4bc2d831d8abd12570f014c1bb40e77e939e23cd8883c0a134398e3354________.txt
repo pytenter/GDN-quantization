@@ -1,0 +1,628 @@
+# Codex 科研任务：Ling/KDA P1 vs Original L7 四文档前瞻验证
+
+## 0. 任务身份与总原则
+
+本轮研究对象：
+
+**Ling-3.0-tiny / KDA — Persistent Recurrent-State INT8 Quantization + Learnable Orthogonal Rotation**
+
+本次任务是完成已经预注册、但尚未执行的 **4-document prospective validation**。
+
+任务目标：
+
+验证短程 K3 Query-Readout-Aware 指标 P1，相比原始 recurrent-aware `L7_TOTAL_ORIGINAL`，是否能在全新独立 PG19 文档中，更准确地预测冻结旋转矩阵的 32K Full-Model Future-KL 排序。
+
+严格遵守以下顺序：
+
+**原始资产审计 → 预注册一致性检查 → 短程筛选 → 冻结4篇文档及rotation pairs → 工程资格 → 正式32K → 文档级分析 → 保存交付 → STOP。**
+
+本提示词仅授权执行已冻结的4-doc前瞻验证。不得扩充样本、修改 Loss、训练新旋转或启动 AIME。
+
+如果任何关键门禁失败，立即 fail-closed。不要自行修改科学协议以取得结果。
+
+---
+
+## 1. 必读历史状态
+
+### 1.1 原正式 P1 vs L7 结果
+
+已经完成两篇独立 PG19 文档的 Full-Model Future-KL 验证。
+
+- `pg19-test-860`：P1 预测旋转胜出。
+- `pg19-test-5956`：原始 L7 预测旋转胜出。
+- 原始正式结论：`COMPLETE / MIXED`，文档级 P1 1胜1负。
+
+该结论永久保留，不可覆盖或事后更改。
+
+### 1.2 最新完成的 MIXED outcome resolution
+
+实验：
+
+`LING_KDA_P1_L7_MIXED_OUTCOME_RESOLUTION_V1`
+
+最终：
+
+- `EXISTING_DATA_DIAGNOSIS_STATUS=COMPLETE_SAVED384_SCALARS_AVAILABLE`
+- `TEMPORAL_FUNCTIONAL_DIAGNOSIS_STATUS=COMPLETE_CPU_POSTHOC_DESCRIPTIVE_CAUSAL_PATH_NOT_IDENTIFIABLE`
+- `CROSS_ROTATION_PANEL_STATUS=COMPLETE_POSTHOC_EXPLORATORY_CROSS_PANEL`
+- `DOCUMENT_ROTATION_INTERACTION_STATUS=NO_ORDER_REVERSAL_OBSERVED_TWO_DOCUMENTS`
+- `OVERALL_SCIENTIFIC_VERDICT=ORIGINAL_FORMAL_MIXED_PRESERVED_NO_STABLE_P1_ADVANTAGE_CONFIRMED`
+
+已补齐的两文档×三旋转 KL：
+
+| Document | L6-a50 | L7-a25 | L7-a50 |
+|---|---:|---:|---:|
+| pg19-test-860 | 0.135980603178 | 0.153608581084 | 0.135745766736 |
+| pg19-test-5956 | 0.0891569468634 | 0.105810772260 | 0.0856499057082 |
+
+两篇均呈现：
+
+`L7-a50 < L6-a50 < L7-a25`
+
+这属于 Posthoc Exploratory Cross Panel。
+
+不能据此：
+
+- 改写原正式 MIXED。
+- 重新选择旧实验候选。
+- 宣称 P1 已稳定优于 L7。
+- 宣称 L7-a50 普遍最优。
+- 直接启动 P1 gradient optimization。
+
+原384点 KL 时间诊断显示 Middle/Late 排名可能反转，且后期 State MSE 更低不保证后期 KL 更低；具体因果机制仍未识别。
+
+### 1.3 已交付的预注册资产
+
+用户本地历史交付目录：
+
+`/Users/pytenter/Documents/临时项目1/ling_mixed_outcome_resolution/`
+
+其中包括：
+
+- `FINAL_SCIENTIFIC_REPORT.md`
+- `TWO_DOC_THREE_ROTATION_MATRIX.csv`
+- `NEXT_PROSPECTIVE_4DOC_PREREGISTRATION.md`
+- `RESULT_AND_DELIVERY_HASHES.json`
+
+注意：这些是 Mac 本地路径，不应假设远端 RTX3090 服务器能直接访问。
+
+必须先寻找实际可访问的成功实验 manifest、正式 preregistration、源代码、输入快照及哈希记录。
+
+不得根据本提示词重新伪造冻结文件或重新生成已封存的实验身份。
+
+**若原始预注册文件及必要冻结资产不存在或不能验证身份，允许整理缺失资产报告，但必须停止后续科学执行。**
+
+如果本提示词的摘要与正式预注册文件存在实质冲突，以已冻结文件和原成功 manifest 为核查依据；不可静默选择其中一种，应报告冲突并 STOP。
+
+---
+
+## 2. 科学约束：绝对不能改变
+
+模型：
+
+- Ling-3.0-tiny / KDA。
+- INT8-R128。
+- 每 token 真实 INT8 QDQ。
+- 量化状态写回 recurrent state。
+- 下一 token 必须消费前一步量化后的状态。
+- 使用原有正交旋转坐标及冻结 rotation artifacts。
+
+禁止：
+
+1. 使用 FP16/FP32 persistent recurrent buffer 规避量化误差。
+2. 延迟 requantization。
+3. 修改 INT8 bitwidth、quantizer、scale arithmetic 或 source clipping。
+4. 将 FP32 tensor 承载的 QDQ 后状态描述为 physical resident INT8 kernel storage。
+5. 重训 L6/L7，修改 Cayley rotation，或重新挑选 rotation roster。
+6. 修改 P1 / L7 原始损失定义。
+7. 使用本轮长程 KL outcome 反向调整候选选择。
+
+P1 是短程 K3 Query-Readout-Aware 评分，不是新训练方法，也不是显式计算未来所有 Query 的 Loss。
+
+`L7_TOTAL_ORIGINAL` 必须复用原来的 H128 recurrent-aware Functional + State 训练目标定义，不得使用临时简化版本替代。
+
+所有运行使用通过资格的正式 engine、数值合同和 FP pairing 规则。
+
+---
+
+## 3. Phase 0：Readonly 审计与执行准备
+
+**在任何 GPU 科学计算之前执行。**
+
+### 3.1 资产与代码身份
+
+读取并核对：
+
+- 最新成功 Ling P1-vs-L7 manifest。
+- 最新 MIXED resolution 成功 manifest。
+- 正式四文档预注册文件。
+- 模型、tokenizer、16个冻结旋转的完整 roster。
+- P1 与 `L7_TOTAL_ORIGINAL` 原始 scoring helper。
+- FP reference 和 KL reducer 的数值合同。
+- Git commit、source SHA、rotation SHA、input SHA。
+- 前次交付的 SHA256 manifest。
+
+验证历史封存资产仍保持完整。
+
+历史 V1/V2/V3/V4 工程 STOP 记录必须保留。
+
+尤其不得误将旧：
+
+`LING_KDA_P1_L7_EFFICIENT_RECOVERY_V4`
+
+的 `PHYSICAL_RESOURCE_GATE_STOP` 当作最近完成结果。
+
+### 3.2 工作树安全
+
+优先使用干净工作树或单独实验分支。
+
+不得：
+
+- 覆盖旧科学结果。
+- 自动 reset 或清理他人的工作树。
+- 删除历史 checkpoints。
+- 覆盖既有 STOP/FAIL manifest。
+
+只做本轮所需的最小代码修改。
+
+任何修改都必须记录 commit 或源码 SHA，并明确与已通过数值资格的版本之间的差异。
+
+### 3.3 GPU 与磁盘资格
+
+当前以实际可访问的 24GB RTX3090 为准。
+
+不要自行假设有 A800、4090、48GB 或80GB GPU 可用。
+
+本轮前次成功资源记录：
+
+- GPU6 RTX3090 24GB。
+- CUDA allocated peak：16.845 GiB。
+- CUDA reserved peak：23.191 GiB。
+- NVML sampled peak：23,752 MiB。
+- 单缓存串行执行。
+- checkpoint/resume 已通过资格。
+
+本次运行前必须重新检查：
+
+- GPU 是否实际存在并可用。
+- 是否有其他进程占用。
+- CUDA allocated / reserved / NVML 显存。
+- RAM 与磁盘剩余空间。
+- checkpoint 和 full-vocabulary logits 的存储预算。
+- 单 worker 的加载、恢复和自然退出能力。
+
+不允许自动杀掉其他用户的 GPU 进程。
+
+不要强制选择 GPU6；选择实际合格的 RTX3090，并验证其环境符合冻结数值合同。
+
+用户没有规定4 GPUh、16 GPUh或85%显存的人为硬限制，不得擅自增加这些硬限制。
+
+保留实际 OOM、numerical parity、resource feasibility 和 storage gates。
+
+---
+
+## 4. Phase 1：严格复现已冻结的四文档筛选协议
+
+本阶段只能使用短程指标，禁止读取任何候选新文档的32K Future-KL outcome。
+
+### 4.1 数据池
+
+冻结 PG19 test 原始候选池：
+
+- 原始：100篇。
+- 历史登记排除：20篇。
+- 长度不足排除：22篇。
+- 输入资格可用：58篇。
+
+必须从正式冻结资产读取：
+
+- PG19 文档身份。
+- 原始文本及 token SHA。
+- tokenizer 身份。
+- 内容去重规则。
+- 历史结果排除清单。
+- seed=0 哈希顺序。
+- 输入长度要求。
+
+不能重新随机选择文档。
+
+不能使用已经在旧长程研究中出现过的文档充当新独立文档。
+
+若实际资格数量或身份与冻结记录不一致，STOP并报告，不得重新凑够58篇。
+
+### 4.2 扫描规则
+
+按照已经冻结的 seed=0 哈希顺序：
+
+**最多检查40篇输入合格文档。**
+
+每篇文档都计算全部16个冻结旋转的短程分数。
+
+短程 scoring 必须复用原 helper 和正式设置：
+
+- Window starts = 256 / 1024。
+- H128 recurrent-aware。
+- 18 KDA layers。
+- 全部16个 heads。
+- 两个窗口等权。
+- P1 使用原 K3 Query-Readout-Aware 定义。
+- L7 使用 `L7_TOTAL_ORIGINAL`。
+
+不允许重新定义窗口长度、聚合函数、score normalization 或原始 helper。
+
+如冻结预注册包含更具体的数值细节，必须逐项照原文执行。
+
+### 4.3 Eligible pair
+
+对每篇文档的16个冻结旋转：
+
+分别按照 P1 和原始 L7_TOTAL 得分建立排名，使用预注册的 midrank / tie 规则。
+
+寻找旋转对 A、B：
+
+- P1 预测 A 优于 B。
+- L7_TOTAL_ORIGINAL 预测 B 优于 A。
+- 双方 midrank gap 均 ≥ 3。
+
+若存在多个 eligible pairs：
+
+1. 首先最大化 `min(gap_P1, gap_L7)`。
+2. 再按正式科学 pair 字典序规则打破并列。
+3. 不使用长期 KL、之前两文档真实旋转表现或人工偏好选择。
+
+对每篇文档最多冻结一个符合原规则的 pair。
+
+按哈希文档顺序选择前四篇合格文档。
+
+不能为了挑到看似更好的文档而跳过前面的合格文档。
+
+找到四篇即停止筛选。
+
+若前40篇不足四篇符合要求：
+
+`SELECTION_STATUS=INSUFFICIENT_ELIGIBLE_DOCS_STOP`
+
+并且：
+
+`NEW_32K_SCIENCE_UNITS=0`
+
+不得降低 gap 阈值、补文档或扩大筛选范围。
+
+### 4.4 必须在长程开始前冻结
+
+输出原子化冻结资产：
+
+- 文档 ID。
+- 文本/token SHA。
+- seed=0 排序身份。
+- 全16旋转 short-horizon P1/L7 分数。
+- 两套完整排名。
+- 每个候选 pair 的选择依据。
+- 最终四个 pair。
+- P1 预测旋转。
+- L7 预测旋转。
+- 两方 midrank gap。
+- 数据排除、重复检查结果。
+- 对应模型、代码、rotation SHA。
+- Primary KL 合同和执行顺序。
+
+正式命名以原预注册为准，可采用内容相符的 `FROZEN_4DOC_SELECTION.json` 作为交付文件。
+
+该文件必须在任何新文档 long-horizon 运行前冻结并生成 SHA。
+
+不可在看到32K结果后修改。
+
+---
+
+## 5. Phase 2：Full-model 工程资格
+
+只在 Phase 1 成功选齐并冻结四篇后执行。
+
+优先复用最近已经 PASS 的：
+
+- RTX3090 24GB single-cache serial pipeline。
+- checkpoint/save/resume interface。
+- same-runtime FP reference。
+- 384点 full-vocabulary KL reducer。
+- numerical determinism contract。
+- observer parity。
+- every-token recurrent INT8 QDQ/writeback。
+- next-kernel consumption 检查。
+
+检查实际运行环境与前次成功数值合同是否一致。
+
+需要重新资格验证的变更不得跳过门禁。
+
+尤其注意：
+
+- fresh-process 恢复数值一致性。
+- 原 rotation 与完整历史匹配。
+- FP teacher 与 student 使用相同 token、模型和 tokenizer。
+- 不同 rotation 的 recurrent history 不能从不兼容的 checkpoint 直接 fork。
+- 不允许以截断上下文或高精度状态替代完整 persistent 32K。
+- 历史跨 GPU 数值不一致不能被事后声称修复。
+
+可以执行必要的最小工程资格 worker，但不得扩展为新的32K探索面板。
+
+所有关键门禁必须通过才能进入 Phase 3。
+
+---
+
+## 6. Phase 3：四篇新文档正式32K验证
+
+只有完成 Phase 1 和 Phase 2，才授权本阶段。
+
+对于四篇已冻结的新文档，严格按冻结文档顺序执行。
+
+每篇执行三个完整条件：
+
+1. FP full-model reference。
+2. P1 预测的冻结 rotation student。
+3. L7_TOTAL_ORIGINAL 预测的冻结 rotation student。
+
+合计：
+
+- FP references：4。
+- P1 students：4。
+- L7 students：4。
+- 全部12个 planned trajectories。
+- 其中8个是 persistent INT8 student trajectories。
+
+不得增加第三个 student rotation，也不得将旧实验的 L7-a50 作为强制额外对照。
+
+执行规则：
+
+- 单GPU、single-cache、serial。
+- 同一文档严格使用相同 token sequence。
+- FP 与 student 使用合格的 same-runtime pairing。
+- 两条 student 分别从自身正确的旋转历史执行。
+- 完整执行到32768 token。
+- 保持每 token 真实 recurrent QDQ/writeback。
+- 不重置、替换或跳过量化历史。
+- 不执行训练或 optimizer step。
+- 不根据中途 KL 变化提前停止、重选文档或替换旋转。
+
+每个条件都独立保存：
+
+- 运行身份。
+- 文档/旋转/代码/model SHA。
+- 数值资格。
+- complete / incomplete 状态。
+- checkpoint provenance。
+- 结果身份。
+- GPU worker 时间。
+- CUDA allocated / reserved peak。
+- NVML 显存采样峰值。
+- 最终完整性检查。
+
+如运行失败，可仅在原冻结 checkpoint 和数值恢复合同允许的范围内恢复同一科学单元，不得用新文档或新旋转补位。
+
+不能合法恢复则标记失败并 STOP，后续单元 `NOT_RUN`。
+
+---
+
+## 7. 正式 Primary 指标：绝对不能修改
+
+使用原冻结 Full-Model Future-KL。
+
+完整词表：
+
+**157184**
+
+指标：
+
+`KL(FP || student)`
+
+采用冻结 FP32 full-vocabulary KL 计算路径。
+
+评分 token positions：
+
+`t = 8192 + 64k, k = 0, ..., 383`
+
+共384个位置，最后一个位置是32704。
+
+每个位置必须按照原合同使用消费当前 token 后预测下一 token 的 logits。
+
+Primary：
+
+`K = sum(KL_t) / 384`
+
+使用正式已有 reducer 的数值及聚合语义，不要改用新的 top-k、截断词表、不同 reduction 或其他 KL 变体。
+
+本轮比较：
+
+`Delta_i = K_P1_i - K_L7_i`
+
+解释：
+
+- Delta < 0：P1预测正确。
+- Delta > 0：L7预测正确。
+- 数值不可分辨或不合格：依冻结规则明确标注，不能擅自算成胜利。
+
+历史384点经验数值分辨率：
+
+`3.3300064494019496e-6`
+
+它是经验算术分辨率，不是统计显著性阈值；必须核对预注册的新运行合同，不能未经证明把它当成跨环境通用阈值。
+
+保持足够精度的原始 KL 标量和逐位置身份，不能只保存四舍五入的均值。
+
+推荐保存384点逐位置 KL 供以后 CPU-only 分析，但本次不得新增或替换正式 Primary / Secondary，也不得用事后时间分段改判。
+
+---
+
+## 8. Phase 4：文档级统计与科学解释
+
+严格以**独立文档**为统计单位。
+
+输出每篇：
+
+- 文档 ID。
+- P1 所选 rotation。
+- L7 所选 rotation。
+- P1/L7 short-horizon scores 与排名。
+- 两方 midrank gap。
+- `K_P1`。
+- `K_L7`。
+- signed Delta。
+- 相对 KL 差异。
+- 获胜方法。
+- 全部数值和物理门禁状态。
+
+然后总结：
+
+- P1 正向文档数。
+- L7 正向文档数。
+- ties / unresolved 数。
+- 每篇效应大小和方向。
+- 结果是否支持原预注册的预测假设。
+
+不要：
+
+- 把384个 token 当384个独立样本。
+- 把 KDA 的18层×16 heads 当独立样本。
+- 将历史两篇正式结果直接合并为新的统计确认面板。
+- 将已见结果后的交叉旋转 panel 当成新的前瞻确认样本。
+- 根据结局重新选择四篇文档。
+- 用两文档的合并平均 KL 代替文档级胜负。
+
+如果四篇全部支持 P1，也只能宣称：
+
+`DIRECTIONALLY_SUPPORTIVE_SMALL_PROSPECTIVE_EXTENSION`
+
+或使用原预注册允许的等价标签。
+
+不能声称：
+
+- P1 已经统计确认优于 L7。
+- P1 已经是可训练 Loss。
+- 已找到未来 Query 的完整因果机制。
+- 已证明 reasoning / AIME 提升。
+
+如果报告 exact sign-test，必须检查独立性、非平局样本数及零假设适用性。
+
+特别注意，独立4/4的单侧 sign-test 在胜率0.5的原假设下为 `p=0.0625`。
+
+即使全胜，也不能直接写成传统5%显著性确认。
+
+本轮选择的是 P1/L7 存在短程分歧的文档，所以结果仅针对这种预先定义的条件性测试分布；不能自动推广到全部 PG19。
+
+---
+
+## 9. Phase 5：结果解释与后续研究门禁
+
+根据正式结果做科学总结，但不得自动执行下一轮科研。
+
+重点回答：
+
+1. P1 与原 L7 在独立新文档上的方向预测分别成功几次？
+2. 哪些文档出现明显的预测失败？
+3. 结果是否依赖少数大效应文档？
+4. 新结果是否复制了旧两文档中观测到的旋转选择问题？
+5. P1 是否有独立于 L7_TOTAL_ORIGINAL 的预测信息？
+6. 是否有足够依据设计进一步的独立验证？
+7. 是否存在理由进入 P1 gradient trainability 资格研究？
+8. 哪些机制结论仍为 NOT_IDENTIFIABLE？
+
+后续建议只允许写入报告：
+
+- 若方向性证据有利：建议另行冻结更大规模独立验证。
+- 若仍 MIXED：建议转向 error propagation × future readout observability 机制研究。
+- 若结果不支持 P1：建议降低原始 P1 作为独立训练 Loss 的优先级。
+
+无论结局如何：
+
+**不得自动启动新 L8/L9 training、P1+Cayley gradient optimization、AIME/free generation、额外32K探索或 Qwen 任务。**
+
+---
+
+## 10. 交付与封存
+
+使用新的、不会覆盖旧实验的独立结果目录。
+
+实验 ID 优先采用正式预注册中的规范 ID，不能用新命名覆盖旧实验身份。
+
+至少交付以下等价内容：
+
+1. `FINAL_SCIENTIFIC_REPORT.md`：完整中文科研报告。
+2. `PREREGISTRATION_RECONCILIATION.json`：预注册与实际执行身份核对。
+3. `SHORT_HORIZON_SELECTION.csv`：扫描过程、16旋转分数、排名、eligible pair 与排除原因。
+4. `FROZEN_4DOC_SELECTION.json`：GPU long-horizon outcome 之前冻结的四文档身份、旋转对和 SHA。
+5. `ENGINEERING_QUALIFICATION.json`：numerical / observer / resume / physical gates。
+6. `FOUR_DOC_PRIMARY_RESULTS.csv`：逐文档完整精度 KL、Delta 与科学结论。
+7. `POSITIONAL_KL`：384点原始 KL 及 token/文档/旋转身份；若原合同要求其他存储格式，以原合同为准。
+8. `RESOURCE_REPORT.json`：逐 worker GPUh、显存、运行结果。
+9. `SHA256SUMS.txt` 与完整 manifest。
+
+所有关键结果原子保存，报告 source commit、模型/rotation/input SHA 及真实绝对路径。
+
+大型 FP payload/checkpoint 可以留在服务器，但必须由可验证的 manifest 绑定身份。
+
+不得虚构文件、GPU 使用、PASS 状态或服务器路径。
+
+---
+
+## 11. STOP 条件
+
+遇到以下情况必须 STOP：
+
+- 正式 preregistration 或必需身份资产无法验证。
+- 原冻结100/20/22/58输入资格无法复现。
+- 16 rotation roster 或 scorer 身份发生不合格变化。
+- 40篇内不能取得4个 eligible documents。
+- selection freeze 不完整。
+- deterministic / numerical / observer / resume gate 失败。
+- 实际显存或磁盘不足。
+- 模型运行被不可合法恢复的错误中断。
+- FP reference 或 student KL 不完整、不有限、位置不匹配。
+- 任何科学协议需要未授权修改才能继续。
+
+STOP后必须保存失败位置、已有合格资产和后续 `NOT_RUN` 状态。
+
+不得生成看似完成的空科学 CSV，不得用零填充失败结果。
+
+---
+
+## 12. 最终回报格式
+
+完成或 STOP 后，逐项明确回答：
+
+1. 本次读取了哪些正式 pre-registration 和成功 manifest？SHA 是否验证通过？
+2. PG19 100→58输入资格是否完全复现？
+3. 实际短程筛选多少篇？是否在最多40篇内找到四篇？
+4. 最终选择哪四篇文档？
+5. 每篇 P1 与 L7 分别选择什么 rotation？双方 midrank gap 是多少？
+6. Selection freeze 是否在任何32K outcome 前完成？
+7. numerical、observer、fresh-process resume、persistent QDQ 和 physical gates 是否全部通过？
+8. 4个FP与8个student是否全部完成？
+9. 四篇的完整精度 `K_P1 / K_L7 / Delta` 分别是多少？
+10. P1 胜、L7 胜、tie/unresolved 各多少？
+11. 是否得到具有方向性的独立前瞻证据？哪些结论不能宣称？
+12. 是否发现与旧 MIXED / Posthoc cross panel 相同的候选选择现象？
+13. 本次实际 GPU worker 总数、真实 GPUh、峰值 CUDA allocated/reserved/NVML 是多少？
+14. 最终 source commit、SHA、manifest 和绝对交付目录是什么？
+15. 是否严格 STOP，确认没有启动梯度训练、新 L8/L9 或 AIME？
+
+最后输出机器可读取状态，例如：
+
+- `PREREGISTRATION_IDENTITY_STATUS`
+- `INPUT_ELIGIBILITY_STATUS`
+- `SHORT_HORIZON_SELECTION_STATUS`
+- `FROZEN_SELECTION_STATUS`
+- `NUMERICAL_QUALIFICATION_STATUS`
+- `PERSISTENT_INT8_SEMANTICS_STATUS`
+- `FP_REFERENCE_STATUS`
+- `STUDENT_32K_STATUS`
+- `PROSPECTIVE_PRIMARY_STATUS`
+- `DOCUMENT_LEVEL_VERDICT`
+- `SCIENTIFIC_INTERPRETATION_STATUS`
+- `TRAINING_AUTHORIZATION=NOT_AUTHORIZED`
+- `FINAL_EXECUTION_STATUS`
+
+最终原则：
+
+**本轮不是为了跑出 P1 必胜的结果，而是为了在独立、预注册、真实 persistent INT8 的32K模型执行条件下，检验 P1 是否比原始 L7 更具有增量预测价值。**
+
+结果好坏都必须完整报告，不得改变科研问题来迎合预期。
+
+从 Phase 0 开始，先完成可审计的计划与资格检查；若所有门禁满足，在本提示词明确授权范围内继续执行至正式交付，然后停止。

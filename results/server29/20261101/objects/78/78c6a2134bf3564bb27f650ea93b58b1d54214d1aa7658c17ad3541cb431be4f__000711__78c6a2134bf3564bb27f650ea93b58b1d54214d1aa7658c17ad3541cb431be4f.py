@@ -1,0 +1,1 @@
+lambda _cls, activation, weight: _tuple_new(_cls, (activation, weight))

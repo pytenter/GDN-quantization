@@ -1,0 +1,663 @@
+# QWEN_GDN_DUAL_M_EQUIVALENT_SPEEDUP_V1
+
+你是我的Qwen/GDN recurrent-state INT8量化算法与GPU系统优化研究Agent。
+
+本次任务要解决一个非常明确的问题：
+
+**Hadamard+Dual-M已经在真实32K Future-KL实验中获得可靠的正向结果，但当前每token QDQ的推理吞吐较低。请定位真正的时间瓶颈，并在不改变原Dual-M数学、persistent QDQ语义及模型功能的前提下，开发并验证一个最小的加速实现。**
+
+本次重点是工程等价加速，不是新方法训练，也不是新的量化算法消融。
+
+不要无限修改Kernel，不要逐个报错地进行工程修补。先整体分析调用链、GPU时间、CPU发射和内存生命周期，再针对最主要的瓶颈采取一次集中优化。
+
+---
+
+## 0. 任务身份与权限
+
+```text
+TASK_ID = QWEN_GDN_DUAL_M_EQUIVALENT_SPEEDUP_V1
+
+MODEL = Qwen3.5-9B
+ARCHITECTURE = GDN
+ROTATION = FROZEN_HADAMARD_H128
+CODEC = FROZEN_DUAL_M_INT8
+
+CPU_SOURCE_AUDIT = YES
+CPU_CODEC_TESTS = YES
+
+GPU_EXECUTION_AUTHORIZED = YES
+MAX_GPU_COUNT = 1
+GPU_TYPE = RTX3090_24GB
+MAX_NEW_GPU_HOURS = 2.0
+
+FORMAL_AIME = NO
+NEW_32K_SCIENCE = NO
+TRAINING = NO
+A800 = NO
+SGLANG = NO
+MULTI_GPU = NO
+GIT_PUSH = NO
+```
+
+只有在人类明确提交本任务、真实GPU空闲且资源准入通过的前提下，才能执行有界GPU profiling和短程测试。
+
+目前可能有独立AIME26正式实验占用GPU。不得抢占、暂停、终止或修改任何正在运行的AIME任务。
+
+若没有空闲且有权使用的3090，完成CPU阶段并以 `CPU_READY_GPU_UNAVAILABLE_AND_STOP` 结束，不后台等待、自动重试或改用其他设备。
+
+2 GPUh是本任务新增GPU总上限，必须包括加载、profiling、候选测试与释放前实际占用，不能重置。
+
+创建独立worktree和输出目录。历史科学结果及seal全部只读。
+
+---
+
+## 1. 恢复科学参考实现
+
+必须首先核验：
+
+`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1`
+
+以及：
+
+`QWEN_GDN_C6R_DUAL_M_INTERACTION_REUSE_5DOC_V1`
+
+重点恢复此前真实32K实验使用的：
+
+- Hadamard坐标变换
+- Dual-M reference codec
+- QDQ/writeback流程
+- Model/GDN forward
+- 每token state输入输出
+- scale floor/clipping规则
+- 数值安全门禁
+- deterministic kernel配置
+- FP32 state-carrier语义
+- 已有Codec CPU/GPU parity
+- 历史实际吞吐与显存记录
+
+必须用源码SHA和历史manifest确认真正的执行版本，不能仅凭文件名匹配。
+
+已冻结的Dual-M定义：
+
+```text
+INT8 signed codes
+w_i = 1
+
+FP16 row scale
+FP16 column scale
+
+No FP16 pivots
+No mixed bit allocation
+
+One column least-squares fitting
+Final INT8 re-encode
+Persistent QDQ/writeback per token
+```
+
+旧Dual-M必须始终保留为不可修改的Reference。
+
+本任务不得修改其源文件。
+
+先记录完整源代码和数学调用关系，再在新模块中开发优化候选。
+
+特别注意：旧FP_NATIVE和FP_H之间的历史数值门禁失败不属于本次任务。不能通过修改原FP数学、放宽阈值或更换GDN Kernel来绕开。
+
+**本次需要保持一致的是旧Hadamard+Dual-M与新Hadamard+Dual-M优化候选，而不是重新证明FP_NATIVE与FP_H严格等价。**
+
+---
+
+## 2. Phase 0A：完整性能调用链审计
+
+CPU-only完成。
+
+绘制实际运行流程：
+
+```text
+Model Forward
+  ↓
+Q/K Hadamard transform
+  ↓
+GDN recurrent state update/readout
+  ↓
+Dual-M row scale
+  ↓
+Dual-M initial column scale
+  ↓
+Initial INT8 levels
+  ↓
+Column LS fitting
+  ↓
+Final INT8 re-encode
+  ↓
+QDQ/writeback
+  ↓
+Next token consumes quantized state
+```
+
+这只是数学分析结构，真实代码可能已融合多个步骤。
+
+必须从源码确认：
+
+1. 哪些操作已有Triton/CUDA融合。
+2. 哪些仍是独立PyTorch操作。
+3. 每个token发生多少次CUDA kernel launch。
+4. 是否出现重复State读取和写回。
+5. 是否产生完整的额外FP32 State副本。
+6. 是否存在 `.item()`、`.cpu()`、隐式同步。
+7. 是否有Python hook或observer引起额外调用。
+8. GDN update/readout是否已经和Codec部分融合。
+9. 真实CUDA stream与事件依赖。
+10. 是否存在不必要的重复Encode/Decode。
+
+不得预先假设LS就是主要瓶颈。
+
+### STEPQuant官方实现参考
+
+只读参考：
+
+https://github.com/Dreamer-Toby/STEPQuant
+
+重点检查：
+
+```text
+stepquant/quantization.py
+stepquant/kernels/fit.py
+stepquant/kernels/fused.py
+stepquant/kernels/rows.py
+stepquant/kernels/readout.py
+stepquant/kernels/pool.py
+stepquant/kernels/writeback.py
+```
+
+尤其关注其：
+
+- row statistics kernel
+- column fitting kernel
+- 初始编码与LS的融合方式
+- final re-encode
+- packed state的读写布局
+- asynchronous writeback
+- CUDA graph的使用边界
+
+注意官方STEPQuant完整实现与本实验不同。
+
+本次仅研究固定all8、w=1、zero-pivot的Dual-M。
+
+不能直接把STEPQuant的mixed precision、pivots或SGLang serving runtime整体迁移进来。
+
+输出：
+
+`CODEC_EXECUTION_GRAPH.md`
+
+和：
+
+`REFERENCE_IMPLEMENTATION_AUDIT.json`
+
+---
+
+## 3. Phase 0B：建立公平的性能测量
+
+先测量原始Reference，不要立即修改Kernel。
+
+性能测试使用非AIME固定输入，避免影响正在执行的正式AIME实验。
+
+使用已验证的真实GDN State fixture；如无法取得，另行构造可重复的CPU/GPU synthetic codec fixture，但必须把合成与真实结果分开。
+
+建议三种条件：
+
+```text
+FP_NATIVE
+H_C128
+H_DUAL_M_REFERENCE
+```
+
+STEPQuant6不是本轮主要优化对象，不强制加载它的运行时。
+
+所有条件使用相同模型、固定输入token序列和相同GPU环境。
+
+以teacher-forced fixed-token replay作为主要吞吐对照，避免不同采样结果、EOS和输出长度造成测量偏差。
+
+测试层次：
+
+### A. Codec-only Microbenchmark
+
+对真实State形状：
+
+`[1,32,128,128]`
+
+分别测量：
+
+- Row scale
+- Initial column scale
+- Initial levels
+- LS
+- Final levels
+- Decode/QDQ
+- 整体Codec
+
+如果旧实现已经融合这些步骤，不要为了拆分耗时而改变正式reference。
+
+可以使用短期独立诊断实现或Profiler trace推断热点，但应标记为诊断结果。
+
+### B. Full-model fixed-token benchmark
+
+建议长度：
+
+```text
+128 tokens
+512 tokens
+2048 tokens
+```
+
+8192-token仅在短程结果、剩余GPU预算和资源准入均允许时增加，不是强制项目。
+
+使用相同输入前缀与明确的prefill/QDQ协议。
+
+每个候选的基线与新实现必须采用相同measurement window。
+
+分别记录：
+
+- 完整wall token latency
+- Decode tokens/s
+- GPU active time
+- CPU dispatch overhead
+- Kernel launch数量
+- peak allocated/reserved
+- 编码/解码时间
+- 运行成本
+
+执行warmup，至少三次有效重复；保留每次原始记录，报告median和波动范围。
+
+不要将历史FP的13.38 tokens/s和当前Dual-M的6.83 tokens/s直接当作同条件正式加速比。
+
+不要在每个token插入全局CUDA synchronize。
+
+使用CUDA events或Profiler，并将Profiling本身的额外开销与非instrumented wall time分开报告。
+
+若CUDA工作存在异步重叠，禁止简单求和所有Kernel时间并声称等于完整wall time。
+
+输出：
+
+`BASELINE_RUNTIME_PROFILE.json`
+
+`PER_KERNEL_COST.csv`
+
+`FULL_MODEL_BASELINE.csv`
+
+### Phase 0的结束判据
+
+必须明确找到：
+
+1. 最耗时的3个操作或执行阶段。
+2. Dual-M相对H+C128新增的主要开销。
+3. GPU计算瓶颈还是CPU发射/同步瓶颈。
+4. State中间张量的主要内存开销。
+5. 数学不变条件下最有可能提速的一个优化切入点。
+
+如果Reference profiling未通过，不允许盲目开发Fused Kernel。
+
+---
+
+## 4. Phase 1：仅实现一个主要等价优化候选
+
+基于Phase 0结果决定优化什么。
+
+按照以下优先级选择。
+
+### 情况A：主要瓶颈是Python、Kernel Launch或重复访存
+
+优先减少不必要的调用、同步或临时张量。
+
+不得改变数学和QDQ时序。
+
+如果有资格移除仅用于诊断的observer，必须验证observer ON/OFF对codes、scales、logits、写回State和下一个token完全没有影响。
+
+仍应保留原科学协议要求的安全与有限性门禁。
+
+不得为了测速而绕过真正的QDQ。
+
+### 情况B：主要瓶颈是Row/Column计算与LS
+
+实现一个最小的Fused Dual-M候选。
+
+优先考虑：
+
+```text
+Kernel 1:
+  Row statistics
+  FP16 row scale
+
+Kernel 2:
+  Column initial scale
+  Initial code selection
+  LS numerator/denominator
+  FP16 fitted column scale
+  Final code selection
+  QDQ/writeback
+```
+
+这仅是候选结构。
+
+如果发现单kernel或两kernel结构不利于GPU occupancy、寄存器使用或访存合并，可以采用实测更好的最小划分。
+
+数学定义保持：
+
+\[
+r_i=\operatorname{FP16Clamp}
+\left(\sqrt{\operatorname{mean}_j |S_{ij}|}\right)
+\]
+
+\[
+c_j^{(0)}=\operatorname{FP16Clamp}
+\left(\max_i\frac{|S_{ij}|}{127r_i}\right)
+\]
+
+\[
+z_{ij}^{(0)}
+=\operatorname{RoundClampINT8}
+\left(\frac{S_{ij}}{r_ic_j^{(0)}}\right)
+\]
+
+\[
+c_j^{(1)}
+=\operatorname{FP16Clamp}
+\left(
+\frac{\sum_i(r_i z_{ij}^{(0)})S_{ij}}
+{\sum_i(r_i z_{ij}^{(0)})^2}
+\right)
+\]
+
+\[
+z_{ij}^{(1)}
+=\operatorname{RoundClampINT8}
+\left(\frac{S_{ij}}{r_ic_j^{(1)}}\right)
+\]
+
+以上仅是说明数学结构，实际kernel必须继承原reference所有特殊规则，包括：
+
+- 数值floor与ceiling
+- FP16 conversion
+- ties/rounding
+- clamp次序
+- zero denominator fallback
+- zero state
+- finite检查
+- tensor layout与stride
+- dtype转换顺序
+
+不得用fast-math近似静默改变数值结果。
+
+不得取消LS。
+
+不得减少原数学要求的编码步骤。
+
+不得改变scale存储精度。
+
+不得将row/column scale改为FP32常驻，以假装提高精度。
+
+### 情况C：主要瓶颈来自原生GDN或模型主干
+
+如果Codec只占额外耗时的一小部分，不要继续优化LS。
+
+必须客观报告State-only quantization在当前batch=1 BF16模型下的加速上限。
+
+不得为了得到正向吞吐而修改模型权重精度或GDN数学。
+
+---
+
+## 5. Phase 2：等价数值资格
+
+这是本次最重要的验收环节。
+
+优化候选不能仅因为运行更快就替换Reference。
+
+必须比较：
+
+```text
+Old H_DUAL_M Reference
+vs
+New H_DUAL_M Optimized
+```
+
+使用完全相同的State输入及数学配置。
+
+### Gate A：Codec parity
+
+覆盖：
+
+- Zero State
+- Constant State
+- Random State
+- Real GDN State
+- Outlier State
+- 非连续布局
+- FP16极小scale
+- FP16极大scale
+- signed ties
+- batch=1
+- 合法的其他batch配置（如果当前实现支持）
+
+检查：
+
+1. INT8 codes
+2. FP16 row scale bit pattern
+3. FP16 column scale bit pattern
+4. Reconstructed QDQ state
+5. finite与clipping结果
+6. writeback timing
+7. 原安全门禁
+
+对于声称数学等价的优化，优先要求bytewise/bitwise exact。
+
+不能把存在code不同的候选直接标记为EXACT。
+
+如果因浮点归约次序产生差异，应记录首个差异位置、幅度及其传播影响，并保持候选为`NUMERICAL_NONEXACT`，不自动升级到正式生产路径。
+
+### Gate B：真实Recurrent运行
+
+在同样的非AIME token序列上，比较旧实现与新实现：
+
+- 每token后的QDQ state
+- 下一token实际消费的状态
+- GDN关键输出
+- full-model logits
+- sampling前的输出
+- 固定seed下生成的token序列
+
+至少覆盖128-token，再按资源条件扩展1024或2048-token。
+
+两臂使用各自独立state，不能通过将Reference state注入优化臂来制造一致。
+
+### Gate C：重复性
+
+同一合格GPU上执行fresh-process重复，核验源码、状态及必要的数值身份。
+
+如果不能达到原冻结的确定性合同，保留实际差异，不静默修改容差或后处理codes。
+
+原FP_NATIVE/H门禁失败继续保留，不属于本轮需要消除的差异。
+
+---
+
+## 6. Phase 3：真实加速验收
+
+数值资格通过后才进行最终性能比较。
+
+使用与Phase 0相同的GPU、输入序列、模型、采样/回放方式、长度与测量策略。
+
+比较：
+
+```text
+H_DUAL_M_REFERENCE
+H_DUAL_M_OPTIMIZED
+```
+
+必须同时报告：
+
+- Codec-only速度
+- Full-model decode吞吐
+- 实际wall token latency
+- p50/p95
+- Kernel launch数量
+- 峰值CUDA allocated/reserved
+- 临时tensor bytes
+- 实际resident state bytes
+- Profiling开销
+
+核心指标：
+
+\[
+\mathrm{Speedup}=
+\frac{T_{\mathrm{Reference}}}
+{T_{\mathrm{Optimized}}}
+\]
+
+`T`必须使用相同测量范围的真实wall time。
+
+建议以**同条件完整decode吞吐提高至少10%**作为值得继续投入长程科学验证的性能目标，而不是事后挑选最有利的微基准。
+
+低于10%时如实记录，不能宣称性能失败或修改结果，但应评估进一步复杂Kernel开发是否值得。
+
+如果Codec microbenchmark加速明显，而完整模型几乎没有加速，也应明确报告。这可能表明主干计算或其它开销占主导。
+
+禁止将CUDA event局部加速冒称完整推理加速。
+
+---
+
+## 7. 精度保护与后续科学边界
+
+本任务的目标是保持原Dual-M数值不变。
+
+因此：
+
+- 不增加新的Rotation。
+- 不改变INT8位宽。
+- 不更换row/column公式。
+- 不删除Column LS。
+- 不增加FP16 pivots。
+- 不训练参数。
+- 不改变AIME采样协议。
+- 不改已经封存的32K Future-KL结果。
+
+如果得到bitwise一致的优化候选，可将其标记为：
+
+`EQUIVALENT_CODEC_CANDIDATE`
+
+如果模型短程数值与token序列也通过：
+
+`SHORT_RUNTIME_PARITY_QUALIFIED`
+
+但这仍不等于已独立确认32K和AIME准确率。
+
+任何非exact候选只能进入未来独立科学消融，不能自动取代当前Hadamard+Dual-M正式方法。
+
+**这次不自动运行32K Future-KL或AIME26。**
+
+只有完成本次性能与数值资格后，才建议另行授权对最终候选进行长程功能验证。
+
+如需之后验证AIME，应在原正式AIME运行结束、结果封存之后使用统一的30题×2seed协议，不通过少数有利样本宣称“正确率无下降”。
+
+---
+
+## 8. 止损规则
+
+必须防止重新进入缝缝补补的工程模式。
+
+严格限制：
+
+- 只实现一个主要优化方向。
+- 最多进行一次有明确失败证据支持的局部修正。
+- 不重写完整GDN recurrence。
+- 不移植完整SGLang。
+- 不同时开发packed INT8 runtime。
+- 不修改历史正式Codec。
+- 不改数学定义。
+- 不为了性能关闭QDQ。
+- 不使用异步写回造成下token消费未完成state。
+- 不擅自修改CUDA stream同步合同。
+- 不无限尝试不同block size或Triton参数。
+- 不超出2 GPUh。
+- 不干扰AIME26正式任务。
+
+当诊断证明瓶颈不在Codec，或者等价优化无法经济实现时，必须STOP。
+
+不允许为了完成任务而强行制造正向加速结果。
+
+---
+
+## 9. 最终交付
+
+必须提供：
+
+```text
+REFERENCE_SOURCE_AUDIT.json
+CODEC_EXECUTION_GRAPH.md
+
+BASELINE_RUNTIME_PROFILE.json
+PER_KERNEL_COST.csv
+FULL_MODEL_BASELINE.csv
+
+BOTTLENECK_ANALYSIS.md
+OPTIMIZATION_DESIGN.md
+SOURCE_DIFF_MANIFEST.json
+
+CPU_CODEC_PARITY.json
+GPU_CODEC_PARITY.json
+RECURRENT_STATE_PARITY.json
+FRESH_PROCESS_QUALIFICATION.json
+
+OPTIMIZED_RUNTIME_PROFILE.json
+SPEEDUP_COMPARISON.csv
+GPU_RESOURCE_LEDGER.json
+
+FIRST_FAILURE.json (if applicable)
+GATE_STATUS_FINAL.json
+FINAL_TECHNICAL_REPORT.md
+SHA256_MANIFEST.json
+```
+
+若没有GPU执行，GPU相关报告应明确`NOT_RUN`，不得生成伪造数值。
+
+最终报告必须回答：
+
+1. Dual-M实际最耗时的操作是什么？
+2. Column LS究竟占多少时间？
+3. 额外开销主要来自GPU计算、memory traffic，还是CPU launch/synchronization？
+4. STEPQuant官方Fused Kernel中有哪些设计真正适用？
+5. 最终改动了哪些代码？
+6. INT8 codes、FP16 scales、QDQ输出是否exact一致？
+7. 真实next-token消费是否正确？
+8. Codec-only加速多少？
+9. Full-model token吞吐加速多少？
+10. 性能提升是否值得后续32K科学验证？
+11. 实际显存和临时张量成本是否下降？
+12. 是否仍有瓶颈值得做独立下一阶段研究？
+
+最终状态：
+
+```text
+PROFILE_ONLY_COMPLETE_AND_STOP
+```
+
+或
+
+```text
+EQUIVALENT_SPEEDUP_QUALIFIED_AND_STOP
+```
+
+或
+
+```text
+NO_USEFUL_SPEEDUP_AND_STOP
+```
+
+或
+
+```text
+FAIL_CLOSED_STOP
+```
+
+结束后释放GPU、核验资源，封存源码与性能报告。
+
+不自动启动下一轮算法简化、32K、AIME、训练、A800租卡或其他GPU任务。
+
+**本次任务唯一目标：用有界GPU成本，找到Dual-M真实瓶颈，并得到一个可核验、数学等价且确实改善端到端吞吐的最小优化候选；如果做不到，就明确告诉我们为什么做不到。**

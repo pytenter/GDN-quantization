@@ -1,0 +1,1 @@
+lambda _cls, name, signature, def_sig, call_sig, names, n_positional, args, kwargs: _tuple_new(_cls, (name, signature, def_sig, call_sig, names, n_positional, args, kwargs))

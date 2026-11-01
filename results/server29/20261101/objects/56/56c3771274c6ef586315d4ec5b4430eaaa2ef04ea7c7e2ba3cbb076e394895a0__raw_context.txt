@@ -1,0 +1,1027 @@
+src/main/java/com/github/duncpro/jackal/cdc/transform/TransformersBuilder.java
+@NotThreadSafe
+public class TransformersBuilder {
+  private static final Logger log = LoggerFactory.getLogger(TransformersBuilder.class);
+
+  /**
+   * The default Transformers included with Jackal.
+   */
+  private static final Transformers defaults;
+
+  static {
+    defaults = new TransformersBuilder().add(IntegerTransformer.class).add(StringTransformer.class)
+        .add(BooleanTransformer.class).add(FloatTransformer.class).add(DoubleTransformer.class)
+        .add(ShortTransformer.class).add(CharTransformer.class).add(LongTransformer.class)
+        .add(EnumTransformer.class).build();
+  }
+
+  private final Map<Class<?>, Transformer> transformerMap = Maps.newHashMap();
+
+  /**
+   * Constructs a TransformersBuilder.
+   * 
+   * @param includeDefaults will this auto-include Jackal's default transformers?
+   */
+  public TransformersBuilder(boolean includeDefaults) {
+    if (includeDefaults) {
+      addAll(defaults);
+    }
+  }
+
+  /**
+   * Constructs an empty TransofrmersBuilder.
+   */
+  public TransformersBuilder() {
+    this(false);
+  }
+
+  /**
+   * Instantiates the provided transformer class and adds it. If an old transformer is bound to any
+   * of the same types as the new transformer the old transformer will be unbound for those types
+   * and the new transformer will be bound.
+   * 
+   * @param transformerClass the transformer class to add.
+   * @return this builder
+   * @throws MalformedTransformerException if the transformer is malformed.
+   */
+  public TransformersBuilder add(Class<? extends Transformer> transformerClass) {
+    Preconditions.checkNotNull(transformerClass, "Transformer cannot be null");
+
+    // throws MalformedTransformerException
+    Transformer transformer = Transformer.instantiate(transformerClass);
+
+    for (Class<?> type : transformerClass.getAnnotation(Produces.class).value()) {
+      if (transformerMap.containsKey(type)) {
+        log.warn("{} already has a transformer ({}), it is being replaced with {}.",
+            type.getCanonicalName(), transformerMap.get(type), transformerClass);
+      }
+
+      transformerMap.put(type, transformer);
+    }
+
+    return this;
+  }
+
+  /**
+   * Adds each {@link Transformer} from the provided Transformers to this TransformersBuilder.
+   * 
+   * @param transformers the transformers to copy
+   * @return this builders
+   */
+  public TransformersBuilder addAll(Transformers transformers) {
+    for (Map.Entry<Class<?>, Transformer> entry : transformers.getTransformerMap().entrySet()) {
+      Class<?> type = entry.getKey();
+      Transformer transformer = entry.getValue();
+
+      if (transformerMap.containsKey(type)) {
+        log.warn("{} already has a transformer ({}), it is being replaced with {}.",
+            type.getCanonicalName(), transformerMap.get(type),
+            transformer.getClass().getCanonicalName());
+      }
+      transformerMap.put(type, transformer);
+    }
+
+    return this;
+  }
+
+  /**
+   * Builds a {@link Transformers} with the attributes of this {@link TransformersBuilder}.
+   * 
+   * @return a new transformers
+   */
+  public Transformers build() {
+    return new Transformers(ImmutableMap.copyOf(transformerMap));
+  }
+}
+src/main/java/com/github/duncpro/jackal/OutlineBuilder.java
+@NotThreadSafe
+public class OutlineBuilder {
+  private final Map<Path, FinalKey> finalKeys = Maps.newHashMap();
+
+  /**
+   * Adds a {@link FinalKey} to the outline. If a final key already exists at the proposed keys
+   * path, then the older key is erased and replaced with the newer key.
+   * 
+   * @param finalKey the key to add
+   * @return this builder
+   */
+  public OutlineBuilder addFinalKey(FinalKey finalKey) {
+    Preconditions.checkNotNull(finalKey, "Final key cannot be null");
+
+    // The key's path
+    Path path = finalKey.getPath();
+
+    // No duplicate paths
+    if (finalKeys.containsKey(path)) {
+      finalKeys.remove(path);
+    }
+
+    finalKeys.put(path, finalKey);
+
+    return this;
+  }
+
+  /**
+   * Builds a new {@link Outline} with this builders attributes.
+   * 
+   * @return the new outline
+   */
+  public Outline build() {
+    // Create an immutable copy of the list
+    ImmutableList<FinalKey> immutableCopy = ImmutableList.copyOf(finalKeys.values());
+
+    return new Outline(immutableCopy);
+  }
+}
+src/main/java/com/github/duncpro/jackal/constraint/InversionPolicy.java
+public enum InversionPolicy {
+  INVERTED,
+  NOT_INVERTED;
+  
+  /**
+   * Returns the opposite. So if INVERTED then NOT_INVERTED, or if NOT_INVERTED 
+   * then INVERTED.
+   */
+  public InversionPolicy opposite() {
+    switch (this) {
+      case INVERTED:
+        return NOT_INVERTED;
+      case NOT_INVERTED:
+        return INVERTED;
+      default:
+        throw new AssertionError();
+    }
+  }
+}
+src/main/java/com/github/duncpro/jackal/cdc/transform/TransformerException.java
+@SuppressWarnings("serial")
+public class TransformerException extends Exception {
+  public TransformerException(String message) {
+    super(message);
+  }
+}
+src/main/java/com/github/duncpro/jackal/constraint/Constraint.java
+public interface Constraint {
+  /**
+   * Determines whether or not the provided object passes the constraint. Null will be passed to
+   * this method.
+   */
+  Result check(Object value);
+
+  /**
+   * Instantiates a {@link Constraint}.
+   * 
+   * @param clazz the constraint class
+   * @return the instantiated constraint
+   * @throws MalformedConstraintException if the constraint class is malformed.
+   */
+  static Constraint instantiate(Class<? extends Constraint> clazz) {
+    Preconditions.checkNotNull(clazz, "Class cannot be null");
+
+    // Ensure that the constraint class has declared checkable types
+    Set<Class<?>> acceptedTypes = Sets.newHashSet();
+    if (clazz.isAnnotationPresent(AppliesTo.class)) {
+      for (Class<?> accepted : clazz.getAnnotation(AppliesTo.class).value()) {
+        acceptedTypes.add(accepted);
+      }
+    }
+    if (acceptedTypes.isEmpty()) {
+      throw new MalformedConstraintException(
+          clazz.getCanonicalName() + " has not declared" + " any checkable types.");
+    }
+
+    // Ensure that the constraint class has the no-args constructor
+    Constructor<? extends Constraint> constructor;
+    try {
+      constructor = clazz.getConstructor();
+    } catch (NoSuchMethodException ex) {
+      throw new MalformedConstraintException(
+          "No no-args constructor found for " + clazz.getCanonicalName(), ex);
+    }
+
+    // Instantiate the constraint class
+    Constraint constraint;
+    try {
+      constraint = constructor.newInstance();
+    } catch (InstantiationException ex) {
+      throw new MalformedConstraintException("Cannot instantiate " + clazz.getCanonicalName(), ex);
+    } catch (IllegalAccessException ex) {
+      throw new MalformedConstraintException(clazz.getCanonicalName()
+          + "'s constructor is not accessible (It probably needs to be public).", ex);
+    } catch (InvocationTargetException ex) {
+      throw new MalformedConstraintException(
+          clazz.getCanonicalName() + " threw an exception while undergoing construction.", ex);
+    }
+
+    return constraint;
+  }
+
+  /**
+   * Checks whether or not a specific {@link Constraint} can be applied to a specific type.
+   * 
+   * @param constraint the constraint to check
+   * @param type the type to check
+   * @return true if the type applies to the constraint
+   */
+  static boolean isCompatible(Constraint constraint, Class<?> type) {
+    Preconditions.checkNotNull(constraint, " Constraint cannot be null");
+    Preconditions.checkNotNull(type, "Type cannot be null.");
+
+    boolean compatible = false;
+    for (Class<?> accepted : constraint.getClass().getAnnotation(AppliesTo.class).value()) {
+      if (accepted.isAssignableFrom(type)) {
+        compatible = true;
+      }
+    }
+
+    return compatible;
+  }
+
+  /**
+   * {@link #isCompatible(Constraint, Class)} except throws an
+   * {@link IncompatibleConstraintException} instead of returning false.
+   */
+  static void ensureCompatibility(Constraint constraint, Class<?> type) {
+    if (!isCompatible(constraint, type)) {
+      throw new IncompatibleConstraintException(constraint.getClass().getCanonicalName()
+          + " is not compatible with " + type.getCanonicalName());
+    }
+  }
+}
+src/main/java/com/github/duncpro/jackal/path/Paths.java
+public class Paths {
+  /**
+   * Returns the last part in the given path.
+   */
+  public static Part finalPart(Path path) {
+    return path.partAt(path.length() - 1);
+  }
+
+  /**
+   * Creates a new {@link Path} with some or all of the keys from the provided path. This method
+   * always shortens from the back of the provided path. The new length cannot be greater than the
+   * old length although it can be equal to. If it is equal to then there will be no change.
+   * 
+   * @param path the path to clone
+   * @param newLength the length of the new path
+   * @return a new path with the specified length
+   */
+  public static Path shorten(Path path, int newLength) {
+    Preconditions.checkNotNull(path);
+
+    // A path can never be < 1
+    if (newLength < 1) {
+      throw new IllegalArgumentException("New length must be greater than 0");
+    }
+
+    // The path must be less than or equal to the length of the old path
+    if (newLength > path.length()) {
+      throw new IllegalArgumentException(
+          "New length must be equal to or less than the length of the existing" + " path.");
+    }
+
+    // A new list to store represent the new path we are creating
+    List<Part> parts = new ArrayList<>(newLength);
+
+    // Populate the new path
+    for (int i = 0; i < newLength; i++) {
+      parts.add(path.partAt(i));
+    }
+
+    return new HierarchicalPath(parts);
+  }
+
+  /**
+   * Combines the first path with the last path, leading with the first path.
+   * 
+   * @param first the path to lead with
+   * @param rest the path to end with
+   * @return the combined paths
+   */
+  public static Path combine(Path first, Path... rest) {
+    Preconditions.checkNotNull(first);
+    Preconditions.checkNotNull(rest);
+
+    // Verify no gaps will exist in the new path
+    List<Path> paths = Arrays.asList(rest);
+    if (paths.contains(null)) {
+      throw new IllegalArgumentException("Cannot append null");
+    }
+
+    // The parts in our new combined path
+    List<Part> parts = new ArrayList<>();
+
+    // Add first
+    parts.addAll(first.toPartList());
+
+    // Add rest
+    for (Path path : rest) {
+      parts.addAll(path.toPartList());
+    }
+
+    return new HierarchicalPath(parts);
+  }
+}
+src/main/java/com/github/duncpro/jackal/FinalKeyBuilder.java
+@NotThreadSafe
+public class FinalKeyBuilder {
+  private Object defaultValue;
+
+  private DefaultValueType defaultValueType;
+
+  private final Path path;
+
+  private final ConstraintsBuilder constraintsBuilder;
+
+  private Constraints constraints;
+
+  private final Class<?> type;
+
+  private String comment;
+
+  /**
+   * Constructs a FinalKey builder.
+   *
+   * <p>
+   * If the value type is primitive, the NotNull constraint will automatically be assigned.
+   * </p>
+   * 
+   * @param path the path of the final key
+   * @param type the type of value that this key holds
+   */
+  public FinalKeyBuilder(Path path, Class<?> type) {
+    Preconditions.checkNotNull(path, "Path cannot be null.");
+    Preconditions.checkNotNull(type, "Type cannot be null.");
+
+    this.path = path;
+    this.constraintsBuilder = new ConstraintsBuilder(type);
+    this.type = type;
+
+    // All primitives are automatically assigned the NotNull constraint
+    if (type.isPrimitive()) {
+      constraintsBuilder.add(Null.class, InversionPolicy.INVERTED);
+    }
+  }
+
+  /**
+   * Sets the comment for this final key. Null will clear any set comment. This method is optional,
+   * if never called the final key will be created with no comment.
+   * 
+   * @param comment the comment to set or null for no comment
+   * @return this builder
+   */
+  public FinalKeyBuilder setComment(String comment) {
+    // No not-null precondition check. Null will clear the comment.
+
+    this.comment = comment;
+
+    return this;
+  }
+
+  /**
+   * Specifies a constraint that should be applied on this key's value. All constraints should be
+   * declared before BEFORE {@link #setDefaultValue(DefaultValueType, Object)} or
+   * {@link #setNoDefaultValue()} has been called.
+   * 
+   * @param clazz the class of the constraint.
+   * @return this builder.
+   * @throws IllegalStateException if the default value for the key has already been set
+   * @throws IncompatibleConstraintException if the constraint cannot be applied to this keys type.
+   */
+  public FinalKeyBuilder withConstraint(Class<? extends Constraint> clazz, InversionPolicy invert) {
+    Preconditions.checkNotNull(clazz, "Constraint class cannot be null.");
+    Preconditions.checkNotNull(invert, "Invert cannot be null.");
+
+    if (constraints != null) {
+      throw new IllegalStateException("The default value has already been set. You must apply all"
+          + " constraints before setting the default value.");
+    }
+
+    // Add the constraint
+    // ConstraintBuilder ignores duplicates so no need to check here.
+    // throws MalformedConstraintException, IncompatibleConstraintException
+    constraintsBuilder.add(clazz, invert);
+
+    return this;
+  }
+
+  /**
+   * Sets the default value for this final key. All constraints should be declared before this
+   * method is called. If the type is set to {@link DefaultValueType#NONE} then the value is
+   * ignored. Null is a valid default value.
+   * 
+   * @param type the type of default value that this key has.
+   * @param value the default value for this key.
+   * @return this builder
+   * @throws InvalidDefaultValueException if the provided default value fails any constraints that
+   *           are applied to this key.
+   */
+  public FinalKeyBuilder setDefaultValue(DefaultValueType type, Object value) {
+    Preconditions.checkNotNull(type, "Type cannot be null.");
+
+    defaultValueType = type;
+    defaultValue = value;
+
+    // If the default value has been set already then there is no need to regenerate the
+    // constraints.
+    if (constraints == null) {
+      constraints = constraintsBuilder.build();
+    }
+
+    // If we are supplying a default value
+    if (type != DefaultValueType.NONE) {
+      // Ensure default value meets constraints
+      Result result = constraints.check(value);
+      if (result.getType() == ResultType.FAIL) {
+        throw new InvalidDefaultValueException("'" + value + "' failed to meet"
+            + " constraints, it cannot be a default value: " + result.getMessage());
+      }
+    }
+
+    return this;
+  }
+
+  /**
+   * Calls {@link #setDefaultValue(DefaultValueType, Object)} with a type of
+   * {@link DefaultValueType#NONE}.
+   * 
+   * @return this builder.
+   */
+  public FinalKeyBuilder setNoDefaultValue() {
+    return setDefaultValue(DefaultValueType.NONE, null);
+  }
+
+  /**
+   * Builds the {@link FinalKey} object. Before building either
+   * {@link #setDefaultValue(DefaultValueType, Object)} or {@link #setNoDefaultValue()} must have
+   * been invoked.
+   * 
+   * @return a new final key that has the this builders attributes
+   */
+  public FinalKey build() {
+    // The default value has not been set.
+    if (constraints == null) {
+      throw new IllegalStateException("A default value has not been set yet, cannot build.");
+    }
+
+    return new FinalKey(defaultValue, defaultValueType, path, type, constraints, comment);
+  }
+
+  /**
+   * Thrown when the default value breaks a constraint.
+   */
+  @SuppressWarnings("serial")
+  public class InvalidDefaultValueException extends RuntimeException {
+    InvalidDefaultValueException(String message) {
+      super(message);
+    }
+  }
+}
+src/main/java/com/github/duncpro/jackal/constraint/CatchAllConstraintException.java
+public class CatchAllConstraintException extends RuntimeException {
+  private static final long serialVersionUID = -2156983181303305767L;
+
+  public CatchAllConstraintException(String message) {
+    super(message);
+  }
+}
+src/main/java/com/github/duncpro/jackal/cdc/transform/Transformers.java
+@Immutable
+public class Transformers {
+  private final Map<Class<?>, Transformer> transformerMap;
+
+  /**
+   * Constructs a Transformers. Performs no parameter validation.
+   * 
+   * @param transformerMap mapping of value type to transformer
+   */
+  Transformers(ImmutableMap<Class<?>, Transformer> transformerMap) {
+    this.transformerMap = transformerMap;
+  }
+
+  /**
+   * Constructs an object of the given type using the given String. If no {@link Transformer} is
+   * capable a {@link TransformerException} is thrown. Do not pass null.
+   * 
+   * @param type the type of object to construct
+   * @param string the string to supply the transformer with
+   * @return the freshly constructed object
+   * @throws TransformerException if no transformer was capable of transforming the provided type or
+   *           the string was malformed.
+   */
+  public Object transform(Class<?> type, String string) throws TransformerException {
+    Preconditions.checkNotNull(type, "Type must not be null");
+    Preconditions.checkNotNull(string, "String must not be null");
+    
+    for (Class<?> transformable : transformerMap.keySet()) {
+      if (transformable.isAssignableFrom(type)) {
+        return transformerMap.get(transformable).transform(string, type);
+      }
+    }
+    
+    throw new TransformerException("No transformer for type: " + type.getCanonicalName());
+  }
+
+  /**
+   * Returns an immutable set containing all the transformers in this collection.
+   */
+  public Set<Transformer> toSet() {
+    Set<Transformer> transformers = Sets.newIdentityHashSet();
+    transformers.addAll(transformerMap.values());
+    return ImmutableSet.copyOf(transformers);
+  }
+
+  /**
+   * Returns an immutable mapping of types to transformers.
+   */
+  Map<Class<?>, Transformer> getTransformerMap() {
+    return transformerMap; // Already immutable, refer to constructor
+  }
+}
+src/main/java/com/github/duncpro/jackal/FinalKey.java
+@Immutable
+public class FinalKey {
+  /**
+   * The default value that will be used when the provided value is non-existent or deemed invalid.
+   * If defaultValueType == NONE then this value is ignored.
+   */
+  private final Object defaultValue;
+
+  /**
+   * The type of default value.
+   */
+  private final DefaultValueType defaultValueType;
+
+  /**
+   * The path to this final key.
+   */
+  private final Path path;
+
+  /**
+   * The constraints applied to values set to this key. These constraints are also applied to the
+   * default value.
+   */
+  private final Constraints constraints;
+
+  /**
+   * The type of value that lives at this key.
+   */
+  private final Class<?> type;
+
+  /**
+   * Documentation explaining how changing this value with effect the application.
+   */
+  private final String comment;
+
+  /**
+   * Constructs a FinalKey. This method does no parameter checking.
+   * 
+   * @param defaultValue the default value for this key
+   * @param defaultValueType the type of default value for this key
+   * @param path the path of this key
+   * @param type the type of value allowed at this key
+   * @param constraints the constraints applied to the value of this key
+   * @param comment the documentation comment explaining the purpose of this key,
+   */
+  FinalKey(Object defaultValue, DefaultValueType defaultValueType, Path path, Class<?> type,
+      Constraints constraints, String comment) {
+    this.defaultValue = defaultValue;
+    this.defaultValueType = defaultValueType;
+    this.path = path;
+    this.type = type;
+    this.constraints = constraints;
+    this.comment = comment;
+  }
+
+  /**
+   * Returns the default value. This might return null if the default value is null. This is the
+   * value that will be used when the provided value is non-existent or deemed invalid.
+   */
+  public Object getDefaultValue() {
+    return defaultValue;
+  }
+
+  /**
+   * Returns the default value type.
+   */
+  public DefaultValueType getDefaultValueType() {
+    return defaultValueType;
+  }
+
+  /**
+   * Returns the path to this final key.
+   */
+  public Path getPath() {
+    return path;
+  }
+
+  /**
+   * Returns the constraints applied to values set to this key.
+   */
+  public Constraints getConstraints() {
+    return constraints;
+  }
+
+  /**
+   * Returns the type of value that will live at this key.
+   */
+  public Class<?> getType() {
+    return type;
+  }
+
+  /**
+   * Returns documentation explaining how changing this value with effect the application. May be
+   * null if no documentation was provided.
+   */
+  public String getComment() {
+    return comment;
+  }
+
+  @Override
+  public int hashCode() {
+    final int prime = 31;
+    int result = 1;
+    result = prime * result + ((comment == null) ? 0 : comment.hashCode());
+    result = prime * result + ((constraints == null) ? 0 : constraints.hashCode());
+    result = prime * result + ((defaultValue == null) ? 0 : defaultValue.hashCode());
+    result = prime * result + ((defaultValueType == null) ? 0 : defaultValueType.hashCode());
+    result = prime * result + ((path == null) ? 0 : path.hashCode());
+    result = prime * result + ((type == null) ? 0 : type.hashCode());
+    return result;
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if (obj == null) {
+      return false;
+    }
+    if (getClass() != obj.getClass()) {
+      return false;
+    }
+    FinalKey other = (FinalKey) obj;
+    if (comment == null) {
+      if (other.comment != null) {
+        return false;
+      }
+    } else if (!comment.equals(other.comment)) {
+      return false;
+    }
+    if (constraints == null) {
+      if (other.constraints != null) {
+        return false;
+      }
+    } else if (!constraints.equals(other.constraints)) {
+      return false;
+    }
+    if (defaultValue == null) {
+      if (other.defaultValue != null) {
+        return false;
+      }
+    } else if (!defaultValue.equals(other.defaultValue)) {
+      return false;
+    }
+    if (defaultValueType != other.defaultValueType) {
+      return false;
+    }
+    if (path == null) {
+      if (other.path != null) {
+        return false;
+      }
+    } else if (!path.equals(other.path)) {
+      return false;
+    }
+    if (type == null) {
+      if (other.type != null) {
+        return false;
+      }
+    } else if (!type.equals(other.type)) {
+      return false;
+    }
+    return true;
+  }
+
+}
+src/main/java/com/github/duncpro/jackal/cdc/transform/MalformedTransformerException.java
+public class MalformedTransformerException extends RuntimeException {
+  private static final long serialVersionUID = 64240346128316755L;
+
+  MalformedTransformerException(String message) {
+    super(message);
+  }
+
+  /**
+   * Constructs a MalformedTransformerException. Performs no parameter validation.
+   * 
+   * @param message the exception's message
+   * @param cause the cause of the exception
+   */
+  MalformedTransformerException(String message, Throwable cause) {
+    super(message, cause);
+  }
+}
+src/main/java/com/github/duncpro/jackal/constraint/IncompatibleConstraintException.java
+public class IncompatibleConstraintException extends RuntimeException {
+  private static final long serialVersionUID = 617541059933332439L;
+
+  IncompatibleConstraintException(String message) {
+    super(message);
+  }
+}
+src/main/java/com/github/duncpro/jackal/cdc/transform/Transformer.java
+public interface Transformer {
+  /**
+   * Constructs an object using the provided String. Jackal will never pass null.
+   * Jackal will never pass a value that is of a type this transformer can not produce.
+   * 
+   * @param type the type of class to transform.
+   * @throws TransformerException The string cannot be used to construct an object.
+   */
+  Object transform(String string, Class<?> type) throws TransformerException;
+
+  /**
+   * Instantiates a {@link Transformer}.
+   * 
+   * @param clazz the transfortmer's class.
+   * @return the instantiated transformer
+   * @throws MalformedTransformerException if the transformer is malformed.
+   */
+  static Transformer instantiate(Class<? extends Transformer> clazz) {
+    Preconditions.checkNotNull(clazz, "Class cannot be null.");
+
+    if (!clazz.isAnnotationPresent(Produces.class)) {
+      throw new MalformedTransformerException(
+          clazz.getCanonicalName() + " does not declare any producible types."
+              + " (Transformers must have the Produces(Class<?>[]) annotation)");
+    }
+
+    if (clazz.getAnnotation(Produces.class).value().length < 1) {
+      throw new MalformedTransformerException(
+          clazz.getCanonicalName() + " does not declare any producible types."
+              + " (Transformers must produce at least one type)");
+    }
+
+    // Ensure that the transformer class has the no-args constructor
+    Constructor<? extends Transformer> constructor;
+    try {
+      constructor = clazz.getConstructor();
+    } catch (NoSuchMethodException ex) {
+      throw new MalformedTransformerException(
+          "No no-args constructor found for " + clazz.getCanonicalName(), ex);
+    }
+
+    // Instantiate the transformer class
+    Transformer transformer;
+    try {
+      transformer = constructor.newInstance();
+    } catch (InstantiationException ex) {
+      throw new MalformedTransformerException("Cannot instantiate " + clazz.getCanonicalName(), ex);
+    } catch (IllegalAccessException ex) {
+      throw new MalformedTransformerException(clazz.getCanonicalName()
+          + "'s constructor is not accessible (It probably needs to be public).", ex);
+    } catch (InvocationTargetException ex) {
+      throw new MalformedTransformerException(
+          clazz.getCanonicalName() + " threw an exception while undergoing construction.", ex);
+    }
+
+    return transformer;
+  }
+}
+src/main/java/com/github/duncpro/jackal/Outline.java
+@Immutable
+public class Outline {
+  private static final Logger log = LoggerFactory.getLogger(Outline.class);
+
+  /**
+   * The final keys in the configuration.
+   */
+  private final List<FinalKey> finalKeys;
+
+  /**
+   * Constructs an Outline. Does no parameter validation.
+   *
+   * @param finalKeys the final keys in this outline
+   */
+  Outline(ImmutableList<FinalKey> finalKeys) {
+    // All preconditions are dealt with in OutlineBuilder
+    this.finalKeys = finalKeys;
+  }
+
+  /**
+   * Stores this outlines final keys that are contained in the provided {@link Contents} to the
+   * provided {@link Storage}. If the outline expects the existence of a key but the contents does
+   * not contain it, the key will just be skipped and not written to storage. If the contents
+   * contains any keys that are not outlined, they to will be ignored.
+   *
+   * @param contents the contents to store
+   * @param storage where to store
+   * @throws StorageException if the storage experiences an unrecoverable error.
+   */
+  public void storeContents(Contents contents, Storage storage) throws StorageException {
+    Preconditions.checkNotNull(contents, "Contents cannot be null");
+    Preconditions.checkNotNull(storage, "Storage cannot be null");
+
+    for (FinalKey finalKey : finalKeys) {
+      Path path = finalKey.getPath();
+
+      Optional<Optional<Object>> entry = contents.get(path);
+
+      if (entry.isPresent()) {
+        Object value = entry.get().orElse(null);
+        log.debug("Setting {} to {} in {}", path, value, storage.getName());
+        storage.setValue(path, value, finalKey.getComment());
+      } else {
+        log.debug("{} was not found in contents.", path);
+      }
+    }
+  }
+
+  /**
+   * Records all of the outlined keys that exist in the storage to a {@link Contents}. If the
+   * storage is missing keys or contains keys that are not outlined, those are skipped. If the
+   * storage reports that some values are malformed and cannot be properly retrieved those are
+   * skipped as well.
+   *
+   * @param storage the storage to retrieve from
+   * @return the contents
+   * @throws StorageException if the storage experiences an unrecoverable error.
+   */
+  public Contents captureContents(Storage storage) throws StorageException {
+    Preconditions.checkNotNull(storage, "Contents cannot be null");
+
+    log.debug("Capturing contents of {}.", storage.getName());
+
+    Contents contents = new Contents();
+
+    for (FinalKey finalKey : finalKeys) {
+      Path path = finalKey.getPath();
+
+      log.debug("Querying {} for {}...", storage.getName(), path);
+      try {
+        Optional<Optional<Object>> entryOpt = storage.getValue(path, finalKey.getType());
+        if (entryOpt.isPresent()) {
+          Object value = entryOpt.get().orElse(null);
+          log.debug("{} is set to {}", path, value);
+
+          contents.set(path, value);
+        } else {
+          log.debug("{} does not exist in {}.", path, storage.getName());
+        }
+      } catch (MalformedValueException ex) {
+        log.debug("Storage reported that {} is malformed. Not capturing it.");
+      }
+    }
+
+    return contents;
+  }
+
+  /**
+   * Validates the provided contents, optionally amending it to the best of its ability. If the
+   * contents were completely amended then a positive validity is returned, otherwise if the
+   * contents were invalid, a negative validity is returned.
+   *
+   * @param contents the contents to validate
+   * @param amend weather or not to amend the contents
+   * @return the validity of post-amended contents or just the contents if amend was set to false.
+   */
+  public Validity validate(Contents contents, boolean amend) {
+    Map<FinalKey, String> unamendable = Maps.newHashMap();
+
+    for (FinalKey key : finalKeys) {
+      Path path = key.getPath();
+      DefaultValueType defaultValueType = key.getDefaultValueType();
+      Object defaultValue = key.getDefaultValue();
+      Constraints constraints = key.getConstraints();
+
+      Optional<Optional<Object>> entry = contents.get(path);
+
+      if (entry.isPresent()) {
+        Object value = entry.get().orElse(null);
+        Result constraintResult = constraints.check(value);
+        if (constraintResult.getType() == ResultType.FAIL) {
+          if (defaultValueType == DefaultValueType.NONE) {
+            log.debug("{} was deemed invalid ({}) and could not be amended because no"
+                + " default value was provided in the outline.", path,
+                constraintResult.getMessage());
+            unamendable.put(key, constraintResult.getMessage());
+          } else {
+            if (amend) {
+              contents.set(path, defaultValue);
+            }
+          }
+        } else {
+          log.debug("{} was found in contents and deemed valid (value: {}).", path, value);
+        }
+      } else {
+        // Entry was not even present in the config
+        if (defaultValueType == DefaultValueType.NONE) {
+          // No default value provided
+          log.debug(
+              "{} was not found and has no default value to use.",
+              path);
+          unamendable.put(key, "No value provided.");
+        } else {
+          if (amend) {
+            log.debug("Set {} to its default value of {} because no entry existed in contents.",
+                path, defaultValue);
+            contents.set(path, defaultValue);
+          }
+        }
+      }
+    }
+
+    Set<FinalKey> placeholders = scanForPlaceholders(contents);
+
+    return new Validity(ImmutableMap.copyOf(unamendable), ImmutableSet.copyOf(placeholders));
+  }
+
+  /**
+   * Returns a list of all the placeholders that exist in the contents.
+   *
+   * @param contents the contents to scan
+   * @return a list of all the placeholders that exist or if none exist then an empty list.
+   */
+  private Set<FinalKey> scanForPlaceholders(Contents contents) {
+    Set<FinalKey> placeholders = Sets.newHashSet();
+
+    for (FinalKey key : finalKeys) {
+      Path path = key.getPath();
+      Optional<Optional<Object>> entry = contents.get(path);
+
+      if (entry.isPresent()) {
+        Object value = entry.get().orElse(null);
+
+        if (key.getDefaultValueType() == DefaultValueType.PLACEHOLDER) {
+          if (Objects.equals(value, key.getDefaultValue())) {
+            log.debug("Placeholder ({}) found at {}.", value, path);
+            placeholders.add(key);
+          }
+        }
+      }
+    }
+
+    return placeholders;
+  }
+}
+src/main/java/com/github/duncpro/jackal/path/Path.java
+public interface Path extends Iterable<Part> {
+  // The default delimiter used for separating individual parts in a path string.
+  String DEFAULT_DELIM = ".";
+
+  /**
+   * Returns the Part at the specified index.
+   * 
+   * @throws IndexOutOfBoundsException if the index does not exist
+   */
+  Part partAt(int index) throws IndexOutOfBoundsException;
+
+  /**
+   * Returns the amount of parts in the path.
+   */
+  int length();
+
+  List<Part> toPartList();
+
+  /**
+   * Rapidly create Paths using delimited-part notation.
+   *
+   * <p>
+   * Delimited-part notation refers to the representation of a path linearly in a String. Each part
+   * is separated from its child using a delimiter. For example "a.b.c" would be delimited-part
+   * notation for a path of "a.b.c". Of course the delimiter does not have to be a period, it can be
+   * any string you like.
+   * </p>
+   * 
+   * @param string delimited-part notation
+   * @param delim the delimiter used to separate each Part in the path
+   */
+  static Path of(String string, String delim) {
+    // Ensure that the string and the delimiter are not null or empty
+    Preconditions.checkArgument(!Strings.isNullOrEmpty(string), "String must not be null or empty");
+    Preconditions.checkArgument(!Strings.isNullOrEmpty(delim),
+        "Delimiter must not be null or empty");
+
+    Preconditions.checkArgument(string.trim().equals(string),
+        "String must not contain" + " any trailing or leading whitespace.");
+
+    String[] split = string.split(Pattern.quote(delim));
+    if (split.length > 1) {
+      List<Part> parts = new ArrayList<>();
+      for (int i = 0; i < split.length; i++) {
+        parts.add(new Part(split[i]));
+      }
+      return new HierarchicalPath(parts);
+    } else {
+      return new Part(split[0]);
+    }
+  }
+
+  /**
+   * See {@link #of(String, String)}. Uses the default delimiter (which is a period, ".")
+   */
+  static Path of(String string) {
+    return of(string, DEFAULT_DELIM);
+  }
+}

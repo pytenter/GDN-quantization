@@ -1,0 +1,2151 @@
+adaptivemd/plan.py
+class ExecutionPlan(object):
+    """
+    An wrap to turn python function into asynchronous execution
+
+    The function is executed on start and interrupted if you use
+    ``yield {(list of )condition to continue}``
+
+    To make writing of asynchronous code easy you can use this wrapper class.
+    Usually you start by opening a scheduler that you submit tasks to. Then
+    submit a first task or yield a condition to wait for. Once this is met the
+    code will continue to execute and you can submit more tasks until finally
+    you will close the scheduler
+
+    """
+    def __init__(self, generator):
+        """
+        Parameters
+        ----------
+        generator : function
+            the function (generator) to be used
+
+        """
+        super(ExecutionPlan, self).__init__()
+
+        if not isinstance(generator, types.GeneratorType):
+            generator = generator()
+
+        assert isinstance(generator, types.GeneratorType)
+
+        self._generator = generator
+        self._running = True
+        self._finish_conditions = []
+
+    def _update_conditions(self):
+        self._finish_conditions = [x for x in self._finish_conditions if not x()]
+
+    def __call__(self):
+        if self._running:
+            try:
+                conditions = next(self._generator)
+                if conditions is not None:
+                    if isinstance(conditions, (tuple, list)):
+                        self._finish_conditions.extend(conditions)
+                    else:
+                        self._finish_conditions.append(conditions)
+                self._update_conditions()
+            except StopIteration:
+                self._running = False
+
+    def trigger(self):
+        if self:
+            self._update_conditions()
+            while self._running and len(self._finish_conditions) == 0:
+                self()
+                self._update_conditions()
+
+    def __bool__(self):
+        return self._running
+
+    def __nonzero__(self):
+        return self.__bool__()
+
+    def __str__(self):
+        return '%s(%s)' % (
+            self.__class__.__name__,
+            'active' if self else '------'
+        )
+
+    @property
+    def on_done(self):
+        """
+        Return a `Condition` that is True once the event is finished
+
+        Returns
+        -------
+
+        """
+        return lambda: not bool(self)
+adaptivemd/bundle.py
+class StoredBundle(Bundle):
+    """
+    A stored bundle in a mongodb
+    This is a useful wrapper to turn a store of the MongoDB into a bundle of objects.
+    Adding files will store new elements. The bundle is always in sync with the DB.
+    """
+    def __init__(self):
+        super(StoredBundle, self).__init__()
+        self._set = None
+
+    def set_store(self, store):
+        """
+        Set the used store
+        Parameters
+        ----------
+        store : `ObjectStore`
+            a mongodb store that contains the elements in the bundle
+        """
+        self._set = store
+        return self
+
+    def close(self):
+        """
+        Close the connection to the bundle.
+        A not connected bundle will have no entries and none can be added
+        """
+        self._set = None
+
+    def add(self, item):
+        """
+        Add an element or group of elements to the bundle.
+        Parameters
+        ----------
+        item : `object`, `list`, `tuple`, or `set`
+            the item to be added to the bundle
+        """
+        # NOTE there should be handling for item not in set downstream
+        if self._set is not None:# and item not in self._set:
+            if isinstance(item, (list, tuple, set)):
+                it = item[0]
+                n  = len(item)
+            else:
+                it = item
+                n  = 1
+
+            logger.info('Adding %s elements of type `%s to store %s`' % (n, it.__class__.__name__, self._set))
+            self._set.save(item)
+
+    @property
+    def last(self):
+        """
+        Return the entry with the latest timestamp
+        Returns
+        -------
+        object
+            the latest object
+        """
+        if self._set is not None:
+            return self._set.last
+
+    @property
+    def first(self):
+        """
+        Return the entry with the earliest timestamp
+        Returns
+        -------
+        object
+            the earliest object
+        """
+        if self._set is not None:
+            return self._set.first
+
+    def __getitem__(self, item):
+        # this is faster for storages
+        if self._set is not None:
+            return self._set[item]
+
+    def consume_one(self):
+        """
+        Picks and removes one (random) element in one step.
+        Returns
+        -------
+        `StorableMixin` or None
+            The deleted object if possible otherwise None
+        """
+        if self._set is not None:
+            return self._set.consume_one()
+
+        return None
+
+    def find_all_by(self, key, value):
+        """
+        Return all elements from the bundle where its key matches value
+        Parameters
+        ----------
+        key : str
+            the attribute
+        value : object
+            the value to match against using `==`
+        Returns
+        -------
+        list of `StorableMixin`
+            a list of objects in the bundle that match the search
+        """
+
+        if self._set is not None:
+            return [x for x in self._set if getattr(x, key) == value]
+adaptivemd/engine/engine.py
+class Trajectory(File):
+    """
+    Represents a trajectory :class:`File` on the cluster
+
+    Attributes
+    ----------
+    location : str or `File`
+        the `File` location
+    frame : `Frame` or `File`
+        the initial frame used for the trajectory
+    length : int
+        the length of the trajectory in frames
+    engine : `Engine`
+        the engine used to create the trajectory
+
+    """
+
+    _find_by = ['created', 'state', 'task', 'engine']
+
+    engine = ObjectSyncVariable('engine', 'generators', lambda x: not bool(x))
+
+    def __init__(self, location, frame, length, engine=None):
+        super(Trajectory, self).__init__(location)
+
+        self.frame = frame
+        self.length = length
+        self.engine = engine
+
+    def clone(self):
+        return Trajectory(self.location, self.frame, self.length, self.engine)
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, item):
+        if 0 <= item <= len(self):
+            return Frame(self, item)
+        else:
+            return None
+
+    def __repr__(self):
+        return "Trajectory(%r >> %s[0..%d])" % (
+            self.frame, self.basename, self.length)
+
+    def pick(self):
+        """
+        Return a random frame from all possible full frames
+
+        Returns
+        -------
+        `Frame`
+            the frame you can restart from
+
+        """
+        # only use existing frames (strides!)
+        frames = self.existing_frames
+        idx = random.randint(0, len(frames) - 1)
+        return self[frames[idx]]
+
+    @property
+    def is_folder(self):
+        # we treat trajectories from now on as Directories
+        return True
+
+    def file(self, f):
+        """
+        Return a file location to a file inside the trajectory folder
+
+        Parameters
+        ----------
+        f : str or `OutputTypeDescription`
+            the filename to be appended to the trajectories directory
+
+        Returns
+        -------
+        `File`
+            the object containing the location
+
+        """
+        if isinstance(f, six.string_types):
+            return File(os.path.join(self.location, f))
+        elif isinstance(f, OutputTypeDescription):
+            return self.file(f.filename)
+
+    def run(self, resource_name=None, export_path=None,
+            cpu_threads=1, gpu_contexts=0, mpi_rank=0):
+        """
+        Return a task to run the engine for this trajectory
+
+        This method is used to link the `Trajectory` object
+        to an MD Program's AdaptiveMD Engine
+
+        Returns
+        -------
+        `Task`
+            the task object that can be submitted to the queue
+
+        """
+        # TODO check that you can generate one trajectory object only once
+        # not just the task for it
+
+        if self.engine:
+            return self.engine.run(self, resource_name, export_path,
+                                   cpu_threads, gpu_contexts, mpi_rank)
+        else:
+            return None
+
+    def extend(self, length, export_path=None, gpu_contexts=0,
+               resource_name=None, cpu_threads=1, mpi_rank=0):
+        """
+        Get a task to extend this trajectory if the engine is set
+
+        Parameters
+        ----------
+        length : int or list of int
+            the length to extend by as a single int or a list of ints
+
+        Returns
+        -------
+        `Task`
+            the task object to extend the trajectory
+
+        """
+        if self.engine:
+            if isinstance(length, int):
+                length = [length]
+
+            # make sure we have a list now
+            assert(isinstance(length, (tuple, list)))
+
+            x = self
+            for l in length:
+                x = x.engine.extend(x, l, export_path=export_path, gpu_contexts=gpu_contexts,
+                     resource_name=resource_name, cpu_threads=cpu_threads, mpi_rank=mpi_rank)
+
+            return x
+        else:
+            return None
+
+    def outputs(self, outtype):
+        """
+        Get a location to the file containing the output by given name
+
+        Parameters
+        ----------
+        outtype : str or `OutputTypeDescription`
+            the name of the outputtype as str or the full description object
+
+        Returns
+        -------
+        `File`
+            a file location that points to the concrete file that contains
+            the data for a particular output type
+
+        """
+        if self.engine:
+            if isinstance(outtype, six.string_types):
+                if outtype in self.engine.types:
+                    return self.file(self.engine.types[outtype])
+            elif isinstance(outtype, OutputTypeDescription):
+                return self.file(outtype)
+
+        return None
+
+    @property
+    def types(self):
+        """
+        Return the OutputTypeDescriptions for this trajectory
+
+        Returns
+        -------
+        dict str: `OutputTypeDescription`
+            the output description dict of the engine
+
+        """
+        if self.engine:
+            return self.engine.types
+
+        return None
+
+    @property
+    def existing_frames(self):
+        """
+        Returns
+        -------
+        list of int
+            a sorted list of frame indices with full coordinates that can be
+            used for restart. relative to the engines timesteps
+
+        """
+        full_strides = self.engine.full_strides
+        frames = set()
+        l = len(self) + 1
+        for stride in full_strides:
+            frames.update(range(0, l, stride))
+
+        return sorted(frames)
+adaptivemd/logentry.py
+class LogEntry(StorableMixin):
+    """
+    A storable representation of a log entry
+
+    Examples
+    --------
+    >>> from adaptivemd import Project
+    >>> p = Project('tutorial-project')
+    >>> l = LogEntry('worker', 'failed execution', 'simsalabim, didnt work')
+    >>> print(l) # doctest: +SKIP
+    >>> p.logs.add(l)
+
+    Attributes
+    ----------
+    logger : str
+        the name of the logger for classification
+    title : str
+        a short title for the log entry
+    message : str
+        the long and detailed message
+    level : int
+        pick `LogEntry.SEVERE`, `LogEntry.ERROR` or `LogEntry.INFO` (default)
+    objs : dict of storable objects
+        you can attach objects that can help with specifying the error message
+    """
+
+    SEVERE = 1
+    ERROR = 2
+    INFO = 3
+
+    def __init__(self, logger, title, message, level=INFO, objs=None):
+        super(LogEntry, self).__init__()
+        self.logger = logger
+        self.title = title
+        self.message = message
+        self.level = level
+        self.objs = objs
+
+    def __str__(self):
+        return '%s [%s:%s] %s\n%s' % (
+            DT(self.__time__).time,
+            self.logger,
+            self.level,
+            self.title,
+            self.message
+        )
+adaptivemd/configuration.py
+class Configuration(StorableMixin):
+    """
+    Object to store configuration of the execution resource.
+
+    This class is used to pass information about the resource
+    when using Radical Pilot, so the field "resource_name" must have a
+    matching entry in the Radical Pilot resource configurations. If
+    the "shared_path" is not defined, it is set to $HOME/adaptivemd,
+    which is likely not a good working a data directory on an HPC.
+    Notes
+    -----
+    Configurations can be read from a file. Example format is given in
+    adaptivemd/examples/configuration.txt. The path must be given to
+    the configuration object upon instantiation, or the file can be
+    named project_name.cfg and located in the working directory of the
+    python session. ie if you are running a project named
+    "fun_project", the Configuration object will look for a file
+    "fun_project.cfg" to read.
+    The configurations file can pack multiple entries into the fields
+    'queue' and 'cores_per_node'. If there is more than 1 queue listed,
+    the number of 'cores_per_node' either needs to be 1 or match the
+    number of queues. Likewise for the opposite case.
+
+    Attributes
+    ----------
+    name : `str`
+        Unique identifier for the particular configuration object
+    shared_path : `str`
+        Path to use as data storage and working directory home
+        on the execution resource
+    queue : `str`
+        String specifying the queue name to use for
+        execution of tasks on a resource
+    allocation : `str`
+        If required, name of the account to be charged for task execution
+    current : `bool`
+        Flag for to signify the configuration is in or selected for use
+    cores_per_node : `int`
+        Number of cores/threads on each node. This should correspond
+        to the specifications of nodes in the requested queues.
+    resource_name : `rp.resource`
+        A string corresponding to a resource that is defined within
+        Radical Pilot
+
+    Methods
+    -------
+    read_configurations
+
+    """
+    _ext = '.cfg'
+    _fields = {'shared_path'   : (str, '$HOME'),
+               'resource_name' : (str, 'local.localhost'),
+               'queues'        : (str, ''),
+               'allocation'    : (str, ''),
+               'cores_per_node': (int, 1),
+               'gpu_per_node'  : (int, 0),
+               'current'       : (bool,False),
+              }
+
+    _resource_names = set(['fub.allegro', 'xsede.supermic',
+        'das4.fs2', 'osg.connect', 'xsede.stampede',
+        'radical.tutorial', 'lumc.gb-ui', 'chameleon.cloud',
+        'xsede.trestles', 'osg.xsede-virt-clust',
+        'futuregrid.echo', 'nersc.edison', 'xsede.greenfield',
+        'xsede.bridges', 'xsede.lonestar', 'futuregrid.bravo',
+        'xsede.gordon', 'radical.one', 'xsede.wrangler',
+        'stfc.joule', 'futuregrid.delta', 'lumc.shark',
+        'ornl.titan_aprun', 'ncar.yellowstone', 'xsede.comet', 'ornl.titan_orte',
+        'local.localhost', 'xsede.blacklight', 'yale.grace',
+        'rice.davinci', 'lrz.supermuc', 'nersc.hopper',
+        'futuregrid.xray', 'iu.bigred2', 'rice.biou',
+        'futuregrid.india', 'das5.fs1', 'epsrc.archer',
+        'ncsa.bw', 'radical.two', 'xsede.stampede2'])
+
+
+    def get_resource_list(self):
+        # TODO Use this method to get list of resource names
+        # Read this guy as function
+        # and eliminate the (incorrect) use of
+        # truncated names
+        # make sure to do import test for RP
+        #from .rp import rp_resource_list
+        pass
+
+
+    # TODO init from passed dict
+    def __init__(self, name, wrapper=None, **fields):
+        # Configuration initialization will only complete if all
+        # entries read from the configuration file entry correspond
+        # to valid fields, and the resource name is a known
+        # resource configured in Radical Pilot.
+        #  - verify this with test...
+        # TODO  conditional system that checks rp compatibility of a resource
+
+        # Construction from file
+        if fields:
+            if 'resource_name' in fields:
+                if fields['resource_name'] not in Configuration._resource_names:
+                    raise ValueError("Resouce Name is not defined")
+
+            _dict = self.process_attributes(fields)
+            super(Configuration, self).__init__()
+            [setattr(self, field, val) for field, val in _dict.items()]
+            self.name = name
+
+            # currently only handle 1 given queue
+            # but must convert to list for RP
+            if not isinstance(self.queues, list):
+                self.queues = [self.queues]
+
+
+        # Construction via from_dict from storage
+        else:
+            super(Configuration, self).__init__()
+
+        if wrapper is None:
+            wrapper = DummyTask()
+
+        self.wrapper = wrapper
+
+
+    # TODO remove extra filename field project_name
+    @classmethod
+    def read_configurations(cls, configuration_file='', project_name=None):
+        '''
+        This method will read resource configurations from the given file
+
+        The method returns a list of `Configuration`
+        objects. The key of each configuration dict
+        is a given name. The keys in each configuration dict
+        are fields read from the configuration file with values
+        read from the file.
+
+        See adaptivemd/examples/configurations.txt for an example
+        of the format.
+
+        Parameters
+        ----------
+        configuration_file : `str`
+            Path to configuration file
+        project_name : `str`
+            Name of file to get in cwd
+
+        Returns
+        -------
+        `list` of `Configuration`
+        '''
+
+        f_cfg = None
+        configurations = list()
+
+        # TODO replace/upgrade cfg parser to receive
+        #      an adaptivemd file object
+        configuration_file = os.path.normpath(
+            os.path.expandvars(configuration_file)
+            )
+
+        # Look in other locations
+        if not configuration_file:
+            locs = ['./' + project_name + cls._ext,]
+
+            if os.path.isfile(locs[0]):
+                f_cfg = locs[0]
+
+        # Use given file
+        elif os.path.isfile(configuration_file):
+            f_cfg = configuration_file
+
+        # create configuration objects from parsed config
+        if f_cfg:
+            configurations_fields = parse_cfg_file(f_cfg)
+
+            for configuration, fields in configurations_fields.items():
+                configurations.append(cls(configuration, **fields))
+
+        # making configuration for localhost
+        elif configuration_file and f_cfg is None:
+            print("Could not locate the given configuration file: {0}\n"
+                  .format(configuration_file,
+                  "Going to use default local configuration"))
+
+            configurations.append(cls('local', **dict(resource_name='local.localhost')))
+
+        else:
+            configurations.append(cls('local', **dict(resource_name='local.localhost')))
+
+        return configurations
+
+    @classmethod
+    def process_attributes(cls, fields):
+        _dict = dict()
+        for field, val in fields.items():
+            try:
+                _type = cls._fields[field][0]
+                _val  = _type(val)
+
+                assert isinstance(_val, _type)
+                _dict[field] = _val
+
+            except ValueError:
+                print("Listed field {0} is not a valid configuration field"
+                      .format(field))
+
+            except AssertionError:
+                print("Listed field {0} is not the required type {1}"
+                      .format(field, _type))
+
+        unused = filter(lambda f: f not in _dict, cls._fields)
+        [_dict.update({uu: cls._fields[uu][1]}) for uu in unused]
+
+        return _dict
+adaptivemd/resource.py
+class Resource(StorableMixin):
+    """
+    Runtime parameters to specify execution resources
+
+    Attributes
+    ----------
+    queue : `str`
+        name of the queue to submit jobs to
+
+    total_cpus : `int`
+        total number of nodes to be used
+
+    total_time : `int`
+        total number of minutes for execution of a block of tasks
+
+    """
+
+    def __init__(self, total_cpus, total_time,
+                 total_gpus, destination=None):#, name):
+
+        super(Resource, self).__init__()
+
+        #assert isinstance(name, str)
+        #self.name = name
+
+        assert isinstance(total_cpus, int)
+        self.total_cpus = total_cpus
+
+        assert isinstance(total_time, int)
+        self.total_time = total_time
+
+        assert isinstance(total_gpus, int)
+        self.total_gpus = total_gpus
+
+        if destination is None:
+            destination = ''
+
+        assert isinstance(destination, str)
+        self.destination = destination
+adaptivemd/file.py
+class URLGenerator(object):
+    """
+    A pathname generator
+
+    Helps you to generate unique filenames.
+
+    Examples
+    --------
+    >>> gen = URLGenerator('mypath/{count:04}.dcd')
+    >>> next(gen)
+    'mypath/0000.dcd'
+    >>> next(gen)
+    'mypath/0001.dcd'
+
+    """
+    def __init__(self, shape, bundle=None):
+        if bundle is None:
+            self.count = 0
+        else:
+            self.count = len(bundle)
+
+        self.shape = shape
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        fn = self.shape.format(count=self.count)
+        self.count += 1
+        return fn
+
+    __next__ = next
+
+    def initialize_from_files(self, files):
+        """
+        Set the next available number from a list of files
+
+        Parameters
+        ----------
+        files : list of `Location`
+
+        """
+        # a little cheat to figure out the last number
+
+        # todo: might be better to store the current number in the project DB
+        self.count = 0
+        left = len(self.shape.split('{')[0].split('/')[-1])
+        right = len(self.shape.split('}')[-1])
+        for f in files:
+            try:
+                g = int(f.path[:-right].split('/')[-1][left:]) + 1
+                self.count = max(g, self.count)
+            except Exception:
+                pass
+adaptivemd/generator.py
+class TaskGenerator(StorableMixin):
+    """
+    A generator helper for `Task` object creation
+
+    This is an important group and is supposed to make it easy for you to
+    create `Task` object. In a real situation a user should not be faced
+    with the `Task` details, or at least the programming of a generator is
+    a separate problem. Once you have the generators use them in your
+    adaptive scripts.
+
+    Examples
+    --------
+
+    Attributes
+    ----------
+    initial_staging : list of dict or str or `Action`
+        a list of actions to be run once before this generator can be used
+    items : dict of `File`
+        a dictionary of `File` by name to simplify access to certain files
+    """
+    def __init__(self):
+        super(TaskGenerator, self).__init__()
+        self._items = dict()
+        self.initial_staging = []
+
+    def __getitem__(self, item):
+        return self._items[item]
+
+    def __setitem__(self, key, value):
+        self._items[key] = value
+
+    def items(self):
+        return self._items.items()
+
+    @classmethod
+    def from_dict(cls, dct):
+        obj = cls.__new__(cls)
+        StorableMixin.__init__(obj)
+        obj._items = dct['_items']
+        obj.initial_staging = dct['initial_staging']
+        return obj
+
+    def to_dict(self):
+        return {
+            '_items': self._items,
+            'initial_staging': self.initial_staging
+        }
+
+    @property
+    def files(self):
+        return {
+            key: value
+            for key, value in self.items() if isinstance(value, File)}
+
+    @property
+    def stage_in(self):
+        """
+        Return a list of actions needed before tasks can be generated
+
+        Returns
+        -------
+        list of `Action`
+            the list of Actions to be parsed into stage in steps
+
+        """
+        return self.initial_staging
+
+    def stage(self, obj, target=None):
+        """
+        Short cut to add a file to be staged
+
+        Parameters
+        ----------
+        obj : `File`
+            the file to be staged in the initial staging phase
+        target : `Location` or str
+            the (different) target name to be used
+
+        """
+        self.initial_staging.append(
+            obj.transfer(target)
+        )
+adaptivemd/file.py
+class File(Location):
+    """
+    Represents a file object at a specific location
+
+    `File` objects can but do not have to exist - you can check using the
+    :py:attr:`File.created` attribute. If it is a positive number it represents
+    the time stamp when it was created.
+    """
+    _find_by = ['created', 'task']
+
+    created = SyncVariable('created', lambda x: x is not None and x < 0)
+    _file = ObjectSyncVariable('_file', lambda x: x is not None)
+    task = SyncVariable('task', lambda x: x is not None)
+
+    def __init__(self, location):
+        super(File, self).__init__(location)
+
+        self.resource = None
+        self.created = None
+        self._file = None
+        self.task = None
+
+        if self.drive == 'file':
+            if os.path.exists(self.path):
+                self.created = time.time()
+
+    @property
+    def _ignore(self):
+        return self.drive == 'worker' or self.drive == 'staging'
+
+    @property
+    def generator(self):
+        if self.task:
+            return self.task.generator
+
+        return None
+
+    def clone(self):
+        """
+        create a cloned object with equal attributes
+
+        Returns
+        -------
+        `Location`
+            the same type as this object
+        """
+        f = self.__class__(self.location)
+        f.resource = self.resource
+        f.created = None
+
+        return f
+
+    def create(self, scheduler):
+        """
+        Mark file as being existent on a specific scheduler.
+
+        This should only work for file in ``staging://``, ``shared://``,
+        ``sandbox://`` or ``file://``
+        Files in ``worker://`` will potentially be deleted,
+        others are already existing
+
+        Notes
+        -----
+        We usually assume that objects are immutable. The way to think about
+        creation is that a file is something like a *Promise* and it promises
+        a certain file with a name. Once it is created it is still the same
+        file but now it exists and can be used.
+
+        The change of location is also a re-expression of the same location so
+        that it is reusable.
+
+        """
+        scheduler.unroll_staging_path(self)
+        self.created = time.time()
+
+    def modified(self):
+        """
+        Mark a file as being altered and not existent anymore
+
+        Notes
+        -----
+        Negative timestamps indicate the (negative) time when the object
+        disappeared in the form described
+
+        """
+        stamp = self.created
+        if stamp is not None and stamp > 0:
+            self.created = - time.time()
+
+    @property
+    def exists(self):
+        """
+
+        Returns
+        -------
+        bool
+            True if the file exists, i.e. has a positive `created` timestamp
+
+        """
+        created = self.created
+        return created is not None and created > 0
+
+    def _complete_target(self, target, extension=False):
+        if target is None:
+            target = Location('')
+
+        if isinstance(target, str):
+            target = Location(target)
+
+        if isinstance(target, Location):
+            if target.basename == '':
+                target.location += self.basename
+
+            if extension:
+                target.location = target.location + '.' + self.extension
+
+        return target
+
+    def copy(self, target=None):
+        """
+        copy file to a target
+        
+        Shortcut for ``Copy(self, target)``
+
+        Parameters
+        ----------
+        target : `Location` or str
+            the target location
+
+        Returns
+        -------
+        `adaptivemd.FileTransaction`
+            the copy action
+
+        """
+        target = self._complete_target(target)
+        return Copy(self, target)
+
+    def move(self, target=None):
+        """
+        move file to a target
+
+        Shortcut for ``Move(self, target)``
+
+        Parameters
+        ----------
+        target : `Location` or str
+            the target location
+
+        Returns
+        -------
+        `adaptivemd.FileTransaction`
+            the move action
+
+        """
+        target = self._complete_target(target)
+        return Move(self, target)
+
+    def link(self, target=None):
+        """
+        link file to a target
+
+        Shortcut for ``Link(self, target)``
+
+        Parameters
+        ----------
+        target : `Location` or str
+            the target location
+
+        Returns
+        -------
+        `adaptivemd.FileTransaction`
+            the link action
+
+        """
+        target = self._complete_target(target)
+        return Link(self, target)
+
+    def transfer(self, target=None):
+        """
+        transfer file to a target
+
+        Shortcut for `Transfer(self, target)`
+
+        Parameters
+        ----------
+        target : `Location` or str
+            the target location
+
+        Returns
+        -------
+        `adaptivemd.FileTransaction`
+            the transfer action
+
+        """
+        target = self._complete_target(target)
+        return Transfer(self, target)
+
+    def remove(self):
+        """
+        remove file
+
+        Shortcut for `Remove(self)`
+
+        Returns
+        -------
+        `adaptivemd.FileAction`
+            the remove action
+
+        """
+        return Remove(self)
+
+    def touch(self):
+        """
+        touch file
+
+        Shortcut for `Touch(self)`
+
+        Returns
+        -------
+        `adaptivemd.FileAction`
+            the touch action
+
+        """
+        return Touch(self)
+
+    def __repr__(self):
+        return "'%s'" % self.basename
+
+    def load(self, scheduler=None, path=None):
+        """
+        Load a local file into memory
+
+        If you later store the file its content will be stored as well
+
+        Parameters
+        ----------
+        scheduler : `Scheduler` or None
+            if specifiied the scheduler can alter the filelocation with its
+            usual rules. Normally you should not have to use it
+
+        Returns
+        -------
+        self
+
+        """
+        if self.drive == 'file':
+            if scheduler is not None:
+                path = scheduler.replace_prefix(self.url)
+
+            else:
+                path = self.path
+
+            # To get nice-looking paths without extra slashes
+            path = '/'.join(
+                [c for i,c in enumerate(os.path.expandvars(path).split('/'))
+                 if c or i<4]
+                )
+
+            with open(path, 'r') as f:
+                self._file = DataDict(f.read())
+
+        return self
+
+    def to_dict(self):
+        ret = super(File, self).to_dict()
+        ret['_file'] = self._file
+        # if self._file:
+        #     ret['_file_'] = base64.b64encode(self._file)
+
+        return ret
+
+    @classmethod
+    def from_dict(cls, dct):
+        obj = super(File, cls).from_dict(dct)
+        obj._file = dct['_file']
+        return obj
+
+    def get_file(self):
+        """
+        Return the file content it has been loaded
+
+        Returns
+        -------
+        str or None
+            the file content, if it exists None else
+        """
+        f = self._file
+        if f:
+            return self._file.data
+        else:
+            return None
+
+    @property
+    def has_file(self):
+        """
+
+        Returns
+        -------
+        bool
+            True if the file content is attached.
+
+        """
+        return self._file is not None
+
+    def set_file(self, content):
+        """
+        Set the file content.
+
+        Can only be set once!
+
+        Parameters
+        ----------
+        content : str
+            the content of the file
+
+        """
+        self._file = DataDict(content)
+adaptivemd/task.py
+class Task(BaseTask):
+    """
+    A description for a task running on an HPC
+
+    Attributes
+    ----------
+    worker : :class:`~adaptivemd.worker.WorkingScheduler`
+        the currently assigned Worker instance (not the scheduler!)
+    generator : :class:`~adaptivemd.generator.TaskGenerator`
+        if given the :class:`~adaptivemd.generator.TaskGenerator` that
+        was used to create this task
+    state : str
+        a string representing the current state of the execution. One of
+        - 'created' : task has been created and is available for execution
+        - 'running': task is currently executed by a scheduler
+        - 'queued' : task has been captured by a worker for execution
+        - 'fail' : task has completed but failed. You can restart it
+        - 'success' : task has completed and succeeded.
+        - 'halt' : task has been halted by user. You can restart it
+        - 'cancelled' : task has been cancelled by user. You CANNOT restart it
+    stdout : :class:`~adaptivemd.logentry.LogEntry`
+        After completion you can access the stdout of the task here
+    stderr : :class:`~adaptivemd.logentry.LogEntry`
+        After completion you can access the stderr of the task here
+
+    """
+    _events = ['submit', 'fail', 'success', 'change']
+
+    _copy_attributes = BaseTask._copy_attributes + [
+        'stdout', 'stderr', 'restartable', 'cleanup',
+        'generator', 'dependencies', 'state', 'worker',
+        'est_exec_time', 'resource_requirements',
+        'resource_name'
+        ]
+
+    _find_by = ['state', 'worker', 'stderr', 'stdout']
+
+    state = SyncVariable('state', lambda x: x in ['success', 'cancelled'])
+    worker = ObjectSyncVariable('worker', 'workers')
+    stdout = ObjectSyncVariable('stdout', 'logs', lambda x: x is not None)
+    stderr = ObjectSyncVariable('stderr', 'logs', lambda x: x is not None)
+
+    FINAL_STATES = ['success', 'cancelled']
+    # TODO change halted  to paused
+    #      find where else this needs to change
+    RESTARTABLE_STATES = ['fail', 'halted']
+    RUNNABLE_STATES = ['created']
+
+    def __init__(self, generator=None, resource_name=None, est_exec_time=5,
+                 cpu_threads=1, gpu_contexts=0, mpi_rank=0):
+
+        super(Task, self).__init__()
+
+        self.generator = generator
+        self.dependencies = None
+        self._on = {}
+        self._add_files = []
+
+        self.stdout = None
+        self.stderr = None
+
+        self.restartable = None
+        self.cleanup = None
+        self.restart_failed = False
+
+        self.add_cb('fail', self.__class__._default_fail)
+        self.add_cb('success', self.__class__._default_success)
+
+        self.state = 'created'
+
+        self.worker = None
+
+        assert isinstance(cpu_threads, int)
+        assert isinstance(gpu_contexts, int)
+        assert isinstance(mpi_rank, int)
+
+        if isinstance(resource_name, str):
+            resource_name = [resource_name]
+
+        self.resource_name = resource_name
+
+        self.resource_requirements = {'cpu_threads': cpu_threads,
+                                      'gpu_contexts': gpu_contexts,
+                                      'mpi_rank': mpi_rank}
+
+        assert isinstance(est_exec_time, int)
+        self.est_exec_time = est_exec_time
+
+    def restart(self):
+        """
+        Mark a task as being runnable if it was stopped or failed before
+
+        Returns
+        -------
+
+        """
+        state = self.state
+        if state in Task.RESTARTABLE_STATES:
+            self.state = 'created'
+            return True
+
+        return False
+
+    def cancel(self):
+        """
+        Mark a task as cancelled if it it not running or has been halted
+
+        Returns
+        -------
+
+        """
+        state = self.state
+        if state in ['halted', 'created']:
+            self.state = 'cancelled'
+            return True
+
+        return False
+
+    @property
+    def dependency_okay(self):
+        """
+        Check if all dependency tasks are successful
+
+        Returns
+        -------
+        bool
+            True if all dependencies are fulfilled
+        """
+        dependencies = self.dependencies
+        if dependencies is not None:
+            return all(d.state == 'success' for d in self.dependencies)
+
+        return True
+
+    @property
+    def ready(self):
+        """
+        Check if this task is ready to be executed
+
+        Usually this only checks dependencies but might involve more elaborate checks
+        for specific Task classes
+
+        Returns
+        -------
+        bool
+            if True the task can now be executed
+
+        """
+        if self.dependencies:
+            return self.dependency_okay
+
+        return True
+
+    def _default_fail(self, scheduler, path=None):
+        """
+        the default function executed when a task fails
+
+        You can add your own callbacks. This is just the default
+
+        Parameters
+        ----------
+        scheduler : `Scheduler`
+            the calling scheduler to know where the task has failed
+
+        """
+        # todo: improve error handling
+        print('task did not complete')
+
+        if hasattr(scheduler, 'units'):
+            unit = scheduler.units.get(self)
+
+            if unit is not None:
+                print("* %s  state %s (%s), out/err: %s / %s"
+                       % (unit.uid,
+                          unit.state,
+                          unit.exit_code,
+                          unit.stdout,
+                          unit.stderr))
+
+    def _default_success(self, scheduler, path=None):
+        """
+        the default function executed when a task succeeds
+
+        You can add your own callbacks. This is just the default
+
+        Parameters
+        ----------
+        scheduler : `Scheduler`
+            the calling scheduler to know where the task has succeeded
+
+        """
+
+        for f in self.modified_files:
+            f.modified()
+            scheduler.project.files.add(f)
+
+        for f in self.targets:
+            f.create(scheduler)
+            scheduler.project.files.add(f)
+
+    @property
+    def description(self):
+        """
+        Return a lengthy description of the task for debugging and information
+
+        Returns
+        -------
+        str
+            the information text
+        """
+        task = self
+        s = ['Task: %s(%s) [%s]' % (
+                task.__class__.__name__, task.generator.__class__.__name__, task.state)]
+
+        if task.worker:
+            s += ['Worker: %s:%s' % (task.worker.hostname, task.worker.cwd)]
+            s += ['        cd worker.%s' % hex(task.__uuid__)]
+
+        s += ['']
+        s += ['Sources\n-- Unstaged']
+        s += ['- %s %s' % (x.short, '[exists]' if x.exists else '')
+              for x in task.unstaged_input_files]
+        s += ['-- Staged']
+        s += ['- %s %s' % (x.short, '[exists]' if x.exists else '')
+              for x in task.sources if x not in task.unstaged_input_files]
+        s += ['\nTargets']
+        s += ['- %s' % x.short for x in task.targets]
+        s += ['\nModified']
+        s += ['- %s' % x.short for x in task.modified_files]
+
+        s += ['']
+        #s += ['<pretask>']
+        #s += list(map(str, task.pretask))
+        #s += ['<main>']
+        s += list(map(str, task.script))
+        #s += ['<posttask>']
+        #s += list(map(str, task.pretask))
+
+        return '\n'.join(s)
+
+    def fire(self, event, scheduler, path=None):
+        """
+        Fire an event like success or failed.
+
+        Notes
+        -----
+        You should never have to call this yourself. The scheduler does that.
+
+        Parameters
+        ----------
+        event : str
+            the events name like `fail`, `success`, `submit`
+        scheduler : `Scheduler`
+            the scheduler that issued the events to be fired
+
+        """
+        if event in Task._events:
+            cbs = self._on.get(event, [])
+            for cb in cbs:
+                cb(self, scheduler, path)
+
+        if event in ['submit', 'fail', 'success']:
+            self.state = event
+
+    def is_done(self):
+        """
+        Check if the task is done executing. Can be failed, successful or cancelled
+
+        Returns
+        -------
+        bool
+            True if the task has finished its execution
+
+        """
+        # TODO use final states attribute
+        if self.state in ['fail', 'success', 'cancelled']:
+            return True
+
+        else:
+            return False
+
+    def was_successful(self):
+        """
+        Check if the task is done executing and was successful
+
+        Returns
+        -------
+        bool
+            True if the task has finished successfully
+
+        """
+        return self.state in ['success']
+
+    def has_failed(self):
+        """
+        Check if the task is done executing and has failed
+
+        Returns
+        -------
+        bool
+            True if the task has finished but failed
+
+        """
+        return self.state in ['fail']
+
+    def add_cb(self, event, cb):
+        """
+        Add a custom callback
+
+        Parameters
+        ----------
+        event : str
+            name of the event to be called upon firing
+        cb : function
+            the function to be called. It must be a function that takes a task and a scheduler
+
+        """
+        if event in Task._events:
+            self._on[event] = self._on.get(event, [])
+            self._on[event].append(cb)
+
+    @property
+    def additional_files(self):
+        """
+        list of `Location`
+            return the list of files created other than taken care of by actions. Should usually not
+            be necessary. If you do some bad hacks with the bash you can add files that
+            you transferred yourself to the project folders.
+
+        """
+        return self._add_files
+
+    def add_files(self, files):
+        """
+        Add additional files to the task execution
+
+        Should usually not be necessary. If you do some bad hacks with the bash you
+        can add files that you transferred yourself to the project folders.
+
+        Parameters
+        ----------
+        files : list of `File`
+            the list of files to be added to the task
+
+        """
+        if isinstance(files, File):
+            self._add_files.append(files)
+        elif isinstance(files, (list, tuple)):
+            self._add_files += files
+
+    @property
+    def targets(self):
+        """
+        Return a set of all new and overwritten files
+
+        Returns
+        -------
+        set of `File`
+            the list of files that are created or overwritten by this task
+        """
+
+        transactions = [t for t in self.script if isinstance(t, FileTransaction)]
+
+        return [x for x in set(sum(filter(bool, [f.added for f in transactions]), []) + self._add_files) if not x.is_temp]
+
+    @property
+    def target_locations(self):
+        """
+        Return a set of all new and overwritten file urls
+
+        Returns
+        -------
+        set of str
+            the list of file urls that are created or overwritten by this task
+        """
+        return {x.url for x in self.targets}
+
+    @property
+    def sources(self):
+        """
+        Return a set of all required input files
+
+        Returns
+        -------
+        set of `File`
+            the list of files that are required by this task
+        """
+        transactions = [t for t in self.script if isinstance(t, FileTransaction)]
+
+        return [x for x in set(sum(filter(bool, [t.required for t in transactions]), []) + self._add_files) if not x.is_temp]
+
+    @property
+    def source_locations(self):
+        """
+        Return a set of all required file urls
+
+        Returns
+        -------
+        set of str
+            the list of file urls that are required by this task
+        """
+        return {x.url for x in self.sources}
+
+    @property
+    def new_files(self):
+        """
+        Return a set of all files the will be newly created by this task
+
+        Returns
+        -------
+        set of `File`
+            the set of files that are created by this task
+        """
+
+        outs = self.targets
+        in_names = self.source_locations
+
+        return {x for x in outs if x.url not in in_names}
+
+    @property
+    def modified_files(self):
+        """
+        A set of all input files whose names match output names and hence will be overwritten
+
+        Returns
+        -------
+        list of `File`
+            the list of potentially overwritten input files
+
+        """
+        ins = self.sources
+        out_names = self.target_locations
+
+        return {x for x in ins if x.url in out_names}
+
+    @property
+    def staged_files(self):
+        """
+        Set of all staged files by the tasks generator
+
+        Returns
+        -------
+        set of `File`
+            files that are staged by the tasks generator
+
+        Notes
+        -----
+        There might be more files stages by other generators
+
+        """
+        if self.generator is not None:
+            return set(filter(bool, [t.target.url for t in self.generator.stage_in]))
+        else:
+            return set()
+
+    @property
+    def unstaged_input_files(self):
+        """
+        Return a set of `File` objects that are used but are not part of the generator stage
+
+        Usually a task requires some reused files from staging and specific others.
+        This function lists all the files that this task will stage to its working directory
+        but will not be available from the set of staged files of the tasks generator
+
+        Returns
+        -------
+        set of `File`
+            the set of `File` objects that are needed and not staged
+
+        """
+        staged = self.staged_files
+        reqs = self.sources
+
+        return {r for r in reqs if r.url not in staged}
+
+    def setenv(self, key, value):
+        """
+        Set an environment variable for the task
+
+        Parameters
+        ----------
+        key : str
+        value : str
+
+        """
+        if self._environment is None:
+            self._environment = {key: value}
+        elif key not in self._environment:
+            self._environment[key] = value
+        else:
+            raise ValueError(
+                'Cannot set same env variable `%s` more than once.' % key)
+
+    def append(self, cmd):
+        """
+        Append a command to this task
+
+        Returns
+        -------
+
+        """
+        self._main.append(cmd)
+
+    def prepend(self, cmd):
+        """
+        Append a command to this task
+
+        Returns
+        -------
+
+        """
+        self._main.insert(0, cmd)
+
+    def get(self, f, name=None):
+        """
+        Get a file and make it available to the task in the main directory
+
+        Parameters
+        ----------
+        f : `File`
+        name : `Location` or str
+
+        Returns
+        -------
+        `File`
+            the file instance of the file to be created in the unit
+
+        """
+        if f.drive in ['staging', 'sandbox', 'shared']:
+            transaction = f.link(name)
+        elif f.drive == 'file':
+            transaction = f.transfer(name)
+        elif f.drive == 'worker':
+            if name is None:
+                return f
+            else:
+                transaction = f.copy(name)
+        else:
+            raise ValueError(
+                'Weird file location `%s` not sure how to get it.' %
+                f.location)
+
+        self.append(transaction)
+
+        assert isinstance(transaction, FileTransaction)
+        return transaction.target
+
+    def touch(self, f):
+        """
+        Add an action to create an empty file or folder at a given location
+
+        Parameters
+        ----------
+        f : `Location`
+            the location (file or folder) to be used
+
+        """
+        transaction = f.touch()
+        self.append(transaction)
+        return transaction.source
+
+    def link(self, f, name=None):
+        """
+        Add an action to create a link to a file (under a new name)
+
+        Parameters
+        ----------
+        f : `Location`
+            the source location (file or folder) to be used
+        name : `Location` or str
+            the target location to be used. For source files and target folders the
+            basename is copied
+
+        Returns
+        -------
+        `Location`
+            the actual target location
+
+        """
+        transaction = f.link(name)
+        self.append(transaction)
+        return transaction.target
+
+    def put(self, f, target):
+        """
+        Put a file back and make it persistent
+
+        Corresponds to output_staging
+
+        Parameters
+        ----------
+        f : `File`
+            the file to be used
+        target : str or `File`
+            the target location. Need to contain a URL like `staging://` or
+            `file://` for application side files
+
+        Returns
+        -------
+        `Location`
+            the actual target location
+
+        """
+        transaction = f.move(target)
+        self.append(transaction)
+        return transaction.target
+
+    def remove(self, f):
+        """
+        Add an action to remove a file or folder
+
+        Parameters
+        ----------
+        f : `File`
+            the location to be removed
+
+        Returns
+        -------
+        `Location`
+            the actual location
+
+        """
+        transaction = f.remove()
+        self.append(transaction)
+        return transaction.source
+
+    def add_conda_env(self, name, activate_prefix=None):
+        #TODO sort out this resource.wrapper.append() business
+        #     clearly its not happening, is it possible?
+        #      - use as option
+        """
+        Add loading a conda env as the first command, with source
+        deactivate as the final command. Currently this is best done
+        as a final step in defining the task objects.
+
+        This calls `resource.wrapper.append('source activate {name}')`
+        Parameters
+        ----------
+        name : str
+            name of the conda environment
+
+        """
+        prefix = ''
+        if activate_prefix:
+            prefix = os.path.join(activate_prefix, prefix)
+
+        self.prepend('source {p}activate {n}'.format(p=prefix, n=name))
+        self.append('source deactivate')
+
+    def add_virtualenv(self, activate_location):
+        """
+        Add activation of virtualenv as the first command, with deactivate
+        as the final command. Currently this is best done as
+        a final step in defining the task objects.
+
+        Parameters
+        ----------
+        activate_location : 
+            Full file location of the virtualenv activate script
+        """
+        self.prepend('source ' + activate_location)
+        self.append('deactivate')
+adaptivemd/condition.py
+class Condition(object):
+    """
+    A function that returns a bool.
+    It uses some caching to keep checking fast and allows basic bool operations
+    This is really just to replace some simple lambda functions, nothing more.
+
+    Examples
+    --------
+    >>> a = Never()  # never fulfilles
+    >>> 'fulfilled' if a else 'not fulfilled'
+    'not fulfilled'
+    >>> b = Now()  # always fulfilled
+    >>> 'fulfilled' if b else 'not fulfilled'
+    'fulfilled'
+    >>> bool(a & b)
+    False
+    >>> bool(a | b)
+    True
+    >>> not a
+    True
+
+    """
+    def __init__(self):
+        self._met = None
+
+    def __call__(self):
+        if self._met is None:
+            if self.check():
+                self._met = True
+            else:
+                return False
+
+        return self._met
+
+    def check(self):
+        return True
+
+    # implement limited set of logic operations
+
+    def __or__(self, other):
+        return OrCondition(self, other)
+
+    def __and__(self, other):
+        return AndCondition(self, other)
+
+    def __invert__(self):
+        return InvertCondition(self)
+
+    def __bool__(self):
+        '''
+        Boolean evaluation in Python 3 use this special method.
+        '''
+        return self()
+
+    def __nonzero__(self):
+        '''
+        Boolean evaluation in Python 2 uses this special method,
+        internally calls newer `self.__bool__`
+        '''
+        return self.__bool__()
+adaptivemd/worker.py
+class Worker(StorableMixin):
+    """
+    A Worker instance the will submit tasks from the DB to a scheduler
+    """
+
+    _find_by = ['state', 'n_tasks', 'seen', 'verbose', 'prefetch', 'current']
+
+    state = SyncVariable('state')
+    n_tasks = SyncVariable('n_tasks')
+    seen = SyncVariable('seen')
+    verbose = SyncVariable('verbose')
+    prefetch = SyncVariable('prefetch')
+    command = SyncVariable('command')
+    current = ObjectSyncVariable('current', 'tasks')
+
+    def __init__(self, walltime=None, generators=None, sleep=None,
+                 heartbeat=None, prefetch=1, verbose=False):
+        super(Worker, self).__init__()
+        self.hostname = socket.gethostname()
+        self.cwd = os.getcwd()
+        self.seen = time.time()
+        self.walltime = walltime
+        self.generators = generators
+        self.sleep = sleep
+        self.heartbeat = heartbeat
+        self.prefetch = prefetch
+        self.reconnect_time = 10
+        self._scheduler = None
+        self._project = None
+        self.command = None
+        self.verbose = verbose
+        self.current = None
+        self._last_current = None
+        self.pid = os.getpid()
+
+    to_dict = create_to_dict([
+        'walltime', 'generators', 'sleep', 'heartbeat', 'hostname',
+        'cwd', 'seen', 'prefetch', 'pid'
+    ])
+
+    @classmethod
+    def from_dict(cls, dct):
+        obj = super(Worker, cls).from_dict(dct)
+        obj.hostname = dct['hostname']
+        obj.cwd = dct['cwd']
+        obj.seen = dct['seen']
+        obj.pid = dct['pid']
+
+        return obj
+
+    def create(self, project):
+        scheduler = WorkerScheduler(project._current_configuration, self.verbose)
+        scheduler._state_cb = self._state_cb
+        self._scheduler = scheduler
+        self._project = project
+        scheduler.enter(project)
+
+    def _state_cb(self, scheduler):
+        self.state = scheduler.state
+
+    @property
+    def scheduler(self):
+        """
+        Returns
+        -------
+        `WorkerScheduler`
+            the currently used scheduler to execute tasks
+
+        """
+        return self._scheduler
+
+    @property
+    def project(self):
+        """
+        Returns
+        -------
+        `Project`
+            the currently used project
+        """
+        return self._project
+
+    _running_states = ['running', 'waitandshutdown']
+    _accepting_states = ['running']
+
+    def _stop_current(self, mode):
+        sc = self.scheduler
+        task = sc.current_task
+
+        if task:
+            attempt = self.project.storage.tasks.modify_test_one(
+                lambda x: x == task, 'state', 'running', 'stopping')
+            if attempt is not None:
+                if sc.stop_current():
+                    # success, so mark the task as cancelled
+                    task.state = mode
+                    task.worker = None
+                    print('stopped a task [%s] from generator `%s` and set to `%s`' % (
+                        task.__class__.__name__,
+                        task.generator.name if task.generator else '---',
+                        task.state))
+
+            else:
+                # semms in the meantime the task has finished (success/fail)
+                pass
+
+    def execute(self, command):
+        """
+        Send and execute a single command to the worker
+
+        Note that the worker is registered on the DB but running on your HPC.
+        Just loading it does not allow you to call functions like `.shutdown`.
+        These would only be called on your local instance. All you can do
+        is use `execute` which will store a command in the DB and once the
+        real running worker executed it. The command will be cleared from the
+        DB.
+
+        Parameters
+        ----------
+        command : str
+            the command to be executed
+
+        """
+        self.command = command
+
+    def run(self):
+        """
+        Start the worker to execute tasks until it is shut down
+
+        """
+        scheduler = self._scheduler
+        project = self._project
+
+        last = time.time()
+        last_n_tasks = 0
+        self.seen = last
+
+        def task_test(x):
+            return x.ready and (not self.generators or (
+                hasattr(x.generator, 'name') and x.generator.name
+                in self.generators))
+
+        print('up and running ...')
+
+        try:
+            reconnect = True
+
+            while reconnect:
+                reconnect = False
+                try:
+                    if len(scheduler.tasks) > 0:
+                        # must have been a DB connection problem, attempt reconnection
+                        print('attempt reconnection')
+                        self._project.reconnect()
+
+                        print('remove all pending tasks')
+                        # remove all pending tasks as much as possible
+                        for t in list(scheduler.tasks.values()):
+                            if t is not scheduler.current_task:
+                                if t.worker == self:
+                                    t.state = 'created'
+                                    t.worker = None
+
+                                del scheduler.tasks[t.__uuid__]
+
+                        # see, if we can salvage the currently running task
+                        # unless it has been cancelled and is running with another worker
+                        t = scheduler.current_task
+                        if t.worker == self and t.state == 'running':
+                            print('continuing current task')
+                            # seems like the task is still ours to finish
+                            pass
+                        else:
+                            print('current task has been captured. releasing.')
+                            scheduler.stop_current()
+
+                    # the main worker loop
+                    while scheduler.state != 'down':
+                        state = self.state
+                        # check the state of the worker
+                        if state in self._running_states:
+                            scheduler.advance()
+                            if scheduler.is_idle:
+                                for _ in range(self.prefetch):
+                                    done = False
+                                    attempt = 0
+                                    retries = 10
+                                    while not done:
+
+                                        try:
+                                            tasklist = scheduler(
+                                                project.storage.tasks.modify_test_one(
+                                                 task_test, 'state', 'created', 'queued'))
+                                            done = True
+
+                                        except RuntimeError as e:
+                                            if attempt < retries:
+                                                print("Connection Timeout #{0} ignored"
+                                                      .format(attempt))
+                                                attempt += 1
+                                                time.sleep(2)
+                                            else:
+                                                raise e
+
+                                    for task in tasklist:
+                                        task.worker = self
+                                        print('queued a task [%s] from generator `%s`' % (
+                                            task.__class__.__name__,
+                                            task.generator.name if task.generator else '---'))
+
+                                self.n_tasks = len(scheduler.tasks)
+
+                        # handle commands
+                        # todo: Place all commands in a separate store and consume ?!?
+                        command = self.command
+
+                        if command == 'shutdown':
+                            # someone wants us to shutdown
+                            scheduler.shut_down()
+
+                        if command == 'kill':
+                            # someone wants us to shutdown immediately. No waiting
+                            scheduler.shut_down(False)
+
+                        elif command == 'release':
+                            scheduler.release_queued_tasks()
+
+                        elif command == 'halt':
+                            self._stop_current('halted')
+
+                        elif command == 'cancel':
+                            self._stop_current('cancelled')
+
+                        elif command and command.startswith('!'):
+                            result = subprocess.check_output(command[1:].split(' '))
+                            project.logs.add(
+                                LogEntry(
+                                    'command', 'called `%s` on worker' % command[1:], result
+                                )
+                            )
+
+                        if command:
+                            self.command = None
+
+                        if time.time() - last > self.heartbeat:
+                            # heartbeat
+                            last = time.time()
+                            self.seen = last
+
+                        time.sleep(self.sleep)
+                        if self.walltime and time.time() - self.__time__ > self.walltime:
+                            # we have reached the set walltime and will shutdown
+                            print('hit walltime of %s' % DT(self.walltime).length)
+                            scheduler.shut_down()
+
+                        if scheduler.current_task is not self._last_current:
+                            self.current = scheduler.current_task
+                            self._last_current = self.current
+
+                        n_tasks = len(scheduler.tasks)
+                        if n_tasks != last_n_tasks:
+                            self.n_tasks = n_tasks
+                            last_n_tasks = n_tasks
+
+                except (pymongo.errors.ConnectionFailure, pymongo.errors.AutoReconnect) as e:
+                    print('pymongo connection error', e)
+                    print('try reconnection after %d seconds' % self.reconnect_time)
+                    # lost connection to DB, try to reconnect after some time
+                    time.sleep(self.reconnect_time)
+                    reconnect = True
+
+        except KeyboardInterrupt:
+            scheduler.shut_down()
+            pass
+
+    def shutdown(self, gracefully=True):
+        """
+        Shut down the worker
+
+        Parameters
+        ----------
+        gracefully : bool
+            if True the worker is allowed some time to finish running tasks
+
+        """
+        self._scheduler.shut_down(gracefully)

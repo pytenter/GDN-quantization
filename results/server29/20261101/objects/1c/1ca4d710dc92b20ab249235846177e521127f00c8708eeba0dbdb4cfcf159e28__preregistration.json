@@ -1,0 +1,20 @@
+{
+  "task": "QWEN_GDN_FSDP2_RECURRENT_TRAINING_FEASIBILITY_V1",
+  "base_remote_branch": "origin/exp/qwen-gdn-determinism-causal-isolation-v1",
+  "base_remote_sha256_git": "9f2df90d49d3b692fbc0da5286ce735de43fa1db",
+  "model": "Qwen3.5-9B BF16 frozen backbone; canonical Qwen3.5 source",
+  "method": "PyTorch 2.5.1 FSDP2 fully_shard, two NCCL ranks, one RTX3090 per rank, block-level FULL_SHARD",
+  "parameter_scope": "frozen Qwen backbone only; trainable rotation bank remains unsharded",
+  "canonical_semantics": ["torch.cumsum", "original GDN core", "INT8-C128 QDQ along Key dim -2", "Key-side rotation", "recurrent state writeback and BPTT boundaries"],
+  "forbidden": ["fixed-prefix replacement", "HF device_map dual GPU", "TP", "PP", "head/state split", "activation checkpointing", "package upgrade", "formal C5/C6", "AIME"],
+  "phase_order": ["historical single-GPU memory budget", "FSDP2 load/shard inventory", "teacher forward parity", "H1 recurrent/QDQ semantics", "five fresh-process H1 repeatability", "one Adam update and frozen-backbone check", "H1/H4/H8/H16/H32 one-update memory smoke", "five H32 updates", "thirty H32 updates", "conditional H64 then H128", "conditional rotation-only checkpoint portability"],
+  "stop_on": ["unavailable FSDP runtime", "unsharded frozen model", "unexpected trainable backbone", "teacher forward semantic failure", "H1 QDQ/writeback semantic failure", "missing rotation gradient"],
+  "forward_thresholds": {"logits_max_abs": 0.0625, "logits_relative_l2": 0.001, "state_max_abs": 0.001, "state_relative_l2": 0.00001, "loss_relative_error": 0.00001, "C128_qcodes": "exact for all audited layers"},
+  "H32_minimum_free_margin_fraction": 0.05,
+  "H32_preferred_free_margin_fraction": 0.10,
+  "DeepSpeed_fallback_allowed_only_on_FSDP_API_or_model_framework_blocker": true,
+  "DeepSpeed_install_authorized": false,
+  "formal_training_authorized": false,
+  "AIME_authorized": false,
+  "pre_registered_before_FSDP2_load_result": true
+}

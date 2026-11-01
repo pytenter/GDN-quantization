@@ -1,0 +1,394 @@
+
+你现在是我的 Qwen/GDN recurrent-state INT8 量化科研执行 Agent。
+
+本次任务不是重新开发量化方案，也不是修复历史所有工程问题，而是在已经取得的真实32K探索性正向结果基础上，实施一次严格前瞻性的5文档独立复制实验。
+
+要求：先审计和规划，再有界执行，最后完整封存科学结果。禁止无意义地反复修改 launcher、GPU telemetry、数值kernel或实验门禁。优先直接回答科学问题。
+
+==================================================
+0. 任务身份与授权
+==================================================
+
+TASK_ID:
+QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1
+
+GPU_EXECUTION_AUTHORIZED = YES
+（仅当人类用户将本提示词明确提交给Codex时生效）
+
+MAX_NEW_GPU_HOURS = 24.0
+GPU_COUNT = 1
+GPU_TYPE = RTX3090_24GB
+MODEL = Qwen3.5-9B
+ENGINE = 原已资格的非SGLang路径
+
+TASK_SCOPE:
+- 5篇全新32K文档
+- 每篇FP_NATIVE、H_C128、H_DUAL_M各1条轨迹
+- 总计15条正式32K轨迹
+- 每篇384个全词表Future-KL评分位置
+- 不进行任何新训练
+- 不执行AIME
+- 不自动启动后续2×2互补性实验
+
+项目在最终报告与seal完成后必须STOP。
+
+==================================================
+1. 必读历史科学资产
+==================================================
+
+读取上一项已经完成的实验：
+
+QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1
+
+上一实验FINAL_SCIENTIFIC_REPORT.md：
+
+/data/zypan/analyses/qwen_hadamard_dual_axis_direct_32k_pilot_v1/continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/FINAL_SCIENTIFIC_REPORT.md
+
+同时读取同目录中实际存在的：
+- source_manifest.json
+- preregistration.json
+- frozen_documents.json
+- science_results.json
+- window_results.csv
+- GATE_STATUS_FINAL.json
+- gpu_resource_ledger.json
+- runtime_cost.json（按实际目录查找）
+- score artifact verification及最终seal
+- src/codec.py、core.py、worker.py、reducer.py
+
+必须先确认文件确实存在，并检查记录的SHA/源码身份。
+
+历史科学结果：
+
+Doc1：
+H_C128 KL = 0.0318188729701
+H_DUAL_M KL = 0.0243192953821
+Delta = +0.00749957758799
+
+Doc2：
+H_C128 KL = 0.0520338261948
+H_DUAL_M KL = 0.0300131244169
+Delta = +0.0220207017779
+
+2/2文档支持Dual-M。
+等权每文档相对KL下降平均32.9447815658%。
+
+这一结果分类是POSITIVE_EXPLORATORY。
+不能把原2篇合并到本轮5篇，冒充7篇预注册confirmatory证据。
+
+历史FP_NATIVE与FP_H的token1 relative-L2=0.0067184617超过旧阈值0.002，该旧失败永久保留。本次比较使用共同FP_NATIVE，不重新宣称FP/H数值等价。
+
+上次初始执行的SSH BrokenPipeError导致FAIL_AND_STOP，后续经过人类授权恢复并完成。历史失败和续跑记录都必须保留，不得改写。
+
+本任务创建全新的独立输出目录。不得覆盖上一任务的源码、checkpoint、manifest、seal或任何正式结果。
+
+==================================================
+2. 冻结科学问题和假设
+==================================================
+
+核心问题：
+
+对于此前未用于本方法验证的真实长文档，在相同Hadamard Key-side Rotation、相同模型、相同真实逐token QDQ条件下，用Dual-M替换Canonical C128，是否能稳定降低32K full-model Future-KL？
+
+比较三个条件：
+
+N = FP_NATIVE
+A = H_C128
+D = H_DUAL_M
+
+其中：
+A保留原正式Canonical C128 column absmax量化规则。
+D使用已经通过CPU和GPU parity的STEPQuant-inspired Dual-M：
+- signed INT8 codes
+- all8
+- impact/readout weight = 1
+- FP16 row scale + FP16 column scale
+- zero FP16 pivots
+- 原已资格的column least-squares与最终re-encode算法
+
+不添加Dual-W。
+不调整scale floor、clip policy、bitwidth。
+不训练新的rotation。
+不修改Hadamard矩阵。
+不静默更换dtype、kernel、模型权重或QDQ次序。
+
+严格要求每个token：
+
+State -> INT8 quantize -> dequantize -> writeback
+
+下一token消费当前token已经量化写回的状态。
+
+禁止LeapQuant式延迟requantization、FP16/FP32高精度persistent buffer，以及只做一次离线fake quant的替代实现。
+
+旧实现使用FP32 tensor携带QDQ后的状态，可以用于本轮科学复制；必须继续明确标记：
+
+PERSISTENT_INT8_QDQ = QUALIFIED（通过验证后）
+PHYSICAL_PACKED_INT8 = NOT_QUALIFIED
+
+本轮不以实现真实packed INT8 runtime为目标。
+
+==================================================
+3. Phase 0：科学身份和样本预注册
+==================================================
+
+在任何新的科学GPU forward之前，完成以下CPU-only工作。
+
+3.1 恢复上一实验的已资格实现
+
+优先复用上一实验冻结的数学核心、codec、model forward、KL reducer及保存逻辑。
+
+做源码身份和行为边界审计，不要为了建立新工程框架而复制大量新代码。
+
+若确需修改离线托管/输出目录管理，必须隔离在新任务控制层，证明没有改变科学计算路径。
+
+3.2 冻结5篇新文档
+
+优先使用上一实验相同的RepoBench-P/test输入池和相同tokenizer，以维持科学可比性。
+
+要求：
+- 每篇至少32769 tokens
+- 排除上一Pilot的Doc1、Doc2
+- 排除历史128-token canary文档
+- 排除可定位的NoInflation 8-doc等历史验证样本
+- 排除训练、方法选择或调参阶段已经使用的可识别样本
+- raw SHA及canonical input SHA不能重复
+- 不基于模型预测、KL、state MSE等科学结果选样
+
+先尝试恢复真实repository/project元数据，优先选择5个不同项目的文档。
+
+如果原始数据不存在可靠项目字段，不能虚构项目独立性。可以按冻结规则选择5篇不同raw文档，但必须记录PROJECT_INDEPENDENCE=UNKNOWN，后续不能据此正式宣称项目级统计显著性。
+
+禁止把内容hash不同直接视作项目独立。
+
+使用固定的、事前写入协议的确定性选择规则，例如候选清单排序后结合seed=20261016抽样。
+
+输出：
+- CANDIDATE_AUDIT.csv
+- FROZEN_DOCUMENTS.json
+- PRE_REGISTRATION.json
+
+每篇记录document ID、token count、raw SHA256、canonical token SHA256、project身份及身份可验证程度、排除原因和选择次序。
+
+在任何GPU forward之前冻结以上文件及SHA。
+冻结后不得根据结果更换文档。
+
+如果无法找到5篇合法未见文档，STOP并报告，不擅自减少N或更换数据分布。
+
+==================================================
+4. Phase 1：最短工程资格与资源预算
+==================================================
+
+不要重做上一实验所有已经通过的工程开发。
+
+最小资格包括：
+1. 源码、权重、tokenizer、模型和运行环境身份
+2. Hadamard结构与Key-side旋转正确性
+3. Canonical H_C128 GPU parity
+4. Dual-M GPU codec reference parity
+5. 真实每token QDQ/writeback
+6. 原128-token canary的fresh-process数值一致性
+7. FP16 scales及per-layer/head数值安全
+8. GPU显存和资源准入
+9. 32K评分位置及reducer边界
+
+复用上一实验的有资格canary输入，避免使用本轮5篇正式文档进行调试或选择。
+
+不重新引入旧FP_NATIVE/FP_H相对L2<=0.002作为硬门禁；但是不意味着旧失败已被解决。
+
+硬门禁失败时立即STOP并保存first failure，不通过放宽阈值来宣称PASS。
+
+GPU资源只能使用一张合格RTX3090 24GB。必须检查真实设备身份、其他计算进程、可用显存和适配环境。
+
+上一次FP_NATIVE/H_C128轨迹已接近24GB显存上限，不允许因新增诊断意外增加大量GPU常驻tensor。
+
+4.1 预算预测
+
+上一实验真实完整文档约消耗4 GPUh/篇（3条轨迹）。
+
+本轮5篇预期约20 GPUh，但这只是规划值，不是保证。
+
+基于上一实验完整32K轨迹的真实占用、初始化、checkpoint、IO、资格执行以及合理安全余量，估算本轮总成本。
+
+若无法合理预期在24 GPUh内完成全部15条轨迹，则在科学GPU执行前STOP并报告，不静默减少样本量、不换GPU、不降低序列长度。
+
+累计新任务GPU占用不得超过24.0 GPUh。
+GPU ledger包括资格、加载、运行、IO、checkpoint等实际设备占用。
+
+==================================================
+5. Phase 2：正式32K科学执行
+==================================================
+
+全部前置资格PASS后，按照冻结顺序执行。
+
+每篇文档完整运行：
+
+FP_NATIVE：32768 consumed tokens
+H_C128：32768 consumed tokens
+H_DUAL_M：32768 consumed tokens
+
+两种student从token0分别建立自己的完整persistent QDQ历史。
+
+禁止：
+- 复用其他student的INT8 state
+- 复用不匹配的prefix cache
+- 从8192直接插入clean state替代完整历史
+- 跳过任一token的QDQ
+- 偷换为FP state continuation
+- 缩短文档或降低评分密度
+
+按照上一实验相同定义评分：
+
+t = 8192 + 64*k
+k = 0,1,...,383
+
+在消费ids[t]后，用logits预测ids[t+1]。
+
+每doc 384个固定位置。
+full vocabulary FP32 KL：
+
+K_A = mean_t KL(FP_NATIVE || H_C128)
+K_D = mean_t KL(FP_NATIVE || H_DUAL_M)
+
+继续使用上次冻结的KL算法及math.fsum/384 reducer，不能在复现实验中改评分定义。
+
+Delta = K_A - K_D
+RelativeGain = Delta / K_A
+
+Delta > 0代表Dual-M改善。
+
+保留Early、Middle、Late三个预冻结窗口，每个窗口128个位置。
+
+执行全部5篇，不允许因前几篇结果好/坏而提前作科学性停止，也不允许根据结果追加第6篇。
+
+允许基于实际资源和核心资格失败执行fail-closed停止；此时必须报告有效完成的篇数和缺失项，不把缺失样本视为平局。
+
+建议采用断开SSH后仍可可靠管理的最小离线执行方式，stdout/stderr写独立文件。不要让SSH传输中断变成模型运行逻辑的一部分。
+
+如需要恢复，必须核验checkpoint、SHA、模型身份和GPU预算；真实数值失败不允许通过自动重试抹去。
+
+==================================================
+6. Phase 3：统计与科学判断
+==================================================
+
+所有判据必须在读取正式结果之前写入预注册。
+
+主结果单位是文档/已验证独立项目，不是384个位置、head、layer或group。
+
+每篇计算：
+- K_A
+- K_D
+- Delta
+- RelativeGain
+- 本轮按上一实验思路计算的算术分辨范围
+- Winner
+
+当Delta > arithmetic_resolution时为D_WIN。
+当Delta < -arithmetic_resolution时为A_WIN。
+否则NUMERICALLY_UNRESOLVED。
+
+数值分辨规则沿用上一实验的FP32/独立标量FP64核对与误差合成原则，不直接复制旧实验的某个固定阈值。必须声明该分辨范围不能完全约束GPU full-model forward数值不确定性。
+
+主分析：
+1. 5篇各自的Delta与方向
+2. 5篇等权mean Delta
+3. 5篇等权mean RelativeGain
+4. mean K_A与mean K_D
+5. 两臂均值KL的相对变化
+
+预登记方向性判据：
+- 5/5可分辨D_WIN且mean Delta>0：POSITIVE_PROSPECTIVE_REPLICATION
+- 4/5 D_WIN且mean Delta>0：DIRECTIONALLY_SUPPORTIVE_MIXED
+- 其他混合：MIXED_OR_INCONCLUSIVE，按实际数据解释
+- 主要方向反转：REPORT_NEGATIVE_EVIDENCE
+- 有缺失轨迹：INCOMPLETE_NOT_CONFIRMATORY
+
+如果5篇真正满足项目级独立性且全部D_WIN，可以报告单侧sign test p=0.03125，同时完整报告样本量、选择机制和假设边界。
+
+如果PROJECT_INDEPENDENCE=UNKNOWN：
+不得将384×5评分位置当独立样本。
+不得把文档级名义p值包装成正式confirmatory显著性。
+只能报告方向、效应大小和条件性统计解释。
+
+历史2篇Pilot只放在单独的对照表中，不合并到本轮推断统计。
+
+Secondary分析：
+- 每篇Early/Middle/Late的Delta
+- Late是否仍为最大收益窗口
+- local-QDQ relative MSE
+- scale动态范围
+- rounded clamp和unrounded越界
+- 实际token吞吐与GPU显存
+
+这些Secondary指标只能用于诊断，不得在观察结果后重新定义Primary。
+
+特别注意：A/D在自身历史状态上的local-QDQ MSE不构成共同输入的codec因果对照。不要据此声称已经识别scale feedback、row scale或query-readout的唯一中介。
+
+==================================================
+7. Phase 4：结果封存
+==================================================
+
+无论成功还是失败，都必须生成实际状态报告。
+
+至少交付：
+- PRE_REGISTRATION.json
+- FROZEN_DOCUMENTS.json
+- GATE_STATUS_FINAL.json
+- FIRST_FAILURE.json（若发生）
+- GPU_RESOURCE_LEDGER.json
+- SCIENCE_RESULTS.csv/json
+- WINDOW_RESULTS.csv
+- RUNTIME_COST.json
+- SOURCE_MANIFEST.json
+- SCORE_ARTIFACT_VERIFICATION.json
+- FINAL_SCIENTIFIC_REPORT.md
+- 最终SHA256 seal及独立验证结果
+
+科学报告必须回答：
+
+Q1：新5篇有多少篇可分辨地支持Dual-M？
+Q2：mean Delta和mean RelativeGain是多少？
+Q3：新结果与原2-doc Pilot的方向和量级是否一致？
+Q4：Early/Middle/Late收益是否稳定？
+Q5：有没有新的scale、clipping、数值安全问题？
+Q6：真实吞吐与资源消耗是否明显变化？
+Q7：项目独立性和统计推断边界是什么？
+Q8：是否已具备进行C6R×Dual-M交互实验的理由？
+Q9：哪些结论仍完全没有证据？
+
+最终报告必须严格区分：
+VERIFIED_ENGINEERING
+PROSPECTIVE_SCIENTIFIC_RESULT
+POSTHOC_DIAGNOSTIC
+NOT_ESTABLISHED
+FAIL_AND_STOP / COMPLETE_AND_STOP
+
+不得把本轮的codec净效应写成learned rotation互补性证据。
+
+==================================================
+8. 执行纪律
+==================================================
+
+先给出简洁执行计划、数据资格摘要和实际GPU预算，然后在授权与所有前置门禁满足时执行。
+
+不需要为了无关的小风险反复向我索取确认，但不能擅自扩大科学协议。
+
+绝对禁止：
+- 新训练C8、L8或L9
+- 任何新的AIME/free-generation
+- C6R或C7交互实验
+- Dual-W实验
+- 未授权扩展GPU数量或GPU时长
+- 替换模型/engine/kernel以绕过失败
+- 无上限first-divergence调试
+- 静默修改历史PASS/FAIL记录
+- 把工程PASS当科学胜利
+- 把QDQ语义当成物理packed INT8证明
+- 自动git push
+- 运行下一项科研实验
+
+如果科学问题因资源或核心资格不具备而无法经济完成，就立即FAIL_CLOSED_STOP，清楚报告首失败、已花GPUh、已完成工作与未获得的科学答案。
+
+最终输出完整科学结果和绝对报告路径后STOP。
+
+本任务的唯一目标是：
+用一次有界、前瞻、可核验的真实32K多文档实验，判断Hadamard+Dual-M的长期功能优势能否在原2篇探索样本之外复现。

@@ -1,0 +1,50 @@
+# qwen_dual_axis_replication_archive
+
+原始相对目录：`qwen_dual_axis_replication_archive`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/EXECUTION_PLAN.md`](../../objects/ea/eacfa36afc6b5f5860d26fd91c0fb7c84978a27af7bdf8a3426f3ad7abd79cb7__EXECUTION_PLAN.md)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/FINAL_STATUS.json`](../../objects/75/75dce4dc311b5d948449e6b1f5c3e402a64e5bb8e16c1643dec06b90975b487f__FINAL_STATUS.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/WINDOW_RESULTS.csv`](../../objects/c3/c37d7343576030299797eb394f5dc12406f3dace660c3a6c8d422f2d19bca384__WINDOW_RESULTS.csv)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/window_results.csv`](../../objects/c3/c37d7343576030299797eb394f5dc12406f3dace660c3a6c8d422f2d19bca384__WINDOW_RESULTS.csv)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/CANDIDATE_AUDIT.csv`](../../objects/c3/c35753fa6562eb5f7f62ff8571a2189d40537bc145142bb1fad2a960aeb0b75c__CANDIDATE_AUDIT.csv)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/SCIENCE_RESULTS.csv`](../../objects/22/22ae4e941cacaf8fe216bf3f7b3e4c26dbe9f0ff5f6dc3417593b54a8a9f5be3__SCIENCE_RESULTS.csv)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/science_results.csv`](../../objects/22/22ae4e941cacaf8fe216bf3f7b3e4c26dbe9f0ff5f6dc3417593b54a8a9f5be3__SCIENCE_RESULTS.csv)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/preregistration.json`](../../objects/da/da2cdb37fc787b84e73d32c51c16e296728b3b9c45875b5658f8c40b93832126__preregistration.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/GATE_STATUS_FINAL.json`](../../objects/1f/1f52ea91e0e19ff87e213ca98fd37855dec644cf46853ce161e88fc345e9e602__GATE_STATUS_FINAL.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/FINAL_SCIENTIFIC_REPORT.md`](../../objects/fc/fccd57415a5e718f7195a9698df8df50e271d49946c279b00553b137c6b0592e__FINAL_SCIENTIFIC_REPORT.md)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/score_rows_doc1_A.json`](../../objects/5c/5cc3506d38603ec0de7c74cc5fda2fd00a90f272f83f7835b8848acdfb67f842__score_rows_doc1_A.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/score_rows_doc1_D.json`](../../objects/40/40dd4ca1d33cbeff633b3f28cffca214b1fe1385b6d449ac0ff86e72527435ae__score_rows_doc1_D.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/score_rows_doc2_A.json`](../../objects/9c/9c46a84a9795f37d36aad6738670c6d1b856a17541818c60e0ebc809a0e965f3__score_rows_doc2_A.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/score_rows_doc2_D.json`](../../objects/78/78ab63b88b879ac72b194b5079065bff5c792e167e775fd177c0db00c7b8d4b5__score_rows_doc2_D.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/score_rows_doc3_A.json`](../../objects/6a/6a7d4a4b475db603fcd26667b71eb88d9efaea31fb2f5beed9c47ace542903aa__score_rows_doc3_A.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/score_rows_doc3_D.json`](../../objects/33/3344db2911282f6c2906cb0c98a631b9d6d3265e459e010fb1da55ebca12532f__score_rows_doc3_D.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/score_rows_doc4_A.json`](../../objects/1d/1d7cf49d706805578599fbe40a621e4b2f6bed117241c2dc69e10c548ea024eb__score_rows_doc4_A.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/score_rows_doc4_D.json`](../../objects/2f/2f01acd5fea20a8607ffc3ea924d2de1a0c059d91bc5fb1e68142f39dd516215__score_rows_doc4_D.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/score_rows_doc5_A.json`](../../objects/5c/5c6bd86d3e2c5c0973a9b0d389c44bc1a497a94828005ce7807c2086aede652b__score_rows_doc5_A.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/score_rows_doc5_D.json`](../../objects/3e/3ec4e165130fd03c4ccb702c1a0f1d4e25b3015b844fb8430cd7baf567b09d32__score_rows_doc5_D.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/SCORE_ARTIFACT_VERIFICATION.json`](../../objects/dd/dd8dff2c2da39ba981ff237e6dd09f79f214d5183ab78c32bb81bd1352e340c8__SCORE_ARTIFACT_VERIFICATION.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/data_selection/CANDIDATE_AUDIT.csv`](../../objects/c3/c35753fa6562eb5f7f62ff8571a2189d40537bc145142bb1fad2a960aeb0b75c__CANDIDATE_AUDIT.csv)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/historical_pilot/window_results.csv`](../../objects/df/df8d601d221c503cb00fc24435a1d197bfe49af1fc42485055fe8353d57395fc__window_results.csv)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/documents/doc_01/score_positions.json`](../../objects/8a/8a8670dc1ee60cd2a4f7d2f3fa2dbe6243ad868a65c5656b7ebb324c8b80f3f1__score_positions.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/documents/doc_02/score_positions.json`](../../objects/08/084f1699484192f0a05efa82369f0f7af2a9d4e86790acdb0c504c4d38eab2af__score_positions.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/documents/doc_03/score_positions.json`](../../objects/a8/a86600444d32cc2e34620c47ddc66f1da8eee057ab2eabf040c4562258ef0503__score_positions.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/documents/doc_04/score_positions.json`](../../objects/c6/c663e479a12b4a06e16a8faf0b19cf550bfc3921ba21583fbce2904a2826a17f__score_positions.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/documents/doc_05/score_positions.json`](../../objects/a2/a25033b53cfb43a7152f31913d059835f886d076e75cd86bb859640c659565b2__score_positions.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/historical_pilot/preregistration.json`](../../objects/54/544da3293e5f819cbfa4953ed8381e30126342dfd47ebd52bfbcde77ea04fb5b__preregistration.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis_scripts/postprocess_scores.py`](../../objects/00/003024fe753f530f8f824570f29e9485b04d374594258803aee2ec732e059ca1__postprocess_scores.py)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/hashes/FINAL_ARCHIVE_VERIFICATION.json`](../../objects/ea/eaae18358fc353b22aba2c59ea1f413878a8f793affec9c497324713abe8eb66__FINAL_ARCHIVE_VERIFICATION.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/historical_pilot/GATE_STATUS_FINAL.json`](../../objects/e4/e4df72c824c7737985948fdf95e6be68117e76e9e9e420b352b79a01e7a54836__GATE_STATUS_FINAL.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis_scripts/finalize_replication.py`](../../objects/a0/a019b758b974a8968165870cdf6e60cfaea01fc58a29a57c144d21c5cd29018b__finalize_replication.py)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/SCORE_ARTIFACT_VERIFICATION.json`](../../objects/dd/dd8dff2c2da39ba981ff237e6dd09f79f214d5183ab78c32bb81bd1352e340c8__SCORE_ARTIFACT_VERIFICATION.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/historical_pilot/FINAL_SCIENTIFIC_REPORT.md`](../../objects/98/9836e774899d489498ff1d96efc65db7816ea8680ccbb9aeb77ed9a5f99abb3d__FINAL_SCIENTIFIC_REPORT.md)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu0/preregistration.json`](../../objects/da/da2cdb37fc787b84e73d32c51c16e296728b3b9c45875b5658f8c40b93832126__preregistration.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu1/preregistration.json`](../../objects/da/da2cdb37fc787b84e73d32c51c16e296728b3b9c45875b5658f8c40b93832126__preregistration.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu2/preregistration.json`](../../objects/da/da2cdb37fc787b84e73d32c51c16e296728b3b9c45875b5658f8c40b93832126__preregistration.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu3/preregistration.json`](../../objects/da/da2cdb37fc787b84e73d32c51c16e296728b3b9c45875b5658f8c40b93832126__preregistration.json)
+- [`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/historical_pilot/analysis/SCORE_ARTIFACT_VERIFICATION.json`](../../objects/fd/fd8e5eb0b78fd94dca4e8cf3082ac5d7238077dd0ab8a7527b499f634e82bed7__SCORE_ARTIFACT_VERIFICATION.json)

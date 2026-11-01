@@ -1,0 +1,1128 @@
+wear/src/main/java/de/unima/ar/collector/sensors/collectors/OrientationCollector.java
+public class OrientationCollector extends Collector
+{
+    private static final int      type       = 3;
+    private static final String[] valueNames = new String[]{ "attr_azimuth", "attr_pitch", "attr_roll", "attr_time" };
+
+    private boolean isRegistered = false;
+    private int     sensorRate   = 0;
+
+    private static Map<String, List<String[]>> cache = new HashMap<>();
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        float[] values = event.values.clone();
+        long time = System.currentTimeMillis();
+
+        String deviceID = DeviceID.get(SensorService.getInstance());
+
+        if(Settings.WEARTRANSFERDIRECT) {
+            String record = valueNames[0] + ";" + values[0] + ";" + valueNames[1] + ";" + values[1] + ";" + valueNames[2] + ";" + values[2] + ";" + valueNames[3] + ";" + time;
+            BroadcastService.getInstance().sendMessage("/sensor/data/" + deviceID + "/" + type, record);
+        } else {
+            ContentValues newValues = new ContentValues();
+            newValues.put(valueNames[0], values[0]);
+            newValues.put(valueNames[1], values[1]);
+            newValues.put(valueNames[2], values[2]);
+            newValues.put(valueNames[3], time);
+
+            OrientationCollector.writeDBStorage(deviceID, newValues);
+        }
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    @Override
+    public void setSensorRate(int rate)
+    {
+        this.sensorRate = rate;
+    }
+
+
+    @Override
+    public int getSensorRate()
+    {
+        return sensorRate;
+    }
+
+
+    @Override
+    public void setRegisteredState(boolean b)
+    {
+        this.isRegistered = b;
+    }
+
+
+    @Override
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.ORIENTATION + " (id INTEGER PRIMARY KEY, " + valueNames[3] + " INT, " + valueNames[0] + " REAL, " + valueNames[1] + " REAL, " + valueNames[2] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        String tableName = SQLTableName.PREFIX + deviceID + SQLTableName.ORIENTATION;
+
+        if(Settings.DATABASE_DIRECT_INSERT) {
+            SQLDBController.getInstance().insert(tableName, null, newValues);
+            return;
+        }
+
+        List<String[]> clone = DBUtils.manageCache(deviceID, cache, newValues, (Settings.DATABASE_CACHE_SIZE + type * 200));
+        if(clone != null) {
+            SQLDBController.getInstance().bulkInsert(tableName, clone);
+        }
+    }
+
+
+    public static void flushDBCache()
+    {
+        DBUtils.flushCache(SQLTableName.ORIENTATION, cache);
+    }
+}
+wear/src/main/java/de/unima/ar/collector/sensors/collectors/PressureCollector.java
+public class PressureCollector extends Collector
+{
+    private static final int      type       = 6;
+    private static final String[] valueNames = new String[]{ "attr_millibar", "attr_time" };
+
+    private boolean isRegistered = false;
+    private int     sensorRate   = 0;
+
+    private static Map<String, List<String[]>> cache = new HashMap<>();
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        float[] values = event.values.clone();
+        long time = System.currentTimeMillis();
+
+        String deviceID = DeviceID.get(SensorService.getInstance());
+
+        if(Settings.WEARTRANSFERDIRECT) {
+            String record = valueNames[0] + ";" + values[0] + ";" + valueNames[1] + ";" + time;
+            BroadcastService.getInstance().sendMessage("/sensor/data/" + deviceID + "/" + type, record);
+        } else {
+            ContentValues newValues = new ContentValues();
+            newValues.put(valueNames[0], values[0]);
+            newValues.put(valueNames[1], time);
+
+            PressureCollector.writeDBStorage(deviceID, newValues);
+        }
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    @Override
+    public void setSensorRate(int rate)
+    {
+        this.sensorRate = rate;
+    }
+
+
+    @Override
+    public int getSensorRate()
+    {
+        return sensorRate;
+    }
+
+
+    @Override
+    public void setRegisteredState(boolean b)
+    {
+        this.isRegistered = b;
+    }
+
+
+    @Override
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.PRESSURE + " (id INTEGER PRIMARY KEY, " + valueNames[1] + " INT, " + valueNames[0] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        String tableName = SQLTableName.PREFIX + deviceID + SQLTableName.PRESSURE;
+
+        if(Settings.DATABASE_DIRECT_INSERT) {
+            SQLDBController.getInstance().insert(tableName, null, newValues);
+            return;
+        }
+
+        List<String[]> clone = DBUtils.manageCache(deviceID, cache, newValues, (Settings.DATABASE_CACHE_SIZE + type * 200));
+        if(clone != null) {
+            SQLDBController.getInstance().bulkInsert(tableName, clone);
+        }
+    }
+
+
+    public static void flushDBCache()
+    {
+        DBUtils.flushCache(SQLTableName.PRESSURE, cache);
+    }
+}
+wear/src/main/java/de/unima/ar/collector/sensors/collectors/StepCounterCollector.java
+public class StepCounterCollector extends Collector
+{
+    private static final int      type       = 19;
+    private static final String[] valueNames = new String[]{ "attr_step", "attr_time" };
+
+    private boolean isRegistered = false;
+    private int     sensorRate   = 0;
+
+    private static Map<String, List<String[]>> cache = new HashMap<>();
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        float[] values = event.values.clone();
+        long time = System.currentTimeMillis();
+
+        String deviceID = DeviceID.get(SensorService.getInstance());
+
+        if(Settings.WEARTRANSFERDIRECT) {
+            String record = valueNames[0] + ";" + values[0] + ";" + valueNames[1] + ";" + time;
+            BroadcastService.getInstance().sendMessage("/sensor/data/" + deviceID + "/" + type, record);
+        } else {
+            ContentValues newValues = new ContentValues();
+            newValues.put(valueNames[0], values[0]);
+            newValues.put(valueNames[1], time);
+
+            StepCounterCollector.writeDBStorage(deviceID, newValues);
+        }
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    @Override
+    public void setSensorRate(int rate)
+    {
+        this.sensorRate = rate;
+    }
+
+
+    @Override
+    public int getSensorRate()
+    {
+        return sensorRate;
+    }
+
+
+    @Override
+    public void setRegisteredState(boolean b)
+    {
+        this.isRegistered = b;
+    }
+
+
+    @Override
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.STEPCOUNTER + " (id INTEGER PRIMARY KEY, " + valueNames[1] + " INT, " + valueNames[0] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        String tableName = SQLTableName.PREFIX + deviceID + SQLTableName.STEPCOUNTER;
+
+        if(Settings.DATABASE_DIRECT_INSERT) {
+            SQLDBController.getInstance().insert(tableName, null, newValues);
+            return;
+        }
+
+        List<String[]> clone = DBUtils.manageCache(deviceID, cache, newValues, (Settings.DATABASE_CACHE_SIZE + type * 200));
+        if(clone != null) {
+            SQLDBController.getInstance().bulkInsert(tableName, clone);
+        }
+    }
+
+
+    public static void flushDBCache()
+    {
+        DBUtils.flushCache(SQLTableName.STEPCOUNTER, cache);
+    }
+}
+wear/src/main/java/de/unima/ar/collector/sensors/collectors/GyroscopeCollector.java
+public class GyroscopeCollector extends Collector
+{
+    private static final int      type       = 4;
+    private static final String[] valueNames = new String[]{ "attr_x", "attr_y", "attr_z", "attr_time" };
+
+    private boolean isRegistered = false;
+    private int     sensorRate   = 0;
+
+    private static Map<String, List<String[]>> cache = new HashMap<>();
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        float[] values = event.values.clone();
+        long time = System.currentTimeMillis();
+
+        String deviceID = DeviceID.get(SensorService.getInstance());
+
+        if(Settings.WEARTRANSFERDIRECT) {
+            String record = valueNames[0] + ";" + values[0] + ";" + valueNames[1] + ";" + values[1] + ";" + valueNames[2] + ";" + values[2] + ";" + valueNames[3] + ";" + time;
+            BroadcastService.getInstance().sendMessage("/sensor/data/" + deviceID + "/" + type, record);
+        } else {
+            ContentValues newValues = new ContentValues();
+            newValues.put(valueNames[0], values[0]);
+            newValues.put(valueNames[1], values[1]);
+            newValues.put(valueNames[2], values[2]);
+            newValues.put(valueNames[3], time);
+
+            GyroscopeCollector.writeDBStorage(deviceID, newValues);
+        }
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    @Override
+    public void setSensorRate(int rate)
+    {
+        this.sensorRate = rate;
+    }
+
+
+    @Override
+    public int getSensorRate()
+    {
+        return sensorRate;
+    }
+
+
+    @Override
+    public void setRegisteredState(boolean b)
+    {
+        this.isRegistered = b;
+    }
+
+
+    @Override
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.GYROSCOPE + " (id INTEGER PRIMARY KEY, " + valueNames[3] + " INT, " + valueNames[0] + " REAL, " + valueNames[1] + " REAL, " + valueNames[2] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        String tableName = SQLTableName.PREFIX + deviceID + SQLTableName.GYROSCOPE;
+
+        if(Settings.DATABASE_DIRECT_INSERT) {
+            SQLDBController.getInstance().insert(tableName, null, newValues);
+            return;
+        }
+
+        List<String[]> clone = DBUtils.manageCache(deviceID, cache, newValues, (Settings.DATABASE_CACHE_SIZE + type * 200));
+        if(clone != null) {
+            Log.d("TIMOSENSOR", "INSERT GYRO INTO DB");
+            SQLDBController.getInstance().bulkInsert(tableName, clone);
+        }
+    }
+
+
+    public static void flushDBCache()
+    {
+        if(cache.keySet().size() != 0) {
+            Log.d("TIMOSENSOR", "FLUSH GYRO INTO DB" + cache.values().iterator().next().size());
+        } else {
+            Log.d("TIMOSENSOR", "FLUSH GYRO INTO DB - CACHE EMPTY");
+        }
+        DBUtils.flushCache(SQLTableName.GYROSCOPE, cache);
+    }
+}
+wear/src/main/java/de/unima/ar/collector/sensors/collectors/LinearAccelerationCollector.java
+public class LinearAccelerationCollector extends Collector
+{
+    private static final int      type       = 10;
+    private static final String[] valueNames = new String[]{ "attr_x", "attr_y", "attr_z", "attr_time" };
+
+    private boolean isRegistered = false;
+    private int     sensorRate   = 0;
+
+    private static Map<String, List<String[]>> cache = new HashMap<>();
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        float[] values = event.values.clone();
+        long time = System.currentTimeMillis();
+
+        String deviceID = DeviceID.get(SensorService.getInstance());
+
+        if(Settings.WEARTRANSFERDIRECT) {
+            String record = valueNames[0] + ";" + values[0] + ";" + valueNames[1] + ";" + values[1] + ";" + valueNames[2] + ";" + values[2] + ";" + valueNames[3] + ";" + time;
+            BroadcastService.getInstance().sendMessage("/sensor/data/" + deviceID + "/" + type, record);
+        } else {
+            ContentValues newValues = new ContentValues();
+            newValues.put(valueNames[0], values[0]);
+            newValues.put(valueNames[1], values[1]);
+            newValues.put(valueNames[2], values[2]);
+            newValues.put(valueNames[3], time);
+
+            LinearAccelerationCollector.writeDBStorage(deviceID, newValues);
+        }
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    @Override
+    public void setSensorRate(int rate)
+    {
+        this.sensorRate = rate;
+    }
+
+
+    @Override
+    public int getSensorRate()
+    {
+        return sensorRate;
+    }
+
+
+    @Override
+    public void setRegisteredState(boolean b)
+    {
+        this.isRegistered = b;
+    }
+
+
+    @Override
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.LINEAR + " (id INTEGER PRIMARY KEY, " + valueNames[3] + " INT, " + valueNames[0] + " REAL, " + valueNames[1] + " REAL, " + valueNames[2] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        String tableName = SQLTableName.PREFIX + deviceID + SQLTableName.LINEAR;
+
+        if(Settings.DATABASE_DIRECT_INSERT) {
+            SQLDBController.getInstance().insert(tableName, null, newValues);
+            return;
+        }
+
+        List<String[]> clone = DBUtils.manageCache(deviceID, cache, newValues, (Settings.DATABASE_CACHE_SIZE + type * 200));
+        if(clone != null) {
+            SQLDBController.getInstance().bulkInsert(tableName, clone);
+        }
+    }
+
+
+    public static void flushDBCache()
+    {
+        DBUtils.flushCache(SQLTableName.LINEAR, cache);
+    }
+}
+wear/src/main/java/de/unima/ar/collector/sensors/collectors/GravityCollector.java
+public class GravityCollector extends Collector
+{
+    private static final int      type       = 9;
+    private static final String[] valueNames = new String[]{ "attr_x", "attr_y", "attr_z", "attr_time" };
+
+    private boolean isRegistered = false;
+    private int     sensorRate   = 0;
+
+    private static Map<String, List<String[]>> cache = new HashMap<>();
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        float[] values = event.values.clone();
+        long time = System.currentTimeMillis();
+
+        String deviceID = DeviceID.get(SensorService.getInstance());
+
+        if(Settings.WEARTRANSFERDIRECT) {
+            String record = valueNames[0] + ";" + values[0] + ";" + valueNames[1] + ";" + values[1] + ";" + valueNames[2] + ";" + values[2] + ";" + valueNames[3] + ";" + time;
+            BroadcastService.getInstance().sendMessage("/sensor/data/" + deviceID + "/" + type, record);
+        } else {
+            ContentValues newValues = new ContentValues();
+            newValues.put(valueNames[0], values[0]);
+            newValues.put(valueNames[1], values[1]);
+            newValues.put(valueNames[2], values[2]);
+            newValues.put(valueNames[3], time);
+
+            GravityCollector.writeDBStorage(deviceID, newValues);
+        }
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    @Override
+    public void setSensorRate(int rate)
+    {
+        this.sensorRate = rate;
+    }
+
+
+    @Override
+    public int getSensorRate()
+    {
+        return sensorRate;
+    }
+
+
+    @Override
+    public void setRegisteredState(boolean b)
+    {
+        this.isRegistered = b;
+    }
+
+
+    @Override
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.GRAVITY + " (id INTEGER PRIMARY KEY, " + valueNames[3] + " INT, " + valueNames[0] + " REAL, " + valueNames[1] + " REAL, " + valueNames[2] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        String tableName = SQLTableName.PREFIX + deviceID + SQLTableName.GRAVITY;
+
+        if(Settings.DATABASE_DIRECT_INSERT) {
+            SQLDBController.getInstance().insert(tableName, null, newValues);
+            return;
+        }
+
+        List<String[]> clone = DBUtils.manageCache(deviceID, cache, newValues, (Settings.DATABASE_CACHE_SIZE + type * 200));
+        if(clone != null) {
+            SQLDBController.getInstance().bulkInsert(tableName, clone);
+        }
+    }
+
+
+    public static void flushDBCache()
+    {
+        DBUtils.flushCache(SQLTableName.GRAVITY, cache);
+    }
+}
+wear/src/main/java/de/unima/ar/collector/sensors/collectors/StepDetectorCollector.java
+public class StepDetectorCollector extends Collector
+{
+    private static final int      type       = 18;
+    private static final String[] valueNames = new String[]{ "attr_step", "attr_time" };
+
+    private boolean isRegistered = false;
+    private int     sensorRate   = 0;
+
+    private static Map<String, List<String[]>> cache = new HashMap<>();
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        float[] values = event.values.clone();
+        long time = System.currentTimeMillis();
+
+        String deviceID = DeviceID.get(SensorService.getInstance());
+
+        if(Settings.WEARTRANSFERDIRECT) {
+            String record = valueNames[0] + ";" + values[0] + ";" + valueNames[1] + ";" + time;
+            BroadcastService.getInstance().sendMessage("/sensor/data/" + deviceID + "/" + type, record);
+        } else {
+            ContentValues newValues = new ContentValues();
+            newValues.put(valueNames[0], values[0]);
+            newValues.put(valueNames[1], time);
+
+            StepDetectorCollector.writeDBStorage(deviceID, newValues);
+        }
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    @Override
+    public void setSensorRate(int rate)
+    {
+        this.sensorRate = rate;
+    }
+
+
+    @Override
+    public int getSensorRate()
+    {
+        return sensorRate;
+    }
+
+
+    @Override
+    public void setRegisteredState(boolean b)
+    {
+        this.isRegistered = b;
+    }
+
+
+    @Override
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.STEP + " (id INTEGER PRIMARY KEY, " + valueNames[1] + " INT, " + valueNames[0] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        String tableName = SQLTableName.PREFIX + deviceID + SQLTableName.STEP;
+
+        if(Settings.DATABASE_DIRECT_INSERT) {
+            SQLDBController.getInstance().insert(tableName, null, newValues);
+            return;
+        }
+
+        List<String[]> clone = DBUtils.manageCache(deviceID, cache, newValues, (Settings.DATABASE_CACHE_SIZE + type * 200));
+        if(clone != null) {
+            SQLDBController.getInstance().bulkInsert(tableName, clone);
+        }
+    }
+
+
+    public static void flushDBCache()
+    {
+        DBUtils.flushCache(SQLTableName.STEP, cache);
+    }
+}
+wear/src/main/java/de/unima/ar/collector/sensors/collectors/RotationVectorCollector.java
+public class RotationVectorCollector extends Collector
+{
+    private static final int      type       = 11;
+    private static final String[] valueNames = new String[]{ "attr_x", "attr_y", "attr_z", "attr_time" };
+
+    private boolean isRegistered = false;
+    private int     sensorRate   = 0;
+
+    private static Map<String, List<String[]>> cache = new HashMap<>();
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        float[] values = event.values.clone();
+        long time = System.currentTimeMillis();
+
+        String deviceID = DeviceID.get(SensorService.getInstance());
+
+        if(Settings.WEARTRANSFERDIRECT) {
+            String record = valueNames[0] + ";" + values[0] + ";" + valueNames[1] + ";" + values[1] + ";" + valueNames[2] + ";" + values[2] + ";" + valueNames[3] + ";" + time;
+            BroadcastService.getInstance().sendMessage("/sensor/data/" + deviceID + "/" + type, record);
+        } else {
+            ContentValues newValues = new ContentValues();
+            newValues.put(valueNames[0], values[0]);
+            newValues.put(valueNames[1], values[1]);
+            newValues.put(valueNames[2], values[2]);
+            newValues.put(valueNames[3], time);
+
+            RotationVectorCollector.writeDBStorage(deviceID, newValues);
+        }
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    @Override
+    public void setSensorRate(int rate)
+    {
+        this.sensorRate = rate;
+    }
+
+
+    @Override
+    public int getSensorRate()
+    {
+        return sensorRate;
+    }
+
+
+    @Override
+    public void setRegisteredState(boolean b)
+    {
+        this.isRegistered = b;
+    }
+
+
+    @Override
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.ROTATION + " (id INTEGER PRIMARY KEY, " + valueNames[3] + " INT, " + valueNames[0] + " REAL, " + valueNames[1] + " REAL, " + valueNames[2] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        String tableName = SQLTableName.PREFIX + deviceID + SQLTableName.ROTATION;
+
+        if(Settings.DATABASE_DIRECT_INSERT) {
+            SQLDBController.getInstance().insert(tableName, null, newValues);
+            return;
+        }
+
+        List<String[]> clone = DBUtils.manageCache(deviceID, cache, newValues, (Settings.DATABASE_CACHE_SIZE + type * 200));
+        if(clone != null) {
+            SQLDBController.getInstance().bulkInsert(tableName, clone);
+        }
+    }
+
+
+    public static void flushDBCache()
+    {
+        DBUtils.flushCache(SQLTableName.ROTATION, cache);
+    }
+}
+wear/src/main/java/de/unima/ar/collector/sensors/collectors/MagnetometerCollector.java
+public class MagnetometerCollector extends Collector
+{
+    private static final int      type       = 2;
+    private static final String[] valueNames = new String[]{ "attr_x", "attr_y", "attr_z", "attr_time" };
+
+    private boolean isRegistered = false;
+    private int     sensorRate   = 0;
+
+    private static Map<String, List<String[]>> cache = new HashMap<>();
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        float[] values = event.values.clone();
+        long time = System.currentTimeMillis();
+
+        String deviceID = DeviceID.get(SensorService.getInstance());
+
+        if(Settings.WEARTRANSFERDIRECT) {
+            String record = valueNames[0] + ";" + values[0] + ";" + valueNames[1] + ";" + values[1] + ";" + valueNames[2] + ";" + values[2] + ";" + valueNames[3] + ";" + time;
+            BroadcastService.getInstance().sendMessage("/sensor/data/" + deviceID + "/" + type, record);
+        } else {
+            ContentValues newValues = new ContentValues();
+            newValues.put(valueNames[0], values[0]);
+            newValues.put(valueNames[1], values[1]);
+            newValues.put(valueNames[2], values[2]);
+            newValues.put(valueNames[3], time);
+
+            MagnetometerCollector.writeDBStorage(deviceID, newValues);
+        }
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    @Override
+    public void setSensorRate(int rate)
+    {
+        this.sensorRate = rate;
+    }
+
+
+    @Override
+    public int getSensorRate()
+    {
+        return sensorRate;
+    }
+
+
+    @Override
+    public void setRegisteredState(boolean b)
+    {
+        this.isRegistered = b;
+    }
+
+
+    @Override
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.MAGNETIC + " (id INTEGER PRIMARY KEY, " + valueNames[3] + " INT, " + valueNames[0] + " REAL, " + valueNames[1] + " REAL, " + valueNames[2] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        String tableName = SQLTableName.PREFIX + deviceID + SQLTableName.MAGNETIC;
+
+        if(Settings.DATABASE_DIRECT_INSERT) {
+            SQLDBController.getInstance().insert(tableName, null, newValues);
+            return;
+        }
+
+        List<String[]> clone = DBUtils.manageCache(deviceID, cache, newValues, (Settings.DATABASE_CACHE_SIZE + type * 200));
+        if(clone != null) {
+            SQLDBController.getInstance().bulkInsert(tableName, clone);
+        }
+    }
+
+
+    public static void flushDBCache()
+    {
+        DBUtils.flushCache(SQLTableName.MAGNETIC, cache);
+    }
+}
+wear/src/main/java/de/unima/ar/collector/sensors/collectors/AccelerometerCollector.java
+public class AccelerometerCollector extends Collector
+{
+    private static final int      type       = 1;
+    private static final String[] valueNames = new String[]{ "attr_x", "attr_y", "attr_z", "attr_time" };
+
+    private boolean isRegistered = false;
+    private int     sensorRate   = 0;
+    private float[] gravity      = new float[]{ 0, 0, 0 };
+
+    private static Map<String, List<String[]>> cache = new HashMap<>();
+
+    private long startTimer = -1;
+    private long counter    = -1;
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event)
+    {
+        float[] values = event.values.clone();
+        long time = System.currentTimeMillis();
+
+        if(!(1 + (int) ((time - startTimer) / (this.sensorRate / 1000)) > counter)) {
+            return;
+        }
+        counter++;
+
+        float x = values[0];
+        float y = values[1];
+        float z = values[2];
+
+        if(Settings.ACCLOWPASS) { // low pass filter
+            final float alpha = (float) 0.8;
+            gravity[0] = alpha * gravity[0] + (1 - alpha) * values[0];
+            gravity[1] = alpha * gravity[1] + (1 - alpha) * values[1];
+            gravity[2] = alpha * gravity[2] + (1 - alpha) * values[2];
+
+            x = values[0] - gravity[0];
+            y = values[1] - gravity[1];
+            z = values[2] - gravity[2];
+        }
+
+        String deviceID = DeviceID.get(SensorService.getInstance());
+
+        if(Settings.WEARTRANSFERDIRECT) {
+            String record = valueNames[0] + ";" + x + ";" + valueNames[1] + ";" + y + ";" + valueNames[2] + ";" + z + ";" + valueNames[3] + ";" + time;
+            BroadcastService.getInstance().sendMessage("/sensor/data/" + deviceID + "/" + type, record);
+        } else {
+            ContentValues newValues = new ContentValues();
+            newValues.put(valueNames[0], x);
+            newValues.put(valueNames[1], y);
+            newValues.put(valueNames[2], z);
+            newValues.put(valueNames[3], time);
+
+            AccelerometerCollector.writeDBStorage(deviceID, newValues);
+        }
+    }
+
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // TODO
+    }
+
+
+    @Override
+    public int getType()
+    {
+        return type;
+    }
+
+
+    @Override
+    public void setSensorRate(int rate)
+    {
+        this.sensorRate = rate;
+    }
+
+
+    @Override
+    public int getSensorRate()
+    {
+        return sensorRate;
+    }
+
+
+    @Override
+    public void setRegisteredState(boolean b)
+    {
+        this.isRegistered = b;
+
+        if(this.isRegistered) {
+            this.startTimer = System.currentTimeMillis();
+            this.counter = 0;
+        } else {
+            this.startTimer = -1;
+            this.counter = -1;
+        }
+    }
+
+
+    @Override
+    public boolean isRegistered()
+    {
+        return this.isRegistered;
+    }
+
+
+    public static void createDBStorage(String deviceID)
+    {
+        String sqlTable = "CREATE TABLE IF NOT EXISTS " + SQLTableName.PREFIX + deviceID + SQLTableName.ACCELEROMETER + " (id INTEGER PRIMARY KEY, " + valueNames[3] + " INT, " + valueNames[0] + " REAL, " + valueNames[1] + " REAL, " + valueNames[2] + " REAL)";
+        SQLDBController.getInstance().execSQL(sqlTable);
+    }
+
+
+    public static void writeDBStorage(String deviceID, ContentValues newValues)
+    {
+        String tableName = SQLTableName.PREFIX + deviceID + SQLTableName.ACCELEROMETER;
+
+        if(Settings.DATABASE_DIRECT_INSERT) {
+            SQLDBController.getInstance().insert(tableName, null, newValues);
+            return;
+        }
+
+        List<String[]> clone = DBUtils.manageCache(deviceID, cache, newValues, (Settings.DATABASE_CACHE_SIZE + type * 200));
+        if(clone != null) {
+            Log.d("TIMOSENSOR", "INSERT ACC INTO DB");
+            SQLDBController.getInstance().bulkInsert(tableName, clone);
+        }
+    }
+
+
+    public static void flushDBCache()
+    {
+        if(cache.keySet().size() != 0) {
+            Log.d("TIMOSENSOR", "FLUSH ACC INTO DB - " + cache.values().iterator().next().size());
+        } else {
+            Log.d("TIMOSENSOR", "FLUSH ACC INTO DB - CACHE EMPTY");
+        }
+        DBUtils.flushCache(SQLTableName.ACCELEROMETER, cache);
+    }
+}
+shared/src/main/java/de/unima/ar/collector/shared/database/SQLTableName.java
+public class SQLTableName
+{
+    public static final String PREFIX = "SDC_";
+
+    public static final String ACTIVITIES         = PREFIX + "Activity";
+    public static final String SUBACTIVITIES      = PREFIX + "SubActivity";
+    public static final String POSTURES           = PREFIX + "Posture";
+    public static final String POSITIONS          = PREFIX + "Position";
+    public static final String DEVICEPOSITION     = PREFIX + "DevicePosition";
+    public static final String OPTIONS            = PREFIX + "Options";
+    public static final String SENSOROPTIONS      = PREFIX + "SensorOptions";
+    public static final String DEVICES            = PREFIX + "Devices";
+    public static final String ACTIVITYCORRECTION = PREFIX + "ActivityCorrection";
+    public static final String TRANSFERLOG        = PREFIX + "TransferLog";
+
+    public static final String ACTIVITYDATA       = PREFIX + "ActivityData";
+    public static final String POSTUREDATA        = PREFIX + "PostureData";
+    public static final String POSITIONDATA       = PREFIX + "PositionData";
+    public static final String DEVICEPOSITIONDATA = PREFIX + "DevicePositionData";
+
+    public static final String ACCELEROMETER = "SensorAccelerometerData";
+    public static final String AMBIENT       = "SensorAmbientTemperatureData";
+    public static final String GPS           = "SensorGPSData";
+    public static final String GRAVITY       = "SensorGravityData";
+    public static final String GYROSCOPE     = "SensorGyroscopeData";
+    public static final String LIGHT         = "SensorLightData";
+    public static final String LINEAR        = "SensorLinearAccelerationData";
+    public static final String MAGNETIC      = "SensorMagneticFieldData";
+    public static final String MICROPHONE    = "SensorMicrophoneData";
+    public static final String ORIENTATION   = "SensorOrientationData";
+    public static final String PRESSURE      = "SensorPressureData";
+    public static final String PROXIMITY     = "SensorProximityData";
+    public static final String RELATIVE      = "SensorRelativeHumidityData";
+    public static final String ROTATION      = "SensorRotationVectorData";
+    public static final String STEP          = "SensorStepDetectorData";
+    public static final String STEPCOUNTER   = "SensorStepCounterData";
+    public static final String VIDEO         = "SensorVideoData";
+
+}

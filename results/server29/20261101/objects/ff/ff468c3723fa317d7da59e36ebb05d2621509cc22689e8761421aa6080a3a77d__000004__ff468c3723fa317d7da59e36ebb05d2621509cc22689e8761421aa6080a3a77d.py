@@ -1,0 +1,1 @@
+lambda _cls, opname, opcode, arg, argval, argrepr, offset, starts_line, is_jump_target, positions: _tuple_new(_cls, (opname, opcode, arg, argval, argrepr, offset, starts_line, is_jump_target, positions))

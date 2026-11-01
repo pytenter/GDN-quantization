@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(dtype={self.dtype!r}, shape={self.shape!r}, stride={self.stride!r}, device={self.device!r}, layout={self.layout!r}, memory_format={self.memory_format!r}, storage_offset={self.storage_offset!r}, storage_bytes={self.storage_bytes!r}, requires_grad={self.requires_grad!r}, is_quantized={self.is_quantized!r}, is_conj={self.is_conj!r}, is_neg={self.is_neg!r}, is_inference={self.is_inference!r}, is_sparse={self.is_sparse!r}, is_coalesced={self.is_coalesced!r}, dense_dim={self.dense_dim!r}, sparse_dim={self.sparse_dim!r})"
+ return __repr__

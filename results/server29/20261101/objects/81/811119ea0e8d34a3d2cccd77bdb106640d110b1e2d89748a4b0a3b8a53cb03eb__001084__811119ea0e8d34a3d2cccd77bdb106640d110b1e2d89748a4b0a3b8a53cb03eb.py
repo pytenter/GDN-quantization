@@ -1,0 +1,1 @@
+lambda _cls, P, L, U: _tuple_new(_cls, (P, L, U))

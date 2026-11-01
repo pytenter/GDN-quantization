@@ -1,0 +1,551 @@
+# Codex 任务：PACE-4/8 混合精度量化与 AIME26 正式对照实验
+
+## 0. 任务目标
+
+请在现有 Qwen/GDN 科研仓库中实现并执行：
+
+`QWEN_GDN_PACE48_AIME26_SEED1_60_V1`
+
+本次任务只测试两个配置：
+
+- **R2：PACE-4/8，Decode Period = 8**
+- **R3：PACE-4/8，Decode Period = 1**
+
+两个配置都在 AIME26 上测试相同的 30 道题，每个配置只使用 seed=1。
+
+总计：
+
+\[
+2\text{ configurations}\times30\text{ problems}
+=60\text{ trajectories}
+\]
+
+本次任务的目的是回答：
+
+**在相同的 INT4/INT8 Head 分配和 Asymmetric G32 Quantizer 下，每 8 个 token 量化一次，相比每 token 量化，是否能够明显提高 Qwen/GDN 的长期数学推理准确率？**
+
+必须完成实际代码实现、正确性测试、正式 AIME 生成、评分和结果分析。
+
+不要只输出计划，不要只完成 Smoke Test 后停止。
+
+---
+
+## 1. 参考论文
+
+PACE: Periodic and Channel-Aligned Encoding of Four-Bit Recurrent States
+
+论文：
+
+https://arxiv.org/abs/2610.29545
+
+重点核对：
+
+- PACE-4/8 的量化配置。
+- Channel-Aligned / Key-axis Grouping。
+- Head-Level Mixed Precision。
+- Error-Persistence Score。
+- Periodic Decoding。
+- Decode Buffer。
+- Prefill 与 Decode 的衔接。
+
+以原论文及可核实的官方实现为准。
+
+如果论文和现有实现存在冲突，必须记录差异，不得擅自修改方法定义。
+
+本次不测试纯 INT4 PACE-4。
+
+---
+
+## 2. 现有科研环境
+
+目标模型：
+
+`Qwen3.5-9B`
+
+计算资源：
+
+- 单张 RTX3090 24GB。
+- 复用已有 Qwen/GDN 推理环境。
+- 不使用 SGLang。
+- 保持 deterministic=True。
+- 复用已有的 AIME26 Frozen V4。
+- 复用现有的模型加载、Tokenizer、生成和评分代码。
+- 不修改历史科研资产。
+
+现有 Qwen AIME26 seed1 结果：
+
+| 方法 | Accuracy |
+|---|---:|
+| G32+Sym8 | 20/30 |
+| H+G32+Sym8 | 21/30 |
+| G32+Asym8 | 25/30 |
+| H+G32+Asym8 | 25/30 |
+
+这些数字只用于最终讨论，不属于本次新增实验。
+
+禁止重新运行这些历史配置。
+
+### 执行前检查
+
+先检查：
+
+1. 仓库 Git 状态。
+2. Qwen 模型与 Tokenizer 路径。
+3. 已有 GDN State Quantizer。
+4. Column G32 分组实现。
+5. AIME26 seed1 数据。
+6. Frozen V4 Scorer。
+7. GPU 是否可用。
+8. 已有运行进程和显存占用。
+
+不要假设 GPU、模型路径或历史实验文件一定存在。
+
+优先复用经过验证的现有代码，避免重写整个推理框架。
+
+---
+
+## 3. 本次唯一的两个实验配置
+
+### R2：PACE-4/8-dP8
+
+| 参数 | 设置 |
+|---|---|
+| Model | Qwen3.5-9B |
+| State Quantization | Mixed INT4/INT8 |
+| INT4 Heads | 每层 75% |
+| INT8 Heads | 每层 25% |
+| Grouping | Key-axis / Column |
+| Group Size | 32 |
+| Quantization | Asymmetric |
+| Zero Point | Integer |
+| Scale | FP16 |
+| Prefill Period | 256 |
+| Decode Period | 8 |
+| Decode Buffer Key | INT4 |
+| Decode Buffer Value | BF16 |
+| Head Selection | PACE Error-Persistence Score |
+| AIME26 | 30 problems |
+| Seed | 1 |
+
+这是需要忠实复现的 PACE-4/8 主配置。
+
+### R3：PACE-4/8-dP1
+
+所有参数与 R2 相同，唯一区别：
+
+`Decode Period = 1`
+
+必须使用 R2 完全相同的 Head Mask。
+
+不得重新计算另一份 Head Mask。
+
+不得修改 Group Size、Quantization、Zero Point、Prefill Period、模型权重或推理参数。
+
+Decode Buffer 因 dP=1 而必然出现的使用方式差异可以保留，但量化前后的计算语义必须一致，并记录差异。
+
+---
+
+## 4. 实现 G32 Asymmetric INT4/INT8
+
+State：
+
+\[
+S\in\mathbb R^{d_k\times d_v}
+\]
+
+Key-axis Grouping 对应用户现有的 Column Grouping。
+
+固定 Value Column，沿 Key 维度每 32 个元素共享一组 Scale 和 Zero Point。
+
+要求：
+
+1. 支持 Asym4。
+2. 支持 Asym8。
+3. 每 Group 独立确定量化区间。
+4. 使用整数 Zero Point。
+5. 确保零能够被精确表示。
+6. 正确处理 Clamp 和 Saturation。
+7. 正确处理全零、常数及极值 Group。
+8. 使用论文对应的舍入规则。
+9. 不产生 NaN/Inf。
+10. 提供 CPU Reference 与 GPU 一致性测试。
+
+不要把 Row Grouping 误认为 Column Grouping。
+
+不要使用 Hadamard、BitRev、QEig 或任何额外 Rotation。
+
+如果采用 QDQ Numerical Emulation，必须明确标注，不得将 FP32/BF16 容器误报为真正的 INT4/INT8 驻留存储。
+
+---
+
+## 5. 实现 PACE Head 重要性选择
+
+严格使用：
+
+\[
+E_h=\frac{e_h}{1-a_h^{2dP}}
+\]
+
+本轮 Head Selection 按 PACE 原版：
+
+\[
+dP=8
+\]
+
+即：
+
+\[
+E_h=\frac{e_h}{1-a_h^{16}}
+\]
+
+其中：
+
+- \(e_h\)：Head 的单次量化误差能量。
+- \(a_h\)：Head 的平均衰减系数。
+- \(E_h\)：估计的误差持久性评分。
+
+使用非 AIME 数据执行离线校准。
+
+按照论文要求使用 8 个独立的 2048-token 校准窗口，并严格核对论文对误差统计与衰减聚合的定义。
+
+每层按照 E_h 排序：
+
+- 最高风险 25% 使用 INT8。
+- 剩余 75% 使用 INT4。
+
+生成并保存：
+
+- `head_scores.csv`
+- `head_mask.json`
+- `calibration_manifest.json`
+
+**R2 和 R3 必须加载完全相同的 head_mask.json。**
+
+禁止使用 AIME26 数据选择 Head。
+
+禁止依据最终 AIME 成绩调整 Head Mask。
+
+---
+
+## 6. 实现 dP8 Periodic Decoding
+
+这一部分是本次最重要的工程任务。
+
+R2 必须真正使用 PACE Periodic Decoding。
+
+不能简单地让一份完整 FP32 State 常驻，每 8 个 token 才做一次 QDQ，然后宣称实现了 PACE。
+
+正确流程：
+
+1. 持久保存量化后的 Recurrent State。
+2. 缓存最近 token 所需要的 Key、Value、Decay 等更新信息。
+3. 利用 Quantized Base State 和 Decode Buffer 计算每个 token 的正确输出。
+4. 每满 8 个 token 执行一次 Chunk State Update。
+5. 对更新后的完整 State 执行一次量化写回。
+6. 清理或推进 Buffer。
+7. 处理不足 8 token 的尾部情况。
+
+R3 使用同样的计算语义，只把周期改为 1。
+
+需要检查：
+
+- Key Normalization。
+- Delta Rule Update。
+- Gating / Decay。
+- Token 顺序。
+- Prefill 到 Decode 的转换。
+- Chunk Boundary。
+- State Writeback。
+- EOS。
+- Context Length。
+- Buffer Precision。
+
+### 数值正确性门禁
+
+正式评测前，至少通过：
+
+**Gate A：Quantizer Numerical Tests**
+
+Sym/Asym 的编码、解码、Zero Point 和 Grouping 正确。
+
+**Gate B：FP Buffer Parity**
+
+关闭 State Quantization，验证 Chunk-wise Buffer 与原生 FP GDN 的 State 更新和 Token 输出在预设数值容差内一致。
+
+**Gate C：Quantized Buffer Tests**
+
+验证 R2 和 R3 均使用正确的量化 State、Decode Buffer 与写回周期。
+
+**Gate D：Full-model Smoke**
+
+使用少量非 AIME 文本检查正常生成、数值稳定性与显存。
+
+这些门禁不属于新增正式实验配置。
+
+如果某项失败，定位并修复根因，重新执行相关门禁。
+
+不得通过放宽数值阈值或删除失败样本来通过测试。
+
+---
+
+## 7. 正式 AIME26 实验
+
+通过前述门禁后，立即进入正式 AIME26 测试。
+
+### 固定数据
+
+- Dataset：AIME 2026。
+- Problems：Canonical 30。
+- Seed：1。
+- 两个配置使用完全相同的 30 道题。
+- 不允许删题、换题或挑选子集。
+- 不允许使用 AIME 进行 Calibration。
+
+### 固定生成设置
+
+完全继承现有 Qwen AIME26 Frozen Protocol。
+
+特别保持：
+
+- seed=1。
+- deterministic=True。
+- 现有 Chat Template。
+- 现有 Thinking 设置。
+- 现有采样/解码参数。
+- 原有生成长度上限 81920。
+- 原有 EOS 和停止条件。
+- 原有题目顺序和 Prompt。
+- Frozen V4 Scorer。
+
+如发现现有冻结协议与上述记录不一致，先核对历史正式配置，以已经冻结且可核验的版本为准；不要擅自创造另一套实验协议。
+
+两个配置使用相同的生成与评分条件。
+
+### 实验规模
+
+R2：
+
+`30/30, seed=1`
+
+R3：
+
+`30/30, seed=1`
+
+合计：
+
+`60/60 trajectories`
+
+不得默认用户要求的是 60 道不同题目。
+
+不得额外运行 seed2、seed3。
+
+不得额外运行 FP、全 Asym8、全 INT4 或其他配置。
+
+### 执行要求
+
+允许在同一个冻结实验内分批运行和断点续跑，但不能重复计入已完成题目。
+
+每条轨迹保存：
+
+- Problem ID。
+- Configuration。
+- Seed。
+- Prompt Hash。
+- Generated Text。
+- Token Count。
+- EOS / Length Termination。
+- Runtime。
+- Score。
+- Artifact Path。
+- 运行配置与源码身份。
+
+已经完成并校验的轨迹必须保留。
+
+恢复运行时严格检查配置、模型、Seed、Head Mask 和 Scorer 的一致性。
+
+禁止为了获得更好的分数重复采样。
+
+---
+
+## 8. 资源与运行控制
+
+当前只假设一张 RTX3090 24GB。
+
+执行时：
+
+1. 先确认 GPU 空闲及剩余显存。
+2. 使用已有的显存控制方案。
+3. 避免加载重复模型。
+4. 不使用 SGLang。
+5. 不假设多卡可以自动分摊。
+6. 不要静默降低模型精度或生成长度。
+7. 不要在遇到 OOM 后无界重试。
+8. 保留完整异常日志和恢复点。
+
+允许使用不会改变数学计算语义的工程优化，例如预分配 Buffer、减少重复加载或复用已有 Kernel。
+
+若遇到需要改变数值语义才能运行的问题，必须 FAIL_CLOSED，不得把修改后的实验称为 R2/R3。
+
+如果 GPU 暂时不可用，保留已完成的实现和测试，明确标注阻塞；不能声称正式 AIME 已完成。
+
+---
+
+## 9. 实验完成后的结果分析
+
+最终首先输出：
+
+| Configuration | Correct | Accuracy | Mean Tokens | EOS | Runtime |
+|---|---|---|---|---|---|
+| R2 dP8 | x/30 | xx% | ... | ... | ... |
+| R3 dP1 | x/30 | xx% | ... | ... | ... |
+
+然后输出：
+
+### A. 正确率差异
+
+\[
+\Delta Acc=Acc(R2)-Acc(R3)
+\]
+
+明确给出正确题数差异及百分点差异。
+
+### B. 逐题 Rescue / Regression
+
+比较同一道题在 R2、R3 下的结果。
+
+统计：
+
+- Both Correct。
+- R2 Only Correct。
+- R3 Only Correct。
+- Both Wrong。
+
+输出完整 30 题的配对结果。
+
+不能只比较总准确率。
+
+### C. 生成行为
+
+比较：
+
+- Mean Token Length。
+- EOS Rate。
+- Length-Capped Count。
+- 重复或异常生成。
+- Nonfinite / Runtime Errors。
+
+区分正常终止与达到生成长度上限。
+
+### D. 性能和内存
+
+报告：
+
+- Total GPU Runtime。
+- Mean Runtime per Problem。
+- Peak VRAM。
+- State Payload bits/value。
+- Scale / Zero Point 开销。
+- Decode Buffer 开销。
+- Total Resident bits/value。
+
+同时区分理论压缩量与实际物理存储。
+
+### E. 科学结论
+
+明确回答：
+
+1. dP8 是否优于 dP1？
+2. 提升体现在哪些具体 AIME 题目上？
+3. dP8 是否减少生成截断或重复？
+4. dP8 增加了多少 Buffer 内存？
+5. 当前结果是否支持继续研究 INT4/INT8 Mixed Precision？
+6. 是否有必要下一步改进 Head Importance 或量化器？
+
+不能把一次 seed1、30 题的结果解释为统计意义上的普遍无损。
+
+不要仅凭两组准确率相同就宣称两组生成行为等价。
+
+---
+
+## 10. 交付结构
+
+使用独立目录：
+
+```text
+QWEN_GDN_PACE48_AIME26_SEED1_60_V1/
+├── README.md
+├── source_manifest.json
+├── method_spec.json
+├── calibration/
+│   ├── head_scores.csv
+│   ├── head_mask.json
+│   └── calibration_manifest.json
+├── validation/
+│   ├── quantizer_tests.json
+│   ├── fp_buffer_parity.json
+│   ├── quantized_buffer_tests.json
+│   └── full_model_smoke.json
+├── R2_PACE48_DP8/
+│   ├── trajectories/
+│   ├── results.jsonl
+│   └── summary.json
+├── R3_PACE48_DP1/
+│   ├── trajectories/
+│   ├── results.jsonl
+│   └── summary.json
+├── comparison/
+│   ├── paired_results.csv
+│   ├── memory_accounting.json
+│   └── scientific_analysis.md
+└── final_verdict.json
+```
+
+同时保留实际代码修改、测试脚本及可复现的运行命令。
+
+未运行的项目必须明确标记 NOT_RUN，不得制造结果文件。
+
+---
+
+## 11. 最终停止条件
+
+成功标准：
+
+- R2、R3 量化器和 Buffer 语义门禁通过。
+- R2 使用原版 dP8。
+- R3 使用 dP1。
+- 两组使用同一 Head Mask。
+- 两组使用相同的 AIME26 30 题。
+- 两组 seed 均为 1。
+- 60/60 正式轨迹完整。
+- Frozen V4 完成评分。
+- 逐题配对比较完成。
+- 运行和内存数据已审计。
+
+成功终态：
+
+`FORMAL_COMPLETE_60_60_AND_STOP`
+
+遇到无法解决的正确性、环境或算力问题时：
+
+`FAIL_CLOSED_STOP`
+
+若结果不完整，必须记录已完成数量和原因，不得标记 FORMAL_COMPLETE。
+
+---
+
+## 12. 工程执行原则
+
+1. 先阅读论文、审计现有代码，制定一次完整实施方案。
+2. 优先复用稳定的 GDN Runtime，不重新发明不必要的 Kernel。
+3. 先通过数值和 Buffer 正确性门禁。
+4. 再直接执行本轮 60 条正式 AIME 轨迹。
+5. 只测试 R2 和 R3。
+6. 不增加其他量化器或 Rotation。
+7. 不使用 AIME 调整校准参数。
+8. 不修改 Frozen V4。
+9. 不以追求更高 Accuracy 为理由改变论文算法。
+10. 不进行无边界的调试和无效 GPU 重试。
+11. 所有新增 GPU 消耗必须服务于本轮两个配置。
+12. 完成后立即封存结果，不根据首轮成绩临时扩展实验。
+
+**请现在开始执行。目标是完成 R2 和 R3 各 30 道题、seed1 的正式 AIME26 实验，并输出真实、完整、可复现的对比结论。**

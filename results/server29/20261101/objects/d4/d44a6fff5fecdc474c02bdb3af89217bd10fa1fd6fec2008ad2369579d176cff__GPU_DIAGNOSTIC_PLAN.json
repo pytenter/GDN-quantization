@@ -1,0 +1,120 @@
+{
+  "task_id": "QWEN_GDN_HISTORICAL_THROUGHPUT_RECONCILIATION_V1",
+  "status": "FROZEN_CPU_DECISION_BEFORE_FIRST_GPU",
+  "MAX_ACTIVE_GPUS": 1,
+  "MAX_TOTAL_GPU_HOURS": 0.75,
+  "MAX_GPU_TRIAL_BATCH": 1,
+  "GPU_UUID": "GPU-a78176ed-f97f-c54f-6201-5a01b570f422",
+  "GPU_index": 0,
+  "main_schedule": [
+    {
+      "condition": "OLD_FP",
+      "repeat": 0
+    },
+    {
+      "condition": "NEW_FP",
+      "repeat": 0
+    },
+    {
+      "condition": "OLD_H_C128",
+      "repeat": 0
+    },
+    {
+      "condition": "NEW_H_C128",
+      "repeat": 0
+    },
+    {
+      "condition": "NEW_FP",
+      "repeat": 1
+    },
+    {
+      "condition": "OLD_H_C128",
+      "repeat": 1
+    },
+    {
+      "condition": "NEW_H_C128",
+      "repeat": 1
+    },
+    {
+      "condition": "OLD_FP",
+      "repeat": 1
+    },
+    {
+      "condition": "OLD_H_C128",
+      "repeat": 2
+    },
+    {
+      "condition": "NEW_H_C128",
+      "repeat": 2
+    },
+    {
+      "condition": "OLD_FP",
+      "repeat": 2
+    },
+    {
+      "condition": "NEW_FP",
+      "repeat": 2
+    }
+  ],
+  "auxiliary_schedule": [
+    {
+      "condition": "DIAG_NEW_DETERMINISM_OFF",
+      "repeat": 0
+    },
+    {
+      "condition": "DIAG_NEW_INTRAOP24",
+      "repeat": 0
+    },
+    {
+      "condition": "DIAG_NEW_INTRAOP24",
+      "repeat": 1
+    },
+    {
+      "condition": "DIAG_NEW_DETERMINISM_OFF",
+      "repeat": 1
+    },
+    {
+      "condition": "DIAG_NEW_DETERMINISM_OFF",
+      "repeat": 2
+    },
+    {
+      "condition": "DIAG_NEW_INTRAOP24",
+      "repeat": 2
+    }
+  ],
+  "workload": {
+    "prefill_tokens": 1,
+    "batch": 1,
+    "warmup_total_forwards": 128,
+    "measured_forwards": 128,
+    "same_actual_rotary_positions": "0..255",
+    "cache_retained": true,
+    "fixed_nonAIME_doc1": true,
+    "sampling": false
+  },
+  "primary": "OLD_FP vs NEW_FP, originalruntimeconfigurations",
+  "secondary": "Originalold/newH+C128; QDQprefilldifferenceandHmemoizationexplicit, notnumericalequivalence",
+  "auxiliary_rule": "Onlyafterall12mainPASS andFPnonoverlappingranges+symmetricmedianratio>=1.10; max6aux ordinaryand2FPprofiles, eachnewunit budgetadmitted",
+  "auxiliary_interpretation": {
+    "DIAG_NEW_DETERMINISM_OFF": "Neworiginalsamecompensatedchunk+sameCUBLAS/threads/gates; onlyglobaldeterminismFalse, independentdiagnosticnotnewscientificbaseline",
+    "DIAG_NEW_INTRAOP24": "NeworiginaldeterminismTrue/interoppreserved1; onlyintraop24 fromfresholdcurrentdefault, notclaim historicaleffective24"
+  },
+  "profiling": "TwoFPprofilesonlyifstablemaingapandremaining>=650s (450unitprediction+200reserve); separatefromordinaryTPS",
+  "budget_prediction": {
+    "max_ordinary_units": 18,
+    "ordinary_seconds_allowance_each": 90,
+    "max_profiles": 2,
+    "profile_seconds_allowance_each": 360,
+    "total_predicted_GPU_seconds": 2340,
+    "hard_seconds": 2700,
+    "protective_stop_seconds": 2450,
+    "cleanup_reserve_seconds": 250
+  },
+  "no_retry": true,
+  "no_source_hotpatch": true,
+  "no_model_GDN_quantizer_math_changes": true,
+  "no_CUDA_graph": true,
+  "no_optimization": true,
+  "old_runtime_limitations": "Exactf552runner/90dmodelsource recovered; originalunrecordedsystemflags,weightsSHA/drivertelemetrynotinvented. Matchedexecution tests recoveredoldsourceontoday sharedcheckpoint/environment, notfullhistoricalhardwarestate recreation.",
+  "measurements": "Syncat128windowstart/endonly; commonPythonmetadatahooksnoTensorops, retainedsmallactualrotarypositiontensorsreadAFTERtiming; originalpath-specificsafetykept; no answers/scoring/AIMEgeneration."
+}

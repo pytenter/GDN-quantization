@@ -1,0 +1,6 @@
+def __create_fn__(_type_state_dict_type, _type_state_dict_config, _type_optim_state_dict_config, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,state_dict_type:_type_state_dict_type,state_dict_config:_type_state_dict_config,optim_state_dict_config:_type_optim_state_dict_config)->_return_type:
+  self.state_dict_type=state_dict_type
+  self.state_dict_config=state_dict_config
+  self.optim_state_dict_config=optim_state_dict_config
+ return __init__

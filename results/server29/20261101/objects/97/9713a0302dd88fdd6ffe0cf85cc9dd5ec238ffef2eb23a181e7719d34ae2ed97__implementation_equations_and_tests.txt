@@ -1,0 +1,27 @@
+This is an engineering derivation and test checklist, not a claim of official implementation identity.
+
+Let B be the reconstructed packed base at a flush boundary. For a token, use the same recovered INT4 key after the native L2 normalization in prediction, delta update, and readout. Preserve native beta. Define
+
+u_i = beta_i * (v_i - a_i * transpose(S_(i-1)) * k_i)
+S_i = a_i * S_(i-1) + outer(k_i, u_i)
+o_i = transpose(S_i) * q_i
+
+Replay from B in transient scratch computes an exact mathematical reference without retaining a complete floating-point state across calls. Compute output before quantizing a flush state. Holding a complete FP32 state between calls and QDQ every 8 steps violates the requested storage semantics.
+
+For a true low-rank buffered read, A_i=product(a_1,...,a_i), and
+
+u_i = beta_i * (v_i - A_i*transpose(B)*k_i - sum_(j<i) (A_i/A_j)*dot(k_j,k_i)*u_j)
+o_i = A_i*transpose(B)*q_i + sum_(j<=i) (A_i/A_j)*dot(k_j,q_i)*u_j
+S_m = A_m*B + sum_(j<=m) (A_m/A_j)*outer(k_j,u_j)
+
+These identities are independently derived by substituting the recurrent expansion. Avoid literal cumulative-product division under extreme decay: evaluate decay segments or use stable native-compatible log-decay arithmetic. Native floating-point reduction order still needs Gate B comparison.
+
+Candidate tests to freeze before execution:
+
+A: Use a matrix whose value columns have deliberately different offsets and scales. Verify each group shares exactly 32 key coordinates in one column, with no value-axis leakage. Check INT4/8 code bounds, integer zero points, zero reconstruction, all-zero and constant positive/negative groups, monotone saturation, half-way ties, subnormal and large FP16 scales, physical packing round trips, and decode from stored scale only. Invalid/nonfinite input must fail explicitly. Saturated finite input must not create NaN/Inf. CPU/GPU must agree with the declared scale/tie convention.
+
+B: Disable state and key/value compression. Compare every token output and boundary state against native recurrence for periods 1 and 8, token counts 1/7/8/9/15/16/17, distinct betas and decays, and nonzero initial states. Include beta=0, beta=1, normalized orthogonal/repeated keys, and strongly decaying gates. Fix tolerances before observing results. Do not relax failures.
+
+C: Instrument packed allocations, flush counts, buffer occupancy, state-write boundaries, and quantizer call counts. For dP8 ensure no persistent FP full state exists; reconstruct outputs from packed base and buffer. Compare with a scalar golden replay using identical INT4 key QDQ and BF16 values. For dP1 use the identical path with a single token. Assert output-before-Q-writeback, same head-mask hash, and tail processing exactly once. Verify post-round key normalization and native query scale independently. Test prefill lengths 255/256/257/511/512/513 and decode lengths 0/1/7/8/9. Restart from each partial-buffer checkpoint and require identical continuation.
+
+D: Only after A-C, use non-AIME full-model smoke with deterministic settings and actual packed runtime. Verify finite logits, native cache/token counts, EOS/length reasons, and memory. A CPU mathematical reference cannot mark GPU parity or full-model smoke passed.

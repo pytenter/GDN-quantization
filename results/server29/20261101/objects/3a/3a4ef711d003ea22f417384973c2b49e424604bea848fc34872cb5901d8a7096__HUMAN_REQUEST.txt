@@ -1,0 +1,754 @@
+# Codex 任务：PACE48 + LeapQuant Window Unrolling，dP8 / dP16 双配置正式实验
+
+## 0. 任务目标与授权
+
+在现有 `PACE48_FP16_EXPONENT_V1` 正式实现的基础上，接入 LeapQuant 的高效 Window Unrolling / Direct Readout 计算机制。
+
+本任务只创建两个新配置：
+
+1. `PACE48_LQUNROLL_DP8_V1`
+2. `PACE48_LQUNROLL_DP16_V1`
+
+两组共同采用 LeapQuant-style Direct Read，仅有 `decode_period=8/16` 的差异。
+
+完整工作包括：
+
+- 审计并复用现有冻结 PACE 实现。
+- 完成 Window Unrolling / Direct Readout 接入。
+- 构建非 AIME 数值正确性验证。
+- 实现与验证真正避免逐 token dense FP32 State 重建的执行路径。
+- 测量 GPU kernel latency 与端到端 decode throughput。
+- 门禁通过后运行两组 AIME26 30 题 × seed1。
+- 输出配对分析、内存计账、运行时报告及封存工件。
+
+给予本任务完整工程实现与必要验证授权。无需逐步骤等待人工确认，但必须严格执行科学门禁；遇到不可恢复的正确性问题，应停止正式评测并提交诊断，不允许通过临时更改方法掩盖失败。
+
+不预设 16 GPUh 上限。保留真实资源计账，不因人为预算猜测提前停止。
+
+本任务不自动增加其他周期、其他量化器或其他正式 AIME 配置。
+
+## 1. 源码与论文依据
+
+### 1.1 正式 PACE 源码
+
+优先定位此前完成 `PACE48_FP16_EXPONENT_V1` 的冻结交付目录：
+
+`QWEN_GDN_PACE48_AIME26_SEED1_60_V1_4GPU_REBALANCE_20261027`
+
+历史审计确认的关键文件：
+
+- `src/pace_buffer.py`
+- `src/pace_runtime.py`
+- `src/pace_quantizer.py`
+- `vendor/modeling_qwen3_5.py`
+- `scripts/pace_four_gpu_worker.py`
+
+原 SOURCE SHA256：
+
+`d70a1b7a7d54a59d12bba3ad33b60b495af787295629744990543a899f947267`
+
+关键历史证据：
+
+- `PACEBuffer._replay`：约 103–116 行。
+- `PACEBuffer._commit`：约 118–130 行。
+- `PACEBuffer.step`：约 132–206 行。
+- `PACEAdapter`：位于 `pace_runtime.py`。
+- 正式量化器：`PackedAffineState.from_tensor`。
+- Native cache 中的 state marker 并非完整 recurrent state。
+
+先核验上述文件、冻结 SHA、正式执行入口以及对应工件的可用性。
+
+如果发现工作目录与冻结源码不一致，应明确记录差异，使用可验证的正式基线创建新的独立工作目录，不得在原冻结目录直接覆盖。
+
+禁止仅根据当前 HEAD、文件名或配置标签认定正式代码身份。
+
+### 1.2 论文参考
+
+LeapQuant：
+
+https://arxiv.org/html/2609.38166v1
+
+重点阅读：
+
+- §3.1：General Recurrent Update
+- §3.2：Per-window Quantization
+- Appendix A：Gated DeltaNet 的具体递推
+- Appendix B.2：Window Unrolling and State Readout
+
+PACE：
+
+https://arxiv.org/html/2610.29545v1
+
+重点阅读：
+
+- §2.1：Gated Delta Rule
+- §2.3：Decode Buffers
+- §5.1：Periodic Rounding with a Decode Buffer
+
+本任务借鉴论文中的算法机制，不声称复现了尚未核验的官方 LeapQuant CUDA kernel。
+
+## 2. 冻结两个实验配置
+
+| 项目 | 配置 A | 配置 B |
+|---|---|---|
+| 标签 | LQUnroll+dP8 | LQUnroll+dP16 |
+| 模型 | Qwen3.5-9B GDN | 相同 |
+| State head 精度 | 24×INT4 + 8×INT8 | 相同 |
+| 分组 | Key-axis G32 | 相同 |
+| Codec | Asymmetric Affine | 相同 |
+| Scale | FP16 mantissa + optional INT8 exponent | 相同 |
+| Zero Point | 原整数表示 | 相同 |
+| Head mask | 原冻结 mask | 相同 |
+| Decode K | 原 G32 INT4 | 相同 |
+| Window Readout | LeapQuant-style Direct Read | 相同 |
+| Delta 缓存 | K4 + FP32 u + FP32 log-decay | 相同 |
+| Decode period | 8 | 16 |
+| Compensator Tokens | 不启用 | 不启用 |
+| Residual Smoothing | 不启用 | 不启用 |
+| AIME26 | 30×seed1 | 30×seed1 |
+
+除 period 外，两组不允许出现任何算法差异。
+
+### 2.1 以下部分必须保持原样
+
+- 模型权重、tokenizer、BF16 主激活。
+- 24 个 GDN recurrent layers。
+- 现有 state quantizer 数学公式。
+- 现有 head mask。
+- INT4/INT8 物理打包方式。
+- G32 scale 和 zero point 的计算规则。
+- FP16 scale mantissa、optional exponent 的编码/解码规则。
+- K4 的量化、反量化、BF16 normalization 顺序。
+- 原有 Query 归一化及缩放。
+- 原生模型输出与 cache marker 接口。
+- Prefill 的独立分块处理和 prompt_end commit 语义。
+- 原正式校准语料与校准结果。
+- Frozen V4 评分规则、生成上限、seed、deterministic_algorithms 实际冻结值。
+- EOS、length-cap 和 finalize(policy="preserve") 行为。
+
+不新增：
+
+- Compensator Tokens
+- Residual Smoothing
+- INT6
+- Rotation
+- 新的 Head / Channel 重要性算法
+- 新的 scale clipping
+- 在线调整 bit allocation
+- AIME 驱动的调参或校准
+
+## 3. 核心任务：消除逐 Token 完整 State Replay
+
+### 3.1 当前实现
+
+已审计的 PACE 每个 Token：
+
+1. 从 packed mixed State 解码完整 FP32 State。
+2. 顺序 Replay 窗口内的全部 K/V/β/g。
+3. 得到完整 FP32 State。
+4. 计算 Query 输出。
+5. 除非到达边界，否则不提交完整 State。
+
+所以一个 dP8 窗口需要：
+
+`1+2+3+4+5+6+7+8 = 36`
+
+次逐条 dense State 更新重放。
+
+这是本任务需要消除的主要重复计算。
+
+### 3.2 新实现的目标
+
+窗口内保持：
+
+`packed_base + pending_delta_records`
+
+其中：
+
+- `packed_base` 始终为原 PACE Mixed INT4/INT8 表示。
+- `pending_delta_records` 由压缩 K、FP32 Delta Value、FP32 decay 信息组成。
+- 每个 token 的输出通过展开公式得到。
+- 不需要每步 materialize 完整 FP32 State。
+- 仅窗口边界重建完整 FP32 State 并量化提交。
+
+禁止通过简单包装 `_replay()`、缓存完整 FP32 State 或把 `to_tensor()` 每步生成完整矩阵来伪装 Direct Read。
+
+允许在非正式 reference 验证模式中使用 dense tensor，但正式 Direct Read 快速路径不能这样执行。
+
+## 4. GDN 数学公式与实现要求
+
+必须先对照 `PACEBuffer._replay()` 验证真实的维度、衰减广播及计算顺序，不能机械复制论文符号。
+
+对一个 Head，参考形式：
+
+`A_t = D_t · S_(t-1)`
+
+`u_t = beta_t · [v_t - A_t^T · k_t]`
+
+`S_t = A_t + k_t · u_t^T`
+
+`o_t = S_t^T · q_t`
+
+其中：
+
+- `D_t` 为当前实际实现的 decay。
+- `k_t` 必须使用原 PACE K4 反量化与 normalization 后的版本。
+- `q_t` 必须使用原 native 路径的 Query 版本。
+- `beta_t`、`v_t` 的 dtype/cast 必须遵守 reference。
+- 输出 BF16 cast 与原实现一致。
+
+### 4.1 定义直接读出
+
+定义：
+
+`F_(t-1)(x) = S_(t-1)^T · x`
+
+则：
+
+`u_t = beta_t · [v_t - F_(t-1)(D_t · k_t)]`
+
+当前 token 的输出：
+
+`o_t = F_(t-1)(D_t · q_t) + u_t · (k_t^T · q_t)`
+
+这里应采用原模型真实的行列约定和矩阵乘法方向。
+
+对于 GDN，审计记录中的 decay 是逐 Head 的标量形式；实现应从源码进一步验证，不要将其错误地当作 KDA 的逐 Key Channel decay。
+
+### 4.2 Window Unrolling
+
+窗口起点为低比特边界状态 `Q0`。
+
+令：
+
+`B = decode(Q0)`
+
+将窗口第 i 条更新记作：
+
+`U_i = (k_i, u_i, D_i)`
+
+逻辑 State：
+
+`S_j = (D_j...D_1)B + sum_i [(D_j...D_(i+1))k_i]u_i^T`
+
+对应任意读出向量 x：
+
+`F_j(x) = B^T(D_1...D_j x) + sum_i u_i [k_i^T(D_(i+1)...D_j x)]`
+
+D_i 是 decay 变换；乘积顺序严格按照实际递推执行。空乘积为恒等变换。
+
+实现时不要显式创建每个 j 的完整 `S_j`。
+
+应利用累计 decay、向量点积与低比特 Base 的矩阵向量读出计算结果。
+
+### 4.3 Delta Value 缓存
+
+原缓存：
+
+`(packed_K4, V_BF16, beta_BF16, log_decay_FP32)`
+
+新缓存：
+
+`(packed_K4, u_FP32, log_decay_FP32)`
+
+具体要求：
+
+1. K4 的 codec 完全复用 reference。
+2. 当前 `u_t` 必须通过当前逻辑 State 的正确读出计算。
+3. 计算 `u_t` 后才将其加入 pending。
+4. 当前输出必须包含本 Token 的更新。
+5. `u_t` 在第一版使用 FP32。
+6. 不跨 Token 保存完整 FP32 State。
+7. 不保存全部历史 Query。
+8. 不需要时不长期保存原始 V 和 β。
+9. Window 结束后删除旧 Delta 记录。
+
+不要把原始 V 当成已经计算好的 `u_t`。
+
+### 4.4 窗口边界
+
+dP8：
+
+`Token 8 → 计算更新 → 计算输出 → 重建 S8 → encode(S8) → Q8`
+
+dP16：
+
+`Token 16 → 计算更新 → 计算输出 → 重建 S16 → encode(S16) → Q16`
+
+窗口边界构造 State 时，应使用本次 Direct Read 缓存实际维护的更新向量和原有低比特 Base。
+
+必要时用一次顺序 FP32 recurrence 重建边界 State，以减少新的浮点重排差异。
+
+不允许在窗口末为了复用旧 `_replay()`，偷偷重新使用另一套 V/β 更新记录而改变 Direct Read 实际逻辑 State。
+
+编码仍调用原 `PackedAffineState.from_tensor`。
+
+不改变 exponent、zero point 和 scale 规则。
+
+## 5. 真正的 Packed Base Direct Read
+
+这是必须单独验收的性能条件。
+
+不能只是：
+
+`packed_state.to_tensor() → full FP32 S → matvec`
+
+虽然这种方式可以作为 PyTorch correctness prototype，但不算完成正式高效接入。
+
+必须尝试实现实际的 packed-base readout：
+
+`packed INT4/INT8 codes + G32 metadata + input vector → output vector`
+
+要求：
+
+- 不持久保存完整反量化 FP32 State。
+- 不在每个 Token materialize 完整 FP32 State。
+- 对 INT4/INT8 两种 Head 使用正确的打包和零点处理。
+- 正确恢复 FP16 mantissa 和 exponent 对应的 scale。
+- 沿 Key 维度完成正确的矩阵向量读出。
+- 尽可能融合读取、反量化和矩阵向量运算。
+- 可按 Head 拆分优化路径，但不能改变算法数值定义。
+- 正确处理 CUDA stream、tensor lifetime、alignment 和同步。
+
+可以根据当前环境实现 Triton 或其他合适的 GPU kernel。
+
+若新 GPU kernel 开发遇到困难，允许先完成 reference-correct 的 PyTorch prototype，但必须明确报告其性能限制。
+
+不能把只有 PyTorch prototype 的结果宣称为 LeapQuant kernel 加速复现。
+
+在 GPU kernel 尚未通过数值验证时，不允许将其用于正式 AIME。
+
+## 6. 非 AIME 正确性验证
+
+需要分别针对 dP8 和 dP16 构建 replay reference。
+
+### 6.1 测试位置
+
+至少覆盖窗口长度：
+
+`1, 2, 7, 8, 9, 15, 16, 17, 31, 32, 33`
+
+覆盖：
+
+- 单窗口。
+- 连续多个窗口。
+- Prompt → Decode 边界。
+- 未满窗口的 EOS。
+- Length-cap 终止。
+- 高衰减/低衰减情况。
+- 大动态范围的 State。
+- INT4 与 INT8 Heads。
+- Scale exponent 未分配和已分配。
+- 非有限值检测。
+- CUDA 与 CPU reference（可行时）。
+
+### 6.2 对比对象
+
+同一组 frozen inputs 分别经过：
+
+A. 原始 `replay_reference`
+
+B. 新 `direct_read`
+
+比较：
+
+1. 每 Token Delta Value。
+2. 每 Token GDN Output。
+3. 窗口末完整 FP32 State。
+4. INT4/INT8 packed codes。
+5. Scales。
+6. Zero Points。
+7. Optional Exponents。
+8. Pending 数量。
+9. Writeback 次数。
+10. Prefill/Decode 交界状态。
+11. Native marker 及后续模块输出。
+
+同时提供：
+
+- max absolute error
+- relative error
+- RMSE / normalized RMSE
+- cosine similarity（适用时）
+- BF16 output mismatch
+- quantized code mismatch count
+- first-divergence position
+- nonfinite count
+
+### 6.3 数值门禁
+
+本任务目标是同一状态递推的数值等价实现，不是通过修改数学规则提高得分。
+
+但不能预设 direct expansion 和 sequential replay 在 FP32 中 bitwise identical。
+
+正式门禁必须在 AIME 前、根据独立非 AIME 验证确定，并写入冻结配置：
+
+- 结构和 shape 必须完全正确。
+- 非有限值、错误写回、错位等必须为零。
+- 所有公式和输入顺序必须严格对应 reference。
+- 对浮点重排造成的差异进行分层分析。
+- 检查差异是否在多个窗口后异常放大。
+- 如 packed codes 不完全一致，必须定位原因并报告是否属于正常浮点边界舍入。
+
+禁止通过：
+
+- 修改量化器。
+- 增加高精度持久 State。
+- 调整 K4 精度。
+- 改变 head mask。
+- 临时放宽数值容差。
+- 根据 AIME 结果选择实现。
+
+来通过门禁。
+
+若存在明确计算错误，修复后重新跑完整非 AIME 门禁。
+
+若数学实现正确但 FP32 重排导致可测差异，应如实记录，并在正式实验中将新配置视为独立数值实现，不得继承旧 PACE dP8 的成绩。
+
+## 7. Prefill、Decode 和生成边界
+
+沿用正式实现的特殊语义。
+
+### 7.1 Prefill
+
+原实现 Prefill 按独立策略处理：
+
+- K 使用原 Prefill 表示。
+- Prompt 的 chunk commit 维持现有周期。
+- prompt_end 提交基础 State。
+- 之后将 decode buffer 切换到 8 或 16。
+
+第一版不重写 Prefill。
+
+### 7.2 Decode 计数
+
+原正式生成的最后一个 sampled token 不再 forward。
+
+因此：
+
+`decode_forward_count = generated_tokens - 1`
+
+必须沿用这一含义。
+
+当：
+
+`decode_forward_count % decode_period == 0`
+
+才执行窗口边界提交。
+
+不要把 sampled EOS 错误当成一次已完成的 recurrent update。
+
+### 7.3 Finalization
+
+正式设置：
+
+`finalize(policy="preserve")`
+
+不强制提交最后未满窗口。
+
+应保留：
+
+`packed_base + pending_updates`
+
+作为终态实际存储计账依据。
+
+不能为了方便清理而隐式补做 forward 或量化。
+
+## 8. 显存计账要求
+
+先核验代码实际 shape，再计算新 buffer 大小。
+
+按现有审计：
+
+- 每层每 token packed K4 + metadata = 1,184 bytes。
+- FP32 u shape `[1,32,128]` = 16,384 bytes。
+- FP32 log-decay shape `[1,32]` = 128 bytes。
+
+所以新 Delta Record 的预计大小：
+
+`1184 + 16384 + 128 = 17696 bytes/layer/token`
+
+24 层容量预计：
+
+- dP8：3,397,632 bytes。
+- dP16：6,795,264 bytes。
+
+这些只是预估。
+
+必须用真实 tensor inventory 验证。
+
+报告区分：
+
+1. Packed state codes。
+2. FP16 mantissa / scales。
+3. Zero Points。
+4. Optional Exponents。
+5. 更新缓存的实际 live tensor payload。
+6. 更新缓存的理论容量。
+7. FP32 temporary scratch。
+8. Native marker。
+9. Model weights。
+10. Full Attention KV。
+11. CUDA allocated/reserved peak。
+
+不能使用满容量代替终态实际 pending 占用。
+
+不能因为没有跨 token FP32 引用，就声称 CUDA allocator 不保留对应显存块。
+
+计算有效 bits/value 时，分别报告：
+
+- Codes-only。
+- Packed base + metadata。
+- Base + live update buffer。
+- Base + full-capacity buffer。
+- 含补充运行时显存的端到端 footprint。
+
+不得只报告 5-bit codes 就宣称实际只需要 5 bits/value。
+
+## 9. 吞吐测试：本任务的核心工程指标
+
+需要比较三个工程路径：
+
+A. 历史 PACE replay dP8
+
+B. 新 LQUnroll dP8
+
+C. 新 LQUnroll dP16
+
+其中 A 只用于固定工作量的性能 reference，不新增第三组正式 AIME。
+
+### 9.1 固定工作量
+
+保持一致：
+
+- 相同模型。
+- 相同硬件。
+- 相同 batch size。
+- 相同 prompt。
+- 相同 decode token 数。
+- 相同 dtype。
+- 相同 packed quantizer。
+- 相同运行环境。
+- 相同 warmup、计时及 CUDA synchronization。
+
+至少测：
+
+- GDN Direct Read 单步 latency。
+- Window boundary latency。
+- 平均 Decode Token latency。
+- Decode tokens/s。
+- Prefill latency。
+- GPU peak allocated。
+- 平均/峰值更新缓存 payload。
+- Full State materialization count。
+- Boundary encode/writeback count。
+
+如果环境允许，可分别测量小 batch 和中等 batch 的 kernel 吞吐；正式端到端主比较使用当前冻结单请求 TP1 环境，不能把不同 batch 的速度直接混为一谈。
+
+区分：
+
+`recurrent-kernel throughput`
+
+和
+
+`end-to-end model decode throughput`
+
+任何加速比必须写清楚相对基线。
+
+### 9.2 性能门禁
+
+对于新 Direct Read：
+
+- 必须证明中间 Token 未执行完整 dense State replay。
+- 必须报告每 Token low-bit base readout 的实际实现。
+- 必须验证边界重建次数。
+- 必须排除仅由生成长度不同导致的速度变化。
+- 必须单独记录 CUDA kernel launch/dispatch 开销。
+- 必须说明是否使用 fused GPU kernel。
+
+如果新方法数学正确但端到端没有更快，应保留负结果。
+
+不允许通过改变量化周期以外的配置，或修改模型输出行为来制造加速。
+
+## 10. AIME26 双配置正式实验
+
+只有数值正确性和完整 GPU 执行路径门禁通过后，才进入正式生成。
+
+两个配置：
+
+`PACE48_LQUNROLL_DP8_V1`
+
+`PACE48_LQUNROLL_DP16_V1`
+
+分别运行：
+
+`AIME26 Canonical30 × seed1`
+
+共计 60 条新的唯一正式轨迹。
+
+沿用原 Frozen V4 评分与冻结生成协议。
+
+### 10.1 冻结约束
+
+- 不修改题目集合。
+- 不修改 Prompt。
+- 不修改 seed。
+- 不修改最大生成长度。
+- 不修改 temperature / top-p 等采样条件。
+- 不修改评分器。
+- 不改变模型权重。
+- 不新增训练。
+- 不进行 AIME 校准。
+- 不混用旧版本 codec。
+- 不复用旧 R2/R3 结果充当新轨迹。
+
+此前历史：
+
+- 原 PACE dP8：21/30。
+- 原 PACE dP1：0/30。
+
+仅作历史参考，不纳入新 60 条轨迹的配对统计。
+
+### 10.2 GPU 执行
+
+如沿用原四卡配置：
+
+- 四卡 TP1 独立 worker。
+- 每个 worker 独立加载模型。
+- 每道题唯一归属。
+- 支持从已验证的完整新轨迹恢复。
+- 恢复前验证 source SHA、配置、seed、数据身份及完整输出。
+- 不混用不同代码版本产生的轨迹。
+
+保持资源计账完整。
+
+分别报告：
+
+- generation wall。
+- worker dispatch-wall。
+- 模型加载、IO、校准和审计时间。
+- 实际 GPU active 时间（若测得）。
+- 实际运行时错误和重试原因。
+
+不得将 dispatch-wall GPU-accounting hours 冒充 GPU active/SM 实测时间。
+
+## 11. 结果与统计分析
+
+首先输出正式配对表。
+
+| 题目 | dP8 | dP16 | 配对变化 | Tokens dP8 | Tokens dP16 |
+|---|---|---|---|---:|---:|
+
+统计：
+
+- Correct / Accuracy。
+- Both Correct。
+- dP8 Only Correct。
+- dP16 Only Correct。
+- Both Wrong。
+- Exact McNemar p-value。
+- Mean / Median Tokens。
+- EOS count。
+- Length-cap count。
+- 32-gram repetition ratio。
+- Nonfinite count。
+- Runtime error count。
+
+对于吞吐，额外输出：
+
+| 指标 | 原 Replay dP8 | 新 LQ dP8 | 新 LQ dP16 |
+|---|---:|---:|---:|
+| GDN kernel latency | | | |
+| Fixed-workload decode tokens/s | | | |
+| End-to-end decode tokens/s | | | |
+| Packed base bytes | | | |
+| Update buffer peak payload | | | |
+| CUDA allocated peak | | | |
+| Complete state writebacks | | | |
+
+特别回答：
+
+1. Direct Read 是否比原 replay 更快？
+2. dP16 是否比 dP8 更快？
+3. dP16 是否减少了边界量化次数？
+4. dP16 是否增加了缓存和读取开销？
+5. dP16 的推理准确率是否提升？
+6. 新计算路径是否带来可测数值偏差？
+7. 是否出现吞吐与准确率的权衡？
+8. 是否仍保持真正的低比特基础 State 存储？
+
+统计结论必须限定在本轮固定的 seed1、30 题范围内。
+
+不能把非显著差异解释为生成等价，不能由相同总分推断逐 token 输出相同。
+
+## 12. 输出工件
+
+生成独立交付目录：
+
+`PACE48_LEAP_UNROLL_DP8_DP16_V1`
+
+至少包含：
+
+- `README.md`
+- `IMPLEMENTATION_AUDIT.md`
+- `NUMERICAL_PARITY_REPORT.md`
+- `DIRECT_READ_KERNEL_REPORT.md`
+- `THROUGHPUT_REPORT.md`
+- `paired_results.csv`
+- `memory_accounting.json`
+- `runtime_accounting.json`
+- `source_identity.json`
+- `EXPERIMENT_SUMMARY.md`
+- `MANIFEST.sha256`
+
+必须保存完整正式轨迹和必要评分证据，并给出追溯路径。
+
+源码变更采用新目录、新分支或独立补丁；原冻结工件保持只读。
+
+## 13. 停止条件
+
+遇到以下情况，不得进入正式 AIME：
+
+- 量化器与原 PACE 不一致。
+- Head mask 或 codec 与冻结配置不一致。
+- GDN 更新数学公式错误。
+- Prefill/Decode 生命周期错误。
+- 输出包含未解释的异常非有限值。
+- 状态边界 writeback 错误。
+- 依靠持久 FP32 State 冒充 Direct Read。
+- Kernel 尚未验证却用于正式生成。
+- 不能确认 source identity。
+- 正式生成协议无法核验。
+
+如果只是实现性能低于预期，但数值和运行正确，应继续记录性能负结果，不允许偷偷变更算法追求加速。
+
+如果正式实验已经启动后发生硬件或工程中断，只能按照相同源码与配置的身份验证规则恢复；不得隐式混合不同版本。
+
+## 14. 最终决策输出
+
+最终报告使用以下状态之一：
+
+- `COMPLETE_BOTH_CONFIGS`
+- `COMPLETE_WITH_PERFORMANCE_NEGATIVE`
+- `STOP_NUMERICAL_VALIDATION_FAILED`
+- `STOP_KERNEL_VALIDATION_FAILED`
+- `STOP_SOURCE_IDENTITY_UNRESOLVED`
+- `STOP_RUNTIME_BLOCKED`
+- `PARTIAL_WITH_VALIDATED_ARTIFACTS`
+
+不要制造成功状态，也不要隐瞒负结果。
+
+最终用中文给出：
+
+1. 实现是否真正采用 LeapQuant-style Direct Read。
+2. 两配置是否确实只差 decode_period。
+3. 数值偏差是否可接受。
+4. 吞吐提升是多少。
+5. dP8 和 dP16 的 AIME26 结果。
+6. 显存增加多少。
+7. 哪个配置的准确率—吞吐—显存权衡更合理。
+8. 能否成为下一版 PACE 的工程基线。
+
+禁止自动追加 dP32、Compensator、Residual Smoothing 或其他正式实验。
+
+完成后封存并停止。

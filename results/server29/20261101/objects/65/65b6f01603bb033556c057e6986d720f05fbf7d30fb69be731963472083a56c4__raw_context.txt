@@ -1,0 +1,850 @@
+database.py
+class TimeslotInscription(Base, Timeslot):
+    __tablename__ = "ref_activities"
+    idx = Column(Integer, primary_key=True)
+    inscription_id = Column(Integer, ForeignKey("inscriptions.idx"))
+    inscription = relationship(Inscription)
+    day = Column(Integer)
+    activity_id = Column(Integer, ForeignKey("activities.idx"), name="activity")
+    activity = relationship(Activite)
+    debut = Column(Integer)
+    fin = Column(Integer)
+generation/contrat_accueil.py
+class ContratAccueilModifications(OdtDocumentAccueilModifications):
+    title = "Contrat d'accueil"
+    template = 'Contrat accueil.odt'
+
+    def __init__(self, who, date):
+        OdtDocumentAccueilModifications.__init__(self, who, date)
+        if self.inscription.mode == MODE_TEMPS_PARTIEL and IsTemplateFile("Contrat accueil temps partiel.odt"):
+            self.template = "Contrat accueil temps partiel.odt"
+        elif self.inscription.mode == MODE_FORFAIT_MENSUEL and IsTemplateFile("Contrat accueil forfait mensuel.odt"):
+            self.template = "Contrat accueil forfait mensuel.odt"
+        elif self.inscription.mode == MODE_HALTE_GARDERIE and IsTemplateFile("Contrat accueil halte garderie.odt"):
+            self.template = "Contrat accueil halte garderie.odt"
+        self.default_output = "Contrat accueil %s - %s.odt" % (GetPrenomNom(who), GetDateString(date, weekday=False))
+database.py
+class Referent(Base):
+    __tablename__ = "referents"
+    idx = Column(Integer, primary_key=True)
+    famille_id = Column(Integer, ForeignKey("familles.idx"))
+    famille = relationship(Famille)
+    prenom = Column(String)
+    nom = Column(String)
+    telephone = Column(String)
+
+    def __init__(self, famille, prenom=None, nom=None, telephone=None):
+        Base.__init__(self, famille=famille, prenom=prenom, nom=nom, telephone=telephone)
+database.py
+class Inscrit(Base):
+    __tablename__ = "inscrits"
+    idx = Column(Integer, primary_key=True)
+    creche_id = Column(Integer, ForeignKey("creche.idx"))
+    creche = relationship(Creche)
+    famille_id = Column(Integer, ForeignKey("familles.idx"))
+    famille = relationship(Famille)
+    prenom = Column(String, default="")
+    nom = Column(String, default="")
+    sexe = Column(Integer, default=MASCULIN)
+    naissance = Column(Date)
+    handicap = Column(Boolean, default=False)
+    marche = Column(Boolean, default=False)
+    photo = Column(String)
+    notes = Column(String, default="")
+    combinaison = Column(String, default="")
+    categorie_id = Column(Integer, ForeignKey("categories.idx"))
+    categorie = relationship("Categorie")
+    allergies = Column(String, default="")
+    garde_alternee = Column(Boolean, default=False)
+    type_repas = Column(Integer, default=REPAS_PUREE)
+    type_repas2 = Column(Integer, default=REPAS_ASSIETTE)
+    date_premier_contact = Column(Date)
+    date_entretien_directrice = Column(Date)
+    date_envoi_devis = Column(Date)
+    date_reponse_parents = Column(Date)
+    preinscription_state = Column(Integer)
+    inscriptions = relationship("Inscription", cascade="all, delete-orphan")
+    days = relationship("TimeslotInscrit", collection_class=lambda: DayCollection("date"), cascade="all, delete-orphan")
+    weekslots = relationship("WeekSlotInscrit", cascade="all, delete-orphan")
+    commentaires = relationship("CommentaireInscrit", collection_class=attribute_mapped_collection("date"), cascade="all, delete-orphan")
+    clotures = relationship("ClotureFacture", collection_class=attribute_mapped_collection("date"), cascade="all, delete-orphan")
+    conges = relationship("CongeInscrit", cascade="all, delete-orphan")
+    corrections = relationship("Correction", collection_class=attribute_mapped_collection("date"), cascade="all, delete-orphan")
+
+    def __init__(self, prenom="", nom="", sexe=MASCULIN, handicap=False, allergies="", automatic=True, **kwargs):
+        Base.__init__(self, prenom=prenom, nom=nom, sexe=sexe, handicap=handicap, allergies=allergies, **kwargs)
+        self.famille = Famille(creche=self.creche, automatic=automatic)
+        self.famille.inscrits.append(self)
+        if automatic:
+            self.inscriptions.append(Inscription(inscrit=self))
+        self.jours_conges = {}
+
+    @reconstructor
+    def init_on_load(self):
+        self.calcule_jours_conges()
+
+    def slug(self):
+        return "child-%d" % self.idx
+
+    def get_preinscription_state(self):
+        if self.preinscription_state >= STATE_ACCORD_PARENTS:
+            pass
+        elif not self.date_premier_contact:
+            self.preinscription_state = STATE_PREINSCRIPTION_RECUE
+        elif not self.date_entretien_directrice:
+            self.preinscription_state = STATE_ATTENTE_ENTRETIEN
+        elif self.date_entretien_directrice > datetime.date.today():
+            self.preinscription_state = STATE_ENTRETIEN_PROGRAMME
+        elif not self.date_envoi_devis:
+            self.preinscription_state = STATE_DEVIS_A_ENVOYER
+        elif not self.date_reponse_parents:
+            self.preinscription_state = STATE_ATTENTE_REPONSE_PARENTS
+        else:
+            self.preinscription_state = STATE_ATTENTE_REPONSE_PARENTS
+        return self.preinscription_state
+
+    def get_groupe_order(self, date):
+        inscription = self.get_inscription(date)
+        return inscription.groupe.ordre if inscription and inscription.groupe else 255
+
+    def get_groupe_auto(self):
+        result = None
+        age = GetAge(self.naissance)
+        for groupe in self.creche.groupes:
+            if not groupe.age_maximum or age <= groupe.age_maximum:
+                if result is None or not result.age_maximum or (groupe.age_maximum and groupe.age_maximum < result.age_maximum):
+                    result = groupe
+        return result
+
+    def get_facture_cloturee(self, date):
+        if self.creche.temps_facturation == FACTURATION_FIN_MOIS:
+            result = self.clotures.get(GetMonthEnd(date), None)
+            if result:
+                return result
+        return self.clotures.get(GetMonthStart(date), None)
+
+    def get_week_slots(self, monday):
+        return [weekslot for weekslot in self.weekslots if weekslot.date == monday]
+
+    def get_week_activity_slot(self, monday, activity):
+        for weekslot in self.weekslots:
+            # print(weekslot.date, weekslot.activity, activity, weekslot)
+            if weekslot.date == monday and weekslot.activity == activity:
+                return weekslot
+        else:
+            return None
+
+    def add_conge(self, conge):
+        self.conges.append(conge)
+        self.calcule_jours_conges()
+
+    def delete_conge(self, conge):
+        self.conges.remove(conge)
+        self.calcule_jours_conges()
+
+    def calcule_jours_conges(self):
+        self.jours_conges = {}
+
+        def AddPeriode(debut, fin, conge):
+            date = debut
+            while date <= fin:
+                if date not in self.creche.jours_fermeture:
+                    self.jours_conges[date] = conge
+                date += datetime.timedelta(1)
+
+        for conge in self.conges:
+            if conge.debut:
+                try:
+                    count = conge.debut.count('/')
+                    if count == 2:
+                        debut = str2date(conge.debut)
+                        if not conge.fin or conge.fin.strip() == "":
+                            fin = debut
+                        else:
+                            fin = str2date(conge.fin)
+                        AddPeriode(debut, fin, conge)
+                    elif count == 1:
+                        for year in range(config.first_date.year, config.last_date.year + 1):
+                            debut = str2date(conge.debut, year)
+                            if not conge.fin or conge.fin.strip() == "":
+                                fin = debut
+                            else:
+                                fin = str2date(conge.fin, year)
+                            AddPeriode(debut, fin, conge)
+                except Exception as e:
+                    print("Exception congé %s %s" % (self.prenom, self.nom), e)
+
+    def is_present(self, debut, fin, site=None, handicap=None, reservataire=None):
+        for inscription in self.inscriptions:
+            inscription_fin = inscription.depart if inscription.depart else inscription.fin
+            if ((inscription_fin is None or inscription_fin >= debut) and
+                    (not self.creche.preinscriptions or not inscription.preinscription) and
+                    (site is None or inscription.site == site) and
+                    (reservataire is None or inscription.reservataire == reservataire) and
+                    (inscription.debut is not None) and
+                    (not fin or inscription.debut <= fin) and
+                    (handicap is None or self.handicap == handicap)):
+                return True
+        return False
+
+    def get_mode_arrondi(self):
+        return self.creche.arrondi_heures
+
+    def get_allergies(self):
+        return [allergie.strip() for allergie in self.allergies.split(",")]
+
+    def has_facture(self, date, site=None):
+        if not date:  # or date.month in database.creche.mois_sans_facture:
+            return False
+        month_start = GetMonthStart(date)
+        month_end = GetMonthEnd(date)
+        if self.get_inscriptions(month_start, month_end, site):
+            return True
+        if self.creche.temps_facturation != FACTURATION_FIN_MOIS:
+            previous_month_end = month_start - datetime.timedelta(1)
+            previous_month_start = GetMonthStart(previous_month_end)
+            if self.get_inscriptions(previous_month_start, previous_month_end, site):
+                day = previous_month_start
+                while day.month == previous_month_start.month:
+                    state = self.GetState(day)
+                    if state.heures_facturees != state.heures_contractualisees:
+                        return True
+                    day += datetime.timedelta(1)
+        return False
+
+    def get_factures_list(self):
+        result = []
+        date = config.get_first_monday()
+        while date <= datetime.date.today():
+            if self.has_facture(date):
+                result.append(date)
+            date = GetNextMonthStart(date)
+        return result
+
+    def GetPeriodeInscriptions(self):
+        if len(self.inscriptions) == 0:
+            return None, None
+        else:
+            debut, fin = self.inscriptions[0].debut, self.inscriptions[0].fin
+            for inscription in self.inscriptions:
+                if debut is None or (inscription.debut is not None and inscription.debut < debut):
+                    debut = inscription.debut
+                if fin is not None and (inscription.fin is None or inscription.fin > fin):
+                    fin = inscription.fin
+            return debut, fin
+
+    def get_planning(self, date):
+        return self.get_inscription(date)
+
+    def get_contrat(self, date):
+        return self.get_inscription(date)
+
+    def get_inscription(self, date, preinscription=False, departanticipe=True, array=False):
+        result = []
+        for inscription in self.inscriptions:
+            if (preinscription or not self.creche.preinscriptions or not inscription.preinscription) and \
+                    (inscription.debut and date >= inscription.debut and (not inscription.fin or date <= inscription.fin)) and \
+                    (not departanticipe or not inscription.depart or date <= inscription.depart):
+                if array:
+                    result.append(inscription)
+                else:
+                    return inscription
+        if array:
+            return result
+        else:
+            return None
+
+    def get_inscriptions(self, date_debut=None, date_fin=None, site=None, preinscriptions=False, departanticipe=True):
+        result = []
+        if not date_debut:
+            date_debut = datetime.date.min
+        if not date_fin:
+            date_fin = datetime.date.max
+        for inscription in self.inscriptions:
+            if (site is None or site == inscription.site) \
+                    and (preinscriptions or not self.creche.preinscriptions or not inscription.preinscription) \
+                    and inscription.debut:
+                date_debut_periode = inscription.debut
+                try:
+                    if departanticipe and inscription.depart:
+                        date_fin_periode = inscription.depart
+                    elif inscription.fin:
+                        date_fin_periode = inscription.fin
+                    else:
+                        date_fin_periode = datetime.date.max
+                    if date_fin_periode < date_debut_periode:
+                        print("Période incorrecte pour %s %s :" % (self.prenom, self.nom), date_debut_periode, date_fin_periode)
+                        continue
+                    if (date_debut_periode <= date_debut <= date_fin_periode) or (date_debut_periode <= date_fin <= date_fin_periode) or (date_debut < date_debut_periode and date_fin > date_fin_periode):
+                        result.append(inscription)
+                except Exception as e:
+                    print("Exception inscriptions", e)
+        result.sort(key=lambda inscription: inscription.debut)
+        return result
+
+    def is_date_conge(self, date):
+        if date in self.creche.jours_fermeture:
+            return True
+        if date in self.jours_conges:
+            if self.creche.conges_inscription != GESTION_CONGES_INSCRIPTION_MENSUALISES_AVEC_POSSIBILITE_DE_SUPPLEMENT:
+                return True
+            if date in self.days:
+                return self.days[date].get_state() == ABSENT
+        return False
+
+    def GetRattachement(self):
+        result = None
+        for inscrit in self.creche.inscrits:
+            if inscrit is not self:
+                if inscrit.famille is self.famille:
+                    return True
+                if inscrit.nom == self.nom:
+                    result = False
+        return result
+
+    def ChangeRattachement(self, state):
+        if state:
+            for inscrit in self.creche.inscrits:
+                if inscrit is not self and inscrit.nom == self.nom:
+                    self.famille = inscrit.famille
+                    break
+        else:
+            self.famille = Famille(creche=self.creche)
+
+    def GetJournee(self, date):
+        if self.is_date_conge(date):
+            return None
+
+        inscription = self.get_inscription(date)
+        if inscription is None:
+            return None
+
+        result = self.days.get(date, None)
+        if result:
+            return result
+
+        return self.GetJourneeReference(date)
+
+    def GetJourneeReference(self, date):
+        if date in self.jours_conges:
+            return Day()
+        else:
+            inscription = self.get_inscription(date)
+            if inscription:
+                return inscription.get_day_from_date(date)
+            else:
+                return None
+
+    def get_nombre_jours_maladie(self, date):
+        # recherche du premier et du dernier jour
+        premier_jour_maladie = tmp = date
+        nombre_jours_ouvres_maladie = 0
+        pile = 0
+        while tmp > self.inscriptions[0].debut:
+            tmp -= datetime.timedelta(1)
+            state = self.get_state(tmp)
+            if tmp not in self.creche.jours_fermeture:
+                pile += 1
+            if state == MALADE:
+                premier_jour_maladie = tmp
+                if self.creche.traitement_maladie == DEDUCTION_MALADIE_AVEC_CARENCE_JOURS_CONSECUTIFS:
+                    nombre_jours_ouvres_maladie += 1
+                else:
+                    nombre_jours_ouvres_maladie += pile
+                pile = 0
+            elif state != ABSENT:
+                break
+        if self.creche.traitement_maladie in (DEDUCTION_MALADIE_AVEC_CARENCE_JOURS_OUVRES, DEDUCTION_MALADIE_AVEC_CARENCE_JOURS_CONSECUTIFS):
+            nombre_jours_maladie = nombre_jours_ouvres_maladie + 1
+        elif self.creche.traitement_maladie == DEDUCTION_MALADIE_AVEC_CARENCE_JOURS_CALENDAIRES:
+            nombre_jours_maladie = (date - premier_jour_maladie).days + 1
+        else:
+            dernier_jour_maladie = tmp = date
+            while not self.inscriptions[-1].fin or tmp < self.inscriptions[-1].fin:
+                tmp += datetime.timedelta(1)
+                state = self.get_state(tmp)
+                if state == MALADE:
+                    dernier_jour_maladie = tmp
+                else:
+                    break
+            nombre_jours_maladie = (dernier_jour_maladie - premier_jour_maladie).days + 1
+        return nombre_jours_maladie
+
+    def GetState(self, date, mode_arrondi=SANS_ARRONDI):
+        """Retourne les infos sur une journée
+        :param date: la journée
+        """
+
+        if self.is_date_conge(date):
+            return State(ABSENT)
+
+        inscription = self.get_inscription(date)
+        if inscription is None:
+            return State(ABSENT)
+
+        reference = self.GetJourneeReference(date)  # Attention pas depuis inscription à cause des congés inscription avec supplément
+        heures_reference = reference.get_duration(mode_arrondi)
+        ref_state = reference.get_state()
+
+        if self.creche.jours_fermeture_non_prevus.get(date):
+            return State(ABSENT, heures_reference, 0, 0)
+
+        if date in self.days:
+            journee = self.days[date]
+            state = journee.get_state()
+            if state == ABSENCE_NON_PREVENUE:
+                heures_facturees = heures_reference
+                if heures_facturees == 0:
+                    for timeslot in journee.timeslots:
+                        if timeslot.activity.mode == MODE_ABSENCE_NON_PREVENUE:
+                            heures_facturees += timeslot.get_duration()
+                        heures_facturees = heures_facturees / 60
+                return State(state, heures_reference, 0, heures_facturees)
+            elif state == HOPITAL:
+                return State(state, heures_reference, 0, 0)
+            elif state == MALADE and self.get_nombre_jours_maladie(date) > self.creche.minimum_maladie:
+                return State(state, heures_reference, 0, 0)
+            elif state in (MALADE, MALADE_SANS_JUSTIFICATIF, ABSENCE_NON_PREVENUE, ABSENCE_CONGE_SANS_PREAVIS):
+                return State(state, heures_reference, 0, heures_reference)
+            elif state in (ABSENT, VACANCES):
+                if inscription.mode == MODE_TEMPS_PLEIN or ref_state:
+                    return State(VACANCES, heures_reference, 0, heures_reference)
+                else:
+                    return State(ABSENT, heures_reference, 0, heures_reference)
+            else:  # PRESENT
+                tranche = 5.0 / 60
+                heures_realisees = 0.0
+                heures_facturees = 0.0
+
+                # TODO une petite fonction pour ce code duplique dans le test
+                timeslots = GetUnionTimeslots([timeslot for timeslot in journee.timeslots if timeslot.activity.mode in (0, MODE_PRESENCE_NON_FACTUREE)])
+                for timeslot in timeslots:
+                    heures_realisees += tranche * GetDureeArrondie(self.creche.arrondi_heures, timeslot.debut, timeslot.fin)
+
+                union = GetUnionHeures(journee, reference)
+                if inscription.IsInPeriodeAdaptation(date):
+                    if self.creche.facturation_periode_adaptation == FACTURATION_HORAIRES_REELS:
+                        union = journee.timeslots
+                    for timeslot in union:
+                        heures_facturees += tranche * GetDureeArrondie(self.creche.arrondi_facturation_periode_adaptation, timeslot.debut, timeslot.fin)
+                else:
+                    for timeslot in union:
+                        heures_facturees += tranche * GetDureeArrondie(self.creche.arrondi_facturation, timeslot.debut, timeslot.fin)
+                    timeslots_presence_non_facturee = GetUnionTimeslots([timeslot for timeslot in journee.timeslots if timeslot.activity.mode == MODE_PRESENCE_NON_FACTUREE])
+                    for timeslot in timeslots_presence_non_facturee:
+                        heures_facturees -= tranche * GetDureeArrondie(self.creche.arrondi_facturation, timeslot.debut, timeslot.fin)
+
+                return State(PRESENT, heures_reference, heures_realisees, heures_facturees)
+        else:
+            if ref_state:
+                return State(PRESENT, heures_reference, heures_reference, heures_reference)
+            else:
+                return State(ABSENT)
+
+    def get_state(self, date):
+        if self.is_date_conge(date):
+            return ABSENT
+        elif date in self.days:
+            return self.days[date].get_state()
+        else:
+            inscription = self.get_inscription(date)
+            return inscription.get_day_from_date(date).get_state() if inscription else ABSENT
+
+    def GetExtraActivites(self, date):
+        # TODO il y a un problème avec les CONGES_AVEC_POSSIBILITE_DE_SUPPLEMENT parce que la journée retournée est la journée de référence et donc les activités sont comptées à tort
+        day = self.GetJournee(date)
+        if day is None:
+            return []
+        result = set()
+        for timeslot in day.timeslots:
+            if timeslot.activity.mode > 0:
+                result.add(timeslot)
+        if result:
+            for activity in self.creche.activites:
+                if activity.mode == MODE_SYSTEMATIQUE_SANS_HORAIRES:
+                    result.add(Timeslot(debut=None, fin=None, activity=activity))
+        return result
+
+    def GetTotalActivitesPresenceNonFacturee(self, date):
+        day = self.GetJournee(date)
+        return 0 if day is None else day.get_duration_per_activity_mode(MODE_PRESENCE_NON_FACTUREE)
+
+    def GetTotalActivitesPresenceFactureesEnSupplement(self, date):
+        day = self.GetJournee(date)
+        return 0 if day is None else day.get_duration_per_activity_mode(MODE_PRESENCE_SUPPLEMENTAIRE)
+
+    def GetTotalActivitesConges(self, date):
+        day = self.GetJournee(date)
+        return 0 if day is None else day.get_duration_per_activity_mode(MODE_CONGES)
+
+    def GetDecomptePermanences(self):
+        today = datetime.date.today()
+        total, effectue = 0.0, 0.0
+        date = self.creche.date_raz_permanences
+        if date:
+            while date < today:
+                journee = self.GetJournee(date)
+                if journee:
+                    effectue += journee.get_duration_permanences()
+                date += datetime.timedelta(1)
+            anniversaire = GetDateAnniversaire(self.creche.date_raz_permanences)
+            for inscription in self.inscriptions:
+                if inscription.debut is not None and self.creche.date_raz_permanences <= inscription.debut < today:
+                    fin = inscription.fin if inscription.fin else anniversaire
+                    if fin < today:
+                        total += inscription.heures_permanences
+                    else:
+                        total += inscription.heures_permanences * (today - inscription.debut).days / (fin - inscription.debut).days
+        return total, effectue
+
+    def GetRegime(self, date):
+        result = 0
+        for parent in self.famille.parents:
+            if parent:
+                revenu = Select(parent.revenus, date)
+                if revenu and revenu.regime:
+                    result = revenu.regime
+                    break
+        return result
+database.py
+class Fratrie(Base):
+    __tablename__ = "fratries"
+    idx = Column(Integer, primary_key=True)
+    famille_id = Column(Integer, ForeignKey("familles.idx"))
+    famille = relationship(Famille)
+    prenom = Column(String)
+    naissance = Column(Date)
+    entree = Column(Date)
+    sortie = Column(Date)
+
+    def __init__(self, famille, prenom=None, naissance=None, entree=None, sortie=None):
+        Base.__init__(self, famille=famille, prenom=prenom, naissance=naissance, entree=entree, sortie=sortie)
+database.py
+class Revenu(Base):
+    __tablename__ = "revenus"
+    idx = Column(Integer, primary_key=True)
+    parent_id = Column(Integer, ForeignKey("parents.idx"))
+    parent = relationship(Parent)
+    debut = Column(Date)
+    fin = Column(Date)
+    revenu = Column(Integer, default="")
+    chomage = Column(Boolean, default=False)
+    conge_parental = Column(Boolean, default=False)
+    regime = Column(Integer, default=0)
+
+    def __init__(self, parent, debut=None, fin=None, revenu="", chomage=False, conge_parental=False, regime=0, **kwargs):
+        Base.__init__(self, parent=parent, debut=debut, fin=fin, revenu=revenu, chomage=chomage, conge_parental=conge_parental, regime=regime, **kwargs)
+config.py
+CONFIG_FILENAME = "gertrude.ini"
+DEFAULT_SECTION = "gertrude"
+    DEFAULT_DATABASE = "gertrude.db"
+    BACKUPS_DIRECTORY = "./backups"
+    CONFIG_PATHS = [""]
+    HOME = os.path.expanduser("~")
+    GERTRUDE_DIRECTORY = HOME + "/.gertrude"
+    DEFAULT_DATABASE = GERTRUDE_DIRECTORY + "/gertrude.db"
+    BACKUPS_DIRECTORY = GERTRUDE_DIRECTORY + '/backups'
+    CONFIG_PATHS = ["./", GERTRUDE_DIRECTORY + "/", "/etc/gertrude/"]
+DEMO_DATABASE = "demo.db"
+def getDefaultDocumentsDirectory():
+    def __init__(self, parser, name=None):
+    def getStringParameter(self, key, default=""):
+    def getIntegerParameter(self, key, default=0):
+    def getDateParameter(self, key, default=None):
+    def getTimeParameter(self, key, default=None):
+    def getOptionsParameter(self):
+    def getWindowSize(self):
+    def getPictos(self):
+    def getDocumentsDirectory(self):
+    def getTemplatesDirectory(self):
+    def getBackupsDirectory(self):
+    def __init__(self):
+    def __init__(self):
+    def find_config_file():
+    def load(self, path=None, progress_handler=default_progress_handler):
+    def save(self, progress_handler):
+    def set_current_section(self, section_name):
+    def get_first_monday(self):
+    def is_date_after_reglements_start(self, date):
+    def __getattr__(self, key):
+    def Filter():
+    def Update():
+class Section(object):
+class DefaultConfig(object):
+class Config(object):
+generation/contrat_accueil.py
+class FraisGardeModifications(DocumentAccueilModifications):
+    title = "Frais de garde"
+    template = "Frais de garde.ods"
+
+    def __init__(self, who, date):
+        DocumentAccueilModifications.__init__(self, who, date)
+        self.multi = False
+        self.default_output = "Frais de garde %s - %s.odt" % (GetPrenomNom(who), GetDateString(date, weekday=False))
+        
+    def execute(self, filename, dom):
+        if filename != 'content.xml':
+            return None
+        
+        spreadsheet = dom.getElementsByTagName('office:spreadsheet').item(0)
+        table = spreadsheet.getElementsByTagName("table:table").item(0)       
+        lignes = table.getElementsByTagName("table:table-row")
+
+        fields = self.GetFields()
+        ReplaceFields(lignes, fields)
+
+        if len(self.cotisation.revenus_parents) < 2:
+            RemoveNodesContaining(lignes, "parent2")
+        elif not self.cotisation.revenus_parents[1][2]:
+            RemoveNodesContaining(lignes, "abattement-parent2")
+        if len(self.cotisation.revenus_parents) < 1:
+            RemoveNodesContaining(lignes, "parent1")
+        elif not self.cotisation.revenus_parents[0][2]:
+            RemoveNodesContaining(lignes, "abattement-parent1")
+            
+        if database.creche.mode_facturation == FACTURATION_FORFAIT_MENSUEL:
+            RemoveNodesContaining(lignes, "assiette-annuelle")
+            RemoveNodesContaining(lignes, "assiette-mensuelle")
+            RemoveNodesContaining(lignes, "taux-effort")
+            RemoveNodesContaining(lignes, "heures-mois")
+            RemoveNodesContaining(lignes, "montant-heure-garde")
+
+        return {}
+generation/contrat_accueil.py
+class AvenantContratAccueilModifications(OdtDocumentAccueilModifications):
+    title = "Avenant au contrat d'accueil"
+    template = "Avenant contrat accueil.odt"
+
+    def __init__(self, who, date):
+        OdtDocumentAccueilModifications.__init__(self, who, date)
+        self.default_output = "Avenant contrat accueil %s - %s.odt" % (GetPrenomNom(who), GetDateString(date, weekday=False))
+database.py
+class Inscription(Base, PeriodeReference):
+    __tablename__ = "inscriptions"
+    idx = Column(Integer, primary_key=True)
+    inscrit_id = Column(Integer, ForeignKey("inscrits.idx"))
+    inscrit = relationship(Inscrit)
+    preinscription = Column(Boolean)
+    reservataire_id = Column(Integer, ForeignKey("reservataires.idx"))
+    reservataire = relationship(Reservataire)
+    groupe_id = Column(Integer, ForeignKey("groupes.idx"))
+    groupe = relationship("Groupe")
+    forfait_mensuel = Column(Float, default=0)
+    frais_inscription = Column(Float, default=0)
+    allocation_mensuelle_caf = Column(Float)
+    site_id = Column(Integer, ForeignKey("sites.idx"))
+    site = relationship(Site)
+    _sites_preinscription = Column(String, name="sites_preinscription")
+    professeur_id = Column(Integer, ForeignKey("professeurs.idx"))
+    professeur = relationship(Professeur)
+    debut_asap = Column(Boolean)
+    debut = Column(Date)
+    fin = Column(Date)
+    depart = Column(Date)
+    mode = Column(Integer)
+    fin_periode_adaptation = Column(Date)
+    duree_reference = Column(Integer, default=7)
+    forfait_mensuel_heures = Column(Float, default=0)
+    semaines_conges = Column(Integer, default=0)
+    heures_permanences = Column(Float, default=0)
+    newsletters = Column(Integer, default="")
+    tarifs = Column(Integer, default=0)
+    days = relationship("TimeslotInscription", collection_class=lambda: DayCollection("day"), cascade="all, delete-orphan")
+
+    def __init__(self, inscrit, mode=MODE_TEMPS_PARTIEL, duree_reference=7, debut=datetime.date.today(), forfait_mensuel_heures=0, forfait_mensuel=0, frais_inscription=0, semaines_conges=0, heures_permanences=0, tarifs=0, allocation_mensuelle_caf=0, **kwargs):
+        Base.__init__(self, inscrit=inscrit, mode=mode, duree_reference=duree_reference, debut=debut, forfait_mensuel_heures=forfait_mensuel_heures, forfait_mensuel=forfait_mensuel, frais_inscription=frais_inscription, semaines_conges=semaines_conges, heures_permanences=heures_permanences, tarifs=tarifs, allocation_mensuelle_caf=allocation_mensuelle_caf, **kwargs)
+        if is_power_of_two(inscrit.creche.modes_inscription):
+            self.mode = int(math.log(inscrit.creche.modes_inscription, 2))
+        self.__dict__["sites_preinscription"] = []
+
+    @reconstructor
+    def init_on_load(self):
+        self.__dict__["sites_preinscription"] = []
+        if self._sites_preinscription:
+            sites_list = [int(index) for index in self._sites_preinscription.split()]
+            for site in self.inscrit.creche.sites:
+                if site.idx in sites_list:
+                    self.sites_preinscription.append(site)
+
+    def __setattr__(self, name, value):
+        Base.__setattr__(self, name, value)
+        # TODO remove this in next conversions
+        if name == "sites_preinscription":
+            self._sites_preinscription = " ".join([str(value.idx) for value in value])
+
+    def GetNombreJoursCongesPeriode(self):
+        if self.preinscription:
+            return 0
+        elif self.semaines_conges:
+            if self.mode == MODE_FORFAIT_HEBDOMADAIRE:
+                return self.semaines_conges * 7
+            else:
+                return self.semaines_conges * self.get_days_per_week()
+        else:
+            return 0
+
+    def GetNombreJoursCongesPris(self, debut, fin):
+        jours = 0
+        date = debut
+        # print "GetNombreJoursCongesPris(%s - %s)" % (debut, fin)
+
+        if config.options & REGULARISATION_UNIQUEMENT_SEMAINES_FERMETURE:
+            while date <= fin:
+                if date in self.inscrit.creche.jours_conges:
+                    # print(date)
+                    jours += 1
+                date += datetime.timedelta(1)
+            return jours
+
+        while date <= fin:
+            if self.mode in (MODE_FORFAIT_HEBDOMADAIRE, MODE_FORFAIT_MENSUEL):
+                if date in self.inscrit.creche.periodes_fermeture or date in self.inscrit.jours_conges:
+                    # print(date)
+                    jours += 1
+            else:
+                state = self.inscrit.get_state(date)
+                if self.inscrit.creche.facturation_jours_feries == ABSENCES_DEDUITES_EN_JOURS:
+                    if state == VACANCES:
+                        # print("VACANCES", date)
+                        jours += 1
+                else:
+                    if state in (ABSENT, VACANCES):
+                        reference = self.get_day_from_date(date)
+                        if reference.get_duration() > 0:
+                            # print(date)
+                            jours += 1
+            date += datetime.timedelta(1)
+        return jours
+
+    def GetDebutDecompteJoursConges(self):
+        if self.fin_periode_adaptation:
+            return self.fin_periode_adaptation + datetime.timedelta(1)
+        else:
+            return self.debut
+
+    def GetFin(self):
+        return self.depart if (self.inscrit.creche.gestion_depart_anticipe and self.depart) else (self.fin if self.fin else datetime.date.max)
+
+    def GetFinDecompteJoursConges(self):
+        if self.inscrit.creche.gestion_depart_anticipe and self.depart:
+            return self.depart
+        else:
+            return self.fin
+
+    def GetNombreJoursCongesPoses(self):
+        if self.debut and self.fin and not self.preinscription:
+            return self.GetNombreJoursCongesPris(self.GetDebutDecompteJoursConges(), self.GetFinDecompteJoursConges())
+        else:
+            return 0
+
+    def IsNombreSemainesCongesDepasse(self, jalon):
+        if self.inscrit.creche.facturation_jours_feries == ABSENCES_DEDUITES_SANS_LIMITE:
+            return False
+        if self.mode == MODE_FORFAIT_GLOBAL_CONTRAT:
+            return False
+        if self.debut:
+            if not self.semaines_conges:
+                return True
+            debut = self.GetDebutDecompteJoursConges()
+            pris = self.GetNombreJoursCongesPris(debut, jalon)
+            total = self.GetNombreJoursCongesPeriode()
+            return pris > total
+        else:
+            return False
+
+    def GetDatesFromReference(self, index):
+        if self.debut is not None:
+            fin = self.fin if self.fin else datetime.date(self.debut.year + 1, self.debut.month, self.debut.day)
+            date = self.debut + datetime.timedelta(index + 7 - self.debut.weekday())
+            while date < fin:
+                yield date
+                date += datetime.timedelta(self.duree_reference)
+
+    def IsInPeriodeAdaptation(self, date):
+        if self.debut is None or self.fin_periode_adaptation is None:
+            return False
+        return self.debut <= date <= self.fin_periode_adaptation
+
+    def GetListeActivites(self):
+        result = []
+        for i in range(self.duree_reference):
+            jour = self.get_day_from_index(i)
+            s = jour.GetHeureArriveeDepart()
+            if s:
+                if self.duree_reference <= 7:
+                    s = days[i] + " " + s
+                else:
+                    s = days[i % 7] + " semaine %d" % (1 + (i / 7)) + s
+                result.append(s)
+        return ', '.join(result)
+database.py
+class Parent(Base):
+    __tablename__ = "parents"
+    idx = Column(Integer, primary_key=True)
+    famille_id = Column(Integer, ForeignKey("familles.idx"))
+    famille = relation(Famille)
+    sexe = Column(Integer, default=MASCULIN)
+    prenom = Column(String, default="")
+    nom = Column(String, default="")
+    adresse = Column(String, default="")
+    code_postal = Column(Integer, default="")
+    ville = Column(String, default="")
+    telephone_domicile = Column(String, default="")
+    telephone_domicile_notes = Column(String, default="")
+    telephone_portable = Column(String, default="")
+    telephone_portable_notes = Column(String, default="")
+    telephone_travail = Column(String, default="")
+    telephone_travail_notes = Column(String, default="")
+    profession = Column(String, default="")
+    email = Column(String, default="")
+    revenus = relationship("Revenu", cascade="all, delete-orphan")
+
+    def __init__(self, famille, sexe=FEMININ, prenom="", nom="", adresse="", code_postal="", ville="",
+                 telephone_domicile="", telephone_domicile_notes="", telephone_portable="", telephone_portable_notes="", telephone_travail="", telephone_travail_notes="",
+                 profession="", email="", add_revenus=True, **kwargs):
+        Base.__init__(self,
+                      famille=famille,
+                      sexe=sexe,
+                      prenom=prenom,
+                      nom=nom,
+                      adresse=adresse,
+                      code_postal=code_postal,
+                      ville=ville,
+                      telephone_domicile=telephone_domicile,
+                      telephone_domicile_notes=telephone_domicile_notes,
+                      telephone_portable=telephone_portable,
+                      telephone_portable_notes=telephone_portable_notes,
+                      telephone_travail=telephone_travail,
+                      telephone_travail_notes=telephone_travail_notes,
+                      profession=profession,
+                      email=email,
+                      **kwargs)
+        if add_revenus:
+            date_revenus = famille.creche.GetDateRevenus(datetime.date.today())
+            self.revenus.append(Revenu(self, GetYearStart(date_revenus), GetYearEnd(date_revenus)))
+database.py
+class CongeInscrit(Base):
+    __tablename__ = "conges_inscrits"
+    idx = Column(Integer, primary_key=True)
+    inscrit_id = Column(Integer, ForeignKey("inscrits.idx"))
+    inscrit = relationship(Inscrit)
+    debut = Column(String)
+    fin = Column(String)
+    label = Column(String)
+
+    def __init__(self, inscrit, **kwargs):
+        Base.__init__(self, inscrit=inscrit, **kwargs)
+
+    def __setattr__(self, name, value):
+        # Call the parent class method first.
+        super(CongeInscrit, self).__setattr__(name, value)
+        if self.inscrit and name in ("debut", "fin"):
+            self.inscrit.calcule_jours_conges()
+generation/contrat_accueil.py
+class DevisAccueilModifications(OdtDocumentAccueilModifications):
+    title = "Devis"
+    template = "Devis accueil.odt"
+
+    def __init__(self, who, date):
+        OdtDocumentAccueilModifications.__init__(self, who, date)
+        self.default_output = "Devis accueil %s - %s.odt" % (GetPrenomNom(who), GetDateString(date, weekday=False))

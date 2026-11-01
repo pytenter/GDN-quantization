@@ -1,0 +1,1 @@
+lambda _cls, data, batch_sizes, sorted_indices, unsorted_indices: _tuple_new(_cls, (data, batch_sizes, sorted_indices, unsorted_indices))

@@ -1,0 +1,1 @@
+def foo(predicate, iterable): pass

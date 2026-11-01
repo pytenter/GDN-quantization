@@ -1,0 +1,943 @@
+gelutils/utils.py
+def mergedicts(*dicts):
+    """Merge dictionaries.
+
+    Merge all given dictionaries.
+    The returned dict will have all keys from all dictionaries in dicts.
+    The latter items in dicts take precedence of earlier, except if the value is None.
+    None-values have the lowest precedence and is always overwritten if another dict has
+    the same key/entry with a value different from None.
+
+    Examples:
+        >>> mergedicts({3:1, {3:2})
+        {3:2}
+        However only non-None items take precedence:
+        >>> mergedicts({4:1}, {4:None})
+        {4:1}
+        However, the returned dict *will* have all keys from all dicts, even if they are None:
+        >>> mergedicts({6:None, 7:None}, {6:None, 8:None})
+        {6:None, 7:None, 8:None}
+        In total:
+        >>> mergedicts({1:1, 3:1, 4:1, 5:None, 6:None, 7:None}, {2:2, 3:2, 4:None, 5:2, 6:None, 8:None})
+        {1:1, 2:2, 3:2, 4:1, 5:2, 6:None, 7:None, 8:None}
+    """
+    # Make dict with all keys from all keys, set to None:
+    ret = dict.fromkeys(set(chain(*(d.keys() for d in dicts))))
+    for d in dicts:
+        ret.update({k: v for k, v in d.items() if v is not None})
+    return ret
+gelutils/argutils.py
+def parseargs(prog='gelannotator', argv=None, defaults=None):  # , partial=False, mockstring=None):
+    """
+    Perform parsing.
+    """
+    ap = make_parser(prog=prog, defaults=defaults)
+    # if partial:
+    #    # parse_known_args will not raise errors if sys.argv arguments not recognized by this parser.
+    #    # This is useful if you have several parts of the program parsing the arguments.
+    #    return ap.parse_known_args()
+    argns = ap.parse_args(argv)
+    if getattr(argns, 'dynamicrange'):
+        if argns.dynamicrange[0] == 'auto':
+            argns.dynamicrange = 'auto'
+    return argns
+gelutils/config.py
+DEFAULT_CONFIG_FILEPATHS = (
+    'gelannotator.yaml',  # file in current directory
+    '~/.gelannotator.yaml',
+    '~/.config/gelannotator.yaml',
+    '~/.config/gelannotator/default_config.yaml',
+    '~/.config/gelannotator/gelannotator.yaml',
+    '~/.config/gelannotator/.gelannotator.yaml',
+    '~/appdata/gelannotator/gelannotator.yaml',
+    '~/.appdata/gelannotator/gelannotator.yaml',
+)
+def filename_is_yaml(fn):
+def yaml_get(filepath, default=None):
+gelutils/tkui/gelannotator_tkroot.py
+class GelAnnotatorTkRoot(Tk):    # pylint: disable=R0904
+    """
+    The actual UI.
+
+    Args:
+        title: The title to show in the top window bar. NOT reflected in app docker or ALT+TAB.
+    """
+    def __init__(self, app, title="AnnotateGel - Gelutils"):
+        Tk.__init__(self)  # IMPORTANT FIRST STEP for a Tk root!
+        self.App = app          # Needed to bind button function? No, I bind button function in App code instead.
+
+        # self.iconbitmap("/Users/rasmus/Dev/gelutils/res/icons/Version2/GelAnnotator_v2-2.ico")
+        # Init variables:
+        self.Gelfilepath = StringVar()
+        self.Gelfiledirectory = StringVar()
+        self.Annotationsfilepath = StringVar()
+        self.Yamlfilepath = StringVar()
+        self.Statustext = StringVar(
+            value="Tip: Use CTRL+ENTER to annotate. "
+                  "(Buffers can be saved with ctrl+s, but that's also done automatically.)")
+
+        self.AnnotateBtn = None
+        self.AnnotationsText = None
+        self.YamlText = None
+        self.Statusbar = None
+
+        self.init_ui()
+        if title:
+            self.title(title)
+
+    def init_ui(self):  # pylint: disable=R0915
+        """
+        Initialize the UI widgets. Refactored to separate method,
+        since the tkroot UI might be required before
+        information on the widgets are available.
+         ------------------------------------
+        | GEL file:  |____________| |Browse| |
+        | Lane file: |____________| |Browse| |
+        | YAML file: |____________| |Browse| | << fileinfo frame, column=0, row=0
+         ------------------------------------
+        |          |  ANNOTATE!  |           | << button frame, column=0, row=0
+         ------------------------------------
+        | Lane names:     | YAML config:     |
+        |  -------------  |  --------------  | << text input frame
+        | |             | | |              | |
+        | |             | | |              | | << lanenames frame
+        | |             | | |              | | << yaml frame
+        | |             | | |              | |
+        | |             | | |              | |
+        |  -------------  |  --------------  |
+         ------------------------------------
+
+
+Non-used:
+
+        |  |Save|  |Load| |  |Save|  |Load|  |
+        |  Autosave |_|   |  Autosave |_|    |
+
+        |  _________   __________   ______   |
+        | |OK (Keep)| |OK (Clear)| |Cancel|  | << buttonbox frame
+        |  ¨¨¨¨¨¨¨¨¨   ¨¨¨¨¨¨¨¨¨¨   ¨¨¨¨¨¨   |
+         ------------------------------------
+        |  Shift-enter=Annotate,             |
+        |  Added entry: "<product name>"     | << Info frame
+        |  View page in browser              |
+         ------------------------------------
+        """
+
+        # .grid column defaults to 0 and row defaults to the first unused row in the grid.
+
+        # Make sure mainframe expands:
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        # MAINFRAME:
+        mainframe = Frame(self)
+        mainframe.grid(sticky='news', row=0, column=0)          # Defaults to 0
+        mainframe.columnconfigure(0, weight=1)
+        mainframe.rowconfigure(2, weight=1)     # Row 2 is textinput frame
+        mainframe.rowconfigure(1, minsize=40)   # Button frame.
+
+        # FILE FRAME - has filenames/paths:
+        fileframe = Frame(mainframe)
+        fileframe.grid(sticky='news', row=0, column=0)           # All vertical frames are placed implicitly
+        fileframe.columnconfigure(1, weight=1, minsize=30)
+
+        # Filepath labels:
+        lbl = Label(fileframe, text="Directory: ")
+        lbl.grid(sticky='w', row=0, column=0)
+        lbl = Label(fileframe, text="Gel file: ")
+        lbl.grid(sticky='w', row=1, column=0)
+        lbl = Label(fileframe, text="Lane file:")
+        lbl.grid(sticky='w', row=2, column=0)
+        lbl = Label(fileframe, text="Yaml file:")
+        lbl.grid(sticky='w', row=3, column=0)
+        # self.GelfileEntry = entry = Entry(fileframe, textvariable=self.Gelfilepath)
+        # How to make the right-most text visible? , justify='right' does not have the desired effect...
+
+        # Filepath entries:
+        entry = Entry(fileframe, textvariable=self.Gelfiledirectory, state='readonly')
+        entry.grid(row=0, column=1, sticky='ew')
+        entry = Entry(fileframe, textvariable=self.Gelfilepath)     # = self.GelfilepathEntry
+        entry.grid(row=1, column=1, sticky='ew')
+        entry = Entry(fileframe, textvariable=self.Annotationsfilepath)
+        entry.grid(row=2, column=1, sticky='ew')
+        entry = Entry(fileframe, textvariable=self.Yamlfilepath)
+        entry.grid(row=3, column=1, sticky='ew')
+
+        # BROWSE buttons:
+        btn = Button(fileframe, text='Help...', command=self.App.show_help)
+        btn.grid(row=0, column=2)
+        btn = Button(fileframe, text='Browse', command=self.App.browse_for_gelfile)
+        btn.grid(row=1, column=2)
+        btn = Button(fileframe, text='Browse', command=self.App.browse_for_annotationsfile)
+        btn.grid(row=2, column=2)
+        btn = Button(fileframe, text='Browse', command=self.App.browse_for_yamlfile)
+        btn.grid(row=3, column=2)
+
+        # BUTTON FRAME:
+        buttonframe = Frame(mainframe)
+        buttonframe.grid(sticky='news', column=0, row=1)
+        btn = self.AnnotateBtn = Button(buttonframe, text="ANNOTATE!", command=self.App.annotate)
+        btn.grid(sticky='news', row=1, column=2)
+        buttonframe.rowconfigure(1, minsize=40)  # mainframe row 1 must also be set to minsize.
+        buttonframe.columnconfigure(2, weight=2)
+        buttonframe.columnconfigure((1, 3), weight=1)
+        # self.ProcessBtn = btn = Button(fileframe, text="Process!")
+        # btn.grid(row=3, column=1, columnspan=2, sticky='news')
+
+        # Outer textinputs FRAME - Contains both annotationsframe and yamlframe. ###
+        textinput = Frame(mainframe)     # Specify starting width and height
+        textinput.grid(sticky="news", column=0, row=2)  # Make sure it expands
+        textinput.rowconfigure(0, weight=1)             # Make sure it expands vertically
+        textinput.columnconfigure((0, 1), weight=1)
+
+        def loose_focus(event=None):
+            self.AnnotateBtn.focus_set()
+
+        def dont_propagate(event=None):
+            # prevent Tkinter from propagating the event by returning the string "break"
+            print("dont_propagate called...")
+            return "break"
+
+        self.bind_all("<Escape>", loose_focus)
+
+        # ANNOTATIONS FRAME:
+        annotationsframe = Frame(textinput, borderwidth=1)
+        annotationsframe.grid(sticky='news', column=0, row=0)
+        annotationsframe.rowconfigure(1, weight=1)             # row 1 column 0 has text input
+        annotationsframe.columnconfigure(0, weight=1)
+        lbl = Label(annotationsframe, text="Lane annotations file:")
+        lbl.grid(sticky='w', column=0, row=0)
+        # undo ref: http://infohost.nmt.edu/tcc/help/pubs/tkinter/web/text-undo-stack.html
+        # http://infohost.nmt.edu/tcc/help/pubs/tkinter/web/text.html
+        # default: width=80, height=24   # pylint: disable=W0201
+        text = self.AnnotationsText = Text(annotationsframe, width=40, height=20, undo=True, maxundo=-1)
+        text.grid(sticky='news', column=0, row=1)
+        text.bind(sequence='<Control-s>', func=self.App.save_annotations)
+        # text.bind("<Control-Return>", dont_propagate)
+        # More cheat-sheet: http://stackoverflow.com/questions/16082243/how-to-bind-ctrl-in-python-tkinter
+
+        # YAML FRAME:
+        yamlframe = Frame(textinput, borderwidth=1)
+        yamlframe.grid(sticky='news', column=1, row=0)
+        yamlframe.rowconfigure(1, weight=1)             # row 1 has text input
+        yamlframe.columnconfigure(0, weight=1)
+        lbl = Label(yamlframe, text="Yaml (config) file:")
+        lbl.grid(sticky='w', column=0, row=0)
+        text = self.YamlText = Text(yamlframe, width=40, height=30, undo=True, maxundo=-1)  # pylint: disable=W0201
+        text.grid(sticky='news', column=0, row=1)
+        text.bind(sequence='<Control-s>', func=self.App.save_yaml)
+        # text.bind("<Control-Return>", dont_propagate)
+
+        # INFO FRAME  - displays some help to the user (status bar)
+        infoframe = Frame(mainframe, borderwidth=1, relief='sunken')     # Specify starting width and height
+        infoframe.grid(sticky="news", column=0, row=3)  # Make sure it expands
+        # standard statusbar style:
+        # Using standard tk, don't want to bother with ttk styles for now...
+        # anchor='w' ??
+        lbl = self.Statusbar = Label(infoframe, textvariable=self.Statustext)  # , borderwidth=1, relief='sunken')
+        # text="Tip: Use CTRL+ENTER to annotate. Buffers can be saved with ctrl+s, but that's also done automatically.")
+        lbl.grid(sticky='news')
+        # lbl = Label(infoframe, text="(Buffers can be saved with ctrl+s, but you don't have to.)")
+        # lbl.grid(sticky='news')
+        # l = Label(f, text="( Shift-enter=OK (keep), Enter=OK (clear), Escape=Abort )")
+        # infoframe.rowconfigure(0, weight=1)           # Make sure it expands vertically
+        # infoframe.columnconfigure(0, weight=1)
+
+        # self.bind(sequence='<Control-Return>', func=self.App.annotate) # Binding at app-level instead with bind_all
+
+        logger.debug("Init ui done.")
+
+    def set_statustext(self, value):
+        self.Statustext.set(value)
+
+    def set_gelfilepath(self, filepath):
+        self.Gelfilepath.set(filepath)
+        # I want to make sure the right part is visible?
+        # self.GelfilepathEntry.see(...) # Nope, that only works for a Text entry...
+
+    def get_yaml(self):
+        """ Returns content of yaml text widget. """
+        return self.YamlText.get('1.0', END)
+
+    def set_yaml(self, value):
+        """ Sets content of yaml text widget. """
+        if self.YamlText.get('1.0', END):
+            self.YamlText.delete('1.0', END)
+        if value:
+            self.YamlText.insert('1.0', value)
+
+    def get_annotations(self):
+        """ Returns content of annotations text widget. """
+        return self.AnnotationsText.get('1.0', END)
+
+    def set_annotations(self, value):
+        """ Sets content of annotations text widget. """
+        if self.AnnotationsText.get('1.0', END):
+            self.AnnotationsText.delete('1.0', END)
+        if value:
+            self.AnnotationsText.insert('1.0', value)
+gelutils/gelannotator.py
+def find_annotationsfilepath(filenames, rel=False, fallback=True):
+    """Finds a suitable annotationsfile depending on gel filename.
+
+    Return the first, best candidate for an annotation file for the given gel file.
+
+    The filepath is actual, not relative.
+
+    Update: modified get_annotation_fn_by_gel_fn to not raise StopIteration.
+    """
+    # gelfilebasename = os.path.basename(gelfn)       # gelfile, without directory
+    # if gelfiledir:
+    #    logger.debug('Changing dir to: %s', gelfiledir)
+    #    os.chdir(gelfiledir)
+    logger.debug("basenames (before removing Nones and stripping file extensions): %s", filenames)
+    filenames = [os.path.splitext(fn)[0] for fn in filenames if fn is not None]
+    if not filenames:
+        raise ValueError("gelfn and yamlfn are both None; cannot derive annotationsfn")
+    fnroot = filenames[0]
+    # basedir = os.path.dirname(fnroot)
+    if fallback is True:
+        fallback = fnroot + '.annotations.txt'
+        if rel:
+            fallback = os.path.basename(fallback)
+    # First search for files with a name similar to the gelfile, then search for standard annotation filenames:
+    # use glob() or direct isfile()?
+    # - glob uses unix style wildcards - these includes bracket groups [1-9], so patterns with [SYBR Gold] won't work!
+    # search_ext = ("*.annotations.txt", "*.txt", "*.lanes.yml")
+    search_ext = [".annotations.txt", ".txt", ".lanes.yml"]
+    std_pats = ['samples.txt', 'annotations.txt']
+    glob_pats = [base+"*"+ext for base in filenames for ext in search_ext]
+    fn_cands = [base+ext for base in filenames for ext in search_ext] + std_pats  # direct fn matches
+    logger.debug("basenames: %s", filenames)
+    logger.debug("search_ext: %s", search_ext)
+    logger.debug("fn_pats: %s", fn_cands)
+    logger.debug("glob_pats: %s", glob_pats)
+    for fn_cand in fn_cands:
+        if os.path.isfile(fn_cand):
+            ann_fn = fn_cand
+            break
+    else:
+        try:
+            ann_fn = next(fn for fn in chain(*(glob.glob(pat) for pat in glob_pats)))
+        except StopIteration:
+            logger.debug("None of the file patterns in search_pats matched any file, using fallback: %s", fallback)
+            if fallback:
+                ann_fn = fallback
+            else:
+                raise ValueError("Could not find any suitable annotationsfile.")
+
+    logger.debug("Selected annotationsfile: %s", ann_fn)
+    return ann_fn
+gelutils/gelannotator.py
+def find_yamlfilepath(gelfn, rel=False, basedir=None):
+    """Finds a suitable yaml filename depending on gel filename.
+
+    Given a gel filename, returns a yaml filename.
+    The returned file is absolute;
+    use utils.getrelfilepath to get relative to gelfile.
+    """
+    if rel:
+        gelfn = os.path.basename(gelfn)         # "filename", without directory
+    basename, _ = os.path.splitext(gelfn)
+    return basename + config_ext
+gelutils/utils.py
+def init_logging(config=None, prefix="gelutils"):
+    """Initialize logging.
+
+    Set up standard logging system based on values provided by argsns, namely:
+    - loglevel
+    - logtofile
+    - testing
+
+    """
+
+    if config is None:
+        config = {}
+    elif not isinstance(config, dict):
+        # Assume it is a NameSpace object returned by argparse.ArgumentParser.parse_args()
+        config = config.__dict__
+
+    dictconfig_fn = config.get("logging_config_dict_file")
+    dictconfig = config.get("logging_config_dict")
+    if dictconfig_fn or dictconfig:
+        if dictconfig_fn:
+            fnbase, fnext = os.path.splitext(dictconfig_fn)
+            if fnext.lower() == ".yaml":
+                print("Configuring logging system using dict config from yaml-formatted file:", dictconfig_fn)
+                with open(dictconfig_fn) as fp:
+                    dictconfig = yaml.load(fp)
+            else:
+                print("Configuring logging system using dict config from json-formatted file:", dictconfig_fn)
+                with open(dictconfig_fn) as fp:
+                    dictconfig = json.load(fp)
+        else:
+            print("Configuring logging system using dict from logging_control settings file.")
+        logging.config.dictConfig(dictconfig)
+        logger.info("Logging system initialized using dict-config "
+                    + ("from file %s." % dictconfig_fn if dictconfig_fn else "from config-provided dict."))
+
+    else:
+        loglevel = get_loglevel_as_integer(config.pop('loglevel', None))
+        logtofile = config.pop('logtofile', None)
+        if logtofile:
+            logtofile = os.path.expanduser(logtofile)
+
+        # Examples of different log formats:
+        # logfmt = "%(levelname)s: %(filename)s:%(lineno)s %(funcName)s() > %(message)s"
+        # logfmt = "%(levelname)s %(name)s:%(lineno)s %(funcName)s() > %(message)s"
+        # loguserfmt = format of log displayed to the user; logfilefmt = format of log messages written to logfile.
+        logconsolefmt = "%(asctime)s %(levelname)-15s %(name)20s:%(lineno)-4s%(funcName)20s() %(message)s"
+        logfilefmt = '%(asctime)s %(levelname)-6s - %(name)s:%(lineno)s - %(funcName)s() - %(message)s'
+        logdatefmt = "%Y%m%d-%H:%M:%S"  # "%Y%m%d-%Hh%Mm%Ss"
+        logtimefmt = "%H:%M:%S"  # Output to user in console
+        logformat = config.pop('logformat', logfilefmt if logtofile else logconsolefmt)
+        logdatefmt = config.pop('logdatefmt', logdatefmt if logtofile else logtimefmt)
+        logging.basicConfig(level=loglevel,
+                            format=logformat,
+                            datefmt=logdatefmt,
+                            filename=logtofile)
+        logger.info("Logging system initialized with loglevel %s, logfile filename=%s", loglevel, logtofile)
+gelutils/config.py
+def filename_is_yaml(fn):
+    base, ext = os.path.splitext(fn)
+    return ext in cfg_exts
+gelutils/utils.py
+def getrelfilepath(gelfilepath, otherfilepath):
+    """Get otherfilepath relative to gelfilepath.
+
+    Usecases:
+    - Linking to png file in svg rather than embedding data.
+    - Returning easy-to-read values to the GUI.
+
+    Expected:
+    >>> getrelfilepath('mygel.gel', 'mygel.png')
+    'mygel.png'
+    >>> getrelfilepath('/tests/testdata/mygel.gel', '/tests/testdata/mygel.png')
+    'mygel.png'
+    >>> getrelfilepath('/tests/testdata/mygel.gel', '/tests/testdata/pngs/mygel.png')
+    'pngs/mygel.png'
+    >>> getrelfilepath('/home/myuser/mygel.gel', 'mygel.png')
+    'mygel.png'
+    >>> getrelfilepath('/home/myuser/mygel.gel', 'pngs/mygel.png')      [for cwd = '/home/myuser']
+    'pngs/mygel.png'
+    >>> getrelfilepath('/home/myuser/mygel.gel', 'pngs/mygel.png')      [for cwd = '/home/anotheruser']
+    '/home/anotheruser/pngs/mygel.png'
+    >>> getrelfilepath('/home/myuser/mygel.gel', '/home/myuser/pngs/mygel.png')
+    'pngs/mygel.png'
+    >>> getrelfilepath('/home/myuser/mygel.gel', '/home/myuser/pngs/mygel.png')
+    'pngs/mygel.png'
+    """
+    # first ensure that both files are absolute. You could also do a lot of "if otherfilepath is not absolute, then...",
+    # but this is easier:
+    # absgelfilepath, absotherfilepath = [os.path.abspath(p) for p in (gelfilepath, otherfilepath)]
+    # common = os.path.commonprefix(absgelfilepath, absotherfilepath)
+    # This might be really awkward if len(common)
+    # relpath = absotherfilepath[len(common)+1]
+    # os.path.relpath can do what I want:
+    geldirpath = os.path.dirname(gelfilepath)
+    return os.path.relpath(otherfilepath, start=geldirpath)
+gelutils/utils.py
+def getabsfilepath(gelfilepath, otherfilepath):
+    """Try to ensure that otherfilepath is a proper file path.
+
+    Usecases:
+    If otherfilepath is 'mygel.png' or 'pngs/mygel.png',
+    normal file operation will prefix this with os.getcwd() to get the absolute path.
+    However, if os.getcwd() is not equal to os.path.dirname(gelfilepath),
+    then otherfilepath is wrong -- it is always assumed relative to gelfilepath.
+
+    getabsfilepath and getrelfilepath are complementary:
+    * Assume given filepaths (e.g. in args) are relative to the gelfile.
+    * Use getabsfilepath to get the actual filepath.
+    * Work with the actual path when doing disk operations.
+    * Use getrelfilepath before returning a filepath to the user (or save it to args).
+
+    Expected behavior:
+
+    (a) Only alter otherfilepath if it is relative:
+    >>> getabsfilepath('/path/to/mygel.gel', '/another/path/to/mygel.png')
+    '/another/path/to/mygel.png'
+    >>> getabsfilepath('relative/path/to/mygel.gel', '/another/path/to/mygel.png')
+    '/another/path/to/mygel.png'
+
+    (b)
+    >>> getabsfilepath('/path/to/mygel.gel', 'mygel.png')
+    '/path/to/mygel.png'
+
+    >>> getabsfilepath('/path/to/mygel.gel', 'pngs/mygel.png')
+    '/path/to/pngs/mygel.png'
+
+    >>> getabsfilepath('relative/path/to/mygel.gel', '../mygel.png')
+    'relative/path/mygel.png'
+
+    """
+    if os.path.isabs(otherfilepath) or not gelfilepath:
+        # otherfilepath has a directory or is an absolute path
+        # unless it is stored in the fs root, this will be the same)
+        return otherfilepath
+    gelfiledir = os.path.dirname(gelfilepath)
+    if gelfiledir:
+        # The gelfile does have a directory. Unless you have the following:
+        # <cwd>/gels/gelfile.gel
+        # <cwd>/annotation.txt
+        # Then what you want for 'annotation.txt' is probably 'gels/annotation.txt'
+        return os.path.join(gelfiledir, otherfilepath)
+    return os.path.normpath(otherfilepath)
+gelutils/gelannotator.py
+def annotate_gel(gelfile=None, args=None, yamlfile=None, annotationsfile=None):
+    """Annotate gel according to the given configuraiton args.
+
+    This function is the primary function in charge of annotating gel files.
+    It works as an outer wrapper with a series of responsibilities:
+        0) Load yaml and annotations files.
+        1) Creates/ensures a PNG file.
+        2) Create SVG with annotations.
+        3) Converts svg to png if requested and other stuff.
+
+    Arguments:
+        args: dict with standard arguments.
+        gelfile: main gelfile.
+        annotationsfile: file with annotations. Is this actual or relative to gelfile? - Relative.
+        yamlfile: file with options in yaml format. Is this actual or relative to gelfile? - Relative.
+
+    Returns:
+        A 3-tuple with:
+            drawing,
+            svgfilename,
+            args - updated args dict with anything that may have been changed as a result of the run.
+
+    """
+    logger.debug("""annotate_gel invoked with gelfile='%s', yamlfile='%s', annotationsfile='%s',
+                 and args=%s""", gelfile, yamlfile, annotationsfile, printdict(args))
+    if args is None:
+        args = {}
+    if isinstance(args, argparse.Namespace):
+        args = args.__dict__
+    if yamlfile is None:
+        yamlfile = args.get('yamlfile')  # Do not update.
+    if annotationsfile is None:
+        annotationsfile = args.get('annotationsfile')
+    if yamlfile:
+        yamlfile = getabsfilepath(gelfile, yamlfile)
+        try:
+            logger.debug("Loading additional settings (those not already specified) from file: %s", yamlfile)
+            yamlsettings = yaml.safe_load(open(yamlfile))
+            # for key, value in settings.items():
+            #    setattr(argns, key, value)
+            # Make sure to update in-place:
+            args.update(mergedicts(yamlsettings, args))
+        except IOError as e:
+            logger.debug(e)
+            logger.debug("No existing yaml file: %s -- That's OK.", yamlfile)
+            logger.debug("-- cwd is: %s", os.getcwd())
+        except KeyError as e:
+            logger.debug("KeyError: %s", e)
+    if gelfile is None:
+        gelfile = args['gelfile']
+        args['_primary_file_mode'] = 'yaml'
+
+    # If in yaml mode, ensure that args['gelfile'] correctly reflects the gelfile used:
+    if args.get('_primary_file_mode') == 'yaml' or args.get('gelfile_remember', True):
+        args['gelfile'] = gelfile
+    # 'gelfile_last_used' is a fallback mechanism for cases where the app is started in gel_is_primary mode,
+    # but we then save yaml file under a different name.
+    args['gelfile_last_used'] = gelfile
+
+    # args = mergeargs(argsns=args, argsdict=yamlsettings, excludeNone=True, precedence='argns')
+    logger.debug("Ensuring that we have a PNG file to annotate using ensure_png_exists(%s, ...). "
+                 "If a PNG file is not available, or if args['reusepng'] is false, "
+                 "then a PNG file will be generated from the GEL file.", gelfile)
+    ensure_png_exists(gelfile, args, yamlfile=yamlfile, lanefile=annotationsfile)
+    # Note: args is updated in-place. yamlfile and lanefile is only used to generate pngfilename.
+
+    # MAKE SVG FILE WITH ANNOTATIONS: #
+    # annotationsfile is relative to gelfile; make_svg takes care of it.
+    logger.debug("Making annotated SVG file using make_svg(%s, ...)", gelfile)
+    dwg, svgfilename = make_svg(gelfile, args, annotationsfile=annotationsfile, yamlfile=yamlfile)
+
+    # Convert SVG to PNG: #
+    if args.get('svgtopng'):
+        # svg's base64 encoding is not as optimal as a native file but about 40-50% larger.
+        # Thus, it might be nice to be able to export
+        # print "PNG export not implemented. Requires Cairo."
+        # svg2pngfn = args['svgtopngfile'] = svg2png(svgfilename)
+        logger.debug("Converting svg to png using svg2png(%s)", svgfilename)
+        svg2pngfn = svg2png(svgfilename)    # not saving svgtopngfile in args...
+    else:
+        svg2pngfn = None
+
+    # Open file: #
+    if args.get('openwebbrowser'):
+        # On OS X we need to add "file://" in front of the file path for it to work
+        open_path = "file://" + os.path.abspath(svgfilename)
+        print("Opening annotated svg file %s with default application for that file type." % open_path)
+        logger.info("Opening annotated svg file %s", open_path)
+        webbrowser.open(open_path)
+        if svg2pngfn:
+            open_path = "file://" + os.path.abspath(svg2pngfn)
+            print("Opening annotated PNG file %s (converted from svg file) with default application." % open_path)
+            logger.info("Opening annotated PNG file %s", open_path)
+            webbrowser.open(open_path)
+            # webbrowser.open will open with either default browser OR default application.
+            # If you want to open with default application, use os.startfile on windows
+            # subprocess.call(['open', filename]) on OSX, and
+            # subprocess.call(['xdg-open', filename])  on POSIX (or possibly just use open)
+            # c.f. http://stackoverflow.com/questions/434597/open-document-with-default-application-in-python
+
+    # if args.get("remember_gelutils_version", True):  # Actually, there is no reason not to always remember this.
+    args['__gelutils_version__'] = __version__
+
+    # Running ensure_png_exists and make_svg can update args dict, e.g. with automatic dynamic range.
+    # if yamlfile and args.get('updateyaml', True):
+    config_save_final_params = args.get('config_save_final_params', args.get('saveyamlto', True))
+    if config_save_final_params:
+        args['gelfile'] = gelfile
+        args['yamlfile'] = yamlfile
+        args['annotationsfile'] = annotationsfile
+        if config_save_final_params is True:
+            final_params_fn = yamlfile
+        else:
+            assert isinstance(config_save_final_params, str)
+            yamlfile_fnroot, yamlfile_ext = os.path.splitext(yamlfile)
+            final_params_fn = config_save_final_params.format(config_ext=config_ext, **locals())
+
+        # Not sure if this should be done here or in AnnotateGel GUI app:
+        logger.debug("Saving final config parameters to file: %s", final_params_fn)
+        # For Python3 it is important that the file mode is correct: binary vs str
+        # yaml safe_dump produces a str output, so the file must be opened in str mode:
+        with open(final_params_fn, 'w') as fd:
+            # Call signature: yaml.dump_all(documents, stream=None, Dumper=<class 'yaml.dumper.Dumper'>,
+            # default_style=None, default_flow_style=None, canonical=None, indent=None, width=None,
+            # allow_unicode=None, line_break=None, encoding='utf-8', explicit_start=None, explicit_end=None,
+            # version=None, tags=None)
+            try:
+                yaml.safe_dump(args, fd, default_flow_style=False)
+            except RepresenterError as e:
+                logger.warning("yaml.representer.RepresenterError: %s. args is: %s", e, args)
+                raise
+    else:
+        args['gelfile_last_used'] = gelfile
+        args['yamlfile_last_used'] = yamlfile
+        args['annotationsfile_last_used'] = annotationsfile
+
+    return dwg, svgfilename, args
+gelutils/argutils.py
+def make_parser(prog='gelannotator', defaults=None,
+                description='Gelutils - Convert and Annotate scientific .GEL/TIFF files.',
+                **argparser_kwargs):
+    """Make a parser to parse command line arguments.
+
+    Default values if not specified are None for most arguments,
+    except for switches (store_true/false), where it is the default is the opposite of the first given switch.
+    E.g. if add_argument(--dothis, action='store_true'), dothis will default to False, unless
+    of course, you specifically also add default=True. You can also add default=None for switches!
+
+    When two switches with same destination are defined, the first will define the default value.
+    E.g. below, both linearize and no-linearize are defined having dest=linearize.
+    Because linearize is defined first, the default value of linearize will be False.
+
+    Args:
+        prog: A string e.g. 'gui' to create a parser customized for GUI app.
+        defaults: A dict with default values for the parsers keyword arguments.
+        description: A string describing the program for which the parser is used.
+        argparser_kwargs: Other keywords passed to argparse.ArgumentParser init.
+
+    Returns:
+        An argparse.ArgumentParser instance customized for gelutils usage.
+
+    Examples:
+        ap = make_parser('gui', defaults={'openwebbrowser': False}, description='Gelutils Gel Annotator.')
+
+    """
+    if defaults is None:
+        defaults = {
+            'stdout_mode': 'w',
+            'stderr_mode': 'w'
+        }
+
+    if prog.lower() == 'gui':
+        defaults.setdefault('openwebbrowser', True)
+
+    ap = argparse.ArgumentParser(prog="AnnotateGel" if prog.lower == 'gui' else prog,
+                                 description=description,
+                                 **argparser_kwargs)
+
+    if prog == 'gui':
+        # For GUI app the user can browse for gel file so it is not mandatory
+        ap.add_argument('file', nargs='?')
+        ap.add_argument('--gelfile',
+                        help='Explicitly specify the gelfile to use. '
+                        'Often used in "yaml-mode" where the primary file is a YAML config file ("yaml-mode"). '
+                        'Specifying gelfile with this keyword will save it it the .gaml config file. '
+                        'Useful for having multiple .gaml config files all using the same .GEL file, '
+                        'e.g. with different crop regions if the GEL file contains multiple gels.')
+    else:
+        ap.add_argument('gelfile')
+
+    #
+    # Testing, logging and debugging parameters:
+    # ------------------------------------------
+    # parser.add_argument('--dryrun', '-n', action="store_true", help="Dry-run. Do not actually do anything.")
+    ap.add_argument('--verbose', '-v', action='count', help="Verbosity.")
+    ap.add_argument('--loglevel', default=defaults.get('loglevel'),
+                    help="Logging level, e.g. 10, 30, or 'DEBUG', 'INFO.")
+    ap.add_argument('--logtofile', default=defaults.get('logtofile'),
+                    help="Write log output to file rather than console.")
+    ap.add_argument('--logging-config', dest='logging_config_dict_file',
+                    default=defaults.get('logging_config_dict_file'),
+                    help="Write log output to file rather than console.")
+    # Note: If action='store_true', then default is False not None.
+    # Using default=None so None can be used to indicate a value that has not been specified.
+    ap.add_argument('--disable-logging', dest='disable_logging', action='store_true', default=None,
+                    help="Disable logging system.")
+    # When adding a dest already in place, the default is not overwritten.
+    ap.add_argument('--enable-logging', dest='disable_logging', action='store_false',
+                    help="Enable logging system.")
+    # Redirection of stdout/stderr (useful if console display is not available when launching program).
+    ap.add_argument('--stdout', metavar="filename", default=defaults.get('stdout'),
+                    help="Write stdout stream to file rather than console. "
+                         "This may be useful in cases where a terminal is not available, "
+                         "e.g. when invoking AnnotateGel on OSX with an Automator script.")
+    ap.add_argument('--stderr', metavar="filename", default=defaults.get('stderr'),
+                    help="Write stderr stream to file rather than console. Defaults to same value as stdout.")
+    ap.add_argument('--stdout-mode', metavar="file mode", default='w',
+                    help="File open mode for stdout stream, if stdout is given. Default: 'w'.")
+    ap.add_argument('--stderr-mode', metavar="file mode", default='w',
+                    help="File open mode for stderr stream, if stderr is given. Default: 'w'.")
+
+    #
+    # File inputs and outputs:
+    # ------------------------
+    # TODO: Rename convertgelto to image_format
+    ap.add_argument('--convertgelto', default='png', metavar="png/jpg/etc",
+                    help="Convert gel to this format.")
+    # ap.add_argument('--png', action='store_true', help="Save as png.")
+    ap.add_argument('--overwrite', action='store_true', default=True,
+                    help=""""Overwrite existing png file. If set to false, the program will
+                    re-use the any old PNG it finds instead of re-generating the PNG from the .GEL file.
+                    If you are playing around with e.g. the annotations, this can save a bit of computation.""")
+    ap.add_argument('--no-overwrite', action='store_false', dest='overwrite',
+                    help="Do not overwrite existing png file.")
+    # filename inputs and outputs:
+    ap.add_argument('--pngfnfmt', default="{yamlfnroot}_{dr_rng}{N_existing}{ext}", metavar="format_string",
+                    help=("Customize the png filename using python string formatting.",
+                          "Note that {ext} includes the dot in '.png'"))
+    ap.add_argument('--svgfnfmt', default="{pngfnroot}_annotated{ext}", metavar="format_string",
+                    help=("Format for the svg filename, if created, using python string formatting."
+                          "Valid placeholders include: {pngfnroot}, {gelfnroot}, {ext}, {ext} includes dot in '.svg'"))
+    ap.add_argument('--pngfile', metavar="filename",
+                    help="Use this png/image file instead of the specified gelfile.")
+    # TODO: What is the functional difference between reusepng and overwrite ?
+    ap.add_argument('--reusepng', action='store_true', default=None,
+                    help=("Prefer png file over the specified gelfile,"
+                          "IF a PNG file with matching the output already exists."
+                          "Rotations and scaling are still applied, but not "))
+    ap.add_argument('--no-reusepng', action='store_false', dest='reusepng',
+                    help="Do not use pngfile, even if it is specified.")
+    # Perform substitution of input filenames, e.g. to remove illegal characters.
+    ap.add_argument('--filename-sub', nargs='+', metavar=("FIND", "REPLACE"),
+                    help="Substitute FIND with REPLACE in output filename. ")
+    # "If FIND is given and REPLACE isn't, then REPLACE defaults to ''.")
+    ap.add_argument('--filename-sub-re', nargs='+', metavar=("FIND", "REPLACE"),
+                    help="Substitute all substrings matching the regex FIND with REPLACE in output filename.")
+
+    #
+    # Config / yaml parameters:
+    # -------------------------
+    ap.add_argument('--no-load-system-config', action="store_false", dest="load_system_config",
+                    help="Load standard system/user config. (Default is to load system config if one is found.)")
+    ap.add_argument('--load-system-config', action="store_true",
+                    help="Load standard system/user config.")
+    ap.add_argument('--config-template', metavar="filename", default=defaults.get("config_template"),
+                    help=("Use this yaml-formatted file as config template."
+                          "The difference between config-template and config-filename is that the"
+                          "template will never be updated/overwritten. It is just default config."))
+
+    # TODO: Rename yamlfile keyword to config_filename
+    ap.add_argument('--yamlfile', metavar="filename",
+                    help="Load and save config parameters from YAML file, update and save.")
+    # TODO: Rename to config_save_final_params  - final/fixed/static/post/processed
+    ap.add_argument('--saveyamlto', metavar="filename",
+                    default=defaults.get("saveyamlto"),
+                    help="Force saving yaml to this file when complete.")
+    # TODO: Rename to config_update_display - config/yaml/parameters/params/args/configuration/options
+    # Usually this should be left disabled, but can be used to display and tune auto-calculated parameters.
+    # See also: `saveyamlto` - the "final" yaml is saved to this file.
+    ap.add_argument('--no-update-yaml', dest='updateyaml', action='store_false', default=None,
+                    help="Do not update yaml settings after run to reflect the final settings used.")
+    ap.add_argument('--update-yaml', dest='updateyaml', action='store_true',
+                    help="Update yaml settings after run to reflect the settings used.")
+
+    # "save", "record", "write", "persist" or "remember" - add static parameters to config:
+    # Edit, probably just always save gelutils version to final_params config file.
+    # ap.add_argument('--remember-gelutils-version', action='store_true', default=defaults.get('save_gelutils_version'),
+    #                 help="Save gelutils version number (makes it easier to use old .gaml files).")
+    # Remember/record/save input gel filename to yaml config.
+    # TODO: Rename to "record-gelfile" ?
+    # TODO, edit: Maybe just have a mandatory "gelfile_lastused" entry?
+    # TODO, edit: Or just always save the gelfile in the static version?
+    ap.add_argument('--gelfile-remember', action='store_true', default=None,
+                    help="Save last used gelfile in config for later use.")
+    ap.add_argument('--no-gelfile-remember', dest='gelfile_remember', action='store_false', default=None,
+                    help="Do not save last used gelfile in config for later use.")
+
+    ap.add_argument('--gelfile_last_used', metavar="filename",
+                    help="The last used gel/image file. The program will update this on every run.")
+    ap.add_argument('--yamlfile_last_used', metavar="filename",
+                    help="The last used yaml config file. The program will update this on every run.")
+    ap.add_argument('--annotationsfile_last_used', metavar="filename",
+                    help="The last used annotations file. The program will update this on every run.")
+
+    #
+    # Image processing parameters:  (geltransformer, gelannotator)
+    # ----------------------------
+    # TODO: Prefix all image processing/transformation keywords with "image_".
+    ap.add_argument('--crop', nargs=4, type=int, metavar=('LEFT', 'UPPER', 'RIGHT', 'LOWER'),
+                    help="""Crop image to this box (left upper right lower) aka (x1 y1 x2 y2),
+                    Values can be either pixel values [500, 100, 1200, 400],
+                    or fractional/percentage values [5%%, 3%%, 95%%, 0.9].
+                    Note: Yes, 0.9 is 90%%. If gel image is 1000 pixels wide, 0.9 or 90%% are equivalent to 900 pixels.
+                    OBS! Note that by default the values are interpreted as <strong>ABSOLUTE COORDINATE VALUES</strong>
+                    from the top, left pixel. If you want to change this behaviour such that the
+                    RIGHT and LOWER values are interpreted as the amount to crop away, e.g.
+                    'crop 12%% from the right edge', set ```cropfromedges``` to true. """)
+    ap.add_argument('--cropfromedges', action='store_true', default=None,
+                    help="""If true, the crop values RIGHT and LOWER defined above
+                    specifies pixels from their respective edges
+                    instead of absolute coordinates from the upper left corner.
+                    Default: false.""")
+
+    ap.add_argument('--scale', metavar="scalefactor",
+                    help=""""Scale the gel by this amount.
+                    Can be a single value for uniform scaling, or two values for different scaling in x vs y.
+                    Can be given as float (0.1, 2.5) or percentage (10%%, 250%%).""")
+
+    ap.add_argument('--rotate', metavar="angle", type=float,
+                    help="Rotate gel image by this angle (counter-clockwise). Default: 0.")
+    ap.add_argument('--rotateexpands', action='store_true', default=None,
+                    help="""When rotating, the image size expands to make room.
+                    False (default) means that the gel will keep its original size.""")
+
+    ap.add_argument('--flip_h', action='store_true', default=None,
+                    help="Flip image horizontally left-to-right.")
+    ap.add_argument('--flip_v', action='store_true', default=None,
+                    help="Flip image vertically top-to-bottom.")
+
+    # Contrast and display: Converting raw data to human-readable png image:
+    # TODO: Prefix all keywords with "image_"
+    ap.add_argument('--linearize', action='store_true', default=None,
+                    help="Linearize gel input data stored in Square-Root Encoded Data (if Typhoon).")
+    ap.add_argument('--no-linearize', action='store_false', dest='linearize',
+                    help="Linearize gel (if e.g. typhoon).")
+    ap.add_argument('--dynamicrange', nargs='+', metavar=("MIN", "MAX"),
+                    help="""Specify dynamic range (contrast). Valid argumets are 'MIN MAX', 'MAX' and 'auto',
+                    e.g. '1000, 20000' to set range from 1000 to 20000,
+                    '20000' to set range from zero to 20000, and 'auto' to determine range automatically.
+                    MIN and MAX are usually provided as absolute values e.g. '300 5000',
+                    but can also be specified as percentage values, e.g. '0.1%% 99%%'.
+                    If percentage or decimal values are given, the dynamic range is set such that
+                    MIN %% of the pixels are below the lower range
+                    and (1.0 - MAX) of the pixels are above the dynamic range.
+                    If only one integer argument is given if is assumed to be the max, and min is set to 0.
+                    If specifying 'auto', the software will try to determine
+                    a suitable contrast range automatically.""".strip())
+    # ap.add_argument('--autorange', action='store_true', help="Dynamic range, min max, e.g. 300 5000.")
+    ap.add_argument('--invert', action='store_true', default=None,
+                    help="Invert gel data, so zero is white, high intensity black.")
+    ap.add_argument('--no-invert', action='store_false', dest='invert',
+                    help="Do not invert image data. Zero will be black, high intensity white.")
+
+    ap.add_argument('--pngmode', default='L',
+                    help="PNG output format (bits per pixel). L = 8 bit integer, I = 16/32 bit.")
+
+    #
+    # Annotations config parameters:
+    # ------------------------------
+    if prog.lower() in ('gelannotator', 'gui'):
+
+        # Image and text positioning:
+        # TODO: Maybe prefix with image_ or img_pos_ or canvas_img_ or svg_img_ or svg_gel_ ?
+        # TODO, edit: Some of these are for the text, some are for the image, but they are all somewhat related
+        # TODO, edit: in that all relates to the position of text and image relative to each other.
+        # TODO, edit: so maybe prefix with pos_img_*/pos_text_* or canvas_image_*/canvas_text_* ?
+        ap.add_argument('--yoffset', metavar="int-or-fraction",  # , default=100
+                        help="Y offset (how far down the gel image should be).")
+        ap.add_argument('--ypadding', metavar="int-or-fraction",  # , default=100
+                        help="Vertical space between gel image and annotations.")
+        ap.add_argument('--xmargin', nargs=2, metavar=("left", "right"),  # , default=(30, 40)
+                        help="Margin to the right and left of lane annotations to the outer edge of GEL image.")
+        ap.add_argument('--xspacing', metavar="int-or-fraction",
+                        help="Force a certain x spacing between lanes.")
+        ap.add_argument('--xtraspaceright', metavar="int-or-fraction",
+                        help="""Add additional padding/whitespace to the right side of the gel image.
+                        This is sometimes needed if the gel is not wide enough for the last lane annotation.""")
+
+        # Annotation/text parameters:
+        # TODO: prefix all keywords with "text_" (or "annotations_" ?)
+        ap.add_argument('--textrotation', type=int, dest='textrotation', metavar="angle",
+                        help="Rotate lane annotations by this angle (counter-clockwise). Default: 70.")
+        ap.add_argument('--fontsize', type=int, metavar="size (int)",
+                        help="Specify default font size, e.g. 12 or 16.")
+        ap.add_argument('--fontfamily',
+                        help="Specify default font family, e.g. arial or MyriadPro.")
+        ap.add_argument('--fontweight',
+                        help="""Font weight: normal | bold | bolder | lighter |
+                        100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 | inherit.""")
+        # TODO: Rename to text_format (not fmt)
+        ap.add_argument('--textfmt', metavar="format_string",
+                        help="""How to format the lane annotations, e.g. '{idx} {name}'.
+                        Format keys include: idx, name. Default: '{name}'.""")
+        # TODO: Rename to text_idxstart (not lane)
+        ap.add_argument('--laneidxstart', type=int,
+                        help="Change the start number of the {idx} format parameter of lane annotations.")
+
+        #
+        # Annotation parameters:
+        # ----------------------
+        ap.add_argument('--annotationsfile', metavar="filename",
+                        help="Load lane annotations from this file. "
+                        "If not specified, will try to guess the right file.")
+
+        # lineinputstyle->lines_inputstyle, lines_includeempty, lines_listchar, lines_commentchar, lines_commentmidchar
+        # TODO: Maybe change all "lines_" to "annotations_" or text_input_?
+        ap.add_argument('--lines_inputstyle', metavar="string-spec",
+                        help="""This can be used to change how lines in the sample annotation file are interpreted.
+                        Default is to use all non-empty lines that does not begin with '#'.
+                        Set this to 'wikilist' to only include lines that starts with either of #, *, -, +.""")
+        ap.add_argument('--lines_includeempty', action="store_true",
+                        help="""Whether to include empty lines. Not applicable to 'wikilist' lines_inputstyle
+                        (use blank lines starting with '#' in this case).""")
+        ap.add_argument('--lines_listchar', metavar="string-spec",
+                        help="""If annotations are copy-pasted from a wiki/markdown list and you want to strip the
+                        list charaacter (e.g. '*' or '#'), specify the character here. Default: auto-detect.""")
+        ap.add_argument('--lines_commentchar', metavar="string-spec",
+                        help="Lines starting with this character are ignored (comments). Default: auto-detect.")
+        # ap.add_argument('--lines_commentmidchar', metavar="string-spec",
+        #                 help="Input to the right of this character is ignored (commented out). Default: auto-detect.")
+
+        # TODO: Rename to "svg_embed_png" (or "canvas_embed_png" ?)
+        ap.add_argument('--embed', action='store_true', default=True,
+                        help="Embed image data in svg file. (default)")
+        ap.add_argument('--no-embed', dest='embed', action='store_false',
+                        help="Do not embed image data in svg file, link to the file instead. (default is to embed)")
+
+        # TODO: Maybe prefix with "convert" - "convert-svg-to-png" or "svg_convert_to_png" ?
+        ap.add_argument('--svgtopng', action='store_true', default=None,
+                        help="Save svg as png (requires cairo package).")
+        ap.add_argument('--no-svgtopng', action='store_false', dest='svgtopng',
+                        help="Do not save svg as png (requires cairo package).")
+
+        # TODO: Rename to to "show_annotated_svg", "show_annotated_png" (or "open", "show", or "display") ?
+        ap.add_argument('--openwebbrowser', action='store_true', default=defaults.get('openwebbrowser'),
+                        help="Open annotated svg file in default webbrowser. Default: Do not open files.")
+        ap.add_argument('--no-openwebbrowser', action='store_false', dest='openwebbrowser',
+                        help="Do not open file in webbrowser.")
+
+    return ap
+gelutils/utils.py
+def printdict(d):
+    """Returns a string of d with sorted keys."""
+    try:
+        return "{" + ", ".join("{}: {}".format(repr(k), repr(v)) for k, v in sorted(d.items())) + "}"
+    except AttributeError:
+        return d

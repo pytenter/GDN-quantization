@@ -1,0 +1,15 @@
+{
+  "canonical_quantize_c128_source": "def quantize_c128(cache, audit):\n    for layer_idx in GDN_LAYERS:\n        state = get_state(cache, layer_idx)\n        if list(state.shape[-3:]) != [32, 128, 128]:\n            raise RuntimeError(f\"unexpected GDN state shape at layer {layer_idx}: {list(state.shape)}\")\n        source = state.detach().float()\n        scale = source.abs().amax(dim=-2, keepdim=True).clamp_min(EPS) / 127.0\n        codes = torch.round(source / scale).clamp(-127, 127)\n        dequant = codes * scale\n        if not bool(torch.isfinite(dequant).all().item()):\n            raise FloatingPointError(f\"nonfinite C128 dequant at layer {layer_idx}\")\n        state.copy_(dequant.to(state.dtype))\n        audit[\"layers\"].add(layer_idx)\n        audit[\"scale_shapes\"][str(layer_idx)] = list(scale.shape)\n        audit[\"code_min\"] = min(audit[\"code_min\"], int(codes.min().item()))\n        audit[\"code_max\"] = max(audit[\"code_max\"], int(codes.max().item()))\n    audit[\"calls\"] += 1",
+  "dynamic_exact_reference": "required in each smoke: compare original outer quantize_c128 to original CAYLEY.qwen_c128_qdq; no copied formula; inference never uses STE backward",
+  "formula": "unmodified original sources: symmetric round-to-nearest-even INT8 [-127,127], maxabs key-axis dim=-2 /127, EPS 1e-12; output state.copy_",
+  "rotation": "separate q/k @ H @ Delta; Value unchanged",
+  "scale_axis": "Key C128",
+  "source_sha256": "77b1e1f6dad8a0dd53a27cf5a47c02be86c26d2cf30732604ba6d3747e178f69",
+  "status": "PASS",
+  "training_quantizer_source": {
+    "bytes": 7549,
+    "mtime_ns": 1790007345950999631,
+    "path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/shared/rotation/cayley_rotation.py",
+    "sha256": "62e769dfad73170279daf0bdb56855b7d7e4aaf77478de897958fa87b2608067"
+  }
+}

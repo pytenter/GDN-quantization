@@ -1,0 +1,13 @@
+# QWEN_GDN_SHORT_HORIZON_SCALE_INFLATION_SURROGATE_VALIDATION_V1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/experiment_runs/QWEN_GDN_SHORT_HORIZON_SCALE_INFLATION_SURROGATE_VALIDATION_V1`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`FINAL_SCIENTIFIC_REPORT.md`](../../objects/58/5868165d074ec57bbb567ad49c95439ce6e9010c19f2604ec4a0f0570feaca81__FINAL_SCIENTIFIC_REPORT.md)
+- [`finalized_audit_002/FINAL_INTEGRITY_CHECK.json`](../../objects/7b/7bb5e22a71889b1447719beeefcbb5d1167e828bc1cc1c58a685b45a3616fa89__FINAL_INTEGRITY_CHECK.json)
+- [`finalized_audit_002/FINAL_SCIENTIFIC_REPORT.md`](../../objects/6c/6cb167ccf94435de0f7c352b66d864c15c04d319ad575dd5f6c1443c0b9eb3df__FINAL_SCIENTIFIC_REPORT.md)

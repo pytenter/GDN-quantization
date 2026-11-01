@@ -1,0 +1,147 @@
+{
+  "accumulated": "E(t)=sqrt(sum over selected layers ||R@stored_rotated_state - native_FP_state||_F^2); relative E/sqrt(sum ||FP||^2); ratio vs H in analyze_p2_all",
+  "analyze_tf_replay_dedup": "same(step,layer): keep greatest src_norm; distinct historical helper, not applied to inj_vs_acc reproduction",
+  "decode_only": true,
+  "gate": "PASS",
+  "historical_acc_layers": [
+    0,
+    6,
+    12,
+    18,
+    22
+  ],
+  "historical_acc_steps": "common sampled snapshot grid >=1024; not every token",
+  "inj_vs_acc_acc_values": "hardcoded rounded ratios in historical source, not independently recomputed by inj_vs_acc.py",
+  "inj_vs_acc_aggregation": "arithmetic mean of all decode rows including layers; no per-step dedup in inj_vs_acc.py",
+  "injection": "||dequant-source||_F/(||source||_F+EPS) per decode row; source is actual pre-QDQ state",
+  "new_primary_distinct": "prospectively specified mean per-token per-layer relative squared energy on all18 layers, [1024,T] inclusive; NOT claimed identical to historical sampled aggregate E(t)",
+  "raw_schema": "step,phase,layer,src_norm,err_norm,rel_err,amax,n",
+  "reproductions": {
+    "DA_fromH": {
+      "computed": {
+        "max": 0.00584947413,
+        "mean": 0.0023552781159380744,
+        "median": 0.00203569961,
+        "min": 0.000362098102,
+        "n": 378825
+      },
+      "exact_saved_metadata_match": true,
+      "raw": {
+        "bytes": 27421776,
+        "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_DATAADAPTIVE_ROTATION_V1/runs/da_initH/qdq_injection.tsv",
+        "sha256": "a407a91056f487558a524773f3c099fe1215751e1733fbae46b67078ae1204c5"
+      }
+    },
+    "DA_fromL6": {
+      "computed": {
+        "max": 0.00560394832,
+        "mean": 0.0025029194099502935,
+        "median": 0.00218084124,
+        "min": 0.000522911006,
+        "n": 378825
+      },
+      "exact_saved_metadata_match": true,
+      "raw": {
+        "bytes": 27395362,
+        "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_DATAADAPTIVE_ROTATION_V1/runs/da_initL6/qdq_injection.tsv",
+        "sha256": "6a5de2c7077221ac78a260265f31a5bcb0941e1dd2141b3d06ba9f849633dbb2"
+      }
+    },
+    "H": {
+      "computed": {
+        "max": 0.0135274384,
+        "mean": 0.0026338733367046517,
+        "median": 0.00229133264,
+        "min": 0.000491885816,
+        "n": 378885
+      },
+      "exact_saved_metadata_match": true,
+      "raw": {
+        "bytes": 76111938,
+        "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_TF_REPLAY_MECHANISM_V1/runs/H_gpu1/qdq_injection.tsv",
+        "sha256": "26b4999c2627c1cfde562c244c932ad0183318f52a6ab1cefb0118debf1ada36"
+      }
+    },
+    "L6": {
+      "computed": {
+        "max": 0.0117940574,
+        "mean": 0.0025665309241293876,
+        "median": 0.0021896437,
+        "min": 0.000519006291,
+        "n": 378885
+      },
+      "exact_saved_metadata_match": true,
+      "raw": {
+        "bytes": 94209814,
+        "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_TF_REPLAY_MECHANISM_V1/runs/L6_gpu0/qdq_injection.tsv",
+        "sha256": "24f0d1ec6f85a34c63c2cbe8298b2897845394bb876287065b0078699110f8ef"
+      }
+    },
+    "L7": {
+      "computed": {
+        "max": 0.0121028244,
+        "mean": 0.0027629978498776857,
+        "median": 0.00236200122,
+        "min": 0.000599715254,
+        "n": 378885
+      },
+      "exact_saved_metadata_match": true,
+      "raw": {
+        "bytes": 94071130,
+        "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_TF_REPLAY_MECHANISM_V1/runs/L7_gpu1/qdq_injection.tsv",
+        "sha256": "2c6e8724219873c847487c4bca41899500db933927d13900b8a875574faf1bde"
+      }
+    }
+  },
+  "saved_comparison": {
+    "bytes": 1053,
+    "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_DATAADAPTIVE_ROTATION_V1/analysis/injection_vs_accumulation.json",
+    "sha256": "9282e403bcbad417a1c2b1d7351d2fb14cbfb95fc00f1219318515b5d4360664"
+  },
+  "sources": [
+    {
+      "bytes": 20158,
+      "line_end": 93,
+      "line_start": 49,
+      "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_TF_REPLAY_MECHANISM_V1/scripts/sglang_kda_tf_replay_diag_patch.py",
+      "sha256": "0c7ee3f707eb06b485fa9b79b32823f0f1320b381e95ca6fd40f349cb59d751d",
+      "source": "# ---------------------------------------------------------------------------\n# P1 teacher-forced replay diagnostics.\n# Added by LING_L6_L7_TF_REPLAY_MECHANISM_V1.  The frozen patch logic above is\n# byte-identical; everything below only observes and samples.\n# ---------------------------------------------------------------------------\n_DIAG = {\n    \"every\": int(os.environ.get(\"AIME26_KDA_DIAG_EVERY\", \"0\") or 0),\n    \"qdq_path\": os.environ.get(\"AIME26_KDA_DIAG_QDQ_TSV\") or None,\n    \"state_dir\": os.environ.get(\"AIME26_KDA_DIAG_STATE_DIR\") or None,\n    \"logits_dir\": os.environ.get(\"AIME26_KDA_DIAG_LOGITS_DIR\") or None,\n    \"qdq_handle\": None,\n    \"writes\": 0,\n}\n\n\ndef _diag_init():\n    if _DIAG[\"state_dir\"]:\n        Path(_DIAG[\"state_dir\"]).mkdir(parents=True, exist_ok=True)\n    if _DIAG[\"logits_dir\"]:\n        Path(_DIAG[\"logits_dir\"]).mkdir(parents=True, exist_ok=True)\n    if _DIAG[\"qdq_path\"]:\n        handle_path = Path(_DIAG[\"qdq_path\"])\n        handle_path.parent.mkdir(parents=True, exist_ok=True)\n        _DIAG[\"qdq_handle\"] = handle_path.open(\"a\", encoding=\"utf-8\")\n        _DIAG[\"qdq_handle\"].write(\"step\\tphase\\tlayer\\tsrc_norm\\terr_norm\\trel_err\\tamax\\tn\\n\")\n\n\ndef _diag_qdq(source, dequant, phase, layer):\n    \"\"\"Per-step quantization-injection statistics (the M1 source term).\"\"\"\n    handle = _DIAG[\"qdq_handle\"]\n    if handle is None or int(layer) not in SELECTED_LAYERS:\n        return\n    force = _refresh_force()\n    step = int(force[\"step\"]) if force[\"active\"] else -1\n    src_norm = float(source.norm().item())\n    err_norm = float((dequant.detach().float() - source).norm().item())\n    amax = float(source.abs().amax().item())\n    rel = err_norm / (src_norm + EPS)\n    handle.write(\"%d\\t%s\\t%d\\t%.9g\\t%.9g\\t%.9g\\t%.9g\\t%d\\n\" % (\n        step, phase, int(layer), src_norm, err_norm, rel, amax, int(source.numel())))\n    _DIAG[\"writes\"] += 1\n    if _DIAG[\"writes\"] % 500 == 0:\n        handle.flush()\n\n"
+    },
+    {
+      "bytes": 3756,
+      "line_end": 82,
+      "line_start": 1,
+      "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_DATAADAPTIVE_ROTATION_V1/scripts/inj_vs_acc.py",
+      "sha256": "2356323a9bdec7c721e5afe881efc4c6e4fec74848d9978c4fded375ce1ae8bb",
+      "source": "#!/usr/bin/env python3\n\"\"\"Fair injection comparison: restrict EVERY condition to the same step window.\"\"\"\nimport os\nos.environ[\"CUDA_VISIBLE_DEVICES\"] = \"\"\nimport csv, json, statistics\nfrom pathlib import Path\n\nTF = Path(\"/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_TF_REPLAY_MECHANISM_V1\"); P2 = Path(\"/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_DATAADAPTIVE_ROTATION_V1\")\nLO, HI = 1024, 76800\nRUNS = {\n    \"H\": TF / \"runs/H_gpu1\", \"L6\": TF / \"runs/L6_gpu0\", \"L7\": TF / \"runs/L7_gpu1\",\n    \"DA_fromH\": P2 / \"runs/da_initH\", \"DA_fromL6\": P2 / \"runs/da_initL6\",\n}\ninj = {}\nfor name, run in RUNS.items():\n    vals = []\n    with (run / \"qdq_injection.tsv\").open() as fh:\n        for r in csv.DictReader(fh, delimiter=\"\\t\"):\n            if r.get(\"phase\") != \"decode\":\n                continue\n            try:\n                s = int(r[\"step\"])\n                if LO <= s <= HI:\n                    vals.append(float(r[\"rel_err\"]))\n            except Exception:\n                pass\n    inj[name] = {\"n\": len(vals), \"mean\": statistics.mean(vals),\n                 \"median\": statistics.median(vals), \"min\": min(vals), \"max\": max(vals)}\n\nacc = {\"H\": 1.0000, \"L6\": 0.7134, \"L7\": 0.7975, \"DA_fromH\": 1.2309, \"DA_fromL6\": 0.8669}\n\nprint(\"=== injection over the COMMON step window [%d, %d] ===\" % (LO, HI))\nprint(\"%-11s %9s %11s %11s\" % (\"cond\", \"n_rows\", \"mean_rel\", \"median\"))\nfor k, v in inj.items():\n    print(\"%-11s %9d %11.6f %11.6f\" % (k, v[\"n\"], v[\"mean\"], v[\"median\"]))\n\nmeans = {k: v[\"mean\"] for k, v in inj.items()}\nlo_k = min(means, key=means.get); hi_k = max(means, key=means.get)\nprint()\nprint(\"injection dynamic range  max/min = %.4f  (%.6f [%s] .. %.6f [%s])\" % (\n    means[hi_k] / means[lo_k], means[lo_k], lo_k, means[hi_k], hi_k))\nacc_lo = min(acc, key=acc.get); acc_hi = max(acc, key=acc.get)\nprint(\"accumulation dyn range   max/min = %.4f  (%.4f [%s] .. %.4f [%s])\" % (\n    acc[acc_hi] / acc[acc_lo], acc[acc_lo], acc_lo, acc[acc_hi], acc_hi))\n\nprint()\nprint(\"=== joint table + Spearman ===\")\norder = list(RUNS)\nprint(\"%-11s %12s %14s\" % (\"cond\", \"mean_inj\", \"mean_acc/H\"))\nfor k in order:\n    print(\"%-11s %12.6f %14.4f\" % (k, means[k], acc[k]))\n\nri = {k: r for r, k in enumerate(sorted(order, key=lambda x: means[x]), 1)}\nra = {k: r for r, k in enumerate(sorted(order, key=lambda x: acc[x]), 1)}\nd2 = sum((ri[k] - ra[k]) ** 2 for k in order)\nn = len(order)\nrho = 1 - 6 * d2 / (n * (n * n - 1))\nprint()\nprint(\"injection ranks :\", {k: ri[k] for k in order})\nprint(\"accumulation rk :\", {k: ra[k] for k in order})\nprint(\"Spearman rho = %.3f   (n=%d)\" % (rho, n))\n\nprint()\nprint(\"=== same-direction / opposite-direction pairs ===\")\nfor a in order:\n    for b in order:\n        if order.index(a) >= order.index(b):\n            continue\n        di = means[a] - means[b]\n        da = acc[a] - acc[b]\n        tag = \"SAME\" if di * da > 0 else \"OPPOSITE\"\n        if abs(di) > 1e-9:\n            print(\"  %-10s vs %-10s  d_inj=%+8.6f (%+6.2f%%)  d_acc=%+7.4f  -> %s\" % (\n                a, b, di, 100 * di / means[b], da, tag))\n\nprint()\nprint(\"=== explicit counterexample ===\")\nprint(\"  DA_fromH injection = %.6f  <  H injection = %.6f   (lower by %.2f%%)\" % (\n    means[\"DA_fromH\"], means[\"H\"], 100 * (1 - means[\"DA_fromH\"] / means[\"H\"])))\nprint(\"  DA_fromH accumulation = %.4f  >  H accumulation = %.4f   (worse by %.1f%%)\" % (\n    acc[\"DA_fromH\"], acc[\"H\"], 100 * (acc[\"DA_fromH\"] / acc[\"H\"] - 1)))\n"
+    },
+    {
+      "bytes": 8703,
+      "line_end": 70,
+      "line_start": 49,
+      "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_TF_REPLAY_MECHANISM_V1/scripts/analyze_tf_replay.py",
+      "sha256": "515b78773b8faa6477d3f7e63562049c340e39345ab601e1c5a0aa0592651d1c",
+      "source": "    if not path.exists():\n        return rows\n    with path.open() as handle:\n        reader = csv.DictReader(handle, delimiter=\"\\t\")\n        for row in reader:\n            if row.get(\"phase\") != \"decode\":\n                continue\n            try:\n                step = int(row[\"step\"]); layer = int(row[\"layer\"])\n                rel = float(row[\"rel_err\"]); src = float(row[\"src_norm\"])\n            except Exception:\n                continue\n            key = (step, layer)\n            prev = rows.get(key)\n            if prev is None or src > prev[1]:\n                rows[key] = (rel, src)\n    return rows\n\n\ndef loglog_slope(points):\n    pts = [(math.log(t), math.log(e)) for t, e in points if t > 0 and e > 0]\n    n = len(pts)"
+    },
+    {
+      "bytes": 3536,
+      "line_end": 93,
+      "line_start": 61,
+      "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_TF_REPLAY_MECHANISM_V1/scripts/p1_relative_error.py",
+      "sha256": "b41c11297c8acb14daa2b0bfacfb21cb363830d0aa7dc3af2d9fd85f2254dcc9",
+      "source": "    n2 = sum(float(ref_t[L].norm()) ** 2 for L in LAYERS)\n    norm_curve.append((step, math.sqrt(n2)))\n    for c in conds:\n        d2 = 0.0\n        for L in LAYERS:\n            st = torch.load(conds[c][step][L], map_location=\"cpu\", weights_only=False).float()\n            log = torch.matmul(rots[c][L], st)\n            d2 += float((log - ref_t[L]).norm()) ** 2\n        curves[c].append((step, math.sqrt(d2)))\n\nprint()\na, r2 = loglog_slope(norm_curve)\nprint(\"||S_fp(t)|| : first=%.4f last=%.4f ratio=%.3f  loglog_slope=%.4f (r2=%.3f)\" % (\n    norm_curve[0][1], norm_curve[-1][1], norm_curve[-1][1] / norm_curve[0][1], a, r2))\nprint()\nprint(\"%-6s %11s %7s %11s %11s %11s %7s\" % (\"cond\", \"abs_slope\", \"r2\", \"rel_first\", \"rel_last\", \"rel_slope\", \"r2\"))\nfor c in conds:\n    ab, ar2 = loglog_slope(curves[c])\n    rel = [(s, e / n) for (s, e), (_, n) in zip(curves[c], norm_curve)]\n    rb, rr2 = loglog_slope(rel)\n    print(\"%-6s %11.4f %7.3f %11.4f %11.4f %11.4f %7.3f\" % (c, ab, ar2, rel[0][1], rel[-1][1], rb, rr2))\n\nprint()\nprint(\"=== relative error E(t)/||S_fp(t)|| at checkpoints ===\")\nrelc = {c: {s: e / n for (s, e), (_, n) in zip(curves[c], norm_curve)} for c in conds}\nprint(\"%-9s %10s %10s %10s\" % (\"step\", \"H\", \"L6\", \"L7\"))\nfor target in (1024, 10240, 25600, 51200, 76800, 102400, 128000, 153600, 179200, 204800, 211968):\n    if target in relc[\"H\"]:\n        print(\"%-9d %10.4f %10.4f %10.4f\" % (target, relc[\"H\"][target], relc[\"L6\"][target], relc[\"L7\"][target]))\n"
+    },
+    {
+      "bytes": 4063,
+      "line_end": 116,
+      "line_start": 45,
+      "path": "/data01/user2/worktrees/ling-recurrent-dense-l6-l7-v1/experiments/LING_L6_L7_DATAADAPTIVE_ROTATION_V1/scripts/analyze_p2_all.py",
+      "sha256": "9dbcaad558e3132d9bb62d9fbdba1694d202786e66fcdd45a8d520357774d63e",
+      "source": "curves, norms = {k: [] for k in RUNS}, []\nfor step in common:\n    rt = {L: torch.load(ref[step][L], map_location=\"cpu\", weights_only=False).float() for L in LAYERS}\n    norms.append((step, math.sqrt(sum(float(rt[L].norm()) ** 2 for L in LAYERS))))\n    for name, (st, R) in RUNS.items():\n        d2 = 0.0\n        for L in LAYERS:\n            s = torch.load(st[step][L], map_location=\"cpu\", weights_only=False).float()\n            d2 += float((torch.matmul(R[L], s.detach()) - rt[L]).norm()) ** 2\n        curves[name].append((step, math.sqrt(d2)))\n\nidx = {s: i for i, (s, _) in enumerate(norms)}\nprint()\nprint(\"=== relative error  E(t)/||S_fp(t)|| ===\")\nprint(\"%-9s %8s %8s %8s %8s %9s %9s\" % (\"step\", \"H\", \"L6\", \"L7\", \"GEO\", \"DA_fromH\", \"DA_fromL6\"))\nfor st in (1024, 5120, 12800, 25600, 51200, 76800):\n    if st in idx:\n        i = idx[st]\n        print(\"%-9d %8.4f %8.4f %8.4f %8.4f %9.4f %9.4f\" % (\n            st, curves[\"H\"][i][1]/norms[i][1], curves[\"L6\"][i][1]/norms[i][1],\n            curves[\"L7\"][i][1]/norms[i][1], curves[\"GEO_L6x2\"][i][1]/norms[i][1],\n            curves[\"DA_fromH\"][i][1]/norms[i][1], curves[\"DA_fromL6\"][i][1]/norms[i][1]))\n\nprint()\nprint(\"=== ratio vs H  (<1.0 = better than Hadamard) ===\")\nprint(\"%-9s %8s %8s %8s %10s %10s\" % (\"step\", \"L6/H\", \"L7/H\", \"GEO/H\", \"DAfromH/H\", \"DAfromL6/H\"))\nfor st in (1024, 5120, 12800, 25600, 51200, 76800):\n    if st in idx:\n        i = idx[st]\n        h = curves[\"H\"][i][1]\n        print(\"%-9d %8.4f %8.4f %8.4f %10.4f %10.4f\" % (\n            st, curves[\"L6\"][i][1]/h, curves[\"L7\"][i][1]/h, curves[\"GEO_L6x2\"][i][1]/h,\n            curves[\"DA_fromH\"][i][1]/h, curves[\"DA_fromL6\"][i][1]/h))\n\nprint()\nprint(\"=== summary: mean and final ratio vs H, whole common range ===\")\nfor name in (\"L6\", \"L7\", \"GEO_L6x2\", \"DA_fromH\", \"DA_fromL6\"):\n    r = [curves[name][i][1]/curves[\"H\"][i][1] for i in range(len(common))]\n    print(\"  %-10s mean=%.4f  median=%.4f  final=%.4f  %s\" % (\n        name, sum(r)/len(r), sorted(r)[len(r)//2], r[-1],\n        \"BETTER than H overall\" if sum(r)/len(r) < 1 else \"worse than H overall\"))\n"
+    }
+  ],
+  "window": [
+    1024,
+    76800
+  ]
+}

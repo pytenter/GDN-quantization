@@ -1,0 +1,1 @@
+lambda _cls, min, max: _tuple_new(_cls, (min, max))

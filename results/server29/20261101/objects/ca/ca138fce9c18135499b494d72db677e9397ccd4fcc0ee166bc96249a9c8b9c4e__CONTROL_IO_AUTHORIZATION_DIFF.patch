@@ -1,0 +1,259 @@
+--- prior_readonly/src/execution_control.py
++++ new_repair/src/execution_control.py
+@@ -6,6 +6,11 @@
+ from inherited_device_guards import require,sha,read,atomic_new,process_identity,same_process,binding_rows,query_gpu
+ UUIDS=('GPU-a78176ed-f97f-c54f-6201-5a01b570f422','GPU-596e6591-b065-bb91-fd35-a1e90ba8f9e3','GPU-b7ed673d-18ba-39ca-d7bc-c846af4f6b31','GPU-30b07aba-a728-7649-4899-e09d33f8bc75')
+ TASK='QWEN_GDN_SYM8_G32_WSCALE_ROWBAL_AIME26_SEED1_V1'
++EXECUTION_REVISION=TASK+'_REDUCTION_REPAIR_20261025'
++EXECUTION_ROOT='/tmp/'+EXECUTION_REVISION
++ORIGIN_SOURCE_ROOT='/tmp/'+TASK
++ORIGIN_SOURCE_SHA256='ee2c01ff3a4963ba76a3df813bf22640de0c2de085ea82a2a297e067ac9f33b7'
++CALIBRATION_REUSE_STATUS='PASS_REUSED_FROZEN_NONAIME_CALIBRATION_DUAL_HOST_FRESH_SHA_NO_RECOLLECT_NO_RESELECT'
+ AUTHORIZED_GPUS=(1,2,3)
+ METHODS=('W','R','RW')
+ def canonical(x):return json.dumps(x,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False).encode()
+@@ -25,7 +30,13 @@
+   p=root/x['path'];require(p.stat().st_size==x['bytes'] and sha(p)==x['sha256'],'Frozen execution source differs:'+x['path'])
+  return sha(root/'SOURCE_FREEZE.json')
+ def authorize(root,permit):
+- root=Path(root).resolve();p=read(permit);h=read(root/'operations/HUMAN_TASK_AUTHORIZATION.json')
++ root=Path(root).resolve();p=read(permit)
++ require(str(root)==EXECUTION_ROOT and p.get('execution_root')==str(root),'Exact new reduction-repair execution root required')
++ h=read(root/'operations/HUMAN_TASK_AUTHORIZATION.json');repair=read(root/'operations/HUMAN_REDUCTION_REPAIR_AUTHORIZATION.json');reuse=read(root/'CALIBRATION_REUSE_ADMISSION.json')
++ require(p.get('reduction_repair_authorization_sha256')==sha(root/'operations/HUMAN_REDUCTION_REPAIR_AUTHORIZATION.json') and p.get('calibration_reuse_admission_sha256')==sha(root/'CALIBRATION_REUSE_ADMISSION.json'),'Repair authorization or calibration-reuse pin differs')
++ require(repair['task_id']==TASK and repair['new_remote_root']==EXECUTION_ROOT and repair['execution_revision']==EXECUTION_REVISION and repair['authorized_physical_GPUs']==list(AUTHORIZED_GPUS) and repair['old_qualification_credit']==0 and repair['old_formal_credit']==0,'Repair grant identity differs')
++ require(reuse['task_id']==TASK and reuse['status']==CALIBRATION_REUSE_STATUS and reuse['origin_source_root']==ORIGIN_SOURCE_ROOT and reuse['origin_source_sha256']==ORIGIN_SOURCE_SHA256,'Calibration reuse origin/status differs')
++ require(reuse['selected_a_b']==[.5,.25] and reuse['new_qualification_credit']==0 and reuse['new_formal_credit']==0 and reuse['no_reselection'] is True,'Calibration reuse selection/credit differs')
+  require(p['task_id']==TASK and h['task_id']==TASK and p['ALLOW_GPU']=='YES','Task-specific grant missing')
+  require(p['devices']==[UUIDS[g] for g in AUTHORIZED_GPUS] and p['physical_indices']==list(AUTHORIZED_GPUS),'Only55 GPU1/2/3 are authorized')
+  require(p['source_freeze_sha256']==verify_sources(root) and p['plan_sha256']==sha(root/'GPU_EXECUTION_PLAN.json') and p['human_grant_sha256']==sha(root/'operations/HUMAN_TASK_AUTHORIZATION.json'),'Permit identities changed')
+@@ -94,7 +105,7 @@
+  used=sum(p.stat().st_blocks*512 for folder in ['execution','formal'] for p in (root/folder).rglob('*') if p.is_file())
+  require(used<=2*1024**3,'New execution small-output2GiB bound reached; stop before exhausting disk')
+  return dict(free_bytes=s.f_bavail*s.f_frsize,shared_data_free_bytes=shared.f_bavail*shared.f_frsize,allocated_output_bytes=used)
+-def reference_root():return Path('/dev/shm/qwen_sym8_g32_wscale_rowbal_aime26_seed1_v1')
++def reference_root():return Path('/dev/shm/qwen_sym8_g32_wscale_rowbal_aime26_seed1_v1_reduction_repair_20261025')
+ 
+ def admit_inherited(root):
+  # Historical source/results remain outside this task's execution and are never
+--- prior_readonly/operations/launch_offline_once.py
++++ new_repair/operations/launch_offline_once.py
+@@ -12,7 +12,7 @@
+     sys.path.insert(0,str(root/'src'))
+     import execution_control as C
+     C.require(os.environ.get('CUDA_VISIBLE_DEVICES')=='','Offline launcher must be CPU-only')
+-    C.require(root==Path('/tmp')/C.TASK and root==Path(__file__).resolve().parents[1],
++    C.require(root==Path('/tmp')/C.EXECUTION_REVISION and root==Path(__file__).resolve().parents[1],
+               'Exact independent execution root required')
+     permit=C.authorize(root,root/'GPU_PERMIT.json')
+     C.model_guard(root);storage=C.storage_guard(root)
+@@ -29,7 +29,7 @@
+               'Durable independent calibration evidence missing')
+     C.validate_jobs(root,C.read(root/'FORMAL_JOB_MANIFEST.json')['jobs'])
+     inventory=[C.device(g) for g in C.AUTHORIZED_GPUS]
+-    session='qwen-wscale-rowbal-aime26-v1'
++    session='qwen-wscale-rowbal-reduction-repair-20261025'
+     check=subprocess.run(['tmux','has-session','-t',session],capture_output=True,text=True)
+     C.require(check.returncode==1,'Existing or unresolved tmux session; do not relaunch')
+     C.require(not(root/'finisher.log').exists(),'Existing offline output; inspect rather than truncate')
+--- prior_readonly/tests/control_integration_cpu.py
++++ new_repair/tests/control_integration_cpu.py
+@@ -103,6 +103,25 @@
+   __import__('threading').Event().wait(.15)
+  return value
+ real.atomic_new=fixture_atomic
++# CPU fixture I/O mapping only. The exact production authorize function and its
++# constant root checks execute unchanged, against an explicit virtual new root.
++_original_authorize=real.authorize
++class AuthorizationRoot:
++ def __init__(self,p):self.actual=Path(p)
++ def resolve(self):return self
++ def __str__(self):return real.EXECUTION_ROOT
++ def __fspath__(self):return str(self.actual)
++ def __truediv__(self,name):return self.actual/name
++def authorize(root,permit):
++ actual=Path(root).resolve();real.require(actual==ROOT.resolve(),'CPU fixture root mismatch')
++ original_path=real.Path
++ def mapped_path(value):
++  p=Path(value)
++  return AuthorizationRoot(p) if p.resolve()==ROOT.resolve() else p
++ real.Path=mapped_path
++ try:return _original_authorize(root,permit)
++ finally:real.Path=original_path
++real.authorize=authorize
+ real.process_identity=identity;real.same_process=same;real.query_gpu=query;real.storage_guard=storage;real.driver_identity=driver;real.library_check=library;real.bindings=bindings;real.reference_root=lambda:ROOT/'ram_references'
+ globals().update({k:v for k,v in vars(real).items() if not k.startswith('__')})
+ # Explicit fixture hooks; never copied into production source.
+@@ -223,6 +242,8 @@
+   (f/name).parent.mkdir(parents=True,exist_ok=True);(f/name).write_bytes((R/name).read_bytes())
+  for name in ['sampler.py','aime26_scorer_v4.py','FREE_CANARY_INPUT.json']:(f/'protocol'/name).write_bytes((R/'protocol'/name).read_bytes())
+  (f/'operations/HUMAN_TASK_AUTHORIZATION.json').write_bytes((R/'operations/HUMAN_TASK_AUTHORIZATION.json').read_bytes())
++ (f/'operations/HUMAN_REDUCTION_REPAIR_AUTHORIZATION.json').write_bytes((R/'operations/HUMAN_REDUCTION_REPAIR_AUTHORIZATION.json').read_bytes())
++ dump(f/'CALIBRATION_REUSE_ADMISSION.json',dict(task_id='QWEN_GDN_SYM8_G32_WSCALE_ROWBAL_AIME26_SEED1_V1',status='PASS_REUSED_FROZEN_NONAIME_CALIBRATION_DUAL_HOST_FRESH_SHA_NO_RECOLLECT_NO_RESELECT',origin_source_root='/tmp/QWEN_GDN_SYM8_G32_WSCALE_ROWBAL_AIME26_SEED1_V1',origin_source_sha256='ee2c01ff3a4963ba76a3df813bf22640de0c2de085ea82a2a297e067ac9f33b7',selected_a_b=[.5,.25],new_qualification_credit=0,new_formal_credit=0,no_reselection=True,CPU_MOCK_ONLY=True,not_scientific_calibration_evidence=True))
+  for name in ['CALIBRATION_DATA_FREEZE.json','TRANSPORTED_QUERY_OMEGA.json','CALIBRATION_PARAMETER_SELECTION.json']:dump(f/name,dict(CPU_FIXTURE_ONLY=True,not_scientific_evidence=True))
+  dump(f/'analysis/TRITON_RUNTIME_FRESH_SHA.json',dict(version='3.1.0',CPU_MOCK_ONLY=True,not_actual_compiler_evidence=True))
+  (f/'CPU_MOCK_MODEL.bin').write_bytes(b'EXPLICIT_CPU_MOCK_MODEL_NO_WEIGHTS')
+@@ -235,7 +256,7 @@
+   foreign=subprocess.Popen([sys.executable,'-B','-c','import time;time.sleep(120)'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);cfg['foreign_identity']=actual_identity(foreign.pid)
+  dump(f/'CASE.json',cfg)
+  paths=[p for p in sorted(f.rglob('*')) if p.is_file()];dump(f/'SOURCE_FREEZE.json',dict(CPU_FIXTURE_ONLY=True,not_GPU_qualification=True,files=[dict(path=str(p.relative_to(f)),bytes=p.stat().st_size,sha256=sha(p)) for p in paths]))
+- dump(f/'GPU_PERMIT.json',dict(task_id=mod.TASK,ALLOW_GPU='YES',CPU_FIXTURE_ONLY=True,not_valid_for_scientific_dispatch=True,devices=[uuids[g] for g in (1,2,3)],physical_indices=[1,2,3],source_freeze_sha256=sha(f/'SOURCE_FREEZE.json'),plan_sha256=sha(f/'GPU_EXECUTION_PLAN.json'),human_grant_sha256=sha(f/'operations/HUMAN_TASK_AUTHORIZATION.json'),GPUh_hard_cap=None,total_wall_cap=None,unit_elapsed_cap=None,watchdog_seconds=1800,cleanup_seconds=120,max_new_tokens=81920,formal_new_samples=90,seed=1,calibration_freeze_sha256=sha(f/'CALIBRATION_DATA_FREEZE.json'),omega_manifest_sha256=sha(f/'TRANSPORTED_QUERY_OMEGA.json'),parameter_selection_sha256=sha(f/'CALIBRATION_PARAMETER_SELECTION.json')))
++ dump(f/'GPU_PERMIT.json',dict(task_id=mod.TASK,execution_root='/tmp/'+mod.TASK+'_REDUCTION_REPAIR_20261025',reduction_repair_authorization_sha256=sha(f/'operations/HUMAN_REDUCTION_REPAIR_AUTHORIZATION.json'),calibration_reuse_admission_sha256=sha(f/'CALIBRATION_REUSE_ADMISSION.json'),ALLOW_GPU='YES',CPU_FIXTURE_ONLY=True,not_valid_for_scientific_dispatch=True,devices=[uuids[g] for g in (1,2,3)],physical_indices=[1,2,3],source_freeze_sha256=sha(f/'SOURCE_FREEZE.json'),plan_sha256=sha(f/'GPU_EXECUTION_PLAN.json'),human_grant_sha256=sha(f/'operations/HUMAN_TASK_AUTHORIZATION.json'),GPUh_hard_cap=None,total_wall_cap=None,unit_elapsed_cap=None,watchdog_seconds=1800,cleanup_seconds=120,max_new_tokens=81920,formal_new_samples=90,seed=1,calibration_freeze_sha256=sha(f/'CALIBRATION_DATA_FREEZE.json'),omega_manifest_sha256=sha(f/'TRANSPORTED_QUERY_OMEGA.json'),parameter_selection_sha256=sha(f/'CALIBRATION_PARAMETER_SELECTION.json')))
+  return f,pins,foreign
+ 
+ def env_for(f):return dict(os.environ,CUDA_VISIBLE_DEVICES='',PYTHONDONTWRITEBYTECODE='1',PYTHONPATH=str(f/'src'),WSCALE_CPU_FIXTURE_ONLY='YES',WSCALE_CPU_FIXTURE_ROOT=str(f))
+@@ -253,6 +274,35 @@
+   log.close()
+  return rc,signal_sent
+ 
++def authorization_negative_checks(f):
++ # Exercise the unchanged real authorize body through the same explicit CPU
++ # virtual-path I/O fixture before any controller Popen is possible.
++ code=r"""
++import json,os,sys
++from pathlib import Path
++import execution_control as C
++root=Path(os.environ['WSCALE_CPU_FIXTURE_ROOT']);permit=root/'GPU_PERMIT.json';original=permit.read_bytes();rows=[]
++for key,value in [('execution_root','/tmp/'+C.TASK),('reduction_repair_authorization_sha256','0'*64),('calibration_reuse_admission_sha256','1'*64)]:
++ p=json.loads(original);p[key]=value;permit.write_text(json.dumps(p))
++ try:C.authorize(root,permit)
++ except RuntimeError as e:rows.append(dict(case=key,status='PASS_REJECTED',error=str(e)))
++ else:raise AssertionError('Invalid repair admission accepted:'+key)
++ finally:permit.write_bytes(original)
++reuse=root/'CALIBRATION_REUSE_ADMISSION.json';old=reuse.read_bytes()
++for key,value in [('status','BLOCKED'),('origin_source_root','/tmp/FOREIGN_SOURCE'),('origin_source_sha256','f'*64),('new_qualification_credit',1),('no_reselection',False)]:
++ r=json.loads(old);r[key]=value;reuse.write_text(json.dumps(r));p=json.loads(original);p['calibration_reuse_admission_sha256']=C.sha(reuse);permit.write_text(json.dumps(p))
++ try:C.authorize(root,permit)
++ except RuntimeError as e:rows.append(dict(case='reuse_'+key,status='PASS_REJECTED',error=str(e)))
++ else:raise AssertionError('Invalid reuse origin/status accepted:'+key)
++ finally:reuse.write_bytes(old);permit.write_bytes(original)
++C.authorize(root,permit)
++print(json.dumps(dict(status='PASS_REAL_AUTHORIZE_REPAIR_NEGATIVES_ONLY_CPU_FIXTURE',checks=rows,GPU_calls=0,model_loads=0,production_dispatches=0)))
++"""
++ result=subprocess.run([sys.executable,'-B','-c',code],env=env_for(f),capture_output=True,text=True,timeout=20)
++ require(result.returncode==0,'Repair authorization negative CPU checks failed:'+result.stderr)
++ report=json.loads(result.stdout);dump(f/'AUTHORIZATION_NEGATIVE_CPU.json',report)
++ return report
++
+ def assert_no_owned_children(f):
+  live=[]
+  for p in (f/'state').glob('worker_*.json'):
+@@ -264,12 +314,13 @@
+  ap=argparse.ArgumentParser();ap.add_argument('--evidence-root',type=Path);args=ap.parse_args()
+  production_hashes={n:sha(R/n) for n in ['scripts/gpu_controller.py','scripts/gpu_unit_worker.py','src/control_qualification.py','src/control_plan.py','src/execution_control.py','src/record_validation.py']}
+  phase=R/'CALIBRATION_SOURCE_FREEZE.json';before=sha(phase);require(before==PHASE_A_SHA,'PhaseA sourcefreeze hash differs')
+- phasefiles={x['path']:x['sha256'] for x in read(phase)['files']}
+- require(all(sha(R/k)==v for k,v in phasefiles.items()),'FrozenphaseA source changed beforetests')
+- base=args.evidence_root or Path(tempfile.mkdtemp(prefix='wscale_actual_control_cpu_'));base=base.resolve();base.mkdir(parents=True,exist_ok=True);results=[]
++ phasefiles={x['path']:x['sha256'] for x in read(phase)['files']};origin=R/'provenance/PRIOR_TRUE_STOP/source'
++ require(all(sha(origin/k)==v for k,v in phasefiles.items()),'Original frozenphaseA provenance changed beforetests')
++ base=args.evidence_root or Path(tempfile.mkdtemp(prefix='wscale_reduction_repair_control_cpu_'));base=base.resolve();base.mkdir(parents=True,exist_ok=True);results=[]
+  for case in ['success','exit_transition','qualification_failure','formal_failure','external_sigterm','foreign_pid_reuse']:
+   f,pins,foreign=stage_fixture(base,case)
+   try:
++   authorization_negatives=authorization_negative_checks(f) if case=='success' else None
+    rc,sent=run_controller(f,case);terminal=read(f/'SESSION_RESULT.json');ledger=read(f/'RESOURCE_LEDGER.json');formal=list((f/'formal').glob('*/DISPATCH.json')) if (f/'formal').exists() else [];gate=(f/'AUTHORIZATION_FORMAL.json').exists();successful=case in ('success','exit_transition','foreign_pid_reuse')
+    if successful:
+     require(rc==0 and terminal['status']=='GPU_COMPLETE_52_QUALIFICATION_90_FORMAL' and len(formal)==90,'Success path failed actual strictbarrier:'+str((rc,terminal)))
+@@ -284,6 +335,7 @@
+    if case=='foreign_pid_reuse':require((f/'state/REUSED_PID.json').exists() and foreign.poll() is None and same_actual(read(f/'CASE.json')['foreign_identity']),'ForeignPIDreuse fixture missing or actualforeignprocess signalled')
+    row=dict(case=case,status='PASS',returncode=rc,formal_dispatches=len(formal),formal_barrier_created=gate,actual_Popen_leaves=len(ledger['intervals']),production_source=pins,first_failure=read(f/'FIRST_FAILURE.json') if (f/'FIRST_FAILURE.json').exists() else None,CPU_MOCK_ONLY=True,GPU_qualification_credit=0,AIME_samples=0,remote_writes=0,fixture_root=str(f),receipt_sha256={name:sha(f/name) for name in ['SESSION_RESULT.json','RESOURCE_LEDGER.json','FORMAL_PROGRESS.json']})
+    if case=='success':
++    row['repair_authorization_negatives']=authorization_negatives
+     count=len(list(f.glob('execution/*/DISPATCH.json')))+len(formal);rc2,_=run_controller(f,'restart');after=len(list(f.glob('execution/*/DISPATCH.json')))+len(list(f.glob('formal/*/DISPATCH.json')));require(rc2!=0 and after==count and 'Already dispatched; no relaunch or resets' in (f/'controller.log').read_text(),'Actualrestart allowedredispatch')
+     row['restart']=dict(status='PASS_REJECTED_BEFORE_NEW_POPEN',returncode=rc2,dispatch_count_unchanged=count)
+    results.append(row);print(json.dumps(dict(case=case,status='PASS',CPU_MOCK_ONLY=True,GPU_credit=0)),flush=True)
+@@ -291,8 +343,8 @@
+    if foreign is not None:
+     # This is only the test-owned CPU sentinel, never a GPU/foreignsciencePID.
+     if foreign.poll() is None:foreign.terminate();foreign.wait(timeout=5)
+- require(sha(phase)==before and all(sha(R/k)==v for k,v in phasefiles.items()),'FrozenphaseA source changed duringtests')
++ require(sha(phase)==before and all(sha(origin/k)==v for k,v in phasefiles.items()),'FrozenphaseA source changed duringtests')
+  require(all(sha(R/k)==v for k,v in production_hashes.items()),'Production source changed duringfreshsuite')
+- report=dict(production_sha256=production_hashes,status='PASS_ACTUAL_PRODUCTION_CONTROLLER_WORKER_STRICT_INSPECT_FORMAL_BARRIER_CPU_FIXTURES',cases=results,case_count=len(results),restart_negative=True,phaseA_freeze_sha256=before,phaseA_31_frozen_sources_unchanged=True,explicit_mocks=['model/runtime','CUDA/device/native observations','fixtureidentity helper for portability/PIDreuse','poll sleep acceleration'],actual_components=['controller source','worker source','execution_control source/auth/source verification','finite plan source','payloadvalidator source','strict inspector source','real Popen/freshPython children','real signals andownedcleanup','formal admission barrier'],GPU_calls=0,GPU_qualification_credit=0,AIME_samples=0,science_GPU_runs_started=0,fixture_root=str(base),not_scientific_execution_evidence=True)
++ report=dict(production_sha256=production_hashes,status='PASS_ACTUAL_PRODUCTION_CONTROLLER_WORKER_STRICT_INSPECT_FORMAL_BARRIER_CPU_FIXTURES',cases=results,case_count=len(results),restart_negative=True,phaseA_freeze_sha256=before,phaseA_31_original_frozen_sources_unchanged=True,phaseA_original_source_root=str(origin),new_execution_control_is_independent_repair=True,explicit_mocks=['model/runtime','CUDA/device/native observations','fixtureidentity helper for portability/PIDreuse','poll sleep acceleration'],actual_components=['controller source','worker source','execution_control source/auth/source verification','finite plan source','payloadvalidator source','strict inspector source','real Popen/freshPython children','real signals andownedcleanup','formal admission barrier'],GPU_calls=0,GPU_qualification_credit=0,AIME_samples=0,science_GPU_runs_started=0,fixture_root=str(base),not_scientific_execution_evidence=True)
+  dump(base/'CPU_CONTROL_INTEGRATION_REPORT.json',report);print(json.dumps(dict(status=report['status'],report=str(base/'CPU_CONTROL_INTEGRATION_REPORT.json'),case_count=len(results),GPU_calls=0)),flush=True)
+ if __name__=='__main__':main()
+--- prior_readonly/tests/offline_launcher_cpu.py
++++ new_repair/tests/offline_launcher_cpu.py
+@@ -15,7 +15,8 @@
+ 
+ 
+ TASK = 'QWEN_GDN_SYM8_G32_WSCALE_ROWBAL_AIME26_SEED1_V1'
+-ROOT = PurePosixPath('/tmp') / TASK
++EXECUTION_REVISION = TASK+'_REDUCTION_REPAIR_20261025'
++ROOT = PurePosixPath('/tmp') / EXECUTION_REVISION
+ 
+ 
+ class Fixture:
+@@ -56,6 +57,7 @@
+         self.C = types.ModuleType('execution_control')
+         C = self.C
+         C.TASK = TASK
++        C.EXECUTION_REVISION = EXECUTION_REVISION
+         C.AUTHORIZED_GPUS = (1, 2, 3)
+         def require(value, message):
+             if not value: raise RuntimeError(message)
+@@ -78,6 +80,9 @@
+                 require(q.actual().stat().st_size == row['bytes'] and C.sha(q) == row['sha256'],
+                     'CPU_FIXTURE source byte failure')
+             require(p['ALLOW_GPU'] == 'YES', 'CPU_FIXTURE permit denied')
++            require(p.get('execution_root')==str(ROOT), 'CPU_FIXTURE exact repair root differs')
++            require(p.get('reduction_repair_authorization_sha256')==C.sha(root/'operations/HUMAN_REDUCTION_REPAIR_AUTHORIZATION.json'), 'CPU_FIXTURE repair grant pin differs')
++            require(p.get('calibration_reuse_admission_sha256')==C.sha(root/'CALIBRATION_REUSE_ADMISSION.json'), 'CPU_FIXTURE reused calibration pin differs')
+             return p
+         C.authorize = authorize
+         def model_guard(root):
+@@ -120,7 +125,9 @@
+         raw = (self.root/'src/frozen_boundary.py').actual().read_bytes()
+         self.write('SOURCE_FREEZE.json', dict(files=[dict(path='src/frozen_boundary.py',
+             bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())]))
+-        self.write('GPU_PERMIT.json', dict(ALLOW_GPU='YES',
++        self.write('operations/HUMAN_REDUCTION_REPAIR_AUTHORIZATION.json',dict(CPU_MOCK_ONLY=True))
++        self.write('CALIBRATION_REUSE_ADMISSION.json',dict(CPU_MOCK_ONLY=True))
++        self.write('GPU_PERMIT.json', dict(ALLOW_GPU='YES',execution_root=str(ROOT),reduction_repair_authorization_sha256=C.sha(self.root/'operations/HUMAN_REDUCTION_REPAIR_AUTHORIZATION.json'),calibration_reuse_admission_sha256=C.sha(self.root/'CALIBRATION_REUSE_ADMISSION.json'),
+             source_freeze_sha256=C.sha(self.root/'SOURCE_FREEZE.json')))
+         self.write('CPU_CODEC_QUALIFICATION.json', dict(status='PASS_CPU_CONTRACTS_AND_INTEGRATION_NOT_GPU'))
+         self.write('calibration/FP_COLLECTION_EXIT_RELEASE.json', dict(status='PASS_ACTUAL_EXIT0_AND_RELEASE'))
+@@ -170,6 +177,8 @@
+     case('source bytes changed blocks', lambda f:f.write('src/frozen_boundary.py', 'changed', raw=True))
+     case('permit source SHA changed blocks', lambda f:f.write('GPU_PERMIT.json', dict(ALLOW_GPU='YES',source_freeze_sha256='0'*64)))
+     case('permit denied blocks', lambda f:f.write('GPU_PERMIT.json', dict(ALLOW_GPU='NO',source_freeze_sha256=f.C.sha(f.root/'SOURCE_FREEZE.json'))))
++    for key in ['execution_root','reduction_repair_authorization_sha256','calibration_reuse_admission_sha256']:
++        case(key+' mismatch blocks', lambda f,key=key:f.write('GPU_PERMIT.json',dict(f.read('GPU_PERMIT.json'),**{key:'CPU_FIXTURE_WRONG'})))
+     case('model stat boundary failure blocks', lambda f:setattr(f,'fail_model',True))
+     case('storage boundary failure blocks', lambda f:setattr(f,'fail_storage',True))
+     case('CPU qualification failure blocks', lambda f:f.write('CPU_CODEC_QUALIFICATION.json',dict(status='FAIL')))
+@@ -211,6 +220,7 @@
+     try:
+         f.launch()
+         assert len(f.new_calls())==1
++        assert f.new_calls()[0][4]=='qwen-wscale-rowbal-reduction-repair-20261025'
+         assert [x for x in f.admission_calls if isinstance(x,tuple)]==[('device',1),('device',2),('device',3)]
+         receipt=f.read('operations/OFFLINE_LAUNCH_RECEIPT.json')
+         assert receipt['actual_returncode']==0 and receipt['pane_query_returncode']==0
+@@ -246,7 +256,7 @@
+     return dict(status='PASS_CPU_ACTUAL_LAUNCHER_ADMISSION_AND_ONCE_ONLY_SIDE_EFFECTS',
+         production_source_sha256=hashlib.sha256(source.encode()).hexdigest(),checks=len(rows),rows=rows,
+         GPU_calls=0,model_loads=0,actual_tmux_calls=0,actual_worker_or_finisher_calls=0,
+-        fixture_root='Temporary physical directory with virtual exact /tmp/TASK paths',
++        fixture_root='Temporary physical directory with virtual exact independent reduction-repair /tmp/root paths',
+         boundaries='C source/permit/model/storage/jobs/device and subprocess mocked; this is CPU control proof, not GPU qualification')
+ 
+ 
+--- prior_readonly/tests/finalizer_integration_cpu.py
++++ new_repair/tests/finalizer_integration_cpu.py
+@@ -37,11 +37,11 @@
+ 
+ def main():
+  ap=argparse.ArgumentParser();ap.add_argument('--control-fixture-root',type=Path,required=True);a=ap.parse_args();base=a.control_fixture_root.resolve();require((base/'success/SESSION_RESULT.json').exists(),'Need successful explicitCPUcontrolfixture')
+- output=Path(tempfile.mkdtemp(prefix='wscale_actual_finalizer_cpu_')).resolve();prelude=output/'run_actual_finisher.py';prelude.write_text(PRELUDE)
++ output=Path(tempfile.mkdtemp(prefix='wscale_reduction_repair_finalizer_cpu_')).resolve();prelude=output/'run_actual_finisher.py';prelude.write_text(PRELUDE)
+  # Standard rsync remote-shell interface: discard its hostarg and forward its
+  # unchanged remote rsyncserver command through the two existing masters.
+  helper=output/'rsync_shell.py';helper.write_text('#!'+sys.executable+'\nimport os,shlex,sys\nSSH55='+repr(SSH55)+'\nSSH29='+repr(SSH29)+'\ncommand=SSH55+[shlex.join(SSH29+[shlex.join(sys.argv[2:])])]\nos.execvp(command[0],command)\n');helper.chmod(0o700)
+- suffix=output.name;archive_parent='/data/zypan/analyses/wscale_cpu_fixture_evidence/'+suffix;results=[]
++ suffix=output.name;archive_parent='/data/zypan/analyses/wscale_reduction_repair_cpu_fixture_evidence/'+suffix;results=[]
+  source=R/'scripts/finalize_offline.py';source_sha=sha(source);score=R/'scripts/score_pass_cpu.py';score_sha=sha(score)
+  for mode,case,expected in [('full','success','FORMAL_COMPLETE_90_90_AND_STOP'),('partial','qualification_failure','PARTIAL_RESULTS_PRESERVED_AND_STOP')]:
+   f=base/case;require(read(f/'CASE.json')['CPU_FIXTURE_ONLY'],'Refuse nonfixture source')

@@ -1,0 +1,42 @@
+{
+  "GPU_dispatches": 0,
+  "diagnostic": "analysis/CPU_NORMALIZATION_SHAPE_DIAGNOSTIC.json",
+  "diagnostic_sha256": "b94d87f5edd700791ab7121d2fa30bca95505605c4a222ea2dac20b5aec7bf0f",
+  "new_checker_sha256": "fd2ad95b4618049ae9b5b1091b8250909217a9d458157f0eb3d019190b4127aa",
+  "new_diagnostics": "All24layer standalone16-vs32 primitive trace and actual stacked-vs32 count/max/BF16encoding-step recorded, no cross-shape byte hard gate",
+  "new_hard_checks": [
+    "Production normalization expression AST exactly original multiply/sum/epsilon/rsqrt/multiply graph",
+    "All normalization primitives retain incoming BF16 dtype",
+    "Actual production stacked normalization equals isolated unchanged original l2norm at same shape",
+    "FP32 Q/K rotation compared independent FP64 dot with operation-count gamma256FP32 componentwise budget",
+    "Original sharedhead/PBR/recurrence/readout/math/codec/nextconsumption invariants retained"
+  ],
+  "next_execution": "Parent runs two fresh CPU processes output_2/output_3 after independent review, never overwrite/rerun original output_1",
+  "not_claimed": [
+    "No GPU qualification",
+    "No 9B numerical acceptance",
+    "No legacy failure status rewrite"
+  ],
+  "observed": {
+    "K_normalized_elements_different": 1174,
+    "K_rsqrt_factors_different": 10,
+    "Q_normalized_elements_different": 926,
+    "Q_rsqrt_factors_different": 8,
+    "actual_production_stack_vs_old_K_different": 0,
+    "actual_production_stack_vs_old_Q_different": 0,
+    "normalized_max_BF16_encoding_steps": 2,
+    "normalized_maxabs": 0.001953125,
+    "rsqrt_max_BF16_encoding_steps": 1,
+    "rsqrt_maxabs": 0.00048828125,
+    "total_factors": 96,
+    "total_normalized_elements": 12288
+  },
+  "old_checker_preserved": "analysis/CPU_CHECKER_ORIGINAL_FAILED_3237a4ce.py",
+  "old_checker_sha256": "3237a4ce6be5c12df81dcd4ebb9bcfc459e17380d85a5377b77f8c957102c336",
+  "old_failure_receipt": "qualification/CPU_MATH_QUALIFICATION_1_FAILURE.json",
+  "old_started": "qualification/CPU_MATH_QUALIFICATION_1_STARTED.json",
+  "production_modified": false,
+  "production_sha256_before_after": "4d505a51b1aeeb8235acfa6feee1caba38328d6ec654628559190b5e0a8f1f95",
+  "reason": "Original hard assertion compared standalone16 norm48rows to repeated32 norm96rows bitwise. Actual production stacks Q/K first,96rows, and original source l2norm at identical production shape matched exactly in the failed fixture. Divergence first occurs at CPU BF16 torch.rsqrt despite identical input/square/sum/+eps. Human contract explicitly excludes all different-float-graph intermediate bytes as hard requirement.",
+  "status": "ONE_CONSOLIDATED_CHECKER_ONLY_CORRECTION_PRE_GPU_FREEZE"
+}

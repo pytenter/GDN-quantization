@@ -1,0 +1,55 @@
+--- frozen/worker/restoration_worker.py
++++ CPU_CONTROL_REVISION_01/worker/restoration_worker.py
+@@ -22,7 +22,6 @@
+     import restoration_controller as controller
+     permit=controller.require_worker_permit(r,a.mode,a.unit,a.permit)
+     # All imports below are unreachable while ALLOW_GPU_RESTORE=NO.
+-    import torch
+     plan=read(r/'qualification/GPU_PLAN.json');target=r/'execution'/a.unit
+     proc=Path('/proc')/str(os.getpid())
+     process_identity=dict(pid=os.getpid(),starttick=int(proc.joinpath('stat').read_text().rsplit(')',1)[1].split()[19]),cmdline=proc.joinpath('cmdline').read_bytes().rstrip(b'\0').decode().split('\0'))
+@@ -36,6 +35,12 @@
+     extra=r/'analysis/environment/CPU_FIXTURE_CRITICAL_NATIVE_BINDINGS.json'
+     if extra.exists():
+         for x in read(extra)['native_library_rows']:allowed[str(Path(x['path']).resolve())]=x
++    def driver_ordinal_check():
++        try:receipt=controller.require_driver_ordinal_identity(list(allowed.values()))
++        except BaseException as exc:
++            receipt=getattr(exc,'driver_identity_receipt',dict(status='FAIL_CLOSED_STOP',expected_uuid=controller.UUID,error=type(exc).__name__+':'+str(exc)))
++            save(target/'DRIVER_ORDINAL_IDENTITY.json',receipt);raise
++        save(target/'DRIVER_ORDINAL_IDENTITY.json',receipt)
+     def environment_snapshot():
+         return dict(torch=torch.__version__,cuda_build=torch.version.cuda,
+                     intraop_threads=torch.get_num_threads(),interop_threads=torch.get_num_interop_threads(),
+@@ -45,6 +50,10 @@
+                     fill_uninitialized_memory=torch.utils.deterministic.fill_uninitialized_memory,
+                     environment={k:os.environ.get(k) for k in ['CUDA_VISIBLE_DEVICES','CUBLAS_WORKSPACE_CONFIG','OMP_NUM_THREADS','MKL_NUM_THREADS','CUDA_DEVICE_ORDER']})
+     def library_check(phase):
++        try:own_gpu_identity=controller.require_own_gpu_identity(os.getpid())
++        except BaseException as exc:
++            own_gpu_identity=getattr(exc,'gpu_identity_receipt',dict(status='FAIL_CLOSED_STOP',own_pid=os.getpid(),expected_uuid=controller.UUID,observation=None,own_records=[],error=type(exc).__name__+':'+str(exc)))
++        save(target/(phase+'_OWN_GPU_IDENTITY.json'),own_gpu_identity)
+         mapped=Path('/proc/self/maps').read_text(); selected=[];missing=[]
+         words=['libtorch','libc10','libcudart','libcublas','libcudnn','libnvrtc','libcuda.','libtorchaudio','torchvision']
+         for line in mapped.splitlines():
+@@ -63,9 +72,9 @@
+             reference_path=r/'execution/NUMERIC_FRESH0'/(phase+'_LIBRARY_IDENTITY.json')
+             reference_signature=read(reference_path)['critical_selection_signature']
+             selection_matches=signature==reference_signature
+-        receipt=dict(phase=phase,status='PASS' if selected and not missing and all(x['match'] for x in selected) and selection_matches else 'FAIL_CLOSED_STOP',selected=selected,missing=missing,full_maps=mapped,actual_environment=environment_snapshot(),critical_selection_signature=signature,same_phase_OLD_reference_signature=reference_signature,selection_matches_same_phase_OLD_reference=selection_matches)
++        receipt=dict(phase=phase,status='PASS' if selected and not missing and all(x['match'] for x in selected) and selection_matches and own_gpu_identity['status']=='PASS' else 'FAIL_CLOSED_STOP',own_gpu_identity=own_gpu_identity,selected=selected,missing=missing,full_maps=mapped,actual_environment=environment_snapshot(),critical_selection_signature=signature,same_phase_OLD_reference_signature=reference_signature,selection_matches_same_phase_OLD_reference=selection_matches)
+         save(target/(phase+'_LIBRARY_IDENTITY.json'),receipt)
+-        check(receipt['status']=='PASS','Unbound/changed critical runtime library')
++        check(receipt['status']=='PASS','Unbound/changed critical runtime library or own actual GPU identity')
+     oldpath=r/'candidate/source_tree/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/qwen_gdn/aime26/81920/run_qwen_aime26_formal.py'
+     def old_module():
+         sys.path.insert(0,str(oldpath.parent));f=load('restored_original_aime',oldpath)
+@@ -77,6 +86,8 @@
+         check(not torch.are_deterministic_algorithms_enabled() and not torch.backends.cuda.matmul.allow_tf32 and torch.backends.cudnn.allow_tf32 and not torch.backends.cudnn.deterministic,'Historical recorded flags not reproduced')
+         check(all(os.environ.get(k) is None for k in ['CUBLAS_WORKSPACE_CONFIG','OMP_NUM_THREADS','MKL_NUM_THREADS','CUDA_DEVICE_ORDER']),'Historical actual-unset environment not reproduced')
+     try:
++        driver_ordinal_check()
++        import torch
+         if a.mode=='benchmark':
+             m=load('historical_matched_benchmark',r/'candidate/benchmark_replay/source/matched_worker.py')
+             m.OLD=oldpath

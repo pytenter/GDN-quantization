@@ -1,0 +1,800 @@
+src/main/java/net/okjsp/community/service/CommentService.java
+public interface CommentService {
+
+    public List<Comment> getList(
+            int boardNo,
+            int writeNo,
+            String searchflg,
+            String search,
+            String sort,
+            Paging paging);
+
+    public List<Comment> getListForArticle(
+            int boardNo,
+            int writeNo);
+    
+    public int getTotalCount(
+            int boardNo,
+            int writeNo);
+
+    public Comment getOne(
+            int boardNo,
+            int writeNo,
+            int commentId);
+
+    public boolean create(Comment comment);
+    
+    public boolean modify(Comment comment);
+    
+    public boolean destroy(Comment comment);
+ 
+
+}
+src/main/java/net/okjsp/community/model/Article.java
+public class Article {
+
+	// 게시판 ID
+	private int boardId;
+	
+	// 하위 카테고리명
+	private int categoryId;
+	
+	// 사용여부
+	private boolean enabled;
+	
+	// 공통 글번호
+	private int writeNo;
+	
+	// 회원 아이디
+	private int userId;
+	
+	// 제목
+    @NotBlank
+	private String title;
+	
+	//익명글 체크
+	private boolean anonymized;
+	
+	//익명글 닉네임
+	private String anonymousNickname;
+	
+	// 내용
+	private String content;
+	
+	// 조회수
+	private int postingHit;
+	
+	// 작성일시
+	private Date writeDate;
+	
+	// 업데이트 일시
+	private Date updateDate;
+	
+	//작성자
+	private User user;
+
+    private int commentCount;
+
+    private List<Comment> comments;
+
+    //TODO: 첨부파일
+
+	public User getUser() {
+		return user;
+	}
+
+	public void setUser(User user) {
+		this.user = user;
+	}
+
+	public int getBoardId() {
+		return boardId;
+	}
+
+	public void setBoardId(int boardId) {
+		this.boardId = boardId;
+	}
+
+	public int getCategoryId() {
+		return categoryId;
+	}
+
+	public void setCategoryId(int categoryId) {
+		this.categoryId = categoryId;
+	}
+
+	public boolean getEnabled() {
+		return enabled;
+	}
+
+	public void setEnabled(boolean enabled) {
+		this.enabled = enabled;
+	}
+
+	public int getWriteNo() {
+		return writeNo;
+	}
+
+	public void setWriteNo(int writeNo) {
+		this.writeNo = writeNo;
+	}
+
+	public int getUserId() {
+		return userId;
+	}
+
+	public void setUserId(int userId) {
+		this.userId = userId;
+	}
+
+	public String getTitle() {
+		return title;
+	}
+
+	public void setTitle(String title) {
+		this.title = title;
+	}
+
+	public String getContent() {
+		return content;
+	}
+
+	public void setContent(String content) {
+		this.content = content;
+	}
+
+	public int getPostingHit() {
+		return postingHit;
+	}
+
+	public void setPostingHit(int postingHit) {
+		this.postingHit = postingHit;
+	}
+
+	public Date getWriteDate() {
+		return writeDate;
+	}
+
+	public void setWriteDate(Date writeDate) {
+		this.writeDate = writeDate;
+	}
+
+	public Date getUpdateDate() {
+		return updateDate;
+	}
+
+	public void setUpdateDate(Date updateDate) {
+		this.updateDate = updateDate;
+	}
+
+	public boolean getAnonymized() {
+		return anonymized;
+	}
+
+	public void setAnonymized(boolean anonymized) {
+		this.anonymized = anonymized;
+	}
+
+	public String getAnonymousNickname() {
+		return anonymousNickname;
+	}
+
+	public void setAnonymousNickname(String anonymousNickname) {
+		this.anonymousNickname = anonymousNickname;
+	}
+
+
+    public int getCommentCount() {
+        return commentCount;
+    }
+
+    public void setCommentCount(int commentCount) {
+        this.commentCount = commentCount;
+    }
+
+    public String getNickname() {
+        if(getAnonymized()) {
+            return getAnonymousNickname();
+        } else {
+            User user = getUser();
+            if(user != null) {
+                return user.getNickName();
+            } else {
+                return "";
+            }
+        }
+    }
+
+    public String getProfileImg() {
+        if(!getAnonymized()) {
+            User user = getUser();
+            if(user != null) {
+                return user.getProfileImg();
+            }
+        }
+        return "";
+    }
+
+    public List<Comment> getComments() {
+        return comments;
+    }
+
+    public void setComments(List<Comment> comments) {
+        this.comments = comments;
+    }
+}
+src/main/java/net/okjsp/user/model/User.java
+public class User implements UserDetails, CredentialsContainer {
+
+    private static final long serialVersionUID = SpringSecurityCoreVersion.SERIAL_VERSION_UID;
+
+    private int userId;
+
+    @NotBlank @Email
+    private String email;
+
+//    @NotBlank @Pattern(regexp = "^(?=.*\\d)(?=.*[A-Za-z]).{6,20}$")
+    private String password;
+
+    private String passwordConfirm;
+
+    @NotBlank @Size(min = 2, max = 50)
+    private String name;
+
+    @NotBlank @Size(max = 50)
+    private String nickName;
+
+    @Pattern(regexp = "^[\\d]{2,4}\\-[\\d]{2,4}\\-[\\d]{4}$")
+    private String tel;
+
+    private String profileImg;
+
+    private String letterAgr;
+    private String grade;
+
+    @DateTimeFormat(style = "MM", pattern = "yyyy-MM-dd")
+    private Date joinDate;
+
+    @DateTimeFormat(style = "MM", pattern = "yyyy-MM-dd")
+    private Date updateDate;
+
+    @DateTimeFormat(style = "MM", pattern = "yyyy-MM-dd")
+    private Date delDate;
+
+    private Set<GrantedAuthority> authorities;
+    private boolean accountNonExpired = true;
+    private boolean accountNonLocked = true;
+    private boolean credentialsNonExpired = true;
+    private boolean enabled = true;
+
+    private static final String salt = "!okjspPwSalt*";
+
+    @JsonIgnore
+    public String getSalt() {
+        return salt;
+    }
+
+    public int getUserId() {
+        return userId;
+    }
+
+    public void setUserId(int userId) {
+        this.userId = userId;
+    }
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return authorities;
+    }
+
+    @Override
+    @JsonIgnore
+    public String getPassword() {
+        return password;
+    }
+
+    @Override
+    public String getUsername() {
+        return email;
+    }
+
+    @Override
+    @JsonIgnore
+    public boolean isAccountNonExpired() {
+        return accountNonExpired;
+    }
+
+    @Override
+    @JsonIgnore
+    public boolean isAccountNonLocked() {
+        return accountNonLocked;
+    }
+
+    @Override
+    @JsonIgnore
+    public boolean isCredentialsNonExpired() {
+        return credentialsNonExpired;
+    }
+
+    @Override
+    @JsonIgnore
+    public boolean isEnabled() {
+        return accountNonExpired;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    @JsonIgnore
+    public String getPasswordConfirm() {
+        return passwordConfirm;
+    }
+
+    public void setPasswordConfirm(String passwordConfirm) {
+        this.passwordConfirm = passwordConfirm;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getNickName() {
+        return nickName;
+    }
+
+    public void setNickName(String nickName) {
+        this.nickName = nickName;
+    }
+
+    public String getTel() {
+        return tel;
+    }
+
+    public void setTel(String tel) {
+        this.tel = tel;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getProfileImg() {
+        return profileImg;
+    }
+
+    public void setProfileImg(String profileImg) {
+        this.profileImg = profileImg;
+    }
+
+    public String getLetterAgr() {
+        return letterAgr;
+    }
+
+    public void setLetterAgr(String letterAgr) {
+        this.letterAgr = letterAgr;
+    }
+
+    public String getGrade() {
+        return grade;
+    }
+
+    public void setGrade(String grade) {
+        this.grade = grade;
+    }
+
+    public Date getJoinDate() {
+        return joinDate;
+    }
+
+    public void setJoinDate(Date joinDate) {
+        this.joinDate = joinDate;
+    }
+
+    public Date getUpdateDate() {
+        return updateDate;
+    }
+
+    public void setUpdateDate(Date updateDate) {
+        this.updateDate = updateDate;
+    }
+
+    public Date getDelDate() {
+        return delDate;
+    }
+
+    public void setDelDate(Date delDate) {
+        this.delDate = delDate;
+    }
+
+    public void setAuthorities(Collection<? extends GrantedAuthority> authorities) {
+        this.authorities = Collections.unmodifiableSet(sortAuthorities(authorities));;
+    }
+
+    public void setAuthorities(Set<GrantedAuthority> authorities) {
+        this.authorities = Collections.unmodifiableSet(sortAuthorities(authorities));;
+    }
+
+    public void eraseCredentials() {
+        password = null;
+    }
+
+    private static SortedSet<GrantedAuthority> sortAuthorities(Collection<? extends GrantedAuthority> authorities) {
+        Assert.notNull(authorities, "Cannot pass a null GrantedAuthority collection");
+        // Ensure array iteration order is predictable (as per UserDetails.getAuthorities() contract and SEC-717)
+        SortedSet<GrantedAuthority> sortedAuthorities =
+                new TreeSet<GrantedAuthority>(new AuthorityComparator());
+
+        for (GrantedAuthority grantedAuthority : authorities) {
+            Assert.notNull(grantedAuthority, "GrantedAuthority list cannot contain any null elements");
+            sortedAuthorities.add(grantedAuthority);
+        }
+
+        return sortedAuthorities;
+    }
+
+    private static class AuthorityComparator implements Comparator<GrantedAuthority>, Serializable {
+        private static final long serialVersionUID = SpringSecurityCoreVersion.SERIAL_VERSION_UID;
+
+        public int compare(GrantedAuthority g1, GrantedAuthority g2) {
+            // Neither should ever be null as each entry is checked before adding it to the set.
+            // If the authority is null, it is a custom authority and should precede others.
+            if (g2.getAuthority() == null) {
+                return -1;
+            }
+
+            if (g1.getAuthority() == null) {
+                return 1;
+            }
+
+            return g1.getAuthority().compareTo(g2.getAuthority());
+        }
+    }
+
+    /**
+     * Returns {@code true} if the supplied object is a {@code User} instance with the
+     * same {@code username} value.
+     * <p>
+     * In other words, the objects are equal if they have the same username, representing the
+     * same principal.
+     */
+    @Override
+    public boolean equals(Object rhs) {
+        if (rhs instanceof User) {
+            return email.equals(((User) rhs).email);
+        }
+        return false;
+    }
+
+    /**
+     * Returns the hashcode of the {@code username}.
+     */
+    @Override
+    public int hashCode() {
+        return email.hashCode();
+    }
+}
+src/main/java/net/okjsp/community/model/Board.java
+public class Board implements Serializable {
+
+    private static final long serialVersionUID = -3404588398820203356L;
+
+    // 게시판ID
+	private int boardId;
+	
+	// 게시판명
+	private String boardName;
+	
+	// 하위 카테고리 ID
+	private int categoryId;
+	
+	// 하위 카테고리 명
+	private String categoryName;
+	
+	// 답변기능 사용여부
+	private String replayCheck;
+	
+	// 추천기능 사용여부
+	private String recommendCheck;
+	
+	// 싸움방지기능 사용여부
+	private String brawlCheck;
+	
+	// 댓글기능 사용여부
+	private String commentCheck;
+	
+	// 작성일시
+	private String writeDate;
+	
+	// 업데이트일시
+	private String updateDate;
+
+	public int getBoardId() {
+		return boardId;
+	}
+
+	public void setBoardId(int boardId) {
+		this.boardId = boardId;
+	}
+
+	public String getBoardName() {
+		return boardName;
+	}
+
+	public void setBoardName(String boardName) {
+		this.boardName = boardName;
+	}
+
+	public int getCategoryId() {
+		return categoryId;
+	}
+
+	public void setCategoryId(int categoryId) {
+		this.categoryId = categoryId;
+	}
+
+	public String getCategoryName() {
+		return categoryName;
+	}
+
+	public void setCategoryName(String categoryName) {
+		this.categoryName = categoryName;
+	}
+
+	public String getReplayCheck() {
+		return replayCheck;
+	}
+
+	public void setReplayCheck(String replayCheck) {
+		this.replayCheck = replayCheck;
+	}
+
+	public String getRecommendCheck() {
+		return recommendCheck;
+	}
+
+	public void setRecommendCheck(String recommendCheck) {
+		this.recommendCheck = recommendCheck;
+	}
+
+	public String getBrawlCheck() {
+		return brawlCheck;
+	}
+
+	public void setBrawlCheck(String brawlCheck) {
+		this.brawlCheck = brawlCheck;
+	}
+
+	public String getCommentCheck() {
+		return commentCheck;
+	}
+
+	public void setCommentCheck(String commentCheck) {
+		this.commentCheck = commentCheck;
+	}
+
+	public String getWriteDate() {
+		return writeDate;
+	}
+
+	public void setWriteDate(String writeDate) {
+		this.writeDate = writeDate;
+	}
+
+	public String getUpdateDate() {
+		return updateDate;
+	}
+
+	public void setUpdateDate(String updateDate) {
+		this.updateDate = updateDate;
+	}
+}
+src/main/java/net/okjsp/common/model/Paging.java
+public class Paging {
+    int page = 1;
+    int sizePerList = 20;
+    int offset;
+    int listCount = 0;
+    int totalCount = 0;
+    Map<String, Object> params;
+
+    public int getPage() {
+        return page;
+    }
+
+    public void setPage(int page) {
+        this.page = page;
+    }
+
+    public int getSizePerList() {
+        return sizePerList;
+    }
+
+    public void setSizePerList(int sizePerList) {
+        this.sizePerList = sizePerList;
+    }
+
+    public int getOffset() {
+
+        offset = (page-1) * sizePerList;
+
+        return offset;
+    }
+
+    public int getTotalCount() {
+        return totalCount;
+    }
+
+    public void setTotalCount(int totalCount) {
+        this.totalCount = totalCount;
+    }
+
+    public int getListCount() {
+        return listCount;
+    }
+
+    public void setListCount(int listCount) {
+        this.listCount = listCount;
+    }
+
+    public int getLastIndex() {
+        if(totalCount == 0) {
+            return 0;
+        }
+
+        int lastIndex = listCount+getOffset();
+
+        return lastIndex;
+    }
+
+    public Map<String, Object> getParams() {
+        return params;
+    }
+
+    public void setParams(Map<String, Object> params) {
+        this.params = params;
+    }
+}
+src/main/java/net/okjsp/common/model/PagingList.java
+public class PagingList {
+    private Paging paging;
+    private List<?> list;
+
+    public PagingList(Paging paging, List<?> list) {
+        this.list = list;
+        this.paging = paging;
+    }
+
+    public Paging getPaging() {
+        return paging;
+    }
+
+    public void setPaging(Paging paging) {
+        this.paging = paging;
+    }
+
+    public List<?> getList() {
+        return list;
+    }
+
+    public void setList(List<?> list) {
+        this.list = list;
+    }
+}
+src/main/java/net/okjsp/community/service/CommunityService.java
+public interface CommunityService {
+
+	public List<Article> getArticles(int boardId, int categoryId,
+                                     Paging paging);
+	
+	public Article getArticle(int writeNo);
+
+    public int getUserIdFromArticle(int writeNo);
+
+	public int getTotalCount(int boardId, int categoryId);
+
+	public boolean addArticleHit(int writeNo);
+	
+	public boolean create(Article article);
+
+    public boolean modify(Article article);
+
+    public boolean delete(int writeNo);
+}
+src/main/java/net/okjsp/community/model/Comment.java
+public class Comment {
+	//게시판 번호
+	private int boardId;
+	//글 번호
+	private int writeNo;
+	//코멘트 번호
+	private int commentId;
+	//본문
+	private String content;
+    //작성자 id
+    private int userId;
+	//올린 시간
+	private Date writeDate;
+	//수정 시간
+	private Date updateDate;
+    //작성자
+    private User user;
+
+	
+	public int getBoardId() {
+		return boardId;
+	}
+	public void setBoardId(int boardId) {
+		this.boardId = boardId;
+	}
+	public int getWriteNo() {
+		return writeNo;
+	}
+	public void setWriteNo(int writeNo) {
+		this.writeNo = writeNo;
+	}
+	public int getCommentId() {
+		return commentId;
+	}
+	public void setCommentId(int commentId) {
+		this.commentId = commentId;
+	}
+	public String getContent() {
+		return content;
+	}
+	public void setContent(String content) {
+		this.content = content;
+	}
+	public Date getWriteDate() {
+		return writeDate;
+	}
+	public void setWriteDate(Date writeDate) {
+		this.writeDate = writeDate;
+	}
+	public Date getUpdateDate() {
+		return updateDate;
+	}
+	public void setUpdateDate(Date updateDate) {
+		this.updateDate = updateDate;
+	}
+    public int getUserId() {
+        return userId;
+    }
+    public void setUserId(int userId) {
+        this.userId = userId;
+    }
+    public User getUser() {
+        return user;
+    }
+    public void setUser(User user) {
+        this.user = user;
+    }
+}
+src/main/java/net/okjsp/layout/BasicLayoutController.java
+@Controller
+public class BasicLayoutController {
+
+    Logger logger = Logger.getLogger(this.getClass());
+
+    @Autowired
+    LayoutService layoutService;
+
+    @ModelAttribute("NAV_LIST")
+    public List<Navigation> nav() {
+
+        return layoutService.getNav();
+    }
+}
+src/main/java/net/okjsp/community/service/BoardService.java
+public interface BoardService {
+    public List<Board> getBoardList();
+    public List<Board> getBoardListById(int boardId);
+}

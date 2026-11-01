@@ -1,0 +1,42 @@
+{
+  "status": "FROZEN_BEFORE_ANY_GPU_FORWARD",
+  "GPU_mapping": {
+    "physical": 0,
+    "uuid": "GPU-a78176ed-f97f-c54f-6201-5a01b570f422",
+    "visible": "0"
+  },
+  "gate_order": [
+    "A0 process1 paired native/H docs1,2 <=128 each",
+    "A0 independent process2 byte-hash repeat and same comparisons",
+    "A1 true H snapshots all24 layers32heads at1,8,32,128; A2 frozen scale checks",
+    "B0 FP_H observerOFF vs A0 ON, original C128 OFF/ON, adapter A ON matched replay",
+    "B0 independent process original C128 repeat",
+    "B1 reuse qualified A; D then B then C each2docs128"
+  ],
+  "no_selection_after_results": true,
+  "math_comparison": "Exact unchanged V3 compare AST, full_model.caps; logits/final_hidden/current readout BF16, common-coordinate state FP32; H inverse on state comparison only",
+  "baseline_exact": "codes, scales, dequant, pre/writeback/cache consumption/logits and helper hashes exact; no tolerance relaxation",
+  "kernel": "unchanged original formal loader and original recurrent helper; sole chunk substitution already qualified compensated scan; live source/dispatch and hardware checks mandatory",
+  "scale_events": "Raw scale before each stored FP16 clamp; all initial/final column calls and D row calls union into affected support. No bound/threshold change.",
+  "scale_stop": "per doc/token/layer/head/codec, affected energy>=1e-4 AND affected relative MSE>1e-2",
+  "row_metrics": {
+    "row_mean": "mean_j abs(Sij)",
+    "column_mean": "mean_i abs(Sij)",
+    "imbalance": "max(row_mean)/mean(row_mean); p99(row_mean)/median(row_mean)",
+    "zero": "allzero ->0; medianzero with somepositive ->null and explicitly retained; no exclusion",
+    "outlier": "max(abs(S))/RMS(S)"
+  },
+  "raw_snapshots": "Only process1 true FP_H raw states, 384MiB plus small outputs; no full native or student archive",
+  "physical_runtime": "All four students use original FP32 QDQ cache lifecycle; physical int8 NOT_QUALIFIED",
+  "budget": {
+    "aggregate_GPUh": 2.0,
+    "active_gpu_count": 1,
+    "tokens_per_trajectory": 128,
+    "archive_GiB": 10,
+    "raw_snapshot_GiB": 1,
+    "safe_exit_reserve_seconds": 120
+  },
+  "failure": "Immediate termination of dependent GPU stages; no GPU repair/retry in execution01; only CPU evidence work afterfailure",
+  "timing": "CUDA events encode/decode/writeback; actual reference Python overhead included, measured forward and whole-token audit separately; explicit sync counts are counters, implicit runtime sync not assumed fully known",
+  "canonical_signed_zero_interface": "INT8 codes lose zero sign; canonical logical writeback restores floating-round source sign transiently before copying into formal FP32 QDQ cache. No persistent side buffer or codebook/scale change."
+}

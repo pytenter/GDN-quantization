@@ -1,0 +1,970 @@
+src/main/java/com/google/cloud/security/scanner/actions/extractors/ExtractState.java
+public class ExtractState
+  extends DoFn<GCPProject, KV<GCPResource, GCPResourceState>> {
+
+  private TupleTag<GCPResourceErrorInfo> errorOutputTag;
+  private transient static final Logger logger = Logger.getLogger(ExtractState.class.getName());
+
+  public ExtractState() {
+  }
+
+  public ExtractState(TupleTag<GCPResourceErrorInfo> tag) {
+    errorOutputTag = tag;
+  }
+
+  /**
+   * Convert a GCPProject to a Key-Value pair of the project and its policy.
+   * @param processContext The ProcessContext object that contains processContext-specific
+   * methods and objects.
+   */
+  @Override
+  public void processElement(ProcessContext processContext) {
+    GCPProject input = processContext.element();
+
+    if (input.getId() == null) {
+      this.addToSideOutput(processContext, input, "Null project id");
+      return;
+    }
+    GCPResourceState policy = null;
+    String errorMsg = null;
+    try {
+      policy = input.getPolicy();
+    } catch (Exception e) {
+      errorMsg = e.getMessage();
+      logger.log(Level.FINE, "Error getting policy", e);
+    }
+
+    if (policy == null) {
+      this.addToSideOutput(processContext, input, String.format("Policy error %s", errorMsg));
+    } else {
+      processContext.output(KV.of((GCPResource) input, policy));
+    }
+  }
+
+  /**
+   * Add some error output to the side output tag
+   * @param context the ProcessContext for this DoFn
+   * @param project the project associated with the error
+   * @param errorMessage the message describing the error
+   */
+  private void addToSideOutput(ProcessContext context, GCPProject project, String errorMessage) {
+    if (errorOutputTag != null) {
+      context.sideOutput(errorOutputTag,
+          new GCPResourceErrorInfo(project, errorMessage));
+    }
+  }
+}
+src/main/java/com/google/cloud/security/scanner/actions/modifiers/FilterOutPolicies.java
+public class FilterOutPolicies
+    extends DoFn<KV<GCPResource, Map<StateSource, GCPResourceState>>,
+    KV<GCPResource, Map<StateSource, GCPResourcePolicy>>> {
+
+  @Override
+  public void processElement(ProcessContext context) {
+    Map<StateSource, GCPResourcePolicy> map = new HashMap<>(context.element().getValue().size());
+    for (Map.Entry<StateSource, GCPResourceState> entry :
+        context.element().getValue().entrySet()) {
+      if (!(entry.getValue() instanceof GCPResourcePolicy)) {
+        return;
+      }
+      map.put(entry.getKey(), (GCPResourcePolicy) entry.getValue());
+    }
+    context.output(KV.of(context.element().getKey(), map));
+  }
+}
+src/main/java/com/google/cloud/security/scanner/common/Constants.java
+public final class Constants {
+  // environment variables
+  public static final String PROJECT_ID = System.getenv("PROJECT_ID");
+  public static final String ORG_NAME = System.getenv("POLICY_SCANNER_ORG_NAME");
+  public static final String ORG_ID = System.getenv("POLICY_SCANNER_ORG_ID");
+  public static final String POLICY_BUCKET = System.getenv("POLICY_SCANNER_INPUT_REPOSITORY_URL");
+  public static final String OUTPUT_PREFIX = System.getenv("POLICY_SCANNER_SINK_URL");
+  public static final String DATAFLOW_STAGING =
+      String.format("gs://%s/dataflow_tmp", System.getenv("POLICY_SCANNER_DATAFLOW_TMP_BUCKET"));
+
+  // format strings
+  public static final String SINK_TIMESTAMP_FORMAT = "yyyyMMdd_HHmmss";
+  public static final String SINK_NAME_FORMAT = "{0}-{1}-{2}";
+
+  // output file labels
+  public static final String OUTPUT_LABEL_ENFORCER = "enforcer";
+  public static final String OUTPUT_LABEL_SCANNER = "scanner";
+  public static final String OUTPUT_LABEL_UNMATCHED = "unmatched";
+  public static final String OUTPUT_LABEL_ERROR = "error";
+
+  // Max QPS
+  public static final double ADMIN_API_MAX_QPS = 4.0;
+}
+src/main/java/com/google/cloud/security/scanner/actions/extractors/FileToState.java
+public class FileToState
+    extends DoFn<KV<List<String>, String>, KV<GCPResource, GCPResourceState>> {
+
+  private TupleTag<GCPResourceErrorInfo> errorOutputTag;
+
+  public FileToState() {
+  }
+
+  public FileToState(TupleTag<GCPResourceErrorInfo> tag) {
+    errorOutputTag = tag;
+  }
+
+  /**
+   * Converts a Key-Value pair of (FilePath, FileContent) to (GCPResource, GCPResourceState).
+   * The FilePath is a list of Strings which represents the location of a file.
+   * The FileContent is the content of the file described by the FilePath.
+   * The path is used to obtain the resource, and the content describes the state of that resource.
+   * @param processContext The ProcessContext object that contains processContext-specific
+   * methods and objects.
+   */
+  @Override
+  public void processElement(ProcessContext processContext) {
+    KV<List<String>, String> input = processContext.element();
+    List<String> filePath = input.getKey();
+    String fileContent = input.getValue();
+
+    String orgName = filePath.size() > 0 ? filePath.get(0) : null;
+    String projectId = filePath.size() > 1 ? filePath.get(1) : null;
+    String policyFileName = filePath.size() > 2 ? filePath.get(2) : null;
+    GCPProject project = new GCPProject(projectId, orgName);
+
+    if (filePath.size() == 3 && GCPResourcePolicy.getPolicyFile().equals(policyFileName)) {
+      // only project policies are supported for now.
+      // filePath.size() must be 3 and of the form org_id/project_id/POLICY_FILE.
+      Gson gson = new Gson();
+      try {
+        List<PolicyBinding> bindings = Arrays.asList(
+            gson.fromJson(fileContent, PolicyBinding[].class));
+        GCPResourceState policy = new GCPResourcePolicy(project, bindings);
+        processContext.output(KV.of((GCPResource) project, policy));
+        return;
+      } catch (JsonSyntaxException jse) {
+        addToSideOutput(
+            processContext,
+            project,
+            String.format("Invalid policy json %s/%s/%s", orgName, projectId, policyFileName));
+      }
+    }
+    addToSideOutput(
+        processContext,
+        project,
+        String.format("Invalid policy filepath %s/%s/%s", orgName, projectId, policyFileName));
+  }
+
+  /**
+   * Add some error output to the side output tag
+   * @param context the ProcessContext for this DoFn
+   * @param project the project associated with the error
+   * @param errorMessage the message describing the error
+   */
+  private void addToSideOutput(ProcessContext context, GCPProject project, String errorMessage) {
+    if (errorOutputTag != null) {
+      context.sideOutput(errorOutputTag,
+          new GCPResourceErrorInfo(project, errorMessage));
+    }
+  }
+}
+src/main/java/com/google/cloud/security/scanner/primitives/GCPProject.java
+public class GCPProject implements PoliciedObject {
+  private static Projects projectApiStub;
+
+  private static final RateLimiter rateLimiter = CloudUtil.getAdminApiRateLimiter();
+
+  private String name;
+  private String id;
+  private String orgId;
+
+  /**
+   * Setter for the CRM Projects API stub.
+   * @param project The CRM Projects API stub.
+   */
+  public static synchronized void setProjectsApiStub(Projects project) {
+    GCPProject.projectApiStub = project;
+  }
+
+  /**
+   * Return the Projects api object used for accessing the Cloud Resource Manager Projects API.
+   * @return Projects api object used for accessing the Cloud Resource Manager Projects API
+   * @throws GeneralSecurityException Thrown if there's a permissions error.
+   * @throws IOException Thrown if there's an IO error initializing the API object.
+   */
+  public static synchronized Projects getProjectsApiStub()
+      throws GeneralSecurityException, IOException {
+    if (projectApiStub != null) {
+      return projectApiStub;
+    }
+    HttpTransport transport;
+    GoogleCredential credential;
+    JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
+    transport = GoogleNetHttpTransport.newTrustedTransport();
+    credential = GoogleCredential.getApplicationDefault(transport, jsonFactory);
+    if (credential.createScopedRequired()) {
+      Collection<String> scopes = CloudResourceManagerScopes.all();
+      credential = credential.createScoped(scopes);
+    }
+    projectApiStub = new CloudResourceManager
+        .Builder(transport, jsonFactory, credential)
+        .build()
+        .projects();
+    return projectApiStub;
+  }
+
+  /**
+   * Construct a GCPProject object with only the project ID.
+   * Other fields are left as null.
+   * @param id The ID of the project. This is different from the project name.
+   * @throws IllegalArgumentException If the project id is null.
+   */
+  public GCPProject(String id) throws IllegalArgumentException {
+    this(id, null, null);
+  }
+
+  /**
+   * Construct a GCPProject object with the project and org IDs.
+   * @param id The ID of the project. This is different from the project name.
+   * @param orgId The ID of the org this project belongs to.
+   * @throws IllegalArgumentException If the project id is null.
+   */
+  public GCPProject(String id, String orgId) throws IllegalArgumentException {
+    this(id, orgId, null);
+  }
+
+  /**
+   * Construct a GCPProject object with the project and org IDs, and the project name.
+   * @param id The id of the project.
+   * @param orgId The id of the org this project belongs to.
+   * @param name The display name of the project.
+   * @throws IllegalArgumentException If the project id is null.
+   */
+  public GCPProject(String id, String orgId, String name) throws IllegalArgumentException {
+    if (id == null) {
+      throw new IllegalArgumentException("GCPProject's id cannot be null");
+    }
+    if (orgId == null) {
+      orgId = "";
+    }
+    if (name == null) {
+      name = "";
+    }
+    this.id = id;
+    this.orgId = orgId;
+    this.name = name;
+  }
+
+  /**
+   * @return The display name of the project.
+   */
+  public String getName() {
+    return this.name;
+  }
+
+  /**
+   * @return The ID of the org this project belongs to.
+   */
+  public String getOrgId() {
+    return this.orgId;
+  }
+
+  /**
+   * @return The ID of the project.
+   */
+  @Override
+  public String getId() {
+    return this.id;
+  }
+
+  /**
+   * Get the IAM policy binding this project.
+   * @return The GCPResourcePolicy object which represents the policy binding this project.
+   * @throws IOException Thrown if there's an IO error reading the policy.
+   * @throws GeneralSecurityException Thrown if there's a permissions error reading the policy.
+   */
+  @Override
+  public GCPResourcePolicy getPolicy() throws IOException, GeneralSecurityException {
+    Map<String, List<String>> bindings = new HashMap<>();
+    Policy policy = null;
+
+    rateLimiter.acquire();
+
+    try {
+      policy = getProjectsApiStub()
+          .getIamPolicy(this.id, new GetIamPolicyRequest())
+          .execute();
+    } catch (GeneralSecurityException gse) {
+      throw new GeneralSecurityException(
+          "Cannot fetch IAM policy for project + " + id + "\nMessage: " + gse.getMessage()
+      );
+    }
+    if (policy != null && policy.getBindings() != null) {
+      for (Binding binding : policy.getBindings()) {
+        bindings.put(binding.getRole(), binding.getMembers());
+      }
+      return new GCPResourcePolicy(this, bindings);
+    }
+    return null;
+  }
+
+  /**
+   * Set the IAM policy that will bind this project. This requires the "Project Owner"
+   * role to be added to the service account.
+   * @param sourceGCPResourcePolicy The policy this project is to be bound to.
+   * @throws IOException Thrown if there's an IO error setting the policy.
+   * @throws GeneralSecurityException Thrown if there's a permissions error setting the policy.
+   */
+  @Override
+  public void setPolicy(GCPResourcePolicy sourceGCPResourcePolicy)
+      throws IOException, GeneralSecurityException {
+    Policy policy = new Policy();
+    List<Binding> bindings = new ArrayList<>(sourceGCPResourcePolicy.getBindings().size());
+    SetIamPolicyRequest request = new SetIamPolicyRequest();
+
+    rateLimiter.acquire();
+
+    for (PolicyBinding sourceBinding : sourceGCPResourcePolicy.getBindings()) {
+      Binding binding = new Binding();
+      binding.setRole(sourceBinding.getRole());
+      binding.setMembers(sourceBinding.getMembers());
+      bindings.add(binding);
+    }
+    policy.setBindings(bindings);
+    request.setPolicy(policy);
+    getProjectsApiStub().setIamPolicy(this.id, request).execute();
+  }
+
+  /**
+   * Comparator for GCPProject objects. It only checks for equality of the project IDs.
+   * @param o The object to compare with.
+   * @return True if they have the same project ID, false otherwise.
+   */
+  @Override
+  public boolean equals(Object o) {
+    return (o instanceof GCPProject) && ((GCPProject) o).id.equals(this.id);
+  }
+
+  /**
+   * hashCode method which only respects the project's id.
+   * @return Hash code for this object.
+   */
+  @Override
+  public int hashCode() {
+    return this.id.hashCode();
+  }
+
+  /**
+   * toString method which only returns the id of the project.
+   * @return The id of the project.
+   */
+  @Override
+  public String toString() {
+    return this.id;
+  }
+}
+src/main/java/com/google/cloud/security/scanner/actions/modifiers/TagStateWithSource.java
+public enum StateSource {
+  // LIVE: The current state of the GCPResource.
+  LIVE,
+  // DESIRED: The ideal state of the GCPResource.
+  DESIRED
+}
+src/main/java/com/google/cloud/security/scanner/sources/LiveProjectSource.java
+public class LiveProjectSource extends BoundedSource<GCPProject> {
+  private static final long SIZE_ESTIMATE = 200;
+  private static final String DELETE_PREFIX = "DELETE";
+  private String orgId;
+
+  /**
+   * Constructor for LiveProjectSource.
+   * @param orgId The ID of the organization from which we read the projects list.
+   *  Set as null to read from all visible orgs.
+   */
+  public LiveProjectSource(String orgId) {
+    this.orgId = orgId;
+  }
+
+  /**
+   * Getter for the field orgId.
+   * @return The ID of the organization whose projects are to be read.
+   */
+  public String getOrgId() {
+    return this.orgId;
+  }
+
+  /**
+   * This function just returns the same source as a list, and does not
+   * actually split the load into several bundles.
+   * @param desiredBundleSizeBytes The desired bundle size. Not used.
+   * @param options Pipeline options. Not used
+   * @return A list containing this source as its only element.
+   */
+  @Override
+  public List<LiveProjectSource> splitIntoBundles(
+      long desiredBundleSizeBytes, PipelineOptions options) throws Exception {
+    List<LiveProjectSource> projectSources = new ArrayList<>(1);
+    projectSources.add(this);
+    return projectSources;
+  }
+
+  /**
+   * Currently returns a hardcoded value.
+   * Get the estimated size of the data that will be read by this source.
+   * @param options Pipeline options. Not used.
+   * @return The size estimate of the data to be read by this source.
+   */
+  @Override
+  public long getEstimatedSizeBytes(PipelineOptions options) throws Exception {
+    return SIZE_ESTIMATE;
+  }
+
+  /**
+   * This function does not give any guarantees about whether its output will be sorted or not.
+   * @param options Pipeline options. Not used.
+   * @return Returns true if the source's output is always sorted. False otherwise.
+   */
+  @Override
+  public boolean producesSortedKeys(PipelineOptions options) throws Exception {
+    return false;
+  }
+
+  /**
+   * Create a new reader that will read from this source.
+   * @param options Pipeline options. Not used.
+   * @return A BoundedReader object to read from this source.
+   */
+  @Override
+  public BoundedReader<GCPProject> createReader(PipelineOptions options) throws IOException {
+    return new LiveProjectReader(this);
+  }
+
+  /**
+   * Validate whether this source can function or not.
+   */
+  @Override
+  public void validate() {}
+
+  /**
+   * Get the default coder to use for this source's output.
+   * @return The default coder to use for this source's output.
+   */
+  @Override
+  public Coder<GCPProject> getDefaultOutputCoder() {
+    return SerializableCoder.of(GCPProject.class);
+  }
+
+  /** Reader for LiveProjectSource */
+  public static class LiveProjectReader extends BoundedReader<GCPProject> {
+    private LiveProjectSource source;
+    private List<GCPProject> projects;
+    private String nextPageToken;
+
+    /**
+     * Getter for the projects field.
+     * @return Return the projects currently in the reader's queue.
+     */
+    List<GCPProject> getProjects() {
+      return projects;
+    }
+
+    /**
+     * Getter for the nextPageToken field.
+     * @return Return the nextPageToken to be used in the
+     * next request to get the next page of projects.
+     */
+    String getNextPageToken() {
+      return nextPageToken;
+    }
+
+    /**
+     * Construct a LiveProjectReader object.
+     * @param source The source this reader is supposed to read from.
+     */
+    public LiveProjectReader(LiveProjectSource source) {
+      this.source = source;
+      this.projects = new ArrayList<>();
+      this.nextPageToken = null;
+    }
+
+    /**
+     * Initialize the reader so it can begin reading files.
+     * @return True if the initialization succeeded. False otherwise.
+     */
+    @Override
+    public boolean start() throws IOException {
+      return refreshProjects(null);
+    }
+
+    /**
+     * Advance the reader so it can read the next file in the queue.
+     * @return True if there are still more files to be read. False otherwise.
+     */
+    @Override
+    public boolean advance() throws IOException {
+      if (this.projects.size() > 1) {
+        this.projects.remove(0);
+        return true;
+      } else if (this.projects.size() == 1) {
+        this.projects.remove(0);
+        // if token is null the last page read was the last page to be read.
+        return (this.nextPageToken != null) && refreshProjects(this.nextPageToken);
+      }
+      return false;
+    }
+
+    /**
+     * Get the next file in queue.
+     * @return A GCPProject object representing the project that is read.
+     * @throws NoSuchElementException If the file can't be read from the CRM API.
+     */
+    @Override
+    public GCPProject getCurrent() throws NoSuchElementException {
+      if (this.projects.isEmpty()) {
+        throw new NoSuchElementException("No more GCPProject objects");
+      }
+      return this.projects.get(0);
+    }
+
+    /**
+     * Close this reader.
+     */
+    @Override
+    public void close() throws IOException {}
+
+    /**
+     * Return the source this reader is reading from.
+     * @return The source this reader is reading from.
+     */
+    @Override
+    public BoundedSource<GCPProject> getCurrentSource() {
+      return this.source;
+    }
+
+    private boolean refreshProjects(String nextPageToken) throws IOException {
+      ListProjectsResponse projectListResponse;
+      Projects.List projectsList;
+      try {
+        projectsList = GCPProject.getProjectsApiStub().list();
+        if (nextPageToken != null) {
+          projectsList = projectsList.setPageToken(nextPageToken);
+        }
+        if (source.getOrgId() != null) {
+            projectsList = projectsList
+                .setFilter("parent.type:organization parent.id:" + source.getOrgId());
+        }
+        projectListResponse = projectsList.execute();
+      } catch (GeneralSecurityException gse) {
+        throw new IOException("Cannot get projects. Access denied");
+      }
+      List<Project> projects = projectListResponse.getProjects();
+
+      for (Project project : projects) {
+        String orgId = null;
+        if (project.getParent() != null) {
+          orgId = project.getParent().getId();
+        }
+        if (project.getLifecycleState() == null
+            || project.getLifecycleState().startsWith(DELETE_PREFIX)) {
+          continue;
+        }
+        this.projects.add(new GCPProject(project.getProjectId(), orgId, project.getName()));
+      }
+      this.nextPageToken = projectListResponse.getNextPageToken();
+
+      return !this.projects.isEmpty();
+    }
+  }
+}
+src/main/java/com/google/cloud/security/scanner/actions/messengers/UnmatchedStatesMessenger.java
+public class UnmatchedStatesMessenger
+  extends DoFn<KV<String, Iterable<GCPResource>>, String> {
+
+  @Override
+  public void processElement(ProcessContext context)
+      throws Exception {
+    KV<String, Iterable<GCPResource>> element = context.element();
+
+    for (GCPResource resource : element.getValue()) {
+      context.output(element.getKey() + ":" + resource.getId());
+    }
+  }
+
+}
+src/main/java/com/google/cloud/security/scanner/primitives/GCPResourcePolicy.java
+public class GCPResourcePolicy implements GCPResourceState {
+  private PoliciedObject resource;
+  private List<PolicyBinding> bindings;
+
+  private static final String POLICY_FILE = "POLICY";
+
+  /**
+   * Return the expected file name of the file in which a policy is supposed to reside.
+   * @return POLICY_FILE, the expected file name of the checked-in policy files.
+   */
+  public static String getPolicyFile() {
+    return POLICY_FILE;
+  }
+
+  /**
+   * Construct a policy object from a map of bindings.
+   * @param resource The resource this policy binds.
+   * @param bindings A map mapping roles to lists of members for that role.
+   */
+  public GCPResourcePolicy(PoliciedObject resource, Map<String, List<String>> bindings) {
+    this.resource = resource;
+    this.bindings = new ArrayList<>(bindings.size());
+    for (Map.Entry<String, List<String>> entry : bindings.entrySet()) {
+      this.bindings.add(new PolicyBinding(entry.getKey(), entry.getValue()));
+    }
+    sortBindings();
+  }
+
+  /**
+   * Construct a policy object from a list of PolicyBinding objects.
+   * @param resource The resource this policy binds.
+   * @param bindings A list of PolicyBinding objects representing the role bindings.
+   */
+  public GCPResourcePolicy(PoliciedObject resource, List<PolicyBinding> bindings) {
+    this.resource = resource;
+    this.bindings = bindings;
+    sortBindings();
+  }
+
+  /**
+   * @return The resource this policy binds.
+   */
+  public GCPResource getResource() {
+    return this.resource;
+  }
+
+  /**
+   * @return A list of PolicyBinding objects representing the role bindings.
+   */
+  public List<PolicyBinding> getBindings() {
+    return this.bindings;
+  }
+
+
+  /**
+   * Overriding the equals method to perform deep comparison of resource and bindings.
+   * @param o The object to compare with.
+   * @return True if the objects' resources and bindings are equal.
+   */
+  @Override
+  public boolean equals(Object o) {
+    if (o instanceof GCPResourcePolicy) {
+      GCPResourcePolicy other = (GCPResourcePolicy) o;
+      return other.resource.equals(this.resource) && other.bindings.equals(this.bindings);
+    }
+    return false;
+  }
+
+  /**
+   * hashCode method needs to be overridden with the equals method.
+   * @return Hash code for this object.
+   */
+  @Override
+  public int hashCode() {
+    return this.resource.hashCode() + this.bindings.hashCode();
+  }
+
+  @Override
+  public String toString() {
+    return new Gson().toJson(this.bindings);
+  }
+
+  @Override
+  public void set(GCPResourceState state) throws Exception {
+    if (state instanceof GCPResourcePolicy) {
+      this.resource.setPolicy((GCPResourcePolicy) state);
+    }
+    else {
+      throw new IllegalArgumentException("Expected policy but received " +
+          state.getClass().getName());
+    }
+  }
+
+  @Override
+  public GCPResourceState get() throws Exception {
+    return this.resource.getPolicy();
+  }
+
+  private void sortBindings() {
+    Collections.sort(bindings, new Comparator<PolicyBinding>() {
+      @Override
+      public int compare(PolicyBinding policyBinding, PolicyBinding t1) {
+        return t1.getRole().compareTo(policyBinding.getRole());
+      }
+    });
+  }
+
+  /** Represents a binding of a role to some members */
+  public static class PolicyBinding implements Serializable {
+    private String role;
+    private List<String> members;
+
+    /**
+     * Constructor to initialize the binding with a role and an empty member list.
+     * @param role The role for this binding.
+     */
+    public PolicyBinding(String role) {
+      this(role, new ArrayList<String>());
+    }
+
+    public PolicyBinding(String role, List<String> members) {
+      this.role = role;
+      this.members = new ArrayList<>(members);
+      Collections.sort(this.members);
+    }
+
+    /**
+     * @return Return the role associated with this binding.
+     */
+    public String getRole() {
+      return role;
+    }
+
+    /**
+     * @return Return the list of members associated with this binding.
+     */
+    public List<String> getMembers() {
+      return members;
+    }
+
+    /**
+     * An equals method to perform deep comparison of the role and the member list.
+     * @param o The object to compare this binding against.
+     * @return True if the roles and the member lists are the same.
+     */
+    @Override
+    public boolean equals(Object o) {
+      if (o instanceof PolicyBinding) {
+        PolicyBinding other = (PolicyBinding) o;
+        return Objects.equals(other.role, this.role) && Objects.equals(other.members, this.members);
+      }
+      return false;
+    }
+
+    /**
+     * The hashCode methods need to be overridden along with the equals method.
+     * @return The hashCode identifying this binding. Depends only on the role and the member list.
+     */
+    @Override
+    public int hashCode() {
+      return this.role.hashCode() + this.members.hashCode();
+    }
+
+    @Override
+    public String toString() {
+      return new Gson().toJson(this);
+    }
+  }
+}
+src/main/java/com/google/cloud/security/scanner/primitives/GCPResource.java
+public interface GCPResource extends Serializable {
+
+  /**
+   * Return the ID associated with this resource.
+   * @return A string representation of this resource's ID.
+   */
+  public abstract String getId();
+}
+src/main/java/com/google/cloud/security/scanner/primitives/GCPResourceState.java
+public interface GCPResourceState extends Serializable {
+  /** Change the live version of this resource */
+  public void set(GCPResourceState state) throws Exception;
+
+  /** Get the live version of this resource */
+  public GCPResourceState get() throws Exception;
+}
+src/main/java/com/google/cloud/security/scanner/actions/modifiers/FindUnmatchedStates.java
+public class FindUnmatchedStates
+  extends DoFn<KV<GCPResource, KV<StateSource, GCPResourceState>>,
+      KV<String, GCPResource>> {
+
+  private PCollectionView<Map<GCPResource, KV<StateSource, GCPResourceState>>> view;
+
+  public FindUnmatchedStates(
+      PCollectionView<Map<GCPResource, KV<StateSource, GCPResourceState>>> view) {
+    this.view = view;
+  }
+
+  /**
+   * For each state (could either be a known good or live state), see whether it
+   * exists in the sideInput. If not, it's an unmatched state and should be
+   * included in the output.
+   *
+   * @param context the ProcessContext object containing information about the state
+   */
+  @Override
+  public void processElement(ProcessContext context) {
+    GCPResource resource = context.element().getKey();
+    KV<StateSource, GCPResourceState> mainValue = context.element().getValue();
+
+    if (!context.sideInput(this.view).containsKey(resource)) {
+      context.output(KV.of(mainValue.getKey().toString(), resource));
+    }
+  }
+}
+src/main/java/com/google/cloud/security/scanner/actions/modifiers/JoinKnownGoodAndLiveStates.java
+public class JoinKnownGoodAndLiveStates
+    extends DoFn<KV<GCPResource, KV<StateSource, GCPResourceState>>,
+    KV<GCPResource, Map<StateSource, GCPResourceState>>> {
+
+  private PCollectionView<Map<GCPResource, KV<StateSource, GCPResourceState>>> view;
+
+  /**
+   * Constructor for the JoinKnownGoodAndLiveStates DoFn.
+   * @param view The PCollectionView which contains the side-input elements.
+   */
+  public JoinKnownGoodAndLiveStates
+      (PCollectionView<Map<GCPResource, KV<StateSource, GCPResourceState>>> view) {
+    this.view = view;
+  }
+
+  /**
+   * Process an element of the type KV<GCPResource, KV<StateResource, GCPResourceState>>.
+   * The GCPResource is the resource that is being described by the GCPResourceState. In
+   * this case, it's the GCP project.
+   * The GCPResourceState is the attribute describing the GCPResource, i.e. the project policies.
+   * StateSource represents the source of the GCPResourceState:
+   *  - it was either checked in as a known-good, or
+   *  - it is the live state of the resource
+   *  GCPResourceStates tagged with one StateSource (say, DESIRED) will be input through
+   *  a side input, and those tagged with the other will be input through the main input.
+   * @param context The ProcessContext object that contains context-specific methods and objects.
+   */
+  @Override
+  public void processElement(ProcessContext context) {
+    // the project
+    GCPResource resource = context.element().getKey();
+    // the project's policies
+    KV<StateSource, GCPResourceState> mainValue = context.element().getValue();
+
+    // if the known-good policies' projects contain this project...
+    if (context.sideInput(this.view).containsKey(resource)) {
+      // make sure there's an element in the side input with the same GCPResource.
+
+      KV<StateSource, GCPResourceState> sideValue = context.sideInput(this.view).get(resource);
+
+      // the HashMap will contain two entries, one for
+      // the DESIRED state and one for the LIVE state.
+      Map<StateSource, GCPResourceState> mismatchedStates = new HashMap<>(2);
+      mismatchedStates.put(mainValue.getKey(), mainValue.getValue());
+      mismatchedStates.put(sideValue.getKey(), sideValue.getValue());
+      context.output(KV.of(resource, mismatchedStates));
+    }
+  }
+}
+src/main/java/com/google/cloud/security/scanner/actions/messengers/ResourceErrorMessenger.java
+public class ResourceErrorMessenger
+    extends DoFn<GCPResourceErrorInfo, String> {
+
+  @Override
+  public void processElement(ProcessContext context)
+      throws Exception {
+    GCPResourceErrorInfo errorInfo = context.element();
+    context.output(errorInfo.toString());
+  }
+
+}
+src/main/java/com/google/cloud/security/scanner/actions/modifiers/TagStateWithSource.java
+public class TagStateWithSource
+  extends DoFn<KV<GCPResource, GCPResourceState>,
+        KV<GCPResource, KV<StateSource, GCPResourceState>>> {
+
+  /**
+   * Represents the source of a given GCPResourceState.
+   */
+  public enum StateSource {
+    // LIVE: The current state of the GCPResource.
+    LIVE,
+    // DESIRED: The ideal state of the GCPResource.
+    DESIRED
+  }
+
+  private StateSource source;
+
+  /**
+   * Set the StateSource tag this transform will tag all the inputs with.
+   * @param source The tag to be applied to all the inputs
+   */
+  public TagStateWithSource(StateSource source) {
+    this.source = source;
+  }
+
+  /**
+   * Tag all incoming inputs with the StateSource variable set in this transform.
+   * @param processContext The ProcessContext object that contains processContext-specific
+   * methods and objects.
+   */
+  @Override
+  public void processElement(ProcessContext processContext) {
+    KV<GCPResource, GCPResourceState> input = processContext.element();
+    processContext.output(KV.of(input.getKey(), KV.of(this.source, input.getValue())));
+  }
+}
+src/main/java/com/google/cloud/security/scanner/actions/messengers/PolicyDiscrepancyMessenger.java
+public class PolicyDiscrepancyMessenger
+    extends DoFn<KV<GCPResource, Map<StateSource, GCPResourcePolicy>>, String> {
+
+  /**
+   * Construct a notification message out of the incoming object.
+   * The incoming object is a KV pair with the GCPResource as the key,
+   * and a map containing the DESIRED and LIVE policies.
+   * The map will contain exactly 2 elements, corresponding to the two policies.
+   * @param context The ProcessContext object that contains context-specific methods and objects.
+   * @exception IllegalArgumentException is thrown if the map does not contain exactly two elements.
+   */
+  @Override
+  public void processElement(ProcessContext context) throws IllegalArgumentException {
+    GCPResource resource = context.element().getKey();
+    Map<StateSource, GCPResourcePolicy> input = context.element().getValue();
+    if (input.size() == 2) {
+      GCPResourcePolicy livePolicy = input.get(StateSource.LIVE);
+      GCPResourcePolicy desiredPolicy = input.get(StateSource.DESIRED);
+      GCPResourcePolicyDiff diff = GCPResourcePolicyDiff.diff(desiredPolicy, livePolicy);
+      MessageConstructor messageConstructor =
+          new MessageConstructor(resource, desiredPolicy, livePolicy, diff);
+      context.output(messageConstructor.constructMessage());
+    }
+    else {
+      throw new IllegalArgumentException(
+          "The <StateSource, GCPResourceState> map does not contain exactly two elements."
+      );
+    }
+  }
+}
+src/main/java/com/google/cloud/security/scanner/primitives/GCPResourceErrorInfo.java
+public class GCPResourceErrorInfo implements Serializable {
+  private GCPResource gcpResource;
+  private String errorMessage;
+
+  public GCPResourceErrorInfo(GCPResource resource, String errorMessage) {
+    this.gcpResource = resource;
+    this.errorMessage = errorMessage;
+  }
+
+  public GCPResource getResource() {
+    return this.gcpResource;
+  }
+
+  public String getErrorMessage() {
+    return this.errorMessage;
+  }
+
+  @Override
+  public String toString() {
+    return new StringBuilder()
+        .append(String.format("resourceId:\"%s\"", this.gcpResource.getId()))
+        .append(String.format(",reason:\"%s\"", this.errorMessage))
+        .toString();
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (o instanceof GCPResourceErrorInfo) {
+      GCPResourceErrorInfo errorInfo = (GCPResourceErrorInfo) o;
+      return Objects.equal(this.gcpResource, errorInfo.getResource())
+          && Objects.equal(this.errorMessage, errorInfo.getErrorMessage());
+    }
+    return false;
+  }
+}

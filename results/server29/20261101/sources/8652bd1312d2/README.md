@@ -1,0 +1,50 @@
+# qwen_gdn_oscar_sym32_p1_c1_s3_unified_recovery_aime26_v2
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/qwen_gdn_oscar_sym32_p1_c1_s3_unified_recovery_aime26_v2`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`FINALIZER_FAILURE.json`](../../objects/03/03933ae3fe17879c180a0904bbd324581a8cc648eb7b63fa8c33a8696d1f9688__FINALIZER_FAILURE.json)
+- [`FINALIZER_STARTED.json`](../../objects/be/bec9f1dc866aad3dc4745e5fddbb58ebb9b00f11239aa23d95f94ea8ec931f96__FINALIZER_STARTED.json)
+- [`FINAL_TASK_STATUS.json`](../../objects/c2/c28f6d17f87d426e6a6b063a34b9e52c30071768c7cfcef03daabb7402e9765c__FINAL_TASK_STATUS.json)
+- [`FINAL_SEAL_RECEIPT.json`](../../objects/f3/f30a70a5179e1a6fab86947730474b9e5c46501f2bac77dfc0b633f8807d4203__FINAL_SEAL_RECEIPT.json)
+- [`src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`UNIFIED_EXECUTION_PLAN.md`](../../objects/a6/a65b2e1bc32938619962ded74d3f04d2934aa7f5573b0df62296b5db5bf7b7c0__UNIFIED_EXECUTION_PLAN.md)
+- [`scripts/score_pass_cpu.py`](../../objects/45/45f04c9b9b358eb76c769e357e142eda33e35f992d2a38bed0d616663642e3d1__score_pass_cpu.py)
+- [`AIME26_SEED1_PROTOCOL.json`](../../objects/0f/0f93dd07244c6105ab901de1d48500bf3c349a1254b4a036805cd5e64e62523f__AIME26_SEED1_PROTOCOL.json)
+- [`FINAL_SCIENTIFIC_REPORT.md`](../../objects/7f/7f66f16f1df56eb5b5e2c8a4f48f5d2f03ccaf2503963d2a0ee2333a678afc3c__FINAL_SCIENTIFIC_REPORT.md)
+- [`scripts/finalize_offline.py`](../../objects/13/13fe343dc9d6b6b31b12c82d19dd953f36318573f15c9118cd73c236bf77e379__finalize_offline.py)
+- [`protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`FP32_ERROR_BUDGET_ANALYSIS.md`](../../objects/07/07dac44df48b0345419a3d35cf172b96ae60a32c7487b4dde197f34254cbe764__FP32_ERROR_BUDGET_ANALYSIS.md)
+- [`FINAL_ARCHIVE_VERIFICATION.json`](../../objects/15/15c7febc12f6a1e9e916676bbcb2abbec662a9f5bd29d15fdec63185ab4c2aa5__FINAL_ARCHIVE_VERIFICATION.json)
+- [`scripts/history_p0_score_cpu.py`](../../objects/70/70caa0894ccfe4e0ea12b364f172a7b04b9f0fcbf69b862efa1b283a1092059d__history_p0_score_cpu.py)
+- [`AIME26_SEED1_PROTOCOL_FREEZE.json`](../../objects/d0/d0400fc61e1897217315c096e338662eafb70c6effa4728664f04098adc4daff__AIME26_SEED1_PROTOCOL_FREEZE.json)
+- [`operations/final_readonly_audit.py`](../../objects/25/2592d493c6890e7b054ac2a56b91df0323f4009985ce687ef769276feda7a908__final_readonly_audit.py)
+- [`inherited/group32/CODEC_NUMERICAL_CONTRACT.md`](../../objects/a6/a6324876f31be5e5b821400bc11c7dad5464f9efac1146806dc80a912d6608c4__CODEC_NUMERICAL_CONTRACT.md)
+- [`reuse/cpu_phase_source/UNIFIED_EXECUTION_PLAN.md`](../../objects/a6/a65b2e1bc32938619962ded74d3f04d2934aa7f5573b0df62296b5db5bf7b7c0__UNIFIED_EXECUTION_PLAN.md)
+- [`inherited/group32/HISTORICAL_PORT_INT8_PROTOCOL.md`](../../objects/6f/6f98acc34722552ec253fc06b2f4da1b76aa53b203fb172b444eb3ac70cc3a32__HISTORICAL_PORT_INT8_PROTOCOL.md)
+- [`inherited/group32/inherited/historical_port_payload/candidate/source_tree/data/zypan/analyses/qwen_gdn_dual_m_equivalent_speedup_v1/CODEC_EXECUTION_GRAPH.md`](../../objects/7f/7f5ce12ac10c327174bfaca585d8fefd48aa4268a752dc19323821a992b7936f__CODEC_EXECUTION_GRAPH.md)
+- [`inherited/group32/inherited/historical_port_payload/candidate/source_tree/data/zypan/GDN-quantization/results/propagation/gdn_rw_int8_quantizer_v1_protocol_audit.json`](../../../../propagation/gdn_rw_int8_quantizer_v1_protocol_audit.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/04d81d2e38fcb753595c713b7b3013e7836921160de121caa440608ed838ea0a/EXECUTION_PLAN.md`](../../objects/ea/eacfa36afc6b5f5860d26fd91c0fb7c84978a27af7bdf8a3426f3ad7abd79cb7__EXECUTION_PLAN.md)
+- [`inherited/group32/inherited/historical_port_payload/candidate/source_tree/data/zypan/analyses/qwen_gdn_dual_m_equivalent_speedup_v1/audit_official/CODEC_EXECUTION_GRAPH.md`](../../objects/7f/7f5ce12ac10c327174bfaca585d8fefd48aa4268a752dc19323821a992b7936f__CODEC_EXECUTION_GRAPH.md)
+- [`inherited/group32/inherited/historical_port_payload/candidate/source_tree/data/zypan/GDN-quantization/results/propagation/gdn_rw_int8_quantizer_v1_final_classification.json`](../../../../propagation/gdn_rw_int8_quantizer_v1_final_classification.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/18ade381152b0246980594a09aff1a4ba26c8e7395565f6a3d89534683c2e2b8/preregistration.json`](../../objects/da/da2cdb37fc787b84e73d32c51c16e296728b3b9c45875b5658f8c40b93832126__preregistration.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/3fbec3d4354b17e791127eef69c8303409de1b2f6062c58e4b9bc58b9ea5cd8b/score_positions.json`](../../objects/a2/a25033b53cfb43a7152f31913d059835f886d076e75cd86bb859640c659565b2__score_positions.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/5603009f4be422f17dd523561acc9c05ec78c476282becc1fa89997d77dd4210/preregistration.json`](../../objects/54/544da3293e5f819cbfa4953ed8381e30126342dfd47ebd52bfbcde77ea04fb5b__preregistration.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/979e400abdb5b629918344828e02ecc7f8bde5150575e9b1c81460a81b564381/score_positions.json`](../../objects/8a/8a8670dc1ee60cd2a4f7d2f3fa2dbe6243ad868a65c5656b7ebb324c8b80f3f1__score_positions.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/e08c81dc24101eae8f2a8e6a896ed1c3f1fc4439475854b59aa40d2333012dd1/score_positions.json`](../../objects/a8/a86600444d32cc2e34620c47ddc66f1da8eee057ab2eabf040c4562258ef0503__score_positions.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/ed4d36d66ee88b82a83ec60ebc6b2a76fb5d5f2f09629159c860776ff4532134/score_positions.json`](../../objects/c6/c663e479a12b4a06e16a8faf0b19cf550bfc3921ba21583fbce2904a2826a17f__score_positions.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/fd428f797cfe48eaf6f0581ccb23b9cbe612df670c7f1c3eef1cf78f7d704a60/score_positions.json`](../../objects/08/084f1699484192f0a05efa82369f0f7af2a9d4e86790acdb0c504c4d38eab2af__score_positions.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/de88ad1038e11b3e07761e365ba23c5314bd9d7ddac05923c84082f7b21e75d0/postprocess_scores.py`](../../objects/00/003024fe753f530f8f824570f29e9485b04d374594258803aee2ec732e059ca1__postprocess_scores.py)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/b0128172948151898118a6c1deb5d5bf74f5e334e5f6b5502787a0e698accdd8/GATE_STATUS_FINAL.json`](../../objects/e4/e4df72c824c7737985948fdf95e6be68117e76e9e9e420b352b79a01e7a54836__GATE_STATUS_FINAL.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/f6fcc15f89cd71a78f6f56b9b4b195f5267eaa320f7e734537ea46afcf0de79c/frozen_v4_summary.json`](../../../../aime26/81920/qwen_gdn/frozen_v4_summary.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/fa654d68f5ec69e0dd4a40e0941153c4d97027b4233d8fd2098a824762b4d306/finalize_replication.py`](../../objects/a0/a019b758b974a8968165870cdf6e60cfaea01fc58a29a57c144d21c5cd29018b__finalize_replication.py)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/94819f18edd89dbb89cc3c460ba10896647e1af0b4b9ee86bfd34ddbba7e2f23/CODEC_EXECUTION_GRAPH.md`](../../objects/7f/7f5ce12ac10c327174bfaca585d8fefd48aa4268a752dc19323821a992b7936f__CODEC_EXECUTION_GRAPH.md)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/f09c0d8c3f863d1ed93ea30aae5b1aeafe9b877da90fe6bced44ff0b1b7bb9af/CODEC_EXECUTION_GRAPH.md`](../../objects/7f/7f5ce12ac10c327174bfaca585d8fefd48aa4268a752dc19323821a992b7936f__CODEC_EXECUTION_GRAPH.md)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/6d36024db872b72fde55f68308b3b39f2eb99fbf3b285e001a71af88468d569e/FINAL_SCIENTIFIC_REPORT.md`](../../objects/98/9836e774899d489498ff1d96efc65db7816ea8680ccbb9aeb77ed9a5f99abb3d__FINAL_SCIENTIFIC_REPORT.md)
+- [`inherited/group32/inherited/historical_port_payload/candidate/source_tree/data/zypan/analyses/qwen_gdn_dual_m_equivalent_speedup_v1/audit_reference/FINAL_PHASE0_SOURCE_REVIEW.json`](../../objects/77/771165afd1ec7fcedf89a0ea0563733309d1ca7a79d6263822256fed20b7bbed__FINAL_PHASE0_SOURCE_REVIEW.json)
+- [`inherited/group32/inherited/historical_port_payload/candidate/dependency_by_path_sha256/a4d5c422e6382eb3cba07b89a77f19025f91f3a32369487ad7200a335ac7c7b1/qwen_protocol_manifest.json`](../../../../aime26/81920/qwen_gdn/evidence/integrity/qwen_protocol_manifest.json)

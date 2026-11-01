@@ -1,0 +1,719 @@
+
+# QWEN_GDN_DETERMINISTIC_RECOVERY_TO_SCALE_DISCOVERY_V3
+
+你现在接手 Qwen3.5-9B / GDN 的研究。
+
+核心方向：
+Persistent recurrent-state INT8 quantization
++ learnable orthogonal rotation。
+
+本轮总体目标：
+
+高效解决 multi-token teacher/capture 的
+deterministic numerical blocker，并在真正取得
+科学资格后，直接推进 S1/S2 的 H32/H64 实验。
+
+不要再做一轮只有大规模审计、没有解决阻断的任务。
+
+要求：
+先规划、最小验证、冻结协议、逐阶段自动推进。
+科学与数值门禁失败时必须 fail-closed。
+
+==================================================
+0. 当前已知的真实状态
+==================================================
+
+最新实验：
+
+QWEN_GDN_SCALE_SURROGATE_INPUT_RECOVERY_AND_VALIDATION_V2
+
+FINAL = FAIL_AND_STOP
+
+首个失败门禁：
+
+CANONICAL_DETERMINISTIC_CAPTURE_ENTRY
+
+原因：
+
+Torch2.5.1+cu121 在 strict deterministic=True
+下执行 CUDA torch.cumsum 报错。
+
+本次没有执行任何新的 S1/S2 科学测量。
+
+已有历史方案：
+
+CUMSUM_CLOSURE_V1
+
+结果：
+
+- fixed-order operator/chunk PASS
+- historical single-token32 145/145 byte MATCH
+- multi-token dev256 12/145 MATCH
+- logits max_abs = 0.375
+- logits relative_L2 ≈ 0.0099804173
+- historical full-model parity FAIL
+- fresh-process full-model qualification未完成
+
+这些失败不可覆盖。
+
+此外：
+
+- 旧8192状态及正式drive张量已释放
+- 旧Parent G仍然有效
+- capture deterministic=False
+- replay deterministic=True
+- 旧G不能自动与新的short scores配对
+
+重要：
+
+历史多token byte parity失败，
+不等于fixed-order算法数学错误，
+也不自动证明它适合新的完整模型。
+
+必须区分历史兼容资格和新数值资格。
+
+==================================================
+1. 执行效率原则
+==================================================
+
+本轮按以下优先级：
+
+P0：快速增量审计
+P1：复用fixed-order candidate的数值资格
+P2：真实multi-token full-model closure
+P3：Track B短程科学测量
+P4：Track A 8192-anchor测量
+P5：必要的matched long-horizon标签
+
+如果某阶段全部通过，自动执行下一阶段。
+
+不要无必要地重复已经通过的身份审计。
+不要重跑旧145对象的完整历史审计作为新协议
+的强制bitwise PASS条件。
+
+但是必须保留和展示历史parity差异，
+并证明新协议下的数值正确性。
+
+不要首先迁移到Torch2.7.1并假设原生cumsum
+已得到支持。
+
+PyTorch2.7至2.12官方文档仍将CUDA浮点
+cumsum列为strict deterministic报错操作。
+如考虑其他版本，必须先做真实operator probe，
+不能因版本号较新就认为已经解决。
+
+优先使用已有环境、已有源码和已有证据。
+
+只有现有fixed-order路线确实无法满足
+新数值资格，才评估一个独立备选方案。
+
+不允许无限迭代新scan实现。
+本轮最多评估两个预先登记的实现路线；
+失败则保存证据并停止。
+
+==================================================
+2. 资源政策
+==================================================
+
+用户没有设置固定GPUh上限。
+
+不设置4 GPUh、16 GPUh等硬预算。
+不设置固定85% VRAM停止规则。
+
+继续记录：
+
+GPUh、wall-clock、GPU UUID、
+peak allocated/reserved、吞吐量、
+磁盘使用、cache增长和OOM。
+
+在每次扩大执行规模前，
+通过实际microbenchmark验证资源可行性。
+
+优先节约重复计算，而不是通过缩短科学horizon
+或修改QDQ语义来减少计算成本。
+
+Qwen服务器历史配置为4×RTX3090 24GB，
+必须重新确认真实设备、环境和运行状态。
+
+Qwen不使用SGLang。
+
+不允许清理其他任务或更改旧正式环境。
+
+==================================================
+3. P0：复用已有历史证据
+==================================================
+
+定位并读取：
+
+QWEN_GDN_SCALE_SURROGATE_INPUT_RECOVERY_AND_VALIDATION_V2
+
+QWEN_GDN_SHORT_HORIZON_SCALE_INFLATION_SURROGATE_VALIDATION_V1
+
+CUMSUM_CLOSURE_V1
+
+FROZEN_DRIVE_COUNTERFACTUAL_REPLAY_V1
+
+QWEN_GDN_FD_SCALE_FEEDBACK_DIRECTION_V1
+
+以及原C5R/C6R teacher collector。
+
+用manifest和git对象确定真实路径。
+不要猜测实验目录。
+
+重点核对：
+
+- fixed-order candidate实现及SHA
+- operator/chunk资格
+- 原multi-token 145对象失败明细
+- 原生产cumsum调用点
+- 原模型真实shape/dtype/stride/dim
+- 旧teacher chunk-to-position调用
+- 原quantizer与checkpoint身份
+- 现有full-model数值测试代码
+- 已冻结的可适用数值标准
+
+此前已通过的269项Direction产物审计、
+模型SHA、量化器SHA、文档SHA，
+若资产无变化可复用其已验证manifest，
+只补充本轮所需的身份检查。
+
+建立新clean worktree、新实验目录。
+
+旧PASS/FAIL/STOP保持字节不变。
+
+==================================================
+4. P1：最小确定性算子资格
+==================================================
+
+优先使用历史fixed-order scan候选。
+
+不要从零重新写另一个Triton scan。
+
+用原生产调用点捕获的真实shape/dtype/stride
+和实际输入分布进行测试。
+
+要求：
+
+A. 原始数学scan语义正确
+B. 相同输入fresh-process bitwise一致
+C. 不存在隐藏非确定性fallback
+D. 严格deterministic=True且warn_only=False
+E. 不改变模型其他数学运算
+F. 在目标GPU上可以稳定执行
+
+用小规模独立FP64数学reference验证
+cumulative sum的正确性。
+
+FP64只用于离线数值oracle，
+不允许作为recurrent high-precision buffer。
+
+必须报告：
+
+- forward absolute/relative error
+- 各prefix的误差
+- 误差相对于输入规模的变化
+- 重复进程的逐字节一致性
+- 与历史native cumsum的描述性差异
+
+不要要求与旧CUDA非确定性实现bitwise相同。
+
+对于浮点算法的数值容差：
+
+先根据dtype、scan长度、误差分析和
+独立校准样本制定资格标准。
+
+在正式验证输入和科学输出产生前冻结标准，
+并使用未参与标准制定的测试输入验证。
+
+如果算子准确性或repeatability失败：
+停止，不进入full-model。
+
+==================================================
+5. P2：真实Multi-token Full-model资格
+==================================================
+
+不能只做operator PASS。
+
+必须在真实Qwen GDN forward上验证。
+
+保留生产路径：
+
+chunk-to-position teacher forward
+
+不得改成逐tokenteacher冒充原训练collector。
+
+采用递进样本：
+
+2 tokens
+8 tokens
+32 tokens
+64 tokens
+256 tokens
+
+先最小，再扩大。
+
+比较：
+
+- 首次divergence layer/token/tensor
+- GDN recurrent intermediate
+- final hidden
+- full-model logits
+- state numerical behavior
+- full-model fresh-process repeatability
+- FP teacher pairing
+- source/model/rotation identities
+
+必须分开评价：
+
+HISTORICAL_BITWISE_PARITY
+
+NEW_DETERMINISTIC_REPEATABILITY
+
+NEW_MATHEMATICAL_FIDELITY
+
+NEW_FULL_MODEL_NUMERICAL_ELIGIBILITY
+
+旧145对象byte parity失败可以保留FAIL，
+不能强迫新协议retro-PASS。
+
+但是新的full-model eligibility必须证明：
+
+1. 算子数学定义忠实
+2. 多token模型语义正确
+3. 实际运行可复现
+4. 没有无资格fallback
+5. 新FP teacher可作为新matched面板的有效reference
+6. 与原实现的数值差异已测量并解释
+7. 不存在足以破坏本实验科学比较的
+   未解释数值偏移或放大
+
+特别注意历史logits max_abs=0.375、
+relative_L2≈0.00998不能忽略。
+
+不能仅因为新执行bitwise可复现，
+就自动宣称数值资格PASS。
+
+如没有可信的新数值资格规则，
+应STOP，而不是自行放宽旧阈值。
+
+通过后创建：
+
+NEW_MATCHED_NUMERICAL_CONTRACT_V1
+
+冻结source/runtime/算法/资格标准。
+
+它是新matched科学实验，
+不是旧生产capture的历史等价恢复。
+
+==================================================
+6. P3：S1/S2 Observer资格
+==================================================
+
+只有数值闭环PASS后执行。
+
+正式INT8 quantizer身份保持不变：
+
+zero_point=0
+qrange=[-127,127]
+rounding=torch.round
+scale=amax(dim=-2,keepdim=True).clamp_min(1e-12)/127
+
+S1：
+
+r=log(s_student/s_clean)
+
+S1=mean(relu(r)^2)
+
+S2：
+
+s_cap=min(s_student,s_clean)
+
+S2=mean(
+  ||QDQ(u;s_student)-QDQ(u;s_cap)||²
+  /(||u||²+1e-12)
+)
+
+u必须是同一个student pre-QDQ state。
+
+S2仅为观察分支：
+不得写回recurrent state。
+
+D1=mean(relu(-r)^2)
+D2=mean(r²)
+
+明确冻结aggregation axes、dtype、
+group/layer weighting、finite规则。
+
+必须完成observer OFF/ON parity：
+
+- 主QDQ codes
+- recurrent state
+- logits
+- next-token consumption
+- cache writeback
+
+必须满足事前冻结的无副作用判据。
+
+关闭observer和打开observer
+不能导致主科学轨迹发生未解释的差异。
+
+==================================================
+7. P4：优先Track B短程验证
+==================================================
+
+Track B：
+
+1024-token document geometry
+8 original capture positions
+H32 / H64
+true every-token INT8 QDQ/writeback
+
+目标：
+
+先验证S1/S2能否在真实训练长度下测量，
+并且能否与原C5/C6目标公平比较。
+
+先运行：
+
+1 document
+H + C6R
+
+作为工程资格。
+
+资格PASS后，按预冻结顺序扩大到：
+
+4 independent RepoBench-P documents
+H / C6R / C7
+
+Native仅作negative control。
+
+正式baseline：
+
+B0 = original C5 State relative-MSE
+B1 = original C6 Functional relative-MSE
+B2 = B1 + 0.1*B0
+
+B0必须使用原per-head relative-MSE。
+B1必须使用真实out_proj输出和matched teacher。
+
+不得用旧J替代B0，
+不得用q/k/v或权重近似替代B1。
+
+若B1无法取得合法matched teacher，
+如实报告NOT_COMPARABLE，
+不能制造新的近似Functional Loss冒充原C6。
+
+所有短程指标先冻结scores和SHA。
+
+这一步是新数值合同下的Discovery，
+不是新rotation训练。
+
+==================================================
+8. P5：Track A 8192 Anchor
+==================================================
+
+只有Track B工程资格和新数值合同PASS，
+才扩大到长历史。
+
+真实anchor：
+
+已经消费完第8192个token的recurrent state。
+
+H32：
+
+0-based [8192,8224)
+
+H64：
+
+0-based [8192,8256)
+
+必须是真正从token1持续写回到8192的学生状态。
+
+不能：
+
+- 从clean FP state重置
+- 将旧SHA当作anchor张量
+- 从不相容旧runtime拼接drive
+- 使用single-pulse替代continued QDQ
+
+目标：
+
+在新matched runtime中测量：
+
+S1_H32 / S1_H64
+S2_H32 / S2_H64
+D1 / D2
+合法baseline
+anchor cumulative error
+
+对四篇旧文档、预冻结的H/C6R/C7
+进行完整Discovery。
+
+尽量在同一次运行中采集所需指标。
+
+建议原子保存经过验证的8192 anchor，
+便于后续准确恢复，不再重复长时间warmup。
+
+保存完整recurrent/cache身份和恢复资格，
+不能只保存一个SHA却没有实际tensor。
+
+==================================================
+9. P6：Matched Long-horizon G
+==================================================
+
+不允许把新short scores直接拼接旧G，
+除非严格历史配对资格独立成立。
+
+本轮默认使用：
+
+NEW_SELF_CONSISTENT_MATCHED_PANEL
+
+旧G只作为描述性历史背景。
+
+若Track A与短程采集已经通过资格，
+且32K完整运行通过真实内存与稳定性预检，
+允许继续得到同runtime matched长期G。
+
+但必须在读取新long G之前冻结：
+
+- short scores
+- surrogate definitions
+- candidate rotations
+- documents
+- analysis metrics
+- code/source/runtime identities
+- long-horizon label implementation
+
+历史原G定义：
+
+G =
+J_ACC_FD(32768) / J_ACC_FD(8192)
+
+保持原始24层、token和FP64归约定义。
+
+另外记录不重叠未来损伤：
+
+E_future =
+mean error over [8256,32768)
+
+具体每token每layer error必须沿用原J定义。
+
+不要把E_future称作AIME或full-model KL。
+
+重要：
+
+如果已取得合法8192状态，
+优先复用同一条matched continuation生成G。
+
+避免重新从token1多次运行32K。
+
+如果需要checkpoint/resume，
+必须先通过resume parity，
+不能无资格拼接片段。
+
+每篇文档和rotation使用冻结的输入与条件。
+
+不得根据第一篇的科学结果
+重新挑选其他文档或rotation。
+
+如长程资源预检失败或数值资格失败，
+保留短程结果并STOP。
+
+==================================================
+10. 分析规则
+==================================================
+
+全部四篇已知长期排序的文档属于Discovery。
+
+主要回答：
+
+Q1：S1是否区分H/C6R/C7？
+
+Q2：H32/H64哪个预测长期G更好？
+
+Q3：Track B不带8192 warmup时是否仍有信号？
+
+Q4：S1相对于原C6 B2是否有增量排序信息？
+
+Q5：S2相对S1是否有增量？
+
+Q6：D1、D2能否解释同样的排序？
+
+Q7：S1是否关联不重叠的E_future？
+
+每篇文档报告：
+
+- S1/S2实际数值
+- 原始B0/B1/B2
+- matched G
+- matched E_future
+- rotation ranking
+- pairwise concordance
+- Spearman
+- discordant pairs
+
+如没有合法functional baseline，
+不能声称超越C6。
+
+独立统计单位是document。
+
+不能把token、layer、group或旋转对
+当成独立样本数。
+
+仅4篇旧文档，
+不能宣称统计意义上的确认。
+
+不得根据结果事后改变阈值或surrogate定义。
+
+==================================================
+11. 自动执行与停止边界
+==================================================
+
+此次授权：
+
+- numerical engineering recovery
+- new matched numerical qualification
+- S1/S2 observer
+- Track B H32/H64
+- Track A H32/H64
+- 条件满足时的matched frozen-drive long G
+
+如果前置门禁全部PASS，
+自动继续下一阶段，不需要额外提示词。
+
+真实必须STOP：
+
+- deterministic failure
+- operator数学误差资格失败
+- full-model数值资格失败
+- invalid teacher pairing
+- persistent INT8 writeback错误
+- observer改变主trajectory
+- irrecoverable identity mismatch
+- confirmed OOM
+- uncontrollable memory growth
+- invalid checkpoint/resume
+- insufficient disk
+- unbounded no-progress execution
+
+不能因为4 GPUh、16 GPUh或85%显存
+这些人为阈值停止。
+
+也不能为了使实验继续而：
+
+- 禁用deterministic
+- warn_only=True
+- 放宽数值资格
+- 修改正式quantizer
+- 将chunk teacher改为逐token
+- 降低requantization频率
+- 使用FP persistent buffer
+- 重新训练rotation
+
+本轮最多尝试两个预登记的
+deterministic scan候选路线。
+
+如均无法通过完整数值资格：
+STOP_NO_QUALIFIED_NUMERICAL_PATH。
+
+不要陷入无限patch-and-retry。
+
+==================================================
+12. 交付
+==================================================
+
+建立全新V3输出目录。
+
+必须输出执行计划和清晰stage状态。
+
+数值阶段：
+
+NUMERICAL_RECOVERY_PLAN.md
+EXISTING_ASSET_REUSE_AUDIT.json
+SCAN_CANDIDATE_QUALIFICATION.json
+MULTITOKEN_FULL_MODEL_PARITY.json
+FRESH_PROCESS_DETERMINISM.json
+NEW_NUMERICAL_CONTRACT.json
+FIRST_DIVERGENCE_REPORT.json
+
+科学阶段：
+
+OBSERVER_PARITY_REPORT.json
+TRACK_B_SHORT_SCORES.csv
+TRACK_A_8192_SHORT_SCORES.csv
+ORIGINAL_C5_C6_BASELINES.csv
+MATCHED_LONG_G.csv
+FUTURE_ONLY_ERROR.csv
+ROTATION_RANKING_COMPARISON.csv
+INCREMENTAL_INFORMATION_ANALYSIS.json
+
+运行与结论：
+
+RESOURCE_LEDGER.json
+SOURCE_AND_ARTIFACT_IDENTITIES.json
+SCIENTIFIC_VERDICT.json
+FINAL_REPORT.md
+SHA256SUMS.txt
+
+未执行的文件不得输出虚假的空壳结果。
+在manifest中报告NOT_RUN及原因。
+
+所有结果绑定：
+
+document SHA
+model SHA
+rotation SHA
+quantizer SHA
+source commit
+runtime identity
+GPU UUID
+FP/student pairing
+complete execution receipt
+
+==================================================
+13. 最终中文报告
+==================================================
+
+请明确报告：
+
+1. 是否真正解决原multi-token确定性阻断？
+2. 复用了哪个scan实现，为什么？
+3. 新数学/数值资格是否PASS？
+4. 旧145-object历史parity仍是什么状态？
+5. 新full-model fresh-process是否一致？
+6. 是否保留chunk-to-position teacher语义？
+7. S1/S2 observer是否无副作用？
+8. Track B实际测量结果是什么？
+9. Track A实际测量结果是什么？
+10. matched长期G是否完成？
+11. S1是否能区分H/C6R/C7？
+12. S1相对原C6 Functional有无增量？
+13. S2是否提供比S1更多的信息？
+14. 实际GPUh/VRAM/disk消耗是多少？
+15. 下一步是否值得独立full-model KL验证？
+
+最终分别给出：
+
+NUMERICAL_CLOSURE_STATUS
+TRACK_B_STATUS
+TRACK_A_STATUS
+LONG_HORIZON_STATUS
+SURROGATE_DISCOVERY_STATUS
+
+所有旧实验状态保持不变。
+
+本轮结束后禁止自动：
+
+- C8训练
+- 新rotation optimization
+- AIME26
+- free generation
+- full-model KL prospective pilot
+- S1/S2梯度优化
+
+如果发现新的工程失败，
+保留最早失败证据与已有合格阶段成果。
+
+如果数值门禁全部PASS，
+不要只输出工程报告后停止，
+而应继续完成已授权的短程科学测量。

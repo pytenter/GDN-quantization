@@ -1,0 +1,90 @@
+{
+  "schema": "QWEN_HISTORICAL_RUNTIME_GPU_PLAN_V1",
+  "task_id": "QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1",
+  "ALLOW_GPU_RESTORE": "NO",
+  "status": "CPU_PREPARED_GPU_NOT_AUTHORIZED",
+  "request_sha256": "5f31b8018a9b23be49200199b185f4c964d6b82c67c6a9a75b25c95e1e04f526",
+  "device": {
+    "physical_index": 0,
+    "uuid": "GPU-a78176ed-f97f-c54f-6201-5a01b570f422"
+  },
+  "max_active_GPUs": 1,
+  "hard_seconds": 1800,
+  "protective_seconds": 1650,
+  "cleanup_reserve_seconds": 150,
+  "dispatch_max_seconds": 240,
+  "cleanup_wait_seconds": 120,
+  "minimum_disk_free_bytes": 10737418240,
+  "max_numeric_raw_bytes": 8589934592,
+  "min_gpu_free_bytes": 23622320128,
+  "numeric_tokens": 32,
+  "warmup_tokens": 128,
+  "measured_tokens": 128,
+  "units": [
+    {
+      "id": "NUMERIC_FRESH0",
+      "mode": "numeric",
+      "optional": false
+    },
+    {
+      "id": "NUMERIC_FRESH1",
+      "mode": "numeric",
+      "optional": false
+    },
+    {
+      "id": "OLD_FP_R0",
+      "mode": "benchmark",
+      "optional": false
+    },
+    {
+      "id": "OLD_FP_R1",
+      "mode": "benchmark",
+      "optional": false
+    },
+    {
+      "id": "OLD_FP_R2",
+      "mode": "benchmark",
+      "optional": false
+    },
+    {
+      "id": "NEW_FP_R0",
+      "mode": "benchmark",
+      "optional": true
+    }
+  ],
+  "binding_files": [
+    "analysis/environment/PROSPECTIVE_MODEL_AND_NATIVE_BINDINGS.json",
+    "analysis/environment/CPU_FIXTURE_CRITICAL_NATIVE_BINDINGS.json",
+    "analysis/HISTORICAL_EXTERNAL_SOURCE_BINDINGS.json"
+  ],
+  "math_gate": {
+    "state_atol": 1e-05,
+    "state_scale_rtol": 0.0001,
+    "output_atol": 0.001,
+    "output_scale_rtol": 0.01,
+    "normalization_atol": 0.0001,
+    "normalization_scale_rtol": 0.02,
+    "scope": "32-token actual-activation-driven FP64 state recurrence from token0; bounded normalization/core rounding checks, not full-model FP64/long-horizon proof"
+  },
+  "fresh_repeat_gate": "ALL_SERIALIZED_LOGITS_CACHE_STATE_CONV_KV_METADATA_BYTES_EXACT_WITHIN_SAME_GPU_TWO_FRESH",
+  "historical_byte_reference": "NOT_RETAINED",
+  "NEW_STRICT_byte_parity_required": false,
+  "performance_target_TPS": 13.0,
+  "historical_reference_TPS": 13.742036038730332,
+  "historical_reference_scope": "OLD_FP reconciliation median, same128+128window, not current restored TPS",
+  "budget_policy": "At least two numeric fresh units required. Before each dispatch reserve240+150s; benchmark repeats may be reduced solely for frozen remaining budget and must be reported; no retry/search. No GPU hour estimate inferred from zero current dispatches.",
+  "raw_policy": "All future raw stays55; no Mac model/tensor download; archive29 independent SHA/bytes atomic seal before any local raw cleanup; preserve failures",
+  "restrictions": [
+    "NO_AIME",
+    "NO_32K_FUTURE_KL",
+    "NO_GROUP32_GPU",
+    "NO_INT8_GPU",
+    "NO_PROFILER",
+    "NO_GRID_SEARCH",
+    "NO_HISTORICAL_MUTATION",
+    "NO_RETRY",
+    "NO_THROUGHPUT_BASED_PARAMETER_CHANGE"
+  ],
+  "qualification_scope": "FP_ONLY_SHORT_PREFIX_AND_SHORT_CACHE_IF_FUTURE_PASS",
+  "critical_loaded_library_selection_policy": "All selected critical DSOs fresh SHA/bytes/inode allowed; numeric fresh1 and OLD benchmark same-phase PRE/POST semantic path/SHA selection must equal numeric fresh0; no PRE-to-POST equality required because lazy loading is retained."
+}

@@ -1,0 +1,52 @@
+{
+  "task_id": "QWEN_GDN_OSCAR_SYM32_P1_C1_S3_UNIFIED_RECOVERY_AIME26_V2",
+  "status": "FROZEN_BEFORE_V2_ATTRIBUTION_AND_GPU",
+  "basis": "Exact original V1 FP64 deterministic basis function; firstmaxabs sign; fixed canonical projector subspace for adjacent relative eigengap<=1e-12",
+  "Cq": "Same original FP64 24x32 stored tensors; assert adjacent shared-head exact byte equality; solve only unique16 and share asset",
+  "canonical": "A64=U64@H64 in CPUFP64, A32=single nearest FP32 conversion; same path all384 unique heads, no search",
+  "contract_A": {
+    "PSD_negative_relative": 1e-12,
+    "symmetry": "exact stored symmetry",
+    "FP64_eigen_relative_frobenius": 5e-11,
+    "FP64_U_and_A_orthogonality_max_abs": 2e-11,
+    "FP64_diagonal_uniform_relative": 5e-11,
+    "near_zero_mu_absolute_switch": 1e-24
+  },
+  "contract_B": {
+    "FP32_u": 5.960464477539063e-08,
+    "gamma_n": 128,
+    "orthogonality": "spectral error <= 2||DeltaA||2+||DeltaA||2^2+5e-11, and <=2*gamma128",
+    "representation": "observed diagonal absolute error <= M0 diagonal residual + normC2*(2*dA2+dA2^2) + 512*eps64*normC2*max(1,normA64_2^2); relative only mu>1e-24",
+    "C32_conversion": "<=normA32_2^2*norm(C32-C64)_2 plus FP64 evaluation noise",
+    "FP32_checker": "<= (2*gamma128+gamma128^2)*maxdiag(abs(A32).T@abs(C32)@abs(A32)) plus FP64 reference evaluation noise",
+    "old_2e6_threshold": "Reported solely as V1 diagnostic, never sole V2 admission gate"
+  },
+  "contract_C": {
+    "frozen_nonAIME_tokens": 128,
+    "fields": "all24 GDN state, q/k, gate/beta, independent FP64 state update/readout, all32layer outputs and full logits",
+    "direct_helper_FP32_state_relative": 0.0002,
+    "direct_helper_FP32_readout_relative": 0.0002,
+    "BF16_readout_relative": "Compare FP64 readout rounded to actual BF16, allow <=2*BF16epsilon",
+    "native_vs_rotated_field_relative_RMS": "<=max(4*original_H_vs_native_relative_RMS,0.02)",
+    "native_vs_rotated_field_max_abs": "<=max(4*original_H_vs_native_max_abs,0.02*maxabs(native),1e-12)",
+    "C1_vs_S3_no_QDQ": "same functions and same A; actual values/bytes identical on same device expected",
+    "finite": true,
+    "no_AIME_based_thresholds": true
+  },
+  "independent_branch_policy": {
+    "P1": "Independent CPU PBR reuse + actual perGPU P1 qualification; never needs U receipt",
+    "C1": "CPU_U_PASS + actual FP_PASS + method GPU_PASS",
+    "S3": "CPU_U_PASS + actual FP_PASS + method PBR/GPU_PASS",
+    "U_failure": "Stop C1/S3 only, allow all30 P1 if own gates pass"
+  },
+  "resource_policy": {
+    "no_GPUh_cap": true,
+    "no_total_wall_cap": true,
+    "no_unit_elapsed_cap": true,
+    "no_progress_watchdog_seconds": 1800,
+    "cleanup_seconds": 120,
+    "compute_free_min_GiB": 8,
+    "output_small_max_GiB": 2,
+    "archive_reservation_plus_headroom_GiB": 120
+  }
+}

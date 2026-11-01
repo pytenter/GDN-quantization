@@ -1,0 +1,1598 @@
+montreal_forced_aligner/acoustic_modeling/trainer.py
+class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
+    """
+    Train acoustic model
+
+    Parameters
+    ----------
+    training_configuration : list[tuple[str, dict[str, Any]]]
+        Training identifiers and parameters for training blocks
+    detect_phone_set: bool
+        Flag for auto-detecting phone sets for use in building triphone trees
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.alignment.base.CorpusAligner`
+        For dictionary and corpus parsing parameters and alignment parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
+    :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
+        For model export parameters
+
+    Attributes
+    ----------
+    param_dict: dict[str, Any]
+        Parameters to pass to training blocks
+    final_identifier: str
+        Identifier of the final training block
+    current_subset: int
+        Current training block's subset
+    current_acoustic_model: :class:`~montreal_forced_aligner.models.AcousticModel`
+        Acoustic model to use in aligning, based on previous training block
+    training_configs: dict[str, :class:`~montreal_forced_aligner.acoustic_modeling.base.AcousticModelTrainingMixin`]
+        Training blocks
+    """
+
+    def __init__(
+        self,
+        training_configuration: List[Tuple[str, Dict[str, Any]]] = None,
+        phone_set_type: str = None,
+        **kwargs,
+    ):
+        self.param_dict = {
+            k: v
+            for k, v in kwargs.items()
+            if not k.endswith("_directory")
+            and not k.endswith("_path")
+            and k not in ["clean", "num_jobs", "speaker_characters"]
+        }
+        self.final_identifier = None
+        self.current_subset: int = 0
+        self.current_aligner: Optional[AcousticModelTrainingMixin] = None
+        self.current_trainer: Optional[AcousticModelTrainingMixin] = None
+        self.current_acoustic_model: Optional[AcousticModel] = None
+        super().__init__(**kwargs)
+        if phone_set_type and phone_set_type != "UNKNOWN":
+            self.dictionary_model = DictionaryModel(
+                self.dictionary_model.path, phone_set_type=phone_set_type
+            )
+        self.phone_set_type = self.dictionary_model.phone_set_type
+        os.makedirs(self.output_directory, exist_ok=True)
+        self.training_configs: Dict[str, AcousticModelTrainingMixin] = {}
+        if training_configuration is None:
+            training_configuration = [
+                ("monophone", {}),
+                ("triphone", {}),
+                ("lda", {}),
+                ("sat", {}),
+                ("sat", {"subset": 0, "num_leaves": 4200, "max_gaussians": 40000}),
+            ]
+        for k, v in training_configuration:
+            self.add_config(k, v)
+
+    @classmethod
+    def parse_parameters(
+        cls,
+        config_path: Optional[str] = None,
+        args: Optional[Namespace] = None,
+        unknown_args: Optional[List[str]] = None,
+    ) -> MetaDict:
+        """
+        Parse configuration parameters from a config file and command line arguments
+
+        Parameters
+        ----------
+        config_path: str, optional
+            Path to yaml configuration file
+        args: :class:`~argparse.Namespace`, optional
+            Arguments parsed by argparse
+        unknown_args: list[str], optional
+            List of unknown arguments from argparse
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary of specified configuration parameters
+        """
+        global_params = {}
+        training_params = []
+        use_default = True
+        if config_path:
+            with open(config_path, "r", encoding="utf8") as f:
+                data = yaml.load(f, Loader=yaml.SafeLoader)
+                training_params = []
+                for k, v in data.items():
+                    if k == "training":
+                        for t in v:
+                            for k2, v2 in t.items():
+                                if "features" in v2:
+                                    global_params.update(parse_old_features(v2["features"]))
+                                    del v2["features"]
+                                training_params.append((k2, v2))
+                    elif k == "features":
+                        global_params.update(parse_old_features(v))
+                    else:
+                        if v is None and k in {
+                            "punctuation",
+                            "compound_markers",
+                            "clitic_markers",
+                        }:
+                            v = []
+                        global_params[k] = v
+                if training_params:
+                    use_default = False
+        if use_default:  # default training configuration
+            training_params.append(("monophone", {}))
+            training_params.append(("triphone", {}))
+            training_params.append(("lda", {}))
+            training_params.append(("sat", {}))
+            training_params.append(
+                ("sat", {"subset": 0, "num_leaves": 4200, "max_gaussians": 40000})
+            )
+        if training_params:
+            if training_params[0][0] != "monophone":
+                raise ConfigError("The first round of training must be monophone.")
+        global_params["training_configuration"] = training_params
+        global_params.update(cls.parse_args(args, unknown_args))
+        return global_params
+
+    def setup(self) -> None:
+        """Setup for acoustic model training"""
+        if self.initialized:
+            return
+        self.check_previous_run()
+        try:
+            self.load_corpus()
+            for config in self.training_configs.values():
+                config.non_silence_phones = self.non_silence_phones
+        except Exception as e:
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger)
+            raise
+        self.initialized = True
+
+    @property
+    def workflow_identifier(self) -> str:
+        """Acoustic model training identifier"""
+        return "train_acoustic_model"
+
+    @property
+    def configuration(self) -> MetaDict:
+        """Configuration for the worker"""
+        config = super().configuration
+        config.update(
+            {
+                "dictionary_path": self.dictionary_model.path,
+                "corpus_directory": self.corpus_directory,
+            }
+        )
+        return config
+
+    @property
+    def meta(self) -> MetaDict:
+        """Metadata about the final round of training"""
+        return self.training_configs[self.final_identifier].meta
+
+    def add_config(self, train_type: str, params: MetaDict) -> None:
+        """
+        Add a trainer to the pipeline
+
+        Parameters
+        ----------
+        train_type: str
+            Type of trainer to add, one of ``monophone``, ``triphone``, ``lda`` or ``sat``
+        params: dict[str, Any]
+            Parameters to initialize trainer
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.ConfigError`
+            If an invalid train_type is specified
+        """
+        from montreal_forced_aligner.acoustic_modeling.lda import LdaTrainer
+        from montreal_forced_aligner.acoustic_modeling.monophone import MonophoneTrainer
+        from montreal_forced_aligner.acoustic_modeling.sat import SatTrainer
+        from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+
+        p = {}
+        p.update(self.param_dict)
+        p.update(params)
+        identifier = train_type
+        index = 2
+        while identifier in self.training_configs:
+            identifier = f"{train_type}_{index}"
+            index += 1
+        self.final_identifier = identifier
+        if train_type == "monophone":
+            p = {
+                k: v for k, v in p.items() if k in MonophoneTrainer.get_configuration_parameters()
+            }
+            config = MonophoneTrainer(identifier=identifier, worker=self, **p)
+        elif train_type == "triphone":
+            p = {k: v for k, v in p.items() if k in TriphoneTrainer.get_configuration_parameters()}
+            config = TriphoneTrainer(identifier=identifier, worker=self, **p)
+        elif train_type == "lda":
+            p = {k: v for k, v in p.items() if k in LdaTrainer.get_configuration_parameters()}
+            config = LdaTrainer(identifier=identifier, worker=self, **p)
+        elif train_type == "sat":
+            p = {k: v for k, v in p.items() if k in SatTrainer.get_configuration_parameters()}
+            config = SatTrainer(identifier=identifier, worker=self, **p)
+        else:
+            raise ConfigError(f"Invalid training type '{train_type}' in config file")
+
+        self.training_configs[identifier] = config
+
+    def export_model(self, output_model_path: str) -> None:
+        """
+        Export an acoustic model to the specified path
+
+        Parameters
+        ----------
+        output_model_path : str
+            Path to save acoustic model
+        """
+        self.training_configs[self.final_identifier].export_model(output_model_path)
+        self.logger.info(f"Saved model to {output_model_path}")
+
+    @property
+    def backup_output_directory(self) -> Optional[str]:
+        """Backup directory if overwriting files is not allowed"""
+        if self.overwrite:
+            return None
+        return os.path.join(self.working_directory, "textgrids")
+
+    @property
+    def tree_path(self) -> str:
+        """Tree path of the final model"""
+        return self.training_configs[self.final_identifier].tree_path
+
+    def train(self, generate_final_alignments: bool = True) -> None:
+        """
+        Run through the training configurations to produce a final acoustic model
+
+        Parameters
+        ----------
+        generate_final_alignments: bool
+            Flag for whether final alignments should be generated at the end of training, defaults to True
+        """
+        self.setup()
+        previous = None
+        begin = time.time()
+        for trainer in self.training_configs.values():
+            if trainer.subset < len(self.utterances):
+                self.current_subset = trainer.subset
+            else:
+                self.current_subset = 0
+                trainer.subset = 0
+            if previous is not None:
+                self.current_aligner = previous
+                os.makedirs(self.working_directory, exist_ok=True)
+                self.current_acoustic_model = AcousticModel(
+                    previous.exported_model_path, self.working_directory
+                )
+                self.align()
+            trainer.train()
+            previous = trainer
+        self.logger.info(f"Completed training in {time.time()-begin} seconds!")
+
+        if generate_final_alignments:
+            self.current_subset = None
+            self.current_aligner = previous
+            os.makedirs(self.working_log_directory, exist_ok=True)
+            self.current_acoustic_model = AcousticModel(
+                previous.exported_model_path, self.working_directory
+            )
+            self.align()
+            self.collect_alignments()
+
+    @property
+    def num_utterances(self) -> int:
+        if self.current_subset and self.current_subset < len(self.utterances):
+            return self.current_subset
+        return super().num_utterances
+
+    def align(self) -> None:
+        """
+        Multiprocessing function that aligns based on the current model.
+
+        See Also
+        --------
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`
+            Multiprocessing helper function for each job
+        :meth:`.AlignMixin.align_arguments`
+            Job method for generating arguments for the helper function
+        :kaldi_steps:`align_si`
+            Reference Kaldi script
+        :kaldi_steps:`align_fmllr`
+            Reference Kaldi script
+        """
+        done_path = os.path.join(self.working_directory, "done")
+        if os.path.exists(done_path):
+            self.logger.debug(f"Skipping {self.current_aligner.identifier} alignments")
+            return
+        try:
+            self.current_acoustic_model.export_model(self.working_directory)
+            self.compile_train_graphs()
+            self.align_utterances()
+            if self.current_subset:
+                self.logger.debug(
+                    f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on {self.current_subset} utterances"
+                )
+            else:
+                self.logger.debug(
+                    f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on the full corpus"
+                )
+            self.compile_information()
+            with open(done_path, "w"):
+                pass
+        except Exception as e:
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger)
+            raise
+
+    @property
+    def alignment_model_path(self) -> str:
+        """Current alignment model path"""
+        path = os.path.join(self.working_directory, "final.alimdl")
+        if os.path.exists(path):
+            return path
+        return self.model_path
+
+    @property
+    def model_path(self) -> str:
+        """Current model path"""
+        if self.current_trainer is not None:
+            return self.current_trainer.model_path
+        return os.path.join(self.working_directory, "final.mdl")
+
+    @property
+    def data_directory(self) -> str:
+        """Current data directory based on the trainer's subset"""
+        return self.subset_directory(self.current_subset)
+
+    @property
+    def working_directory(self) -> Optional[str]:
+        """Working directory"""
+        if self.current_trainer is not None:
+            return self.current_trainer.working_directory
+        if self.current_aligner is None:
+            return None
+        return os.path.join(self.output_directory, f"{self.current_aligner.identifier}_ali")
+
+    @property
+    def working_log_directory(self) -> Optional[str]:
+        """Current log directory"""
+        return os.path.join(self.working_directory, "log")
+montreal_forced_aligner/alignment/pretrained.py
+class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
+    """
+    Class for aligning a dataset using a pretrained acoustic model
+
+    Parameters
+    ----------
+    acoustic_model_path : str
+        Path to acoustic model
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.alignment.base.CorpusAligner`
+        For dictionary and corpus parsing parameters and alignment parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
+    """
+
+    def __init__(
+        self,
+        acoustic_model_path: str,
+        **kwargs,
+    ):
+        self.acoustic_model = AcousticModel(acoustic_model_path)
+        kw = self.acoustic_model.parameters
+        kw.update(kwargs)
+        super().__init__(**kw)
+
+    @property
+    def working_directory(self) -> str:
+        """Working directory"""
+        return self.workflow_directory
+
+    def setup(self) -> None:
+        """Setup for alignment"""
+        if self.initialized:
+            return
+        begin = time.time()
+        try:
+            os.makedirs(self.working_log_directory, exist_ok=True)
+            check = self.check_previous_run()
+            if check:
+                self.logger.debug(
+                    "There were some differences in the current run compared to the last one. "
+                    "This may cause issues, run with --clean, if you hit an error."
+                )
+            self.load_corpus()
+            if self.excluded_pronunciation_count:
+                self.logger.warning(
+                    f"There were {self.excluded_pronunciation_count} pronunciations in the dictionary that"
+                    f"were ignored for containing one of {len(self.excluded_phones)} phones not present in the"
+                    f"trained acoustic model.  Please run `mfa validate` to get more details."
+                )
+            self.acoustic_model.validate(self)
+            self.acoustic_model.export_model(self.working_directory)
+            self.acoustic_model.log_details(self.logger)
+
+        except Exception as e:
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger)
+            raise
+        self.initialized = True
+        self.logger.debug(f"Setup for alignment in {time.time() - begin} seconds")
+
+    @classmethod
+    def parse_parameters(
+        cls,
+        config_path: Optional[str] = None,
+        args: Optional[Namespace] = None,
+        unknown_args: Optional[List[str]] = None,
+    ) -> MetaDict:
+        """
+        Parse parameters from a config path or command-line arguments
+
+        Parameters
+        ----------
+        config_path: str
+            Config path
+        args: :class:`~argparse.Namespace`
+            Command-line arguments from argparse
+        unknown_args: list[str], optional
+            Extra command-line arguments
+
+        Returns
+        -------
+        dict[str, Any]
+            Configuration parameters
+        """
+        global_params = {}
+        if config_path and os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf8") as f:
+                data = yaml.load(f, Loader=yaml.SafeLoader)
+                data = parse_old_features(data)
+                for k, v in data.items():
+                    if k == "features":
+                        global_params.update(v)
+                    else:
+                        if v is None and k in {
+                            "punctuation",
+                            "compound_markers",
+                            "clitic_markers",
+                        }:
+                            v = []
+                        global_params[k] = v
+        global_params.update(cls.parse_args(args, unknown_args))
+        return global_params
+
+    @property
+    def configuration(self) -> MetaDict:
+        """Configuration for aligner"""
+        config = super().configuration
+        config.update(
+            {
+                "acoustic_model": self.acoustic_model.name,
+            }
+        )
+        return config
+
+    @property
+    def backup_output_directory(self) -> Optional[str]:
+        """Backup output directory if overwriting is not allowed"""
+        if self.overwrite:
+            return None
+        return os.path.join(self.working_directory, "textgrids")
+
+    @property
+    def workflow_identifier(self) -> str:
+        """Aligner identifier"""
+        return "pretrained_aligner"
+
+    def evaluate(
+        self,
+        mapping: Optional[Dict[str, str]] = None,
+        output_directory: Optional[str] = None,
+    ) -> None:
+        """
+        Evaluate alignments against a reference directory
+
+        Parameters
+        ----------
+        reference_directory: str
+            Directory containing reference TextGrid alignments
+        mapping: dict[str, Union[str, list[str]]], optional
+            Mapping between phones that should be considered equal across different phone set types
+        output_directory: str, optional
+            Directory to save results, if not specified, it will be saved in the log directory
+        """
+        # Set up
+        self.log_info("Evaluating alignments...")
+        self.log_debug(f"Mapping: {mapping}")
+
+        score_count = 0
+        score_sum = 0
+        phone_edit_sum = 0
+        phone_length_sum = 0
+        if output_directory:
+            csv_path = os.path.join(output_directory, "alignment_evaluation.csv")
+        else:
+            csv_path = os.path.join(self.working_log_directory, "alignment_evaluation.csv")
+        with open(csv_path, "w", encoding="utf8") as f:
+            f.write(
+                "utterance,file,speaker,duration,word_count,oov_count,reference_phone_count,score,phone_error_rate\n"
+            )
+            for utterance in self.utterances:
+                if not utterance.reference_phone_labels:
+                    continue
+                speaker = utterance.speaker_name
+                file = utterance.file_name
+                duration = utterance.duration
+                reference_phone_count = len(utterance.reference_phone_labels)
+                word_count = len(utterance.text.split())
+                oov_count = len(utterance.oovs)
+                if not utterance.phone_labels:  # couldn't be aligned
+                    utterance.alignment_score = None
+                    utterance.phone_error_rate = len(utterance.reference_phone_labels)
+                    f.write(
+                        f"{utterance.name},{file},{speaker},{duration},{word_count},{oov_count},{reference_phone_count},na,{len(utterance.reference_phone_labels)}\n"
+                    )
+
+                    continue
+                score, phone_error_rate = align_phones(
+                    utterance.reference_phone_labels,
+                    utterance.phone_labels,
+                    self.optional_silence_phone,
+                    mapping,
+                )
+                if score is None:
+                    continue
+                utterance.alignment_score = score
+                utterance.phone_error_rate = phone_error_rate
+                f.write(
+                    f"{utterance.name},{file},{speaker},{duration},{word_count},{oov_count},{reference_phone_count},{score},{phone_error_rate}\n"
+                )
+                score_count += 1
+                score_sum += score
+                phone_edit_sum += int(phone_error_rate * reference_phone_count)
+                phone_length_sum += reference_phone_count
+        self.logger.info(f"Average overlap score: {score_sum/score_count}")
+        self.logger.info(f"Average phone error rate: {phone_edit_sum/phone_length_sum}")
+
+    def align(self) -> None:
+        """Run the aligner"""
+        self.setup()
+        done_path = os.path.join(self.working_directory, "done")
+        dirty_path = os.path.join(self.working_directory, "dirty")
+        if os.path.exists(done_path):
+            self.logger.info("Alignment already done, skipping.")
+            return
+        try:
+            log_dir = os.path.join(self.working_directory, "log")
+            os.makedirs(log_dir, exist_ok=True)
+            self.compile_train_graphs()
+
+            self.logger.info("Performing first-pass alignment...")
+            self.speaker_independent = True
+            self.align_utterances()
+            self.compile_information()
+            if self.uses_speaker_adaptation:
+                self.calc_fmllr()
+
+                self.speaker_independent = False
+                self.logger.info("Performing second-pass alignment...")
+                self.align_utterances()
+
+                self.compile_information()
+            self.collect_alignments()
+        except Exception as e:
+            with open(dirty_path, "w"):
+                pass
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger)
+            raise
+        with open(done_path, "w"):
+            pass
+montreal_forced_aligner/helper.py
+def save_scp(
+    scp: ScpType, path: str, sort: Optional[bool] = True, multiline: Optional[bool] = False
+) -> None:
+    """
+    Helper function to save an arbitrary SCP.
+
+    ScpType is either a list of tuples (str, str) for one-to-one mapping files or
+    a list of tuples (str, list) for one-to-many mappings.
+
+    See Also
+    --------
+    :kaldi_docs:`io#io_sec_scp_details`
+        For more information on the SCP format
+
+    Parameters
+    ----------
+    scp: ScpType
+        SCP to save
+    path: str
+        File path
+    sort: bool, optional
+        Flag for whether the output file should be sorted
+    multiline: bool, optional
+        Flag for whether the SCP contains multiline data (i.e., utterance FSTs)
+    """
+    if sys.platform == "win32":
+        newline = ""
+    else:
+        newline = None
+    if not scp:
+        return
+    with open(path, "w", encoding="utf8", newline=newline) as f:
+        if sort:
+            scp = sorted(scp)
+        for line in scp:
+            if multiline:
+                f.write(f"{make_safe(line[0])}\n{make_safe(line[1])}\n")
+            else:
+                f.write(f"{' '.join(map(make_safe, line))}\n")
+montreal_forced_aligner/helper.py
+def comma_join(sequence: List[Any]) -> str:
+    """
+    Helper function to combine a list into a human-readable expression with commas and a
+    final "and" separator
+
+    Parameters
+    ----------
+    sequence: list[Any]
+        Items to join together into a list
+
+    Returns
+    -------
+    str
+        Joined items in list format
+    """
+    if len(sequence) < 3:
+        return " and ".join(sequence)
+    return f"{', '.join(sequence[:-1])}, and {sequence[-1]}"
+montreal_forced_aligner/utils.py
+def run_mp(
+    function: Callable,
+    argument_list: List[Tuple[Any, ...]],
+    log_directory: str,
+    return_info: bool = False,
+) -> Optional[Dict[int, Any]]:
+    """
+    Apply a function for each job in parallel
+
+    Parameters
+    ----------
+    function: Callable
+        Multiprocessing function to apply
+    argument_list: list
+        List of arguments for each job
+    log_directory: str
+        Directory that all log information from the processes goes to
+    return_info: dict, optional
+        If the function returns information, supply the return dict to populate
+    """
+    from .config import BLAS_THREADS
+
+    os.environ["OPENBLAS_NUM_THREADS"] = f"{BLAS_THREADS}"
+    os.environ["MKL_NUM_THREADS"] = f"{BLAS_THREADS}"
+    stopped = Stopped()
+    manager = mp.Manager()
+    job_queue = manager.Queue()
+    return_dict = manager.dict()
+    info = None
+    if return_info:
+        info = manager.dict()
+    for a in argument_list:
+        job_queue.put(a)
+    procs = []
+    for i in range(len(argument_list)):
+        p = ProcessWorker(i, job_queue, function, return_dict, stopped, info)
+        procs.append(p)
+        p.start()
+
+    for p in procs:
+        p.join()
+    if "error" in return_dict:
+        _, exc = return_dict["error"]
+        raise exc
+
+    parse_logs(log_directory)
+    if return_info:
+        return info
+montreal_forced_aligner/exceptions.py
+class KaldiProcessingError(MFAError):
+    """
+    Exception class for when a Kaldi binary has an exception
+
+    Parameters
+    ----------
+    error_logs: list[str]
+        List of Kaldi logs that had errors
+    log_file: str, optional
+        Overall log file to find more information
+    """
+
+    def __init__(self, error_logs: List[str], log_file: Optional[str] = None):
+        super().__init__(
+            f"There were {len(error_logs)} job(s) with errors when running Kaldi binaries."
+        )
+
+        if log_file is not None:
+            self.message_lines.append(
+                f" For more details, please check {self.printer.error_text(log_file)}"
+            )
+        self.error_logs = error_logs
+        self.log_file = log_file
+
+    def update_log_file(self, logger: logging.Logger) -> None:
+        """
+        Update the log file output
+
+        Parameters
+        ----------
+        logger: logging.Logger
+            Logger
+        """
+        if logger.handlers:
+            self.log_file = logger.handlers[0].baseFilename
+        self.message_lines = [
+            f"There were {len(self.error_logs)} job(s) with errors when running Kaldi binaries."
+        ]
+        if self.log_file is not None:
+            self.message_lines.append(
+                f" For more details, please check {self.printer.error_text(self.log_file)}"
+            )
+montreal_forced_aligner/helper.py
+class TerminalPrinter:
+    """
+    Helper class to output colorized text
+
+    Attributes
+    ----------
+    colors: dict[str, str]
+        Mapping of color names to terminal codes in colorama (or empty strings
+        if the global terminal_colors flag is set to False)
+    """
+
+    def __init__(self):
+        from .config import load_global_config
+
+        c = load_global_config()
+        self.colors = {}
+        self.colors["bright"] = ""
+        self.colors["green"] = ""
+        self.colors["red"] = ""
+        self.colors["blue"] = ""
+        self.colors["cyan"] = ""
+        self.colors["yellow"] = ""
+        self.colors["reset"] = ""
+        self.colors["normal"] = ""
+        self.width = c["terminal_width"]
+        self.indent_level = 0
+        self.indent_size = 2
+        if c["terminal_colors"]:
+            self.colors["bright"] = Style.BRIGHT
+            self.colors["green"] = Fore.GREEN
+            self.colors["red"] = Fore.RED
+            self.colors["blue"] = Fore.BLUE
+            self.colors["cyan"] = Fore.CYAN
+            self.colors["yellow"] = Fore.YELLOW
+            self.colors["reset"] = Style.RESET_ALL
+            self.colors["normal"] = Style.NORMAL
+
+    def error_text(self, text: Any) -> str:
+        """
+        Highlight text as an error
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "red")
+
+    def emphasized_text(self, text: Any) -> str:
+        """
+        Highlight text as emphasis
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "bright")
+
+    def pass_text(self, text: Any) -> str:
+        """
+        Highlight text as good
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "green")
+
+    def warning_text(self, text: Any) -> str:
+        """
+        Highlight text as a warning
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "yellow")
+
+    @property
+    def indent_string(self) -> str:
+        """Indent string to use in formatting the output messages"""
+        return " " * self.indent_size * self.indent_level
+
+    def print_header(self, header: str) -> None:
+        """
+        Print a section header
+
+        Parameters
+        ----------
+        header: str
+            Section header string
+        """
+        self.indent_level = 0
+        print()
+        underline = "*" * len(header)
+        print(self.colorize(underline, "bright"))
+        print(self.colorize(header, "bright"))
+        print(self.colorize(underline, "bright"))
+        print()
+        self.indent_level += 1
+
+    def print_sub_header(self, header: str) -> None:
+        """
+        Print a subsection header
+
+        Parameters
+        ----------
+        header: str
+            Subsection header string
+        """
+        underline = "=" * len(header)
+        print(self.indent_string + self.colorize(header, "bright"))
+        print(self.indent_string + self.colorize(underline, "bright"))
+        print()
+        self.indent_level += 1
+
+    def print_end_section(self) -> None:
+        """Mark the end of a section"""
+        self.indent_level -= 1
+        print()
+
+    def format_info_lines(self, lines: Union[list[str], str]) -> List[str]:
+        """
+        Format lines
+
+        Parameters
+        ----------
+        lines: Union[list[str], str
+            Lines to format
+
+        Returns
+        -------
+        str
+            Formatted string
+        """
+        if isinstance(lines, str):
+            lines = [lines]
+
+        for i, line in enumerate(lines):
+            lines[i] = ansiwrap.fill(
+                line,
+                initial_indent=self.indent_string,
+                subsequent_indent=" " * self.indent_size * (self.indent_level + 1),
+                width=self.width,
+                break_on_hyphens=False,
+                break_long_words=False,
+                drop_whitespace=False,
+            )
+        return lines
+
+    def print_info_lines(self, lines: Union[list[str], str]) -> None:
+        """
+        Print formatted information lines
+
+        Parameters
+        ----------
+        lines: Union[list[str], str
+            Lines to format
+        """
+        if isinstance(lines, str):
+            lines = [lines]
+        lines = self.format_info_lines(lines)
+        for line in lines:
+            print(line)
+
+    def print_green_stat(self, stat: Any, text: str) -> None:
+        """
+        Print a statistic in green
+
+        Parameters
+        ----------
+        stat: Any
+            Statistic to print
+        text: str
+            Other text to follow statistic
+        """
+        print(self.indent_string + f"{self.colorize(stat, 'green')} {text}")
+
+    def print_yellow_stat(self, stat, text) -> None:
+        """
+        Print a statistic in yellow
+
+        Parameters
+        ----------
+        stat: Any
+            Statistic to print
+        text: str
+            Other text to follow statistic
+        """
+        print(self.indent_string + f"{self.colorize(stat, 'yellow')} {text}")
+
+    def print_red_stat(self, stat, text) -> None:
+        """
+        Print a statistic in red
+
+        Parameters
+        ----------
+        stat: Any
+            Statistic to print
+        text: str
+            Other text to follow statistic
+        """
+        print(self.indent_string + f"{self.colorize(stat, 'red')} {text}")
+
+    def colorize(self, text: Any, color: str) -> str:
+        """
+        Colorize a string
+
+        Parameters
+        ----------
+        text: Any
+            Text to colorize
+        color: str
+            Colorama code or empty string to wrap the text
+
+        Returns
+        -------
+        str
+            Colorized string
+        """
+        return f"{self.colors[color]}{text}{self.colors['reset']}"
+
+    def print_block(self, block: dict, starting_level: int = 1) -> None:
+        """
+        Print a configuration block
+
+        Parameters
+        ----------
+        block: dict
+            Configuration options to output
+        starting_level: int
+            Starting indentation level
+        """
+        for k, v in block.items():
+            value_color = None
+            key_color = None
+            value = ""
+            if isinstance(k, tuple):
+                k, key_color = k
+
+            if isinstance(v, tuple):
+                value, value_color = v
+            elif not isinstance(v, dict):
+                value = v
+            self.print_information_line(k, value, key_color, value_color, starting_level)
+            if isinstance(v, dict):
+                self.print_block(v, starting_level=starting_level + 1)
+        print()
+
+    def print_config(self, configuration: MetaDict) -> None:
+        """
+        Pretty print a configuration
+
+        Parameters
+        ----------
+        configuration: dict[str, Any]
+            Configuration to print
+        """
+        for k, v in configuration.items():
+            if "name" in v:
+                name = v["name"]
+                name_color = None
+                if isinstance(name, tuple):
+                    name, name_color = name
+                self.print_information_line(k, name, value_color=name_color, level=0)
+            if "data" in v:
+                self.print_block(v["data"])
+
+    def print_information_line(
+        self,
+        key: str,
+        value: Any,
+        key_color: Optional[str] = None,
+        value_color: Optional[str] = None,
+        level: int = 1,
+    ) -> None:
+        """
+        Pretty print a given configuration line
+
+        Parameters
+        ----------
+        key: str
+            Configuration key
+        value: Any
+            Configuration value
+        key_color: str
+            Key color
+        value_color: str
+            Value color
+        level: int
+            Indentation level
+        """
+        if key_color is None:
+            key_color = "bright"
+        if value_color is None:
+            value_color = "yellow"
+            if isinstance(value, bool):
+                if value:
+                    value_color = "green"
+                else:
+                    value_color = "red"
+        if isinstance(value, (list, tuple, set)):
+            value = comma_join([self.colorize(x, value_color) for x in sorted(value)])
+        else:
+            value = self.colorize(str(value), value_color)
+        indent = ("  " * level) + "-"
+        subsequent_indent = "  " * (level + 1)
+        if key:
+            key = f" {key}:"
+            subsequent_indent += " " * (len(key))
+
+        print(
+            ansiwrap.fill(
+                f"{self.colorize(key, key_color)} {value}",
+                width=self.width,
+                initial_indent=indent,
+                subsequent_indent=subsequent_indent,
+            )
+        )
+montreal_forced_aligner/helper.py
+def edit_distance(x: List[str], y: List[str]) -> int:
+    """
+    Compute edit distance between two sets of labels
+
+    See Also
+    --------
+    `https://gist.github.com/kylebgorman/8034009 <https://gist.github.com/kylebgorman/8034009>`_
+         For a more expressive version of this function
+
+    Parameters
+    ----------
+    x: list[str]
+        First sequence to compare
+    y: list[str]
+        Second sequence to compare
+
+    Returns
+    -------
+    int
+        Edit distance
+    """
+    idim = len(x) + 1
+    jdim = len(y) + 1
+    table = numpy.zeros((idim, jdim), dtype=numpy.uint8)
+    table[1:, 0] = 1
+    table[0, 1:] = 1
+    for i in range(1, idim):
+        for j in range(1, jdim):
+            if x[i - 1] == y[j - 1]:
+                table[i][j] = table[i - 1][j - 1]
+            else:
+                c1 = table[i - 1][j]
+                c2 = table[i][j - 1]
+                c3 = table[i - 1][j - 1]
+                table[i][j] = min(c1, c2, c3) + 1
+    return int(table[-1][-1])
+montreal_forced_aligner/alignment/base.py
+class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMixin):
+    """
+    Mixin class that aligns corpora with pronunciation dictionaries
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.corpus.acoustic_corpus.AcousticCorpusPronunciationMixin`
+        For dictionary and corpus parsing parameters
+    :class:`~montreal_forced_aligner.alignment.mixins.AlignMixin`
+        For alignment parameters
+    :class:`~montreal_forced_aligner.abc.FileExporterMixin`
+        For file exporting parameters
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.export_output_directory = None
+
+    def word_alignment_arguments(self) -> List[WordAlignmentArguments]:
+        """
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.WordCtmProcessWorker`
+
+        Returns
+        -------
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.WordCtmArguments`]
+            Arguments for processing
+        """
+        return [
+            WordAlignmentArguments(
+                os.path.join(self.working_log_directory, f"get_word_ctm.{j.name}.log"),
+                self.alignment_model_path,
+                round(self.frame_shift / 1000, 4),
+                self.cleanup_textgrids,
+                self.oov_word,
+                self.sanitize_function,
+                j.current_dictionary_names,
+                j.construct_path_dictionary(self.working_directory, "ali", "ark"),
+                j.word_boundary_int_files(),
+                j.construct_path_dictionary(self.data_directory, "text", "int.scp"),
+                {d.name: d.reversed_word_mapping for d in self.dictionary_mapping.values()},
+                j.text_scp_data(),
+                j.utt2spk_scp_data(),
+            )
+            for j in self.jobs
+        ]
+
+    def phone_alignment_arguments(self) -> List[PhoneAlignmentArguments]:
+        """
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneCtmProcessWorker`
+
+        Returns
+        -------
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneCtmArguments`]
+            Arguments for processing
+        """
+        return [
+            PhoneAlignmentArguments(
+                os.path.join(self.working_log_directory, f"get_phone_ctm.{j.name}.log"),
+                self.alignment_model_path,
+                round(self.frame_shift / 1000, 4),
+                self.position_dependent_phones,
+                self.cleanup_textgrids,
+                self.optional_silence_phone,
+                j.current_dictionary_names,
+                j.construct_path_dictionary(self.working_directory, "ali", "ark"),
+                j.word_boundary_int_files(),
+                j.construct_path_dictionary(self.data_directory, "text", "int.scp"),
+                self.reversed_phone_mapping,
+            )
+            for j in self.jobs
+        ]
+
+    def export_textgrid_arguments(self) -> List[ExportTextGridArguments]:
+        """
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`
+
+        Returns
+        -------
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridArguments`]
+            Arguments for processing
+        """
+        return [
+            ExportTextGridArguments(
+                os.path.join(self.working_log_directory, f"export_textgrids.{j.name}.log"),
+                self.frame_shift,
+                self.export_output_directory,
+                self.backup_output_directory,
+            )
+            for j in self.jobs
+        ]
+
+    @property
+    def backup_output_directory(self) -> Optional[str]:
+        """Backup directory if overwriting is not allowed"""
+        return None
+
+    def _collect_alignments(self, word_mode=True):
+        """
+        Process alignment archives to extract word or phone alignments
+
+        Parameters
+        ----------
+        word_mode: bool
+            Flag for collecting word or phone alignments
+
+        See Also
+        --------
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.WordAlignmentFunction`
+            Multiprocessing function for words alignments
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneAlignmentFunction`
+            Multiprocessing function for phone alignments
+        :meth:`.CorpusAligner.word_alignment_arguments`
+            Arguments for word CTMS
+        :meth:`.CorpusAligner.phone_alignment_arguments`
+            Arguments for phone alignment
+        """
+        if word_mode:
+            self.logger.info("Collecting word alignments from alignment lattices...")
+            jobs = self.word_alignment_arguments()  # Word CTM jobs
+        else:
+            self.logger.info("Collecting phone alignments from alignment lattices...")
+            jobs = self.phone_alignment_arguments()  # Phone CTM jobs
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(jobs):
+                    if word_mode:
+                        function = WordAlignmentFunction(args)
+                    else:
+                        function = PhoneAlignmentFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        utterance, intervals = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(1)
+                    if word_mode:
+                        self.utterances[utterance].add_word_intervals(intervals)
+                    else:
+                        self.utterances[utterance].add_phone_intervals(intervals)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in jobs:
+                    if word_mode:
+                        function = WordAlignmentFunction(args)
+                    else:
+                        function = PhoneAlignmentFunction(args)
+                    for utterance, intervals in function.run():
+                        if word_mode:
+                            self.utterances[utterance].add_word_intervals(intervals)
+                        else:
+                            self.utterances[utterance].add_phone_intervals(intervals)
+                        pbar.update(1)
+
+    def collect_word_alignments(self):
+        self._collect_alignments(True)
+
+    def collect_phone_alignments(self):
+        self._collect_alignments(False)
+
+    def collect_alignments(self):
+        if self.alignment_done:
+            return
+        self.collect_word_alignments()
+        self.collect_phone_alignments()
+        self.alignment_done = True
+
+    def export_textgrids(self) -> None:
+        """
+        Exports alignments to TextGrid files
+
+        See Also
+        --------
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`
+            Multiprocessing helper function for TextGrid export
+        :meth:`.CorpusAligner.export_textgrid_arguments`
+            Job method for TextGrid export
+        """
+        begin = time.time()
+        export_directory = self.export_output_directory
+        if os.path.exists(export_directory) and not self.overwrite:
+            export_directory = self.backup_output_directory
+            self.log_debug(f"Not overwriting existing directory, exporting to {export_directory}")
+
+        self.logger.info(f"Exporting TextGrids to {export_directory}...")
+        os.makedirs(export_directory, exist_ok=True)
+        export_errors = {}
+        total_files = len(self.files)
+        with tqdm.tqdm(total=total_files) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                textgrid_errors = manager.dict()
+                stopped = Stopped()
+
+                finished_processing = Stopped()
+                for_write_queue = mp.JoinableQueue()
+                export_args = self.export_textgrid_arguments()
+
+                export_procs = []
+                for j in self.jobs:
+                    export_proc = ExportTextGridProcessWorker(
+                        for_write_queue,
+                        stopped,
+                        finished_processing,
+                        textgrid_errors,
+                        export_args[j.name],
+                    )
+                    export_proc.start()
+                    export_procs.append(export_proc)
+                try:
+                    for file in self.files:
+                        tiers = file.aligned_data
+                        output_path = file.construct_output_path(export_directory)
+                        duration = file.duration
+                        for_write_queue.put((tiers, output_path, duration))
+                        pbar.update(1)
+                except Exception:
+                    stopped.stop()
+                    raise
+                finally:
+                    finished_processing.stop()
+
+                    for_write_queue.join()
+                    for i in range(self.num_jobs):
+                        export_procs[i].join()
+                    export_errors.update(textgrid_errors)
+            else:
+                self.log_debug("Not using multiprocessing for TextGrid export")
+                for file in self.files:
+                    data = file.aligned_data
+
+                    output_path = file.construct_output_path(export_directory)
+                    export_textgrid(data, output_path, file.duration, self.frame_shift)
+                    pbar.update(1)
+
+        if export_errors:
+            self.logger.warning(
+                f"There were {len(export_errors)} errors encountered in generating TextGrids. "
+                f"Check {os.path.join(export_directory, 'output_errors.txt')} "
+                f"for more details"
+            )
+        output_textgrid_writing_errors(export_directory, export_errors)
+        self.logger.info(f"Finished exporting TextGrids to {export_directory}!")
+        self.logger.debug(f"Exported TextGrids in a total of {time.time() - begin} seconds")
+
+    def export_files(self, output_directory: str) -> None:
+        """
+        Export a TextGrid file for every sound file in the dataset
+
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save to
+        """
+        self.export_output_directory = output_directory
+        if self.backup_output_directory is not None and os.path.exists(
+            self.backup_output_directory
+        ):
+            shutil.rmtree(self.backup_output_directory, ignore_errors=True)
+        self.export_textgrids()
+montreal_forced_aligner/exceptions.py
+class ConfigError(MFAError):
+    """
+    Exception class for errors in configuration
+    """
+
+    pass
+montreal_forced_aligner/utils.py
+def run_non_mp(
+    function: Callable,
+    argument_list: List[Tuple[Any, ...]],
+    log_directory: str,
+    return_info: bool = False,
+) -> Optional[Dict[Any, Any]]:
+    """
+    Similar to :func:`run_mp`, but no additional processes are used and the jobs are evaluated in sequential order
+
+    Parameters
+    ----------
+    function: Callable
+        Multiprocessing function to evaluate
+    argument_list: list
+        List of arguments to process
+    log_directory: str
+        Directory that all log information from the processes goes to
+    return_info: dict, optional
+        If the function returns information, supply the return dict to populate
+
+    Returns
+    -------
+    dict, optional
+        If the function returns information, returns the dictionary it was supplied with
+    """
+    if return_info:
+        info = {}
+        for i, args in enumerate(argument_list):
+            info[i] = function(*args)
+        parse_logs(log_directory)
+        return info
+
+    for args in argument_list:
+        function(*args)
+    parse_logs(log_directory)
+montreal_forced_aligner/utils.py
+def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
+    """
+    Save details of Kaldi processing errors to a logger
+
+    Parameters
+    ----------
+    error_logs: list[str]
+        Kaldi log files with errors
+    logger: :class:`~logging.Logger`
+        Logger to output to
+    """
+    logger.debug(f"There were {len(error_logs)} kaldi processing files that had errors:")
+    for path in error_logs:
+        logger.debug("")
+        logger.debug(path)
+        with open(path, "r", encoding="utf8") as f:
+            for line in f:
+                logger.debug("\t" + line.strip())
+montreal_forced_aligner/utils.py
+def thirdparty_binary(binary_name: str) -> str:
+    """
+    Generate full path to a given binary name
+
+    Notes
+    -----
+    With the move to conda, this function is deprecated as conda will manage the path much better
+
+    Parameters
+    ----------
+    binary_name: str
+        Executable to run
+
+    Returns
+    -------
+    str
+        Full path to the executable
+    """
+    bin_path = shutil.which(binary_name)
+    if bin_path is None:
+        if binary_name in ["fstcompile", "fstarcsort", "fstconvert"] and sys.platform != "win32":
+            raise ThirdpartyError(binary_name, open_fst=True)
+        else:
+            raise ThirdpartyError(binary_name)
+    return bin_path
+montreal_forced_aligner/alignment/multiprocessing.py
+def compile_information_func(align_log_path: str) -> Dict[str, Union[List[str], float, int]]:
+    """
+    Multiprocessing function for compiling information about alignment
+
+    See Also
+    --------
+    :meth:`.AlignMixin.compile_information`
+        Main function that calls this function in parallel
+
+    Parameters
+    ----------
+    align_log_path: str
+        Log path for alignment
+
+    Returns
+    -------
+    dict[str, Union[list[str], float, int]]
+        Information about log-likelihood and number of unaligned files
+    """
+    average_logdet_pattern = re.compile(
+        r"Overall average logdet is (?P<logdet>[-.,\d]+) over (?P<frames>[.\d+e]+) frames"
+    )
+    log_like_pattern = re.compile(
+        r"^LOG .* Overall log-likelihood per frame is (?P<log_like>[-0-9.]+) over (?P<frames>\d+) frames.*$"
+    )
+
+    decode_error_pattern = re.compile(
+        r"^WARNING .* Did not successfully decode file (?P<utt>.*?), .*$"
+    )
+
+    data = {"unaligned": [], "too_short": [], "log_like": 0, "total_frames": 0}
+    with open(align_log_path, "r", encoding="utf8") as f:
+        for line in f:
+            decode_error_match = re.match(decode_error_pattern, line)
+            if decode_error_match:
+                data["unaligned"].append(decode_error_match.group("utt"))
+                continue
+            log_like_match = re.match(log_like_pattern, line)
+            if log_like_match:
+                log_like = log_like_match.group("log_like")
+                frames = log_like_match.group("frames")
+                data["log_like"] = float(log_like)
+                data["total_frames"] = int(frames)
+            m = re.search(average_logdet_pattern, line)
+            if m:
+                logdet = float(m.group("logdet"))
+                frames = float(m.group("frames"))
+                data["logdet"] = logdet
+                data["logdet_frames"] = frames
+    return data
+montreal_forced_aligner/helper.py
+def load_scp(path: str, data_type: Optional[Type] = str) -> CorpusMappingType:
+    """
+    Load a Kaldi script file (.scp)
+
+    Scp files in Kaldi can either be one-to-one or one-to-many, with the first element separated by
+    whitespace as the key and the remaining whitespace-delimited elements the values.
+
+    Returns a dictionary of key to value for
+    one-to-one mapping case and a dictionary of key to list of values for one-to-many case.
+
+    See Also
+    --------
+    :kaldi_docs:`io#io_sec_scp_details`
+        For more information on the SCP format
+
+    Parameters
+    ----------
+    path : str
+        Path to Kaldi script file
+    data_type : type
+        Type to coerce the data to
+
+    Returns
+    -------
+    CorpusMappingType
+        Dictionary where the keys are the first column and the values are all
+        other columns in the scp file
+
+    """
+    scp = {}
+    with open(path, "r", encoding="utf8") as f:
+        for line in f:
+            line = line.strip()
+            if line == "":
+                continue
+            line_list = line.split()
+            key = load_scp_safe(line_list.pop(0))
+            if len(line_list) == 1:
+                value = data_type(line_list[0])
+                if isinstance(value, str):
+                    value = load_scp_safe(value)
+            else:
+                value = [data_type(x) for x in line_list if x not in ["[", "]"]]
+            scp[key] = value
+    return scp

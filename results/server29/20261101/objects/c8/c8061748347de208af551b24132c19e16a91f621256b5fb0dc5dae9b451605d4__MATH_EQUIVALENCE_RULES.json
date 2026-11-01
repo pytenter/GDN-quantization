@@ -1,0 +1,53 @@
+{
+  "GPU_canary_requirements": "future independent canary must record FP_NATIVE versus unquantized H/L6 real logits using frozen FP32/native dtype; no GPU forward in this audit",
+  "counterexample_rule": "4x4 normalized Hadamard and unequal gates [0.1,0.3,0.6,0.9] must have maxabs(R^T D R-D)>0.1 and wrong-Key-gate state mismatch>1e-3",
+  "floating_point_model": "IEEE round-to-nearest unit roundoff u=eps(dtype)/2; gamma(n)=n*u/(1-n*u); finite normal synthetic inputs",
+  "full_model_logit_tolerance_reuse": "No verified historical no-quantized-H/L6-vs-native full-model tolerance contract found. Existing fresh64 exact contract applies repeated same path, not native-vs-roundtrip.",
+  "orthogonality_max_abs_threshold": 0.0001,
+  "orthogonality_threshold_source": "/data/zypan/worktrees/ling-long-horizon-propagation-confirm-v1/inherited/data01/user2/worktrees/ling-propagation-surrogate-validation-v1/experiments/LING_PROPAGATION_SURROGATE_VALIDATION_V1/protocol/frozen_rotation_bank.json",
+  "orthogonality_threshold_source_sha256": "09707ffc0f76c512eae477ee06c453bd1511f134b09e7e899f32866dca9c1673",
+  "phase": "0A_CPU_ONLY",
+  "recurrence_equivariance_rule": "At each of 128 steps and each real matrix: F(SR,vR) versus F(S,v)R; residual<=2*gamma64(8*d+32)*(1+maxabs((abs(D)abs(S)+abs(k)*beta*(abs(v)+abs(k)^T abs(D)abs(S)))abs(R)))",
+  "rotation_ids": {
+    "H": "872d4e45d21b03ccf8c3c11421331a07684f3b11ec6e5523ce7ced9254a44412",
+    "L6": "51a532aad371e9af1d65ed2d2d5d0c41b1369f0635ba2c11adb713283038e964"
+  },
+  "roundtrip_bound": "E=abs(fl64(R R^T)-I)+gamma64(d)*abs(R)abs(R^T); B=abs(S)E+gamma_dtype(d)*(abs(S)abs(R))abs(R^T)+gamma_dtype(d)*abs(fl_dtype(SR))abs(R^T); residual<=max(B)*(1+gamma64(2048))+tiny",
+  "rule_version": 1,
+  "rules_frozen_epoch": 1792153181.9461498,
+  "seed": 202610160731,
+  "small_matrix_tolerance": "2*gamma64(8*d+32)*(1+absolute-expression envelope), d=4",
+  "source_sha256": "f627ef6a9bbc184f5b2fe9749ca4d70022450bea3f40fb67b5a1dc8ff22e5fe0",
+  "synthetic_recurrence": {
+    "K": 128,
+    "V": 128,
+    "beta_range": [
+      0.1,
+      0.9
+    ],
+    "decay_range": [
+      0.6,
+      0.95
+    ],
+    "heads_per_matrix": 1,
+    "matrices_per_condition": 18,
+    "qk": "unit normalized FP64 random vectors",
+    "steps": 128,
+    "value": "standard normal FP64"
+  },
+  "task_id": "LING_KDA_ROTATION_DUAL_AXIS_FUNCTIONAL_V1",
+  "tensor_semantics": {
+    "DualM_columns": "rotated Value",
+    "DualM_rows": "Key",
+    "actual_shape": [
+      1,
+      16,
+      128,
+      128
+    ],
+    "rotation": "Value axis right multiplication only; codec-only inverse writeback to native coordinates",
+    "state": "[B, HV, Key, Value]",
+    "state_v_first": false
+  },
+  "unquantized_FP32_roundtrip_drift": "record actual drift; no exact-native-logit parity assertion, no posthoc tolerance; structural bound is not a full-model forward error bound"
+}

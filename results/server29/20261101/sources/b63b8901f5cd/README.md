@@ -1,0 +1,50 @@
+# qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1`
+
+原结构化状态：**FAILED_OR_REJECTED**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`EXECUTION_PLAN.md`](../../objects/2a/2ab449eb83b33ed5ddc5f4e4e73e1fabc8014f9e8ba3c20deccc79875ca57c8d__EXECUTION_PLAN.md)
+- [`FINAL_STATUS.json`](../../objects/36/36d5cc2cc29f4d7951262808383fa03df808b8e62286e3043b9aa4ad27417018__FINAL_STATUS.json)
+- [`PREREGISTRATION.json`](../../objects/bf/bf7f88a290afdeeb969b431ae360c5f14ca6792f4947004d15938313dd0c1fed__PREREGISTRATION.json)
+- [`H_DUAL_M_RUNTIME_AUDIT.md`](../../objects/73/7332eb423716b37713a8833a52fd679a7ce29c429e8c3e9c11adfcd1829540b6__H_DUAL_M_RUNTIME_AUDIT.md)
+- [`FINAL_SCIENTIFIC_REPORT.md`](../../objects/b9/b981837f7c6b6cb8a1f59d833b1075083a0d6a01c498a169d3200e2c95ad868c__FINAL_SCIENTIFIC_REPORT.md)
+- [`PROTOCOL_RECOVERY_AUDIT.md`](../../objects/93/93aec46921316ebb77da0a72f70adb14e3706107f19a75bf972ac892c2fb1d4d__PROTOCOL_RECOVERY_AUDIT.md)
+- [`RUNTIME_BINDING_CONTRACT.md`](../../objects/42/42d111c740f1ebd945e00420c7ed8e6176f4db9e70317f51d8e26ad2c82ce0b6__RUNTIME_BINDING_CONTRACT.md)
+- [`PLAN_QUALIFICATION_FINAL.json`](../../objects/69/69b304284ca2ae15955cec36898d2b01532275b80c3ab6cb4ba9b0e13a9a45aa__PLAN_QUALIFICATION_FINAL.json)
+- [`repair_20261017_v1/HANDOFF.md`](../../objects/29/294e1d9fad463c181daaf3d2a7f04a75f98391dd51135a141399725686eb3000__HANDOFF.md)
+- [`RUNTIME_CPU_CLOSURE_FINAL.json`](../../objects/4c/4c197c880c496cf45db08a2523308aa581b44bcd51dc96f950e9fb3ff73faac8__RUNTIME_CPU_CLOSURE_FINAL.json)
+- [`OFFICIAL_STEPQUANT_SOURCE_AUDIT.md`](../../objects/02/02238e487b0b4ed374f8b52428f28e808a0051ef1ab00c9e154a175b4b3bd9fe__OFFICIAL_STEPQUANT_SOURCE_AUDIT.md)
+- [`repair_20261017_v1/EXECUTION_PLAN.md`](../../objects/2a/2ab449eb83b33ed5ddc5f4e4e73e1fabc8014f9e8ba3c20deccc79875ca57c8d__EXECUTION_PLAN.md)
+- [`source/score_complete_generations.py`](../../objects/57/5779172768df3adb1a044612d23b800a4b1f9847b4b3271144999d2ca072854d__score_complete_generations.py)
+- [`repair_20261017_v1/PREREGISTRATION.json`](../../objects/48/488e1f4fa58de02e18c9898c8d77b5963a8f7dadf17d5c3d488abc90c2e9888e__PREREGISTRATION.json)
+- [`source/aime_protocol_cpu_qualification.py`](../../objects/74/74b4922f2ff36906242fb5fb05a013260ea586185bdd769dc8b0768e40e66ded__aime_protocol_cpu_qualification.py)
+- [`RUNTIME_CPU_CLOSURE_FINAL_PRE_METADATA.json`](../../objects/fc/fcd65bb2291d4475529adb738c0c7eb8a2062cb6fe2766aa1d2f754fb6301bfe__RUNTIME_CPU_CLOSURE_FINAL_PRE_METADATA.json)
+- [`official_source/STEPQuant_f2deac58/README.md`](../../objects/9d/9d6c95631c48124ef9908f356aa8d6ff26b41058eb65dcd5d19a6106c8e7dd88__README.md)
+- [`repair_20261017_v1/H_DUAL_M_RUNTIME_AUDIT.md`](../../objects/73/7332eb423716b37713a8833a52fd679a7ce29c429e8c3e9c11adfcd1829540b6__H_DUAL_M_RUNTIME_AUDIT.md)
+- [`repair_20261017_v1/lineage/FINAL_STATUS.json`](../../objects/36/36d5cc2cc29f4d7951262808383fa03df808b8e62286e3043b9aa4ad27417018__FINAL_STATUS.json)
+- [`provenance/PREREGISTRATION_PRE_GPU_DRAFT.json`](../../objects/4e/4eec4296ba6030067abd319d5ef1db39d33c150463bcc020e5d5204c3da5b0b6__PREREGISTRATION_PRE_GPU_DRAFT.json)
+- [`repair_20261017_v1/RUNTIME_BINDING_CONTRACT.md`](../../objects/42/42d111c740f1ebd945e00420c7ed8e6176f4db9e70317f51d8e26ad2c82ce0b6__RUNTIME_BINDING_CONTRACT.md)
+- [`repair_20261017_v1/lineage/PREREGISTRATION.json`](../../objects/bf/bf7f88a290afdeeb969b431ae360c5f14ca6792f4947004d15938313dd0c1fed__PREREGISTRATION.json)
+- [`protocol_recovery/CPU_PROTOCOL_QUALIFICATION.json`](../../objects/5e/5efd3e81fff703056d004458bbcf7a8c9bc6736c7caaed4ea03c60ac4e09493b__CPU_PROTOCOL_QUALIFICATION.json)
+- [`protocol_recovery/CPU_PROTOCOL_SOURCE_FREEZE.json`](../../objects/c9/c99a276fa8a6b6ca869e9a5847f649e9188c632ad93762e8f7db1fb54f3fc7dd__CPU_PROTOCOL_SOURCE_FREEZE.json)
+- [`repair_20261017_v1/RUNTIME_CPU_CLOSURE_FINAL.json`](../../objects/4c/4c197c880c496cf45db08a2523308aa581b44bcd51dc96f950e9fb3ff73faac8__RUNTIME_CPU_CLOSURE_FINAL.json)
+- [`official_source/STEPQuant_f2deac58/REPRODUCTION.md`](../../objects/a3/a3196a278cd047cfc28f124a476760ce1a6220096d34f7517a0fd445b122da96__REPRODUCTION.md)
+- [`repair_20261017_v1/OFFICIAL_STEPQUANT_SOURCE_AUDIT.md`](../../objects/02/02238e487b0b4ed374f8b52428f28e808a0051ef1ab00c9e154a175b4b3bd9fe__OFFICIAL_STEPQUANT_SOURCE_AUDIT.md)
+- [`repair_20261017_v1/lineage/FINAL_SCIENTIFIC_REPORT.md`](../../objects/b9/b981837f7c6b6cb8a1f59d833b1075083a0d6a01c498a169d3200e2c95ad868c__FINAL_SCIENTIFIC_REPORT.md)
+- [`repair_20261017_v1/source/score_complete_generations.py`](../../objects/57/5779172768df3adb1a044612d23b800a4b1f9847b4b3271144999d2ca072854d__score_complete_generations.py)
+- [`repair_20261017_v1/stop_delivery_20261017/EXECUTION_PLAN.md`](../../objects/2a/2ab449eb83b33ed5ddc5f4e4e73e1fabc8014f9e8ba3c20deccc79875ca57c8d__EXECUTION_PLAN.md)
+- [`repair_20261017_v1/stop_delivery_20261017/FINAL_STATUS.json`](../../objects/c8/c88da553a6e6e95c6c88daeba228d5444f6cbf7ff6a84b4d342a6ad9f11efdec__FINAL_STATUS.json)
+- [`protocol_recovery/OFFLINE_FINISHER_CPU_GUARD_TEST_FINAL.json`](../../objects/7b/7b7397bd763ba94ff3e07e34162ae0940c73c331f0f05a95d827ab2a37277e5d__OFFLINE_FINISHER_CPU_GUARD_TEST_FINAL.json)
+- [`repair_20261017_v1/source/aime_protocol_cpu_qualification.py`](../../objects/74/74b4922f2ff36906242fb5fb05a013260ea586185bdd769dc8b0768e40e66ded__aime_protocol_cpu_qualification.py)
+- [`repair_20261017_v1/stop_delivery_20261017/PREREGISTRATION.json`](../../objects/48/488e1f4fa58de02e18c9898c8d77b5963a8f7dadf17d5c3d488abc90c2e9888e__PREREGISTRATION.json)
+- [`repair_20261017_v1/official_source/STEPQuant_f2deac58/README.md`](../../objects/9d/9d6c95631c48124ef9908f356aa8d6ff26b41058eb65dcd5d19a6106c8e7dd88__README.md)
+- [`official_source/STEPQuant_f2deac58/tests/test_benchmark_protocol.py`](../../objects/7e/7e19e4b39bad9cea4ebe1939f4afda4face5ee79bc1b5d2574186d37cbb9ff94__test_benchmark_protocol.py)
+- [`repair_20261017_v1/stop_delivery_20261017/H_DUAL_M_RUNTIME_AUDIT.md`](../../objects/73/7332eb423716b37713a8833a52fd679a7ce29c429e8c3e9c11adfcd1829540b6__H_DUAL_M_RUNTIME_AUDIT.md)
+- [`repair_20261017_v1/stop_delivery_20261017/lineage/FINAL_STATUS.json`](../../objects/36/36d5cc2cc29f4d7951262808383fa03df808b8e62286e3043b9aa4ad27417018__FINAL_STATUS.json)
+- [`repair_20261017_v1/protocol_recovery/CPU_PROTOCOL_QUALIFICATION.json`](../../objects/5e/5efd3e81fff703056d004458bbcf7a8c9bc6736c7caaed4ea03c60ac4e09493b__CPU_PROTOCOL_QUALIFICATION.json)
+- [`repair_20261017_v1/stop_delivery_20261017/FINAL_SCIENTIFIC_REPORT.md`](../../objects/75/753c795cfd278bffcd5d9d1162cb293c63ef1f7671caf18c0979f27aef8dfcc4__FINAL_SCIENTIFIC_REPORT.md)

@@ -1,0 +1,115 @@
+{
+  "task_id": "QWEN_GDN_RUNTIME_THROUGHPUT_ROOT_CAUSE_V1",
+  "status": "PREREGISTERED_NOT_AUTHORIZED_NOT_RUN",
+  "ALLOW_GPU_DIAG": "NO",
+  "rationale": "All249 ordinal host durations inflate mainly before first launch; exact host frames absent. CUBLAS config is unablated: old absent, new :4096:8; detOFF kept it. This is a falsifiable control hypothesis, not a confirmed cause.",
+  "authorization_required": "Human explicitly sets ALLOW_GPU_DIAG=YES",
+  "max_active_GPUs": 1,
+  "preferred_GPU_UUID": "GPU-a78176ed-f97f-c54f-6201-5a01b570f422",
+  "max_task_GPU_seconds": 1800,
+  "max_single_GPU_wall_seconds": 1800,
+  "protective_stop_GPU_seconds": 1650,
+  "cleanup_reserve_seconds": 150,
+  "no_foreign_process_operations": true,
+  "no_system_configuration_changes": true,
+  "workload": {
+    "non_AIME": true,
+    "fixture_sha256": "18faa0ca311362181c5c3340d19d72ac39422d1ee07846e516bf34074a51703d",
+    "batch": 1,
+    "prefill_tokens": 1,
+    "warmup_total_forwards": 128,
+    "measured_forwards": 128,
+    "input_positions_measured": "128..255",
+    "cache_retained": true,
+    "fresh_process_serial": true,
+    "same_checkpoint_identity_before_any_dispatch": true,
+    "BF16_weights_FP32_GDN_state": true,
+    "same_original_math_wrappers_and_finite_safety": true,
+    "window_start_end_synchronization_only": true,
+    "matmul_TF32": false,
+    "cudnn_TF32": {
+      "OLD_FP_original_recovery": true,
+      "NEW_FP_and_NEW_workspace_variants": false
+    },
+    "original_OLD_configuration": "Recover archived detFalse/24-24threads/CUBLASunset/cudnnTF32True; it is a composite-runtime reference, not a single-variable causal control. Any unavoidable environment mismatch must be declared before run, not silently relabelled as original13.742configuration."
+  },
+  "schedule_maximum": [
+    {
+      "stage": "unprofiled_baseline",
+      "units": [
+        "OLD_FP_R0",
+        "NEW_FP_R0",
+        "NEW_FP_R1",
+        "OLD_FP_R1"
+      ],
+      "seconds_allowance_per_dispatch": 90
+    },
+    {
+      "stage": "workspace_numeric_qualification",
+      "units": [
+        "NEW_4096_STATE_BYTES",
+        "NEW_16_STATE_BYTES"
+      ],
+      "seconds_allowance_per_dispatch": 120,
+      "measured_TPS": false
+    },
+    {
+      "stage": "one_variable_no_profiler",
+      "requires": "numeric qualification and unchanged determinism/safety PASS",
+      "units": [
+        "NEW_4096_R0",
+        "NEW_16_R0",
+        "NEW_16_R1",
+        "NEW_4096_R1"
+      ],
+      "seconds_allowance_per_dispatch": 90
+    },
+    {
+      "stage": "short_profile",
+      "units": [
+        "OLD_FP_STACK",
+        "NEW_FP_STACK"
+      ],
+      "seconds_allowance_per_dispatch": 240,
+      "warmup": 128,
+      "measured_forwards": 32,
+      "with_stack": true,
+      "record_shapes": true,
+      "profile_memory": false,
+      "interpretation": "Instrumentation only, never pooled into TPS. Native-library host frames may remain UNKNOWN."
+    }
+  ],
+  "predicted_total_GPU_seconds_allowance": 1440,
+  "reserve_before_protective_stop_seconds": 210,
+  "prediction_is_not_guaranteed_duration": true,
+  "one_variable": {
+    "name": "CUBLAS_WORKSPACE_CONFIG :4096:8 versus :16:8",
+    "max_causes_tested": 1,
+    "deterministic_algorithms": true,
+    "deterministic_uninitialized_memory_fill": true,
+    "TF32": false,
+    "threads": "new baseline1/1 unchanged",
+    "math_source_change": false,
+    "diagnostic_copy_only": true,
+    "AST_admission": "Only exact configure literal/control adapter change; all arithmetic, recurrence, original safety, dtype/layout/device paths byte/AST unchanged. Freeze source+plan before first dispatch.",
+    "strict_equivalence": "Same fixed input and initial RNG states. In qualification-only processes retain per-token full logits and recurrent/attention cache deep byte digests through all256forwards (128warmup+128suffix) outside any TPS measurement. Compare all shapes/dtypes/finite and every digest. In two fresh benchmark repetitions percondition, compare final full output/cache byte digests after timing; no tolerance relaxation.",
+    "qualification_repeat_limit": "Exactly two byte-trace qualification units and four fresh unprofiled variable units. Any mismatch stops. Equality supports this frozen workload only, not a universal proof for allinputs; no adopted optimization without its complete separate gates.",
+    "negative_result_limit": "No effect only rejects the tested legal workspace alternative; does not rule out all cuBLAS internals or environment causes.",
+    "not_an_optimization_candidate_yet": true
+  },
+  "admission_before_first_dispatch": [
+    "explicit human GPU authorization",
+    "all actual execution source and external dependencies frozen SHA/bytes with no active historical imports that write",
+    "same complete model/checkpoint/token fixture identity; missing historic weight SHA remains explicitly UNKNOWN",
+    "independent unused run root and no prior STARTED for any unit",
+    "exclusive GPU and full matching UUID/driver/runtime/environment visible; no other process or monitor disagreement",
+    "memory and disk capacity qualification with no deletion of historical assets",
+    "fresh CPU AST/control-only qualification and no top-level CUDA dispatch on import",
+    "append-only resource controller CPU qualification and identity-safe cleanup ready",
+    "all pending unit conservative allowance plus cleanup fits remaining task budget"
+  ],
+  "failure_policy": "Any identity/resource/process/numeric qualification failure FAIL_CLOSED_STOP; no retry, extra cause, shorter baseline or patch-and-retry. Stop when earliest budget/wall threshold reached. Exact own-process cleanup only.",
+  "accounting": "Append-only before/after spawn, first process-exit and first own-PID NVML-release observations. Reducer rejects duplicate first receipts. Live entire dispatch upper bound counts even without terminal receipt. Report physical exact GPUh UNKNOWN when polling only proves interval. Never import or repair old ledger.",
+  "optimization": "No current candidate. At most one candidate may be separately frozen after actual causal evidence; no reserved automatic optimization dispatch and no extra budget. If strict equivalence or budget insufficient, stop with diagnosis only.",
+  "current_execution_readiness": "BLOCKED_BY_NO_GPU_AUTHORIZATION; concrete source implementation/actual device checks NOT_RUN. This file is a reviewable fixed experiment contract, not a claim that GPU gates already PASS."
+}

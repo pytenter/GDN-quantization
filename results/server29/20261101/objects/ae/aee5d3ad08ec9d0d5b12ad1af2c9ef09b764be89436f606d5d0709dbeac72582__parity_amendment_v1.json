@@ -1,0 +1,9 @@
+{
+  "task": "QWEN_HADAMARD_TRAJECTORY_STABILITY_ANALYSIS_V1",
+  "stage": "pre-formal replay parity",
+  "prior_attempt": "replay_stability.py; preserved on server together with parity_v1_fail.json and parity_v1_fail.log",
+  "prior_result": "FAIL only for top1 agreement; state-reference max abs=0, KL-reference max abs=0, repeat max abs=0, FP-equivalent readout relative p95=0.01073738094419241",
+  "diagnosis": "The new observer used torch.topk(...).indices[:,0] for the INT8 top1, while the frozen prior metric uses torch.argmax(...). Tied logits can give a different topk index without a logit or model-semantic difference.",
+  "change": "Observation-only top1_agreement is computed with q.argmax(-1)==fp_id, matching the frozen persistent replay top1_changed definition. No change to model, quantizer, rotation, recurrent kernel, prompts, tokens, thresholds or statistical protocol.",
+  "next_step": "Rerun the same fixed parity case with replay_stability_v2.py; do not start formal shards unless PASS."
+}

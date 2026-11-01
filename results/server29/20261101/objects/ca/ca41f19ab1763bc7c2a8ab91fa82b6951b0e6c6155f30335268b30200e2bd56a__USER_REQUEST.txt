@@ -1,0 +1,661 @@
+# Codex 科研任务：Qwen/GDN Dual-M-aware Rotation Training — 租用 A800 前完整资格
+
+## 0. 任务身份与最高原则
+
+你现在是我的 Qwen/GDN recurrent-state INT8 quantization 科研负责人。
+
+任务ID：
+
+`QWEN_GDN_DUALM_AWARE_ROTATION_TRAINING_READINESS_V1`
+
+**本次任务的唯一目标：在不租用A800的前提下，准备并验证一套具有可信科学对照、可训练梯度、可靠数据隔离和可控租卡成本的Dual-M-aware正交旋转训练方案。**
+
+本次不是正式训练实验，更不是开始新的C8训练。
+
+权限：
+
+```text
+CPU_PREPARATION = YES
+LOCAL_RTX3090_MICRO_QUALIFICATION = YES
+MAX_LOCAL_GPU_HOURS = 1.0
+
+A800_RENTAL_AUTHORIZED = NO
+A800_GPU_EXECUTION = NO
+
+FULL_ROTATION_TRAINING = NO
+FORMAL_32K_EVALUATION = NO
+AIME_EVALUATION = NO
+
+NO_AUTOMATIC_NEXT_TASK = YES
+NO_GIT_PUSH = YES
+```
+
+可以使用一张真实可用的本地RTX3090进行有限的梯度、显存和训练步骤资格验证，累计不超过1 GPUh。必须与正在运行的Ling任务协调资源，不允许抢占或终止其他任务。
+
+禁止在本轮使用付费A800，禁止启动正式训练循环，也禁止把micro-test生成的矩阵称作正式科研checkpoint。
+
+**执行策略：先核验科学实现，再完成所有离线准备，再做最短GPU资格，最后生成一份明确的A800租卡Go/No-Go报告。**
+
+不得采取“修一个报错、试一次GPU、再修下一个报错”的无限补丁模式。
+
+---
+
+## 1. 必读历史科研基线
+
+### 1.1 最新冻结科学结果
+
+Qwen3.5-9B/GDN，严格persistent recurrent-state INT8量化。
+
+AIME26 Canonical60：
+
+| Method | Result |
+|---|---|
+| FP | 52/60 |
+| Hadamard | 41/60 |
+| C6R | 40/60 |
+| C7 | 33/60 |
+| Native INT8 | 18/60 |
+
+C6R采用Functional-oriented learned orthogonal rotation，原训练目标包括GDN局部Functional loss以及0.1倍State loss。
+
+最新32K五文档结果：
+
+| Method | Mean Future-KL |
+|---|---:|
+| H+C128 | 0.073269615054 |
+| C6R+C128 | 0.073770261773 |
+| H+Dual-M | 0.029374825437 |
+| C6R+Dual-M | 0.036156791107 |
+
+已经确认：
+
+- Dual-M在Hadamard下5/5文档改善Future-KL。
+- Dual-M在冻结C6R下5/5文档改善Future-KL。
+- C6R+Dual-M仍仅1/5文档优于H+Dual-M。
+- Rotation × Codec interaction为2正3负，不稳定。
+- 历史五篇文档已被观察，项目独立性UNKNOWN。
+- 这些结果不证明重新训练旋转一定有效。
+
+本次新训练的核心动机是：
+
+**原C6R主要针对C128优化，其旋转结构可能没有适应Dual-M量化误差，因此值得检验在Dual-M下重新优化旋转是否能产生额外收益。**
+
+这只是待验证假设。
+
+### 1.2 恢复真正的C6R训练实现
+
+首先定位并核验原A800 clean-room的：
+
+- C6R训练源码及commit
+- 完整训练配置
+- Functional loss计算
+- State loss计算
+- C128 codec实现
+- Cayley正交参数化
+- Adam/learning-rate/gradient clip
+- 训练样本与顺序
+- gradient horizon及detach策略
+- teacher/student状态构建
+- checkpoint选择规则
+- 冻结C6R权重及SHA
+- 原数值资格和确定性记录
+
+可以参考公开仓库：
+
+`https://github.com/pytenter/GDN-quantization`
+
+尤其是：
+
+`experiments/qwen_gdn/recurrent_training/`
+
+历史早期实现曾采用125 optimizer updates、Hadamard初始化、Cayley参数化及recurrent INT8 student训练。
+
+但这只是历史线索，不能直接假设它就是最新C6R A800 clean-room最终配置。
+
+**必须以实际已完成训练的可信源码和manifest为准，不能使用过时版本替代。**
+
+若原始训练配置或核心模型身份无法可靠恢复：
+
+`TRAINING_PROVENANCE_GATE = FAIL`
+
+停止正式实验准备，不自行发明一个新的训练协议冒充C6R延续实验。
+
+---
+
+## 2. 冻结新的科学问题
+
+本次准备的后续正式训练研究：
+
+**Does codec-aware orthogonal rotation optimization improve Qwen/GDN functional accuracy under persistent Dual-M INT8 quantization?**
+
+设计两个配对训练条件。
+
+### Arm A：C128-aware Rotation
+
+```text
+INITIAL_ROTATION = HADAMARD
+TRAINING_CODEC = CANONICAL_C128
+LOSS = FUNCTIONAL + 0.1 * STATE
+OUTPUT = R_A
+```
+
+### Arm D：Dual-M-aware Rotation
+
+```text
+INITIAL_ROTATION = HADAMARD
+TRAINING_CODEC = DUAL_M_INT8
+LOSS = FUNCTIONAL + 0.1 * STATE
+OUTPUT = R_D
+```
+
+两组必须满足：
+
+- 完全相同的Hadamard初始化。
+- 完全相同的可训练参数集合。
+- 完全相同的正交参数化。
+- 相同训练数据及顺序。
+- 相同teacher targets。
+- 相同优化器、学习率及gradient clipping。
+- 相同训练步数。
+- 相同gradient horizon和detach策略。
+- 相同训练时数值配置。
+- 相同checkpoint规则。
+- 相同训练和验证数据边界。
+
+**两个训练条件唯一计划中的科学变量是训练时使用的quantization codec。**
+
+不能一组采用persistent student，另一组采用FP state reset。
+
+不能一组训练更多steps。
+
+不能一组使用clean-FP scale oracle，另一组不使用。
+
+不能先观察结果，再为某一组调整学习率、loss权重、gradient horizon或checkpoint选择规则。
+
+冻结C6R和Hadamard均作为最终比较基线，不在本次重新训练。
+
+### 训练目标
+
+沿用原C6R真正使用的Functional/State定义。
+
+计划比较：
+
+\[
+L_A(R)=L_{\mathrm{func}}(R,Q_{\mathrm{C128}})
++0.1L_{\mathrm{state}}(R,Q_{\mathrm{C128}})
+\]
+
+\[
+L_D(R)=L_{\mathrm{func}}(R,Q_{\mathrm{DualM}})
++0.1L_{\mathrm{state}}(R,Q_{\mathrm{DualM}})
+\]
+
+必须先核实原Functional定义与RMSNorm、gate、readout/out_proj的真实关系，不根据名称重新实现Loss。
+
+不允许本次增加：
+- Scale Inflation Penalty
+- Temporal Lifetime Loss
+- Future Query Readout Loss
+- CVaR或新的tail-risk loss
+- 新的lambda权重
+- Dual-W
+- FP16重要行保护
+- mixed-bit quantization
+
+---
+
+## 3. Phase 0A：Dual-M训练前向正确性
+
+这是决定能否租A800的第一个核心门禁。
+
+复用已完成32K实验中经过验证的Dual-M算法。
+
+固定：
+
+```text
+BITWIDTH = INT8
+PIVOTS = 0
+ROW_SCALE = FP16
+COLUMN_SCALE = FP16
+IMPORTANCE_WEIGHT = 1
+COLUMN_LS = FROZEN_REFERENCE
+FINAL_REENCODE = FROZEN_REFERENCE
+```
+
+Dual-M前向必须与已经用于正式推理的真实算法一致。
+
+State经旋转后，执行真正的Dual-M quantize/dequantize/writeback。
+
+下一token必须消费已经QDQ写回的状态。
+
+训练中允许反向传播所需的临时高精度张量，但不能把跨token未量化FP state替代真实student递归状态。
+
+需要CPU验证：
+
+1. 与正式Dual-M codec的code一致性。
+2. Row/column scale一致性。
+3. Reconstructed state一致性。
+4. FP16 scale边界。
+5. Zero/outlier/ties等极端输入。
+6. 真实state tensor shape与rotation axis。
+7. 每token recurrent QDQ语义。
+8. C128原训练codec parity。
+9. Hadamard/Cayley正交性。
+10. 模型功能坐标一致性。
+
+必须使用真实冻结reference比较，记录允许的数值差异及其来源。
+
+如果Dual-M训练前向无法在原数学定义下复现正式推理codec：
+
+`DUAL_M_FORWARD_PARITY = FAIL`
+
+立即STOP。
+
+不得为了训练方便改变Dual-M scale规则、LS迭代数、clamp或rounding语义。
+
+---
+
+## 4. Phase 0B：反向传播设计和验证
+
+这是本次任务最重要的技术工作。
+
+Dual-M包含非光滑计算：
+- INT8 rounding
+- clipping
+- FP16 scale conversion
+- row/column scale estimation
+- column least-squares fitting
+- final re-encode
+
+不能简单把原C128训练函数替换成Dual-M后就认为梯度正确。
+
+首先检查原C6R训练的STE/autograd实现。
+
+制定一个明确、固定、可审计的Dual-M backward policy。
+
+要求：
+
+- forward始终执行真实Dual-M数值计算。
+- backward的surrogate规则事前固定。
+- 明确哪些scale路径允许梯度。
+- 明确哪些scale路径detach。
+- 处理量化截断边界。
+- 不允许使用仅在训练阶段存在、但没有被记录的不同codec前向。
+- 不通过改变Dual-M前向来制造更容易训练的梯度。
+
+优先使用最小、可解释的STE设计，不引入复杂的custom CUDA backward，除非原合格实现明确要求。
+
+### 梯度资格测试
+
+CPU及可行的3090 micro-test必须验证：
+
+1. Loss finite。
+2. Rotation参数gradient finite。
+3. Gradient不是全部零。
+4. 不存在NaN/Inf。
+5. 原C128分支对同一输入的梯度行为与历史实现一致。
+6. Dual-M反向路径确实连接至可训练旋转参数。
+7. 正交矩阵在更新后仍满足冻结正交误差要求。
+8. 固定seed的重复训练步骤结果一致，或符合事前定义的确定性合同。
+9. 三个连续micro-updates可以完成forward/backward/optimizer step。
+10. checkpoint恢复能够正确恢复optimizer、rotation和RNG状态。
+
+对于光滑的连续计算部分，可以使用有限差分检查解析梯度。
+
+但不得要求STE的surrogate梯度与包含hard rounding的真实前向有限差分完全一致，因为两者本来不一定相等。
+
+STE的正确性应通过计算图、局部单元测试、梯度覆盖和优化行为验证，并诚实说明surrogate的边界。
+
+不能把micro-test loss短期下降当成32K收益证据。
+
+如果需要重新发明大量autograd或重写GDN CUDA kernel才能反向传播：
+
+`TRAINING_GRADIENT_GATE = FAIL_CLOSED_STOP`
+
+不进入无限工程开发。
+
+---
+
+## 5. Phase 0C：训练数据隔离与预注册
+
+准备三份互不重叠的数据资产：
+
+```text
+TRAIN
+DEVELOPMENT_VALIDATION
+FUTURE_32K_TEST
+```
+
+优先核验并复用原C6R的可信训练数据处理方式，避免为了新实验重建整个数据系统。
+
+严格排除已经被观察过的：
+- 2-doc Dual-M Pilot
+- 5-doc Dual-M前瞻复制
+- 5-doc C6R交互分析
+- 相关canary、方法选择和历史机制验证样本
+- AIME26
+
+必须审计raw hash、canonical token hash，以及可以获得的repository/project身份。
+
+不同raw hash不能自动证明项目独立。
+
+如果项目身份不能确认：
+`PROJECT_INDEPENDENCE = UNKNOWN`
+
+训练与验证集不能泄漏进最终32K测试集。
+
+两组训练使用完全相同的训练文档顺序和seed。
+
+本任务必须在正式训练之前冻结：
+- 数据身份
+- 训练轮数和总updates
+- 学习率与optimizer
+- gradient horizon
+- 正交参数化
+- 训练Loss
+- backward policy
+- checkpoint保存与选择规则
+- 数值安全阈值
+- 最终比较指标
+
+建议固定最终step checkpoint作为主要训练产物，避免根据不同Loss的validation结果分别挑选最有利checkpoint。
+
+如历史C6R训练确有不同的checkpoint选择合同，应单独说明，并在新任务预注册一个对A/D两臂对称的规则。
+
+不得使用Future-32K结果选择checkpoint。
+
+---
+
+## 6. Phase 0D：本地RTX3090最小训练资格
+
+本阶段不是正式科研训练。
+
+单张3090累计最多1 GPUh。
+
+目的仅为确认：
+- 训练计算图能否构建。
+- 真实Dual-M forward/backward能否执行。
+- 梯度是否有效。
+- checkpoint恢复是否可靠。
+- 显存与吞吐成本是否能测量。
+
+先尝试原训练实现的最小合法batch和短horizon。
+
+若完整9B训练计算图在24GB中无法容纳，不允许通过静默改变Loss、dtype或递归规则强行跑通。
+
+允许使用代表性局部算子、单层或少量真实GDN状态进行梯度资格测试，但要明确：
+
+`LOCAL_GRADIENT_PASS != FULL_MODEL_TRAINING_PASS`
+
+本地测试优先验证两组条件相同训练语义。
+
+记录：
+- GPU UUID
+- 模型版本
+- 参数dtype
+- forward耗时
+- backward耗时
+- optimizer耗时
+- peak CUDA allocated/reserved
+- NVML内存
+- checkpoint大小
+- 每个optimizer step的token暴露量
+- gradient norm
+- loss数值
+- orthogonality error
+
+严格避免在3090上运行大量不必要的训练steps。
+
+微型测试只验证工程可行性，不允许生成候选正式旋转或宣称方法改善。
+
+如果3090可以经济地完成完整真实训练，应优先推荐本地训练，避免无必要地租A800。
+
+---
+
+## 7. Phase 0E：A800租卡前最终Go/No-Go
+
+此阶段仍然不能启动A800。
+
+必须生成一份独立的：
+
+`A800_TRAINING_READINESS_REPORT.md`
+
+报告中明确区分：
+
+```text
+CPU_CODEC_QUALIFIED
+TRAINING_GRADIENT_QUALIFIED
+LOCAL_MICRO_TRAINING_QUALIFIED
+FULL_MODEL_A800_TRAINING = NOT_TESTED
+```
+
+本次准备阶段不可能直接声称A800完整训练已经PASS。
+
+### 未来A800资源计划
+
+拟议设备：
+
+```text
+GPU = NVIDIA A800
+REQUIRED_MEMORY = 80GB CLASS
+GPU_COUNT = 1
+TRAINING_ARMS = 2
+```
+
+必须在正式租卡前准备好：
+- 确定的训练代码及SHA。
+- 模型权重与tokenizer。
+- 训练和验证数据。
+- Python/Torch/FLA环境清单。
+- frozen训练配置。
+- 两组相同的启动脚本。
+- checkpoint导出脚本。
+- 训练异常退出处理。
+- 成本与预算账本。
+- 完成后释放实例的人工操作清单。
+
+不能假设A800吞吐一定高于3090。
+
+未来真正租卡时，先执行短时间的A800 full-model forward/backward admission，检查80GB真实可用显存及单step性能。
+
+只有完成真实A800短资格后，才能确定完整训练是否可在预算内完成。
+
+建议的首次A800预算上限：
+
+```text
+PROPOSED_A800_BILLED_HOURS_CAP = 8.0
+A800_FULL_TRAINING_AUTHORIZED = NO
+```
+
+8小时只是待用户授权的付费预算提案，不是已确认训练时长。
+
+成本模型必须包括：
+- 模型加载
+- 环境启动
+- full-model gradient admission
+- Arm A训练
+- Arm D训练
+- validation
+- checkpoint保存
+- 最终导出
+- 预留安全余量
+
+公式：
+
+```text
+Estimated_Billed_Time =
+  Setup
+  + Admission
+  + 2 × Matched_Training_Time
+  + Validation
+  + Export
+  + Safety_Margin
+```
+
+同时输出：
+
+`Estimated_Money = Estimated_Billed_Time × Actual_Instance_Hourly_Price`
+
+不得虚构A800价格。若实际价格未知，标记UNKNOWN，并输出成本公式。
+
+如果未来A800资格显示不能在用户授权预算内完成两组公平训练，必须STOP，不得只完成一组正式训练后声称配对比较有效。
+
+训练准备完成后，仅输出可审计、默认dry-run的A800 launch命令和配置，不自动执行。
+
+---
+
+## 8. 冻结未来的科学评价方案
+
+本次只准备评价协议和必要代码，不运行正式32K。
+
+正式训练完成后，将使用独立RTX3090进行full-model Future-KL比较。
+
+评价条件：
+
+```text
+FP_NATIVE
+
+H + DUAL_M
+C6R + DUAL_M
+R_A + DUAL_M
+R_D + DUAL_M
+```
+
+至少准备两篇全新、合法、未见的32768-token文档作为下一次探索性测试。
+
+每篇384个固定评分位置：
+
+```text
+t = 8192 + 64*k
+k = 0,...,383
+```
+
+Full-vocabulary FP32 KL：
+
+```text
+KL(FP_NATIVE || STUDENT)
+```
+
+使用冻结的math.fsum/384 reducer及算术复核方式。
+
+所有student必须从token0构建自身persistent QDQ历史。
+
+三个主要未来比较：
+
+```text
+G_specific =
+  K(R_A, DualM) - K(R_D, DualM)
+
+G_adapt =
+  K(C6R, DualM) - K(R_D, DualM)
+
+G_H =
+  K(H, DualM) - K(R_D, DualM)
+```
+
+解释：
+
+- G_specific > 0：Dual-M-aware训练优于等预算C128-aware训练。
+- G_adapt > 0：新训练优于旧C6R。
+- G_H > 0：新旋转在Dual-M下超过Hadamard。
+
+建议G_specific为未来主要科学比较；G_H是关键性能目标。
+
+所有定义、统计单位、数值分辨率规则必须在正式训练前冻结。
+
+测试文档必须在不查看模型结果的条件下选定。
+
+N=2仅属于探索性科学测试，不能宣称统计显著或广泛泛化。
+
+本次不生成这些指标的虚假数值，也不启动评价。
+
+---
+
+## 9. 严格止损原则
+
+这次不允许再次陷入大型工程修补。
+
+禁止：
+- 重写GDN recurrence kernel
+- 训练新的9B模型权重
+- 修改Hadamard/C6R历史资产
+- 修改原Dual-M科学定义
+- 动态调Loss权重
+- 自动训练C8
+- 使用混合位宽或FP16 pivots
+- 加入新的scale反馈干预
+- 修改训练数据以制造有利结果
+- 通过旧AIME结果选择训练配置
+- 在没有前置资格的情况下租A800
+- 超出本地1 GPUh测试额度
+- 自动启动后续完整训练
+- 自动运行32K/AIME
+- 自动git push
+
+如果遇到核心数学、梯度或模型身份问题，必须保留首失败并有界STOP。
+
+不要因为一个未知问题，再新建三套launcher、增加大量审计守护程序或不断放宽数值门禁。
+
+---
+
+## 10. 交付清单
+
+本次任务至少交付：
+
+```text
+TRAINING_BASELINE_AUDIT.md
+FROZEN_C6R_PROVENANCE.json
+
+DUAL_M_FORWARD_PARITY.json
+DUAL_M_BACKWARD_POLICY.md
+GRADIENT_QUALIFICATION.json
+
+PAIRED_TRAINING_PREREGISTRATION.json
+DATA_SPLIT_MANIFEST.json
+DATA_LEAKAGE_AUDIT.json
+
+LOCAL_3090_TRAINING_CANARY.json
+LOCAL_GPU_RESOURCE_LEDGER.json
+
+A800_TRAINING_COST_MODEL.json
+A800_TRAINING_READINESS_REPORT.md
+
+A800_LAUNCH_DRY_RUN.md
+FUTURE_32K_EVALUATION_PROTOCOL.md
+
+SOURCE_DIFF_MANIFEST.json
+SHA256_MANIFEST.json
+FINAL_REPORT.md
+```
+
+所有不存在的证据明确标记NOT_RUN或UNKNOWN。
+
+最终报告必须回答以下问题：
+
+1. 找到的权威C6R训练实现是什么？
+2. 是否复用了原C6R Loss和正交参数化？
+3. Dual-M训练前向是否与已资格推理实现一致？
+4. Dual-M的backward policy是什么？
+5. 是否真实存在稳定、有限的rotation gradients？
+6. 本地3090能否完整训练，还是必须使用A800？
+7. 两条训练arm是否只有codec一个科学变量不同？
+8. 训练、验证和未来测试数据是否隔离？
+9. 原训练步数、gradient horizon与optimizer最终冻结为什么？
+10. A800需要运行哪些任务，预计多少付费小时？
+11. 还有哪些必须在A800短资格阶段实际确认的问题？
+12. 当前是否值得用户支付A800租金？
+
+最终状态必须是下列之一：
+
+```text
+READY_FOR_A800_ADMISSION_ONLY
+LOCAL_3090_TRAINING_PREFERRED
+NOT_READY_FOR_PAID_GPU
+FAIL_CLOSED_STOP
+```
+
+`READY_FOR_A800_ADMISSION_ONLY`不等于正式训练已经获得GPU授权。
+
+任务完成后立即STOP。
+
+**本次成功标准不是已经训练出新旋转，而是：我们已经有充分的源码、数学、梯度、数据和资源证据，可以让后续一次A800租卡集中用于可信的配对训练，而不是用于临时调试。**

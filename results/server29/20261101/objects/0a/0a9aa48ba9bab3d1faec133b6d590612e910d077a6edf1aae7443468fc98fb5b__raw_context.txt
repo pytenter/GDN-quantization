@@ -1,0 +1,459 @@
+FastFootShoesModel/src/main/java/org/apache/geode/demo/fastfootshoes/repositories/AlertRepository.java
+public interface AlertRepository extends GemfireRepository<Alert, String> {
+
+
+}
+FastFootShoesModel/src/main/java/org/apache/geode/demo/fastfootshoes/model/Customer.java
+@Region("Customer")
+public class Customer {
+	
+	private String name;
+	private String emailAddress;
+	private String city;
+	private Date birthday;
+	
+	//this ID will act as the key when doing puts/gets into the cluster
+	@Id
+	private String id;
+	
+	public Customer() {
+		
+	}
+	
+	
+	
+	public Customer(String name, String emailAddress, String city,
+			Date birthday, String id) {
+		super();
+		this.name = name;
+		this.emailAddress = emailAddress;
+		this.city = city;
+		this.birthday = birthday;
+		this.id = id;
+	}
+
+
+
+	public String getName() {
+		return name;
+	}
+	
+	public void setName(String name) {
+		this.name = name;
+	}
+	
+	public String getCity() {
+		return city;
+	}
+	
+	public void setCity(String city) {
+		this.city = city;
+	}
+	
+	public Date getBirthday() {
+		return birthday;
+	}
+	
+	public void setBirthday(Date birthday) {
+		this.birthday = birthday;
+	}
+
+	public String getEmailAddress() {
+		return emailAddress;
+	}
+
+	public void setEmailAddress(String emailAddress) {
+		this.emailAddress = emailAddress;
+	}
+	
+	
+
+	public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	@Override
+	public String toString() {
+		return "Customer [name=" + name + ", emailAddress=" + emailAddress
+				+ ", city=" + city + ", birthday=" + birthday + ", id=" + id
+				+ "]";
+	}
+
+}
+FastFootShoesModel/src/main/java/org/apache/geode/demo/fastfootshoes/model/Alert.java
+@Region("Alert")
+public class Alert {
+	
+	private String message;
+	private Date messageDate;
+	
+	//this ID will act as the key when doing puts/gets into the cluster
+	@Id
+	private String id;
+	
+	
+	public String getMessage() {
+		return message;
+	}
+	public void setMessage(String message) {
+		this.message = message;
+	}
+	public Date getMessageDate() {
+		return messageDate;
+	}
+	public void setMessageDate(Date messageDate) {
+		this.messageDate = messageDate;
+	}
+	public String getId() {
+		return id;
+	}
+	public void setId(String id) {
+		this.id = id;
+	}
+	
+	@Override
+	public String toString() {
+		return "Alert [message=" + message + ", messageDate=" + messageDate
+				+ ", id=" + id + "]";
+	}
+
+}
+FastFootShoesModel/src/main/java/org/apache/geode/demo/fastfootshoes/model/Product.java
+@Region("Product")
+public class Product {
+	
+	private int stockOnHand;
+	private double wholeSalePrice;
+	private String brand;
+	private String name;
+	private String type;
+	private String color;
+	private double size;
+	private String gender;
+	
+	//this ID will act as the key when doing puts/gets into the cluster
+	@Id
+	private String id;
+	
+	public int getStockOnHand() {
+		return stockOnHand;
+	}
+	public void setStockOnHand(int stockOnHand) {
+		this.stockOnHand = stockOnHand;
+	}
+	public double getWholeSalePrice() {
+		return wholeSalePrice;
+	}
+	public void setWholeSalePrice(double wholeSalePrice) {
+		this.wholeSalePrice = wholeSalePrice;
+	}
+	public String getBrand() {
+		return brand;
+	}
+	public void setBrand(String brand) {
+		this.brand = brand;
+	}
+	public String getName() {
+		return name;
+	}
+	public void setName(String name) {
+		this.name = name;
+	}
+	public String getType() {
+		return type;
+	}
+	public void setType(String type) {
+		this.type = type;
+	}
+	public double getSize() {
+		return size;
+	}
+	public void setSize(double size) {
+		this.size = size;
+	}
+	public String getGender() {
+		return gender;
+	}
+	public void setGender(String gender) {
+		this.gender = gender;
+	}
+	public String getColor() {
+		return color;
+	}
+	public void setColor(String color) {
+		this.color = color;
+	}
+	public String getId() {
+		return id;
+	}
+	public void setId(String id) {
+		this.id = id;
+	}
+	
+	@Override
+	public String toString() {
+		return "Product [stockOnHand=" + stockOnHand + ", wholeSalePrice="
+				+ wholeSalePrice + ", brand=" + brand + ", name=" + name
+				+ ", type=" + type + ", color=" + color + ", size=" + size
+				+ ", gender=" + gender + ", id=" + id + "]";
+	}
+	
+}
+FastFootShoesModel/src/main/java/org/apache/geode/demo/fastfootshoes/repositories/ProductRepository.java
+public interface ProductRepository extends GemfireRepository<Product, String> {
+
+	Collection<Product> findAll();
+	
+	Product findById(String id);
+
+	@Query("SELECT * FROM /Product p WHERE p.stockOnHand > 0")
+	Collection<Product> findAllWithStock();
+
+	@Query("SELECT * FROM /Product p WHERE p.brand = $1 and p.\"type\"= $2 and p.gender = $3")
+	Collection<Product> findAllByBrandTypeGender(String brand, String type,
+			String gender);
+
+	@Query("SELECT * FROM /Product p   WHERE  p.brand = $1 and  p.\"type\" = $2 and  p.gender = $3 and  p.stockOnHand > 0")
+	Collection<Product> findAllWithStockByBrandTypeGender(String brand,String type, String gender);
+
+    @Query("SELECT * FROM /Product p WHERE p.\"type\" LIKE $1 and p.stockOnHand > 0")
+    Collection<Product> findAllWithStockByBrand( String brand) ;
+
+}
+FastFootShoesModel/src/main/java/org/apache/geode/demo/fastfootshoes/repositories/TransactionRepository.java
+public interface TransactionRepository extends GemfireRepository<Transaction, String> {
+	
+	Transaction findById(String id);
+	
+	@Query("SELECT * FROM /Transaction t WHERE t.customerId = $1")
+	Collection<Transaction> findByCustomer(String id);
+	
+	@Query("SELECT * FROM /Transaction t where t.orderStatus = 'open'")
+	Collection<Transaction> findOpenOrders();
+	
+	@Query("SELECT * FROM /Transaction t where (t.orderStatus = 'open' or t.orderStatus = 'shipped') and t.customerId = $1")
+	Collection<Transaction> findCompletedOrders(String id);
+	
+	@Query("SELECT count(*) FROM /Transaction t where t.orderStatus = 'open'")
+	Integer getCount();
+
+
+}
+FastFootShoesModel/src/main/java/org/apache/geode/demo/fastfootshoes/model/Transaction.java
+@Region("Transaction")
+public class Transaction {
+
+	private String customerId;
+	private Date transactionDate;
+	private String productId;
+	private int quantity;
+	private double retailPrice;
+	private String orderStatus;
+	@Id
+	private String id;
+	private double markUp;
+	public static String ORDER_COMPLETED = "shipped";
+	public static String ORDER_CANCELLED = "cancelled";
+	public static String ORDER_OPEN = "open";
+	
+	public Date getTransactionDate() {
+		return transactionDate;
+	}
+	
+	public void setTransactionDate(Date transactionDate) {
+		this.transactionDate = transactionDate;
+	}
+	
+	public String getProductId() {
+		return productId;
+	}
+
+	public void setProductId(String productId) {
+		this.productId = productId;
+	}
+
+
+	public int getQuantity() {
+		return quantity;
+	}
+	
+	public void setQuantity(int quantity) {
+		this.quantity = quantity;
+	}
+	
+	
+	public double getRetailPrice() {
+		return retailPrice;
+	}
+	
+	public void setRetailPrice(double retailPrice) {
+		this.retailPrice = retailPrice;
+	}
+	
+	public String getOrderStatus() {
+		return orderStatus;
+	}
+	
+	public void setOrderStatus(String orderStatus) {
+		this.orderStatus = orderStatus;
+	}
+
+	public double getMarkUp() {
+		return markUp;
+	}
+
+	public void setMarkUp(double markUp) {
+		this.markUp = markUp;
+	}
+
+	public String getCustomerId() {
+		return customerId;
+	}
+
+	public void setCustomerId(String customerId) {
+		this.customerId = customerId;
+	}
+
+	public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	@Override
+	public String toString() {
+		return "Transaction [customerId=" + customerId + ", transactionDate="
+				+ transactionDate + ", productId=" + productId + ", quantity="
+				+ quantity + ", retailPrice=" + retailPrice + ", orderStatus="
+				+ orderStatus + ", id=" + id + ", markUp=" + markUp + "]";
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		Transaction other = (Transaction) obj;
+		if (customerId == null) {
+			if (other.customerId != null)
+				return false;
+		} else if (!customerId.equals(other.customerId))
+			return false;
+		if (id == null) {
+			if (other.id != null)
+				return false;
+		} else if (!id.equals(other.id))
+			return false;
+		if (Double.doubleToLongBits(markUp) != Double
+				.doubleToLongBits(other.markUp))
+			return false;
+		if (orderStatus == null) {
+			if (other.orderStatus != null)
+				return false;
+		} else if (!orderStatus.equals(other.orderStatus))
+			return false;
+		if (productId == null) {
+			if (other.productId != null)
+				return false;
+		} else if (!productId.equals(other.productId))
+			return false;
+		if (quantity != other.quantity)
+			return false;
+		if (Double.doubleToLongBits(retailPrice) != Double
+				.doubleToLongBits(other.retailPrice))
+			return false;
+		if (transactionDate == null) {
+			if (other.transactionDate != null)
+				return false;
+		} else if (!transactionDate.equals(other.transactionDate))
+			return false;
+		return true;
+	}
+	
+	
+	
+}
+FastFootShoesModel/src/main/java/org/apache/geode/demo/fastfootshoes/model/MarkUp.java
+@Region("MarkUp")
+public class MarkUp {
+
+	private double rate;
+	private String levelName;
+	private int qualifyingTransactionCountFloor;
+	private int qualifyingTransactionCountCeiling;
+	
+	//this ID will act as the key when doing puts/gets into the cluster
+	@Id
+	private String id;
+	
+	public double getRate() {
+		return rate;
+	}
+	public void setRate(double rate) {
+		this.rate = rate;
+	}
+	public String getLevelName() {
+		return levelName;
+	}
+	public void setLevelName(String levelName) {
+		this.levelName = levelName;
+	}
+	public int getQualifyingTransactionCountFloor() {
+		return qualifyingTransactionCountFloor;
+	}
+	public void setQualifyingTransactionCountFloor(
+			int qualifyingTransactionCountFloor) {
+		this.qualifyingTransactionCountFloor = qualifyingTransactionCountFloor;
+	}
+	public int getQualifyingTransactionCountCeiling() {
+		return qualifyingTransactionCountCeiling;
+	}
+	public void setQualifyingTransactionCountCeiling(
+			int qualifyingTransactionCountCeiling) {
+		this.qualifyingTransactionCountCeiling = qualifyingTransactionCountCeiling;
+	}
+	public String getId() {
+		return id;
+	}
+	public void setId(String id) {
+		this.id = id;
+	}
+	
+	@Override
+	public String toString() {
+		return "MarkUp [rate=" + rate + ", levelName=" + levelName
+				+ ", qualifyingTransactionCountFloor="
+				+ qualifyingTransactionCountFloor
+				+ ", qualifyingTransactionCountCeiling="
+				+ qualifyingTransactionCountCeiling + ", id=" + id + "]";
+	}
+	
+}
+FastFootShoesModel/src/main/java/org/apache/geode/demo/fastfootshoes/repositories/CustomerRepository.java
+public interface CustomerRepository extends GemfireRepository<Customer, String> {
+
+	Customer findByEmailAddress(String emailAddress);
+
+	Customer findById(String id);
+
+	//TODO could this not be by attribute?
+	@Query("SELECT * FROM /Transaction t WHERE t.customerId = $1")
+	Collection<Transaction> findByCustomer(@Param("customerId") String id);
+
+	@Query("SELECT * FROM /Customer t WHERE t.emailAddress LIKE $1")
+	Collection<Customer> searchCustomers(String email);
+
+}
+FastFootShoesModel/src/main/java/org/apache/geode/demo/fastfootshoes/repositories/MarkUpRepository.java
+public interface MarkUpRepository extends GemfireRepository<MarkUp, String> {
+
+}

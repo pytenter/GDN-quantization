@@ -1,0 +1,50 @@
+# orthogonal-numerical-closure-v1-qwen
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/worktrees/orthogonal-numerical-closure-v1-qwen`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`results/aime26/81920/ling_kda/frozen_v4_per_sample.csv`](../../objects/05/05ca0ee3af2773c0ecb0b4d600f9f3e6e72d1da23c8a1fc366588ea8f8237db9__frozen_v4_per_sample.csv)
+- [`results/aime26/81920/qwen_gdn/frozen_v4_per_sample.csv`](../../objects/be/be81855eba46b09dbbc92e478f7bd45cf2ae94254d7571c6a80ee58801d4f263__frozen_v4_per_sample.csv)
+- [`README.md`](../../objects/60/608cda4ead6ac47e42d7767e406ef6f21995536e2b28f38e95bf013fcab9a04a__README.md)
+- [`docs/PROTOCOL.md`](../../objects/17/17fdf820923d21c926dd967db2297403bcbe7e3d438fa22b8de4f60c804a536c__PROTOCOL.md)
+- [`docs/EVIDENCE_MAP.md`](../../objects/54/54e98d22dc372a53cd7ee24c76d6d08b085e07125477da4a8997487838137fa0__EVIDENCE_MAP.md)
+- [`docs/RESULT_SUMMARY.md`](../../objects/5b/5b5eb461839187e4deb035ada0db52967074163565ea42f9be9728662472e840__RESULT_SUMMARY.md)
+- [`docs/REPRODUCIBILITY.md`](../../objects/e4/e443a2d2459eccf3ff0ebb428737d59e2a08bb7edd26a140df4495ea0fb5e3b6__REPRODUCIBILITY.md)
+- [`docs/RESEARCH_STATUS.md`](../../objects/36/360dc6b90ffa690037be3e38b00c2e6460f51eda3eb42d92fb40a974804e9d71__RESEARCH_STATUS.md)
+- [`docs/SCORER_PROTOCOL.md`](../../objects/b3/b3a66edfa700a7ef5e2a571c450d6767b537ac39c08a8e89789939cf9834887a__SCORER_PROTOCOL.md)
+- [`docs/EXPERIMENT_INDEX.md`](../../objects/1c/1cc607de615e73df110856fffc15c8ee5af0e76d681ce10424fcacdffae19d11__EXPERIMENT_INDEX.md)
+- [`docs/MODEL_PROVENANCE.md`](../../objects/9a/9a20d9f4cbf6a6defd328228a9120feb8f2a832850ea935b94d0f19f6976ad2a__MODEL_PROVENANCE.md)
+- [`docs/server_inventory/new4090.md`](../../objects/64/648ae6fc748e68a16222dd78f03db8a87c0bf7715d94f7c4cd998e33f868d56d__new4090.md)
+- [`docs/CANONICAL_PROMPT_MANIFEST.md`](../../objects/32/32fdadf61b756b4c0b1f2c4042d45a0c47bc319ed4d807b2d15e8b8ecaa4b594__CANONICAL_PROMPT_MANIFEST.md)
+- [`docs/server_inventory/ling4090.md`](../../objects/b4/b4fa7b4b274e82307bcfde630fd4ba61550a1edf1961ca0833a99119db0e9cdf__ling4090.md)
+- [`docs/server_inventory/qwen3090.md`](../../objects/61/619f8f569d5721ec5a82a722743c61a2cc341cd97d5fe13234ce7d637cc8fab5__qwen3090.md)
+- [`docs/server_inventory/SERVER_MAP.md`](../../objects/52/52c988a95c1f071fb944d72eba55f8e308bcf7ea357085dc6a68642d62eeedca__SERVER_MAP.md)
+- [`tests/shared/test_aime26_scorer_v4.py`](../../objects/cb/cbdd1412605ab4870cf4e168bbd465af9542ec47cee43943d32a9f8f68b80e75__test_aime26_scorer_v4.py)
+- [`results/aime26/81920/ling_kda/README.md`](../../objects/74/74bff98def51d960135854292d2920f2959f2d13df7a484daad3b51f0d3a95b6__README.md)
+- [`docs/server_inventory/new4090_environment.md`](../../objects/ee/ee5de981095912c483c3d31bf010d3755db05bc91e0615ed123dee1fcf6e985d__new4090_environment.md)
+- [`experiments/shared/scoring/aime26_scorer_v4.py`](../../objects/c5/c5fc3f671e7f5d97bd068b8aebda07ba5b9b1cfab95ba5a80b1bba4185b75608__aime26_scorer_v4.py)
+- [`reports/audits/new4090_consolidation_report.md`](../../objects/0c/0ccf1b1d2a3738143f81ee9bc57810b034706721c87fed7ae705b9c0da6eb8eb__new4090_consolidation_report.md)
+- [`results/aime26/256k/ling_kda/fp_state/STATUS.md`](../../objects/6f/6ffac07f351d2bf7d887a275e8de65bab62b22944be10cdf1dba34588c74cf0a__STATUS.md)
+- [`results/aime26/256k/ling_kda/int8_r128/STATUS.md`](../../objects/1d/1d9bf75134142dd7baeb5b1ddd4468ea2f251dd09e168b202a9a570d87bc3c66__STATUS.md)
+- [`reports/audits/FINAL_THREE_SERVER_CONSOLIDATION.md`](../../objects/7e/7eac0c367ceb955b87dfc6f7340d79851caea9f692addbe9baea106405871b9e__FINAL_THREE_SERVER_CONSOLIDATION.md)
+- [`experiments/qwen_gdn/rotation/key_hadamard/README.md`](../../objects/f0/f06fee9007d0ec023a1914365cc0340bc89be5b104a75f31a25046f7ff29a6d1__README.md)
+- [`results/aime26/81920/ling_kda/frozen_v4_summary.json`](../../objects/16/169b2dbfcd2cdc62064f6981aec84fcc3d21033e3b02187fe9f910ea40830783__frozen_v4_summary.json)
+- [`results/aime26/81920/qwen_gdn/frozen_v4_summary.json`](../../objects/80/807903653d113a61fd9fd58b6700e0df8b423b2357fc9eb5f92318b92a878e3e__frozen_v4_summary.json)
+- [`reports/orientation/gdn_int8_row_e2e_completion_v1.md`](../../objects/b7/b7b51ad46a6f77a0e1d44774d7fb8e5f9ccffdc2274d388341d8f24322ab0453__gdn_int8_row_e2e_completion_v1.md)
+- [`experiments/ling_kda/rotation/value_hadamard/README.md`](../../objects/dc/dc741bc467f943f9c7eb881121892f0235bf13bb53ddaa81c1624f5c24c2affd__README.md)
+- [`experiments/ling_kda/aime26/81920/test_aime26_scorer.py`](../../objects/75/75fdc4701244c23db8767325f0f0a64c0ba13819e4d1324d33f2987dfc7d6342__test_aime26_scorer.py)
+- [`experiments/qwen_gdn/aime26/81920/test_aime26_scorer.py`](../../objects/75/75fdc4701244c23db8767325f0f0a64c0ba13819e4d1324d33f2987dfc7d6342__test_aime26_scorer.py)
+- [`reports/orientation/gdn_int8_axis_geometry_rescue_v1.md`](../../objects/9b/9b8719f26baf0f6ca93804814af879f4035802aef922da53a94ce88fe85a958f__gdn_int8_axis_geometry_rescue_v1.md)
+- [`reports/rotation/gdn_rotation_headroom_v1_formal_report.md`](../../objects/e8/e8107a878fdaaa396b2e2c6e3bd3c46416d14077bec3983066c0adcbf5e030fa__gdn_rotation_headroom_v1_formal_report.md)
+- [`reports/rotation/ling_value_hadamard_postfix_rebaseline_v1.md`](../../objects/90/90072eaf19ce2f89895b345c43dcd8776f0aaa224b7affb408e07a2ce8f6f814__ling_value_hadamard_postfix_rebaseline_v1.md)
+- [`results/aime26/256k/ling_kda/int8_r128_value_hadamard/STATUS.md`](../../objects/51/51cc26e08842834716f273a2c468577cf58875cf01261b480d212dfe98afd1f8__STATUS.md)
+- [`results/rotation/qwen_arbitrary_orthogonal_gate_v1/summary.json`](../../objects/c6/c6c6c7755c98c3355aaf99d3ba2feed048f277e04a3704b47c3178a70f6ca75b__summary.json)
+- [`reports/rotation/QWEN_ARBITRARY_ORTHOGONAL_EQUIVALENCE_GATE_V1.md`](../../objects/20/202af197c97adc1cfdeaf1f22e50ea91c82f615e787907a69f2a7453323a33a0__QWEN_ARBITRARY_ORTHOGONAL_EQUIVALENCE_GATE_V1.md)
+- [`reports/propagation/gdn_int8_readout_aware_propagation_audit_v1.md`](../../objects/89/89b5ea533b8a9f0e91205989dce24aca32d81266d5bb5fa47071cf4287c88fb9__gdn_int8_readout_aware_propagation_audit_v1.md)
+- [`results/rotation/qwen_orthogonal_numerical_closure_v1/summary.json`](../../../../rotation/qwen_orthogonal_numerical_closure_v1/summary.json)
+- [`experiments/ling_kda/rotation/value_hadamard/CANONICAL_RESOLUTION.md`](../../objects/d5/d5e029a220b2b98d0a2733888cf86721cdadddc81b50d398aa26cee9ad36c8ab__CANONICAL_RESOLUTION.md)

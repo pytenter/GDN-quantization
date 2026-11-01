@@ -1,0 +1,46 @@
+{
+  "task": "QWEN_HADAMARD_FUNCTIONAL_ERROR_GEOMETRY_ANALYSIS_V1",
+  "phase": "PHASE_1_STATE_ERROR_GEOMETRY_ONLY",
+  "status": "FROZEN_BEFORE_FORMAL_COMPARISON",
+  "source": {
+    "trajectories": "The same 60 frozen AIME26 FP-token trajectories used by QWEN_HADAMARD_TRAJECTORY_STABILITY_ANALYSIS_V1",
+    "primary_panel": "The prior preregistered clean59 panel; exclude only the frozen aime26_28 seed 2 pair",
+    "conditions": ["FP", "Identity INT8-C128", "Key-Hadamard INT8-C128"],
+    "pair_key": ["problem_id", "seed", "token_position", "GDN_layer"],
+    "teacher_forcing": "All conditions receive identical frozen token IDs; no sampling or free generation"
+  },
+  "geometry": {
+    "observation_point": "Recurrent state immediately after the existing per-token QDQ step in the frozen GDN runtime",
+    "basis": "Native FP key basis. Identity state is already native; Hadamard state is pulled back with the same H128 inverse used by the frozen patch before subtraction",
+    "state_vector": "Flatten all heads, key channels and value channels in one fixed GDN layer; no head or layer selection",
+    "e_identity": "S_INT8_Identity - S_FP",
+    "e_hadamard": "H128 inverse(S_INT8_Hadamard) - S_FP",
+    "error_norm": "L2 norm of e",
+    "relative_error": "L2(e) / max(L2(S_FP), 1e-12)",
+    "cos_error_fp": "dot(e,S_FP)/(L2(e)*L2(S_FP)), defined only when both norms exceed 1e-12",
+    "cos_error_identity_hadamard": "dot(e_identity,e_hadamard)/(L2(e_identity)*L2(e_hadamard)), defined only when both norms exceed 1e-12",
+    "secondary_readout_alignment": "At the existing GDN norm-input hook, cosine(r_INT8-r_FP,r_FP) in readout space. This is not a state-space cosine or a state-to-logits Jacobian.",
+    "undefined_cosine": "Store null and an explicit validity count; do not impute, clamp denominators into a fabricated direction, or delete the row",
+    "epsilon": 1e-12
+  },
+  "aggregation_and_tests": {
+    "primary_unit": "One frozen trajectory (problem_id, seed). Take the median over all token x 24 fixed GDN-layer rows for each scalar; equal weight per trajectory thereafter.",
+    "paired_contrasts": "Hadamard minus Identity for error_norm, relative_error, cos_error_fp and secondary readout alignment; lower magnitude is descriptive, cosine direction has no preassigned benefit sign",
+    "cross_error_cosine": "Summarize one common Identity-Hadamard cosine per token/layer, then by trajectory and outcome group; lower cosine means different error directions, not necessarily less functional damage",
+    "groups": "Reconstruct stable_correct, hadamard_rescue, stable_failure from frozen real IDs only after replay; retain identity_only_correct if any",
+    "uncertainty": "Trajectory bootstrap of paired/group medians, 5000 resamples, fixed seed 20260925",
+    "group_test": "Rescue versus stable_failure two-sided 10000-label-permutation contrast of medians for every preregistered scalar; report Cliff's delta and both group bootstrap intervals. Stable_correct remains a control.",
+    "rescue_primary_family": ["delta_error_norm", "delta_relative_error", "delta_cos_error_fp", "cos_error_identity_hadamard"],
+    "multiple_testing": "Apply Holm correction across the four rescue-versus-stable-failure tests; other readout-space diagnostics are secondary and not used for a primary claim.",
+    "no_selection": "No outcome-dependent token, layer, head, threshold or outlier selection; no post hoc favorable metric or sign selection",
+    "interpretation": "Phase 1 can establish whether the error geometry differs. It cannot establish J e, downstream functional harm, logits sensitivity, causality, or a learnable rotation objective."
+  },
+  "gates": {
+    "before_formal_replay": "Source and hash audit, repeated 128-token geometry replay, prior state scalar parity, same token IDs, H128 orthogonality and native-basis check must pass",
+    "numeric_validity": "All state norms and relative errors finite; undefined cosine counts explicitly reported",
+    "storage": "Only scalar parquet rows and compact reports/figures; no complete state or logit tensors are serialized",
+    "disk_safety_stop_gib": 20
+  },
+  "deferred": ["full-logits JVP", "full-vocabulary finite difference", "functional amplification conclusion", "rotation training"],
+  "prohibited": ["new AIME free generation", "model change", "quantizer change", "scorer change", "GDN kernel change", "runtime semantic change"]
+}

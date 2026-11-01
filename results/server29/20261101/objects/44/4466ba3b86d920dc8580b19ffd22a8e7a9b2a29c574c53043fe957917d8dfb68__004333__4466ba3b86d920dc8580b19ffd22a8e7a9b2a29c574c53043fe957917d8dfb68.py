@@ -1,0 +1,1 @@
+lambda _cls, isup, duplex, speed, mtu, flags: _tuple_new(_cls, (isup, duplex, speed, mtu, flags))

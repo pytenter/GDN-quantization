@@ -1,0 +1,18 @@
+def __create_fn__(_type_lock_file, _type_timeout, _type_mode, _type_blocking, _type_poll_interval, _type_lifetime, _type_lock_file_fd, _type_lock_file_fd_token, _type_lock_file_fd_identity, _type_pending_lock_file_fd, _type_pending_lock_file_fd_identity, _type_lock_counter, _type_lock_file_key, _type_owner_claim_paths, _type_claim_root, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_lifetime, _dflt_lock_file_fd, _dflt_lock_file_fd_token, _dflt_lock_file_fd_identity, _dflt_pending_lock_file_fd, _dflt_pending_lock_file_fd_identity, _dflt_lock_counter, _dflt_lock_file_key, _dflt_owner_claim_paths, _dflt_claim_root, _return_type):
+ def __init__(self,lock_file:_type_lock_file,timeout:_type_timeout,mode:_type_mode,blocking:_type_blocking,poll_interval:_type_poll_interval,lifetime:_type_lifetime=_dflt_lifetime,lock_file_fd:_type_lock_file_fd=_dflt_lock_file_fd,lock_file_fd_token:_type_lock_file_fd_token=_dflt_lock_file_fd_token,lock_file_fd_identity:_type_lock_file_fd_identity=_dflt_lock_file_fd_identity,pending_lock_file_fd:_type_pending_lock_file_fd=_dflt_pending_lock_file_fd,pending_lock_file_fd_identity:_type_pending_lock_file_fd_identity=_dflt_pending_lock_file_fd_identity,lock_counter:_type_lock_counter=_dflt_lock_counter,lock_file_key:_type_lock_file_key=_dflt_lock_file_key,owner_claim_paths:_type_owner_claim_paths=_dflt_owner_claim_paths,claim_root:_type_claim_root=_dflt_claim_root)->_return_type:
+  self.lock_file=lock_file
+  self.timeout=timeout
+  self.mode=mode
+  self.blocking=blocking
+  self.poll_interval=poll_interval
+  self.lifetime=lifetime
+  self.lock_file_fd=lock_file_fd
+  self.lock_file_fd_token=lock_file_fd_token
+  self.lock_file_fd_identity=lock_file_fd_identity
+  self.pending_lock_file_fd=pending_lock_file_fd
+  self.pending_lock_file_fd_identity=pending_lock_file_fd_identity
+  self.lock_counter=lock_counter
+  self.lock_file_key=lock_file_key
+  self.owner_claim_paths=owner_claim_paths
+  self.claim_root=claim_root
+ return __init__

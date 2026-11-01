@@ -1,0 +1,7 @@
+def __create_fn__(_type_code, _type_instructions, _type_prefix_block_target_offset_remap, _type_block_target_offset_remap, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_instructions, _dflt_prefix_block_target_offset_remap, _dflt_block_target_offset_remap, _return_type):
+ def __init__(self,code:_type_code,instructions:_type_instructions=_HAS_DEFAULT_FACTORY,prefix_block_target_offset_remap:_type_prefix_block_target_offset_remap=_HAS_DEFAULT_FACTORY,block_target_offset_remap:_type_block_target_offset_remap=_dflt_block_target_offset_remap)->_return_type:
+  self.code=code
+  self.instructions=_dflt_instructions() if instructions is _HAS_DEFAULT_FACTORY else instructions
+  self.prefix_block_target_offset_remap=_dflt_prefix_block_target_offset_remap() if prefix_block_target_offset_remap is _HAS_DEFAULT_FACTORY else prefix_block_target_offset_remap
+  self.block_target_offset_remap=block_target_offset_remap
+ return __init__

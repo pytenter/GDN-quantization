@@ -1,0 +1,1133 @@
+
+# QWEN_GDN_FUNCTIONAL_CAUSAL_REPLICATION_V1
+# 8-Doc Prospective Replication + Temporal Analysis
+
+你现在继续 Qwen3.5-9B / GDN recurrent-state
+INT8 quantization + learnable orthogonal rotation 研究。
+
+请先阅读现有仓库和真实实验资产，再规划、冻结、
+执行。优先高效解决问题，避免重复已经完成的工作。
+
+本轮核心目标：
+
+验证 NoScaleInflation 对 full-model Future-KL
+的因果改善能否在8篇新的独立长文档上重复出现。
+
+本轮同时复用历史2-doc pilot，进行CPU-only
+时间机制分析，但历史数据不计入新8-doc
+前瞻验证的独立样本。
+
+本次已授权：
+
+P0：历史CPU-only机制分析
+P1：新8-doc科学协议与outcome-blind选择冻结
+P2：最小工程、数值和资源资格
+P3：8-doc完整32768-token因果复制
+P4：文档级统计及最终报告
+
+若必要资格全部PASS，自动继续完成P3/P4。
+不需要每篇文档单独停止等待授权。
+
+若发生真实数值、身份或物理资源失败，
+立即fail-closed并保留证据。
+
+==================================================
+一、最新已知科研基线
+==================================================
+
+模型：
+Qwen3.5-9B
+
+量化：
+Persistent INT8-C128 recurrent-state quantization
+
+旋转：
+C6R learned Key-side orthogonal rotation
+
+AIME26冻结结果：
+
+FP       52/60
+Hadamard 41/60
+C6R      40/60
+C7       33/60
+Native   18/60
+
+本轮不运行AIME。
+
+历史机制：
+
+QWEN_GDN_FD_SCALE_FEEDBACK_DIRECTION_V1
+
+32/32 COMPLETE
+
+H/C6R/C7 Parent：
+12/12 explosive
+
+NO_SCALE_INFLATION：
+0/12 explosive
+
+NO_SCALE_DEFLATION：
+12/12 explosive
+
+科学结论：
+SCALE_INFLATION_FEEDBACK_SUPPORTED
+
+这是frozen-drive状态误差因果结果。
+
+随后：
+
+QWEN_GDN_DETERMINISTIC_RECOVERY_TO_SCALE_DISCOVERY_V3
+
+NUMERICAL_CLOSURE_STATUS=PASS
+OBSERVER_PARITY=PASS
+TRACK_A/B=COMPLETE
+LONG_HORIZON_MATCHED_PANEL=COMPLETE
+
+但简单S1/S2均值没有展示稳定旋转排名能力。
+
+最新已完成：
+
+QWEN_GDN_SCALE_FEEDBACK_FULLMODEL_FUNCTIONAL_CAUSAL_PILOT_V1
+
+结果：
+
+ENGINEERING=PASS
+FULLMODEL_NUMERICAL=PASS
+INTERVENTION_VALIDITY=PASS
+PHYSICAL_RESOURCE=PASS_FULL32768_CONFIRMED
+FORMAL_SCIENCE=COMPLETE
+
+两篇独立新文档：
+
+Doc1：
+Parent KL      = 0.122722562628
+NoInflation KL = 0.117550745374
+Delta          = +0.005171817254
+相对改善约4.21%
+
+Doc2：
+Parent KL      = 0.691035172676
+NoInflation KL = 0.568342872793
+Delta          = +0.122692299883
+相对改善约17.75%
+
+两篇的正向Delta均超过原数值分辨率：
+
+0.000690448106980
+
+结果：
+
+FUNCTIONAL_EFFECT_DIRECTIONALLY_SUPPORTIVE_SMALL_PILOT
+
+注意：
+这是2-doc pilot，不是统计确认。
+
+NoDeflation历史功能效应存在文档差异。
+
+目前没有证据证明：
+
+- 可部署Scale Cap方法已经成立
+- S1/S2已经成为有效训练Loss
+- C6R超过Hadamard
+- C8训练会改善AIME
+- Scale Inflation是唯一功能损伤来源
+
+==================================================
+二、本轮科学问题
+==================================================
+
+PRIMARY QUESTION：
+
+在新的独立RepoBench-P长文档上，
+持续限制Scale Inflation是否能够
+降低真实full-model persistent INT8模型的
+长期Future-KL？
+
+冻结对照：
+
+PARENT
+vs
+NO_SCALE_INFLATION
+
+使用相同模型、相同C6R旋转、
+相同teacher-forced tokens、
+相同8192-token学生历史和matched FP reference。
+
+每个文档的主要因果效应：
+
+Delta_i =
+K_PARENT_i - K_NOINFLATION_i
+
+Delta_i > 0：
+NoInflation改善未来KL。
+
+Delta_i < 0：
+NoInflation使未来KL增大。
+
+数值不可分辨时：
+UNRESOLVED。
+
+本轮不验证旋转排名能力，
+也不验证Loss梯度可训练性。
+
+特别注意：
+
+NoInflation使用clean FP scale作为oracle。
+
+这是诊断性干预，不是部署方案。
+
+==================================================
+三、本轮只保留两个学生条件
+==================================================
+
+条件A：
+
+PARENT
+
+沿用原正式persistent INT8-C128量化器。
+
+scale来自当前student pre-QDQ state。
+
+条件B：
+
+NO_SCALE_INFLATION
+
+按照已审计的正式干预数学定义：
+
+s_effective = min(s_student, s_clean)
+
+其中s_clean来自：
+
+- 同一C6R坐标
+- 同一token
+- 同一GDN layer
+- 同一quantizer group
+- 同一个matched clean FP reference
+
+不能将其他旋转或其他文档的FP scale混入。
+
+两种学生条件都必须：
+
+EVERY_TOKEN_INT8_QDQ = TRUE
+PERSISTENT_RECURRENT_WRITEBACK = TRUE
+NEXT_TOKEN_CONSUMES_QUANTIZED_STATE = TRUE
+
+不允许：
+
+- delayed requantization
+- 高精度persistent state buffer
+- clean FP state reset
+- 关闭后续QDQ
+- single-pulse替代
+- 改变模型权重
+- 改变旋转矩阵
+- 改变正式quantizer
+
+本轮不要求运行NoDeflation新分支。
+
+因此不能声称复制了NoInflation相对于
+NoDeflation的方向特异性。
+
+历史NoDeflation结论原样保留。
+
+==================================================
+四、P0：历史结果CPU-only时间分析
+==================================================
+
+从真实manifest定位上一个2-doc pilot。
+
+优先读取：
+
+- 2304条正式per-position KL
+- Parent / NoInflation / NoDeflation身份
+- 原384-position schedule
+- 原KL reducer
+- 原scale intervention计数
+- source overflow / code saturation
+- 三个state-MSE终点
+- 正式science spec及SHA
+
+不要重复2-doc正式32K。
+
+对已有数据计算：
+
+DeltaInf(t) =
+KLParent(t) - KLNoInflation(t)
+
+DeltaDef(t) =
+KLParent(t) - KLNoDeflation(t)
+
+按原三个窗口：
+
+[8192,16384)
+[16384,24576)
+[24576,32768)
+
+分别输出：
+
+1. 每个窗口的平均KL改善
+2. 384点paired KL difference
+3. 累计平均改善曲线
+4. 正负改善位置比例
+5. 极端KL事件的时间分布
+6. 各窗口对总体Delta的贡献
+
+原Primary不变。
+
+重点解释：
+
+Doc1前8K干预窗口略微恶化，
+随后两个窗口改善。
+
+Doc2三个窗口均改善，
+但改善幅度不同。
+
+同时检查：
+
+- state MSE巨大改善是否对应KL改善
+- scale intervention是否充分激活
+- clipping增加与功能改善是否同时出现
+
+如果只保存了全程clipping总计数，
+不能推算每个时间窗口的clipping。
+
+所有新时间分析标记：
+
+POSTHOC_DESCRIPTIVE_ANALYSIS
+
+不能冒充独立确认。
+
+P0分析结果可以用于提出机制假设，
+但不能用于挑选新8篇中的有利文档。
+
+==================================================
+五、P1：冻结8篇新独立文档
+==================================================
+
+本轮新样本数量：
+
+N = 8 independent documents
+
+使用已有RepoBench-P compatible snapshot。
+
+在任何新正式outcome产生前：
+
+1. 冻结数据来源和snapshot身份
+2. 冻结tokenizer身份
+3. 冻结候选文档全集
+4. 冻结历史排除清单
+5. 冻结长度与去重标准
+6. 冻结确定性排序/选取方法
+7. 冻结最终8篇ID及token SHA
+8. 冻结全部正式科学单元
+
+每篇必须能够提供完整32769 input tokens，
+用于消费32768个token并保持原预测对齐。
+
+采用固定seed=20261013。
+
+推荐：
+
+对合格候选按稳定SHA256排序，
+取前8个符合全部预冻结规则的文档。
+
+禁止：
+
+- 根据KL选择文档
+- 根据G选择文档
+- 根据Scale Inflation强弱选择文档
+- 根据后续干预收益选择文档
+- 看完前几篇再重选其余文档
+
+必须排除：
+
+- 旧V3四篇Discovery文档
+- 上一轮2-doc Functional Pilot文档
+- 其他已参与相关长程outcome测量的文档
+- raw text或token sequence重复文档
+- 经预冻结去重规则判定的近重复文档
+
+历史排除项必须通过真实registry发现，
+不能只使用本提示词写出的数量。
+
+尽可能按repository/project group去重，
+避免多个高度相关的code片段伪装成
+完全独立的统计样本。
+
+如果同project无法严格避免，
+必须报告相关性限制。
+
+如果符合资格的独立文档不足8篇：
+
+DOCUMENT_SELECTION_INSUFFICIENT_STOP
+
+不得为了得到8篇而放宽筛选条件。
+
+最终冻结：
+
+document ID
+row index
+repository/project identity
+raw SHA
+token SHA
+tokenizer SHA
+selection seed
+dataset snapshot identity
+selection order
+exclusion registry SHA
+
+全部科学选择必须outcome-blind。
+
+==================================================
+六、P1：冻结正式Primary
+==================================================
+
+严格复用上一轮已经通过资格的
+full-model Functional Pilot协议。
+
+完整模型：
+
+32768 consumed tokens
+
+Anchor：
+
+8192 consumed tokens
+
+评测位置：
+
+t_k = 8192 + 64*k
+
+k = 0,...,383
+
+总计384个位置。
+
+最后一个位置：
+
+32704
+
+位置语义：
+
+消费ids[t]后预测ids[t+1]。
+
+必须沿用已验证的原indexing和logit shift。
+
+词表维度：
+
+248320
+
+每个位置计算完整词表FP32：
+
+KL(
+  softmax(FP logits)
+  ||
+  softmax(Student logits)
+)
+
+禁止：
+
+- Top-K近似KL
+- sampled vocabulary
+- NLL替代KL
+- hidden MSE替代KL
+- 改变time positions
+- 改变KL方向
+- 改变FP32 arithmetic
+
+Primary：
+
+K_condition =
+math.fsum(384个KL)/384
+
+每文档：
+
+Delta_i =
+K_PARENT_i - K_NOINFLATION_i
+
+相对改善：
+
+RelativeGain_i =
+Delta_i / K_PARENT_i
+
+仅在Parent KL有限且严格为正时
+计算relative gain。
+
+否则报告UNDEFINED。
+
+不得通过relative gain替代Primary Delta。
+
+原数值分辨率：
+
+0.000690448106980
+
+首先审计新运行是否仍满足上一轮
+已冻结的数值合同和KL算术资格。
+
+如果源代码/runtime/reducer完全继承，
+可以在完成相应独立资格后沿用该分辨率。
+
+如果数值合同发生实质改变，
+必须通过独立qualification数据
+在正式结果之前冻结新的分辨率规则。
+
+禁止根据新8-doc效果调整阈值。
+
+==================================================
+七、P1：预注册文档级统计
+==================================================
+
+本轮统计独立单位：
+
+DOCUMENT
+
+不是：
+
+token
+layer
+group
+head
+rotation pair
+
+总计划样本数固定为8。
+
+不合并旧2-doc Pilot来计算本轮
+主要显著性或主要成功率。
+
+首先报告：
+
+1. 8篇各自Parent KL
+2. 8篇各自NoInflation KL
+3. 8篇各自signed Delta
+4. 8篇各自relative gain
+5. 数值可分辨的正/负/未决个数
+6. Delta均值和中位数
+7. relative gain分布
+8. 分时段异质性
+
+预注册方向性判断：
+
+如果8篇全部合格且无UNRESOLVED：
+
+7/8或8/8具有可分辨的正Delta，
+可标记：
+
+DIRECTIONAL_REPLICATION_SUPPORTED_IN_8DOC_PANEL
+
+并报告单侧exact sign test。
+
+参考：
+
+7/8：one-sided p=0.03515625
+8/8：one-sided p=0.00390625
+
+以上计算依赖独立、未偏选的文档及
+符号检验的零假设，不自动意味着
+跨所有任务、所有旋转普遍成立。
+
+若6/8或更少正向：
+
+DIRECTIONAL_REPLICATION_NOT_CONFIRMED
+
+如果有UNRESOLVED：
+
+必须单独报告并保留原8篇分母。
+不能自动把UNRESOLVED算成正向。
+
+按预冻结方案报告已可分辨样本的
+描述性符号统计，不强行给出8/8资格结论。
+
+如果没有完成全部8篇：
+
+INCOMPLETE
+
+不能为了达到7/8而提前停止、
+增加文档或改变文档顺序。
+
+必须报告所有document-level raw effects，
+而不是只报告平均百分比。
+
+==================================================
+八、P2：复用已通过的数值工程
+==================================================
+
+优先复用：
+
+QWEN_GDN_SCALE_FEEDBACK_FULLMODEL_FUNCTIONAL_CAUSAL_PILOT_V1
+
+已验证：
+
+- FP32 compensated scan
+- full-model deterministic numerical contract
+- observer parity
+- clean FP scale coordinate pairing
+- same-anchor branch isolation
+- 8-token uninterrupted/resumed Parent parity
+- full-vocab FP32 KL reducer
+- CPU FP64 KL sample audit
+- 24GB single-model serial runtime
+- full32768 cache/memory correctness
+
+冻结commit参考：
+
+5c1d9923129c15e5c6cb1b81edaf20d99b155a41
+
+实际使用前必须根据正式manifest重新核验。
+
+历史native cumsum及早期fixed-order
+bitwise FAIL依然保留。
+
+不允许为了本轮重跑而：
+
+- 重写compensated scan
+- 更换Torch/CUDA/Triton
+- 更换量化器
+- 改变student数值engine
+- 改变模型权重/rotation
+- 放宽已有数值标准
+
+如完全继承原已资格代码，
+进行必要的增量资格检查即可。
+
+不要无意义地重复历史全部深度审计。
+
+本轮主要代码变化应限于：
+
+- 8-doc selection和manifest
+- 两student正式roster
+- per-document调度
+- 产物统计与封存
+
+若这些改动影响模型数值路径，
+必须重新执行受影响的完整numerical gate。
+
+==================================================
+九、P2：24GB GPU实际资源资格
+==================================================
+
+当前用户可用资源：
+
+RTX3090 24GB
+
+不要假设A800/4090或更大显存GPU可用。
+
+优先复用上轮已经成功的GPU0：
+
+GPU-a78176ed-f97f-c54f-6201-5a01b570f422
+
+运行前验证实际UUID、空闲及runtime。
+
+采用：
+
+SINGLE_MODEL_SERIAL_EXECUTION
+
+一篇文档内：
+
+一次clean FP reference
+一次8192-token student warmup
+两条独立student continuation
+
+不要同时在GPU上保留多个完整model/cache。
+
+clean FP scales以原正式FP32无损chunk
+按token/layer/group索引保存和流式读取。
+
+FP logits只保存必要的384位置。
+
+不得将完整FP logits序列长期放在GPU。
+
+延用通过资格的：
+
+- CPU/disk scale streaming
+- atomic chunk writes
+- SHA validation
+- streaming KL reducer
+- checkpoint serialization
+- independent branch restore
+- single-cache memory discipline
+
+本轮没有固定GPUh硬预算。
+没有85% VRAM硬门槛。
+
+但必须记录：
+
+- 实际GPUh
+- wall-clock
+- peak allocated/reserved
+- cache growth
+- free physical VRAM
+- disk availability
+- result storage
+- progress watchdog
+- actual CUDA OOM / numerical failures
+
+上一轮正式加资格合计约14.19 GPUh，
+两篇三学生分支的资产约22.15GiB。
+
+这些只是历史规划参考，
+不是本轮8-doc真实成本或存储预测。
+
+先根据上一轮分阶段ledger计算：
+
+- 每篇FP参考成本
+- 8192学生前缀成本
+- 每个student continuation成本
+- 每篇FP scale缓存大小
+- 每篇正式结果大小
+- 8篇总体保守存储需要
+
+逐文档原子封存并核验SHA。
+
+禁止删除旧正式资产释放空间。
+
+如果磁盘容量不够：
+先报告具体缺口和可用的无损归档方案；
+不能静默丢弃科学复现所需资产。
+
+==================================================
+十、P2：执行前增量资格
+==================================================
+
+正式长程前必须确认：
+
+G0：模型/rotation/tokenizer/quantizer身份PASS
+
+G1：8篇文档和science keys冻结
+
+G2：clean FP scale坐标与token索引PASS
+
+G3：Parent量化与writeback语义PASS
+
+G4：NoInflation干预与clipping语义PASS
+
+G5：8192共同checkpoint restore/fork parity PASS
+
+G6：无共享mutable cache
+
+G7：Parent observer OFF/ON parity PASS
+
+G8：full-vocab FP32 KL reducer PASS
+
+G9：fresh-process deterministic资格PASS
+
+G10：24GB full32768物理容量资格PASS
+
+G11：当前磁盘、GPU、runtime和结果路径PASS
+
+G12：全部预冻结科学规范及分析规则PASS
+
+冻结结果产生前记录所有门禁证据。
+
+不得以旧V3 frozen-drive的资格
+代替full-model closed-loop资格。
+
+但可以合法复用上一轮完全同一数值合同下
+已经通过且输入身份不变的资格资产。
+
+若任一关键门禁FAIL：
+
+立即fail-closed，
+保存FIRST_FAILURE证据，
+不得自动修改科学协议继续。
+
+==================================================
+十一、P3：每篇文档执行流程
+==================================================
+
+对已冻结的8篇文档，
+按预注册顺序执行。
+
+每篇只做：
+
+STEP 1：
+生成Clean FP Reference。
+
+执行完整32768-token clean FP模型。
+
+生成：
+
+- 与C6R坐标严格配对的FP32 clean scales
+- 384位置full-vocab FP reference logits
+- 完整identity和finite proof
+
+FP reference不得写回INT8 recurrent state。
+
+STEP 2：
+构建共同Persistent Student Anchor。
+
+采用原C6R persistent INT8-C128路径，
+消费完整前8192 tokens。
+
+每token真实QDQ/writeback。
+
+保存完整student anchor：
+
+- GDN recurrent state
+- hybrid/attention KV cache
+- convolution cache
+- position/RoPE metadata
+- tokenizer/token index
+- runtime/quantizer identities
+
+STEP 3：
+从同一anchor恢复Parent。
+
+保持原始adaptive scale，
+持续运行到32768。
+
+计算384位置完整词表Future-KL。
+
+STEP 4：
+从完全相同的anchor恢复NoInflation。
+
+使用：
+
+s_effective=min(s_student,s_clean)
+
+保持其他所有量化与完整模型计算语义不变。
+
+持续运行到32768。
+
+计算相同384位置Future-KL。
+
+不得从Parent已经演化到中途的state
+fork出NoInflation。
+
+也不得使用FP clean-state作为student anchor。
+
+两个student branch从同一8192状态分叉，
+随后各自独立演化。
+
+STEP 5：
+完成该document的原子结果封存。
+
+记录：
+
+FP identity
+anchor identity
+Parent identity
+NoInflation identity
+384 KL values
+intervention activation
+clipping/saturation
+resource consumption
+completion receipt
+SHA256
+
+正式结果不得根据一篇表现改变下一篇计划。
+
+如果某个branch失败：
+保留真实失败状态；
+不得重选该文档或用其他文档补位。
+
+==================================================
+十二、避免实验结果泄漏
+==================================================
+
+8篇文档可以分批执行，
+例如按原顺序组织为多个资源调度批次。
+
+但所有8篇必须事前确定。
+
+执行过程中允许监测：
+
+- GPU是否正常
+- 内存是否持续增长
+- CPU/disk I/O
+- 是否NaN/Inf
+- QDQ语义是否正确
+- 进度是否停滞
+
+正式完成前不得根据：
+
+- 当前KL改善方向
+- 已完成文档的Delta
+- NoInflation优势大小
+- 某篇的relative gain
+
+修改：
+
+- document list
+- selection rules
+- sample size
+- primary metric
+- numerical resolution
+- horizon
+- model/rotation
+- science-unit schedule
+
+不要使用结果导向early stopping。
+
+只有预先通过exact-resume资格的
+checkpoint机制可以用于故障恢复。
+
+不能无资格拼接partial trajectories。
+
+==================================================
+十三、P3：必要科学诊断
+==================================================
+
+每篇文档需要记录：
+
+A. NoInflation干预激活率
+
+计数单位：
+
+token × layer × quantizer group
+
+不能把group events当成独立tokens。
+
+B. source range overflow
+
+按照原冻结定义记录：
+
+abs(source) > 127 * effective_scale
+
+C. code saturation
+
+按照原定义记录：
+
+abs(code) = 127
+
+D. 三个预冻结时间窗口的KL：
+
+[8192,16384)
+[16384,24576)
+[24576,32768)
+
+E. 原完整384位置Primary KL。
+
+F. 原正式允许的稀疏state-MSE诊断。
+
+若任何诊断需要更改量化器或学生路径，
+不得自行添加。
+
+若激活率低于历史预冻结0.1%阈值，
+标记：
+
+INTERVENTION_WEAKLY_ACTIVATED
+
+但不能因此更换文档或删掉该科学单元。
+
+弱激活属于真实实验结果的一部分。
+
+状态MSE不能替代KL Primary。
+
+禁止根据时间段结果重选Primary。
+
+==================================================
+十四、P4：统计与结论
+==================================================
+
+对8篇文档逐篇计算：
+
+K_PARENT_i
+K_NOINFLATION_i
+
+Delta_i =
+K_PARENT_i - K_NOINFLATION_i
+
+RelativeGain_i =
+Delta_i / K_PARENT_i
+（仅Parent KL有效且大于0时）
+
+输出：
+
+- 所有逐文档paired Delta
+- 全部数值分辨状态
+- 正/负/未决比例
+- Delta均值和中位数
+- relative gain分布
+- exact sign-test及其适用条件
+- 文档级置信区间及限制
+- 时间窗口效应差异
+- 干预激活与clipping描述统计
+- 个别反例文档
+
+不能把旧2-doc和新8-doc
+未经预注册直接合并声称正式10-doc确认。
+
+历史2-doc只作外部背景。
+
+如果8-doc方向一致性得到支持：
+
+REPLICATION_DIRECTIONALLY_SUPPORTED
+
+如果效果混合：
+
+MIXED_OR_HETEROGENEOUS_FUNCTIONAL_EFFECT
+
+如果多篇明显恶化：
+
+FUNCTIONAL_EFFECT_NOT_GENERAL_IN_THIS_PANEL
+
+如果正式执行未完整或资格失败：
+
+INCOMPLETE_OR_ENGINEERING_STOP
+
+即使出现7/8或8/8改善，
+也只能在所测模型、旋转、数据域及数值协议内
+解释为独立复制证据。
+
+不能宣称：
+
+- scale cap可直接部署
+- 所有GDN模型都受益
+- Scale Inflation是唯一中介
+- 新可学习旋转已经获得改善
+- S1/S2可以直接训练
+- AIME成绩提高
+
+==================================================
+十五、下一步科研决策
+==================================================
+
+根据真实8-doc结果，
+生成一个独立科研决策报告。
+
+如果NoInflation效果具有跨文档一致性：
+
+建议下一阶段：
+
+QWEN_GDN_TEMPORAL_READOUT_RISK_CAUSAL_DIAGNOSIS_V1
+
+核心问题：
+
+哪些token/layer/group的量化扰动
+通过长期传播影响真正的Future-KL？
+
+优先利用新面板已有的时间分辨KL、
+scale和clipping观测。
+
+不要立即重跑全部8篇或训练C8。
+
+如果8-doc结果高度异质：
+
+优先研究文档与时间条件下
+功能效应差异的机制。
+
+如果没有可复制的改善：
+
+保留旧2-doc因果pilot，
+不继续将NoInflation视为已确认的普遍功能改善。
+
+任何情况下：
+
+NEW_C8_TRAINING = NOT_AUTHORIZED
+
+==================================================
+十六、交付
+==================================================
+
+新实验目录：
+
+QWEN_GDN_FUNCTIONAL_CAUSAL_REPLICATION_V1
+
+独立clean worktree。
+旧V3和Functional Pilot源目录保持write-once。
+
+至少交付：
+
+EXECUTION_PLAN.md
+HISTORICAL_TEMPORAL_ANALYSIS.md
+SOURCE_AND_RUNTIME_IDENTITY.json
+DATASET_SELECTION_AUDIT.json
+FROZEN_8DOC_SELECTION.json
+EXCLUSION_REGISTRY.json
+FROZEN_SCIENCE_SPEC.json
+NUMERICAL_QUALIFICATION.json
+QUANTIZER_INTERVENTION_PARITY.json
+RESOURCE_AND_STORAGE_READINESS.json
+GPU_COST_LEDGER.json
+
+实际正式测量后：
+
+FP_REFERENCE_MANIFEST.json
+ANCHOR_MANIFEST.json
+PARENT_NOINFLATION_RUN_MANIFEST.json
+PER_POSITION_FULLVOCAB_KL.csv
+DOCUMENT_LEVEL_PAIRED_EFFECT.csv
+INTERVENTION_ACTIVATION.csv
+CLIPPING_SATURATION.csv
+TEMPORAL_EFFECT_BY_DOCUMENT.csv
+REPLICATION_STATISTICAL_REPORT.json
+SCIENTIFIC_VERDICT.json
+
+最终：
+
+FINAL_SCIENTIFIC_REPORT.md
+RESULT_AND_DELIVERY_HASHES.json
+SHA256SUMS.txt
+
+实际没有执行的文件，不得生成空壳科学CSV。
+
+所有正式科学资产绑定：
+
+dataset snapshot
+document SHA
+token SHA
+model SHA
+C6R rotation SHA
+quantizer SHA
+code commit
+runtime identity
+GPU UUID
+FP reference identity
+anchor checkpoint identity
+intervention policy identity
+KL position schedule
+numerical resolution
+completion receipt
+
+历史FAIL/STOP必须保留。
+
+==================================================
+十七、最终中文报告
+==================================================
+
+最终必须回答：
+
+1. 历史2-doc pilot的时间收益主要出现在哪些阶段？
+2. 新8篇文档的选择是否真正outcome-blind？
+3. 8篇是否全部满足独立性与长度规则？
+4. 是否完整复用原compensated-scan数值合同？
+5. 24GB RTX3090是否完成全部正式轨迹？
+6. 8条FP reference是否完成？
+7. 8个共同8192-token anchor是否完成？
+8. 16条学生32K continuation是否完成？
+9. 每篇Parent Future-KL是多少？
+10. 每篇NoInflation Future-KL是多少？
+11. 每篇signed Delta和relative gain是多少？
+12. 有多少篇获得数值可分辨的KL改善？
+13. exact sign test结果是什么？
+14. 是否存在明确反例或弱激活文档？
+15. 时间效应是否具有一致性？
+16. Clipping增加与KL改善如何共存？
+17. 本次总GPUh、显存及磁盘成本是多少？
+18. Scale Inflation功能因果效果是否得到独立复制？
+19. 是否值得进入时空敏感度机制研究？
+20. 是否有充分证据进入新C8训练？
+
+最终状态分别输出：
+
+ENGINEERING_STATUS
+NUMERICAL_QUALIFICATION_STATUS
+PHYSICAL_RESOURCE_STATUS
+FORMAL_8DOC_STATUS
+REPLICATION_STATISTICAL_STATUS
+FUNCTIONAL_CAUSAL_REPLICATION_VERDICT
+NEXT_RECOMMENDED_EXPERIMENT
+
+如果全部门禁PASS：
+完成8-doc复制和分析后停止。
+
+如果真实数值/物理/身份资格失败：
+fail-closed，保留最早失败证据后停止。
+
+禁止自动执行：
+
+- C8训练
+- 新learnable rotation
+- AIME26
+- free generation
+- S1/S2梯度优化
+- 新的surrogate参数搜索
+- 未经授权的额外长程文档

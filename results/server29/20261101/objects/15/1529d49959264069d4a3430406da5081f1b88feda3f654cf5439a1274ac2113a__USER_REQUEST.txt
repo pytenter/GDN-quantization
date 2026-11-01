@@ -1,0 +1,709 @@
+# Codex任务：Hadamard + Dual-M INT8 的 AIME26 正式评测
+
+## 0. 任务目标
+
+**TASK_ID：`QWEN_GDN_HADAMARD_DUAL_M_AIME26_FORMAL_60_V1`**
+
+你是我的Qwen/GDN INT8量化研究执行Agent。
+
+本次要求正式运行：
+
+**Qwen3.5-9B + Hadamard H128 + Dual-M INT8**
+
+在冻结AIME26数据集上的完整评测：
+
+- 30道AIME26题目。
+- 两个采样种子：seed=1、seed=2。
+- 每个problem×seed独立生成一次。
+- 总共60次正式生成。
+- 每次最大81920个new tokens。
+- 优先使用4张RTX3090 24GB并行运行。
+- 使用原Frozen V4评分标准。
+- 最终输出60条逐题记录及总正确率。
+
+**本任务只有一个正式实验臂：HADAMARD_H128_DUAL_M_INT8。**
+
+不运行STEPQuant、不运行C6R、不重新运行FP/H+C128，也不训练任何新Rotation。
+
+本次不是推理加速任务。此前确认旧Runtime约13.74 token/s、新Runtime约7.78 token/s，但性能退化的底层原因尚未明确。
+
+**不要因为新Runtime较慢，就擅自切换到没有经过Dual-M数值资格的旧Runtime。**
+
+优先直接复用此前真实32K Future-KL实验已验证的Hadamard+Dual-M Reference Codec和GDN执行数学，并在此基础上补齐正式AIME采样与评分。
+
+任务目标是尽快、安全、完整地启动60条正式生成，而不是再次开发一套新的实验框架。
+
+---
+
+## 1. 已冻结的科学背景
+
+此前已经完成：
+
+`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1`
+
+其Hadamard+Dual-M在5个真实32K文档上，相对Hadamard+C128取得5/5正向Future-KL改善。
+
+后续：
+
+`QWEN_GDN_C6R_DUAL_M_INTERACTION_REUSE_5DOC_V1`
+
+也确认Dual-M在C6R条件下具有5/5正向Future-KL改善。
+
+这些历史科学结果永久保留，不重新评分、不修改Reference、不改写seal。
+
+本次要回答的是更进一步的问题：
+
+**Dual-M在长程Future-KL上的收益，能否对应到真实AIME26自回归数学推理正确率？**
+
+不能在生成过程中观察前几道题的结果，然后修改Codec、采样参数或选择其他Rotation。
+
+AIME26不得用于量化参数训练、调参、模型选择或中途方法切换。
+
+---
+
+## 2. 正式执行权限
+
+```text
+MODEL = Qwen3.5-9B
+ARCHITECTURE = GDN
+
+METHOD = HADAMARD_H128_DUAL_M_INT8
+
+DATASET = AIME26_FROZEN_30
+SEEDS = [1, 2]
+EXPECTED_JOBS = 60
+
+MAX_NEW_TOKENS = 81920
+
+GPU_TYPE = RTX3090_24GB
+TARGET_GPU_COUNT = 4
+MAX_ACTIVE_GPU_COUNT = 4
+
+FORMAL_GPU_EXECUTION = AUTHORIZED
+FORMAL_AIME_SAMPLING = AUTHORIZED
+
+ALLOW_RESUME = YES
+ALLOW_EXISTING_FREE_GPU = YES
+
+SGLANG = NO
+NEW_TRAINING = NO
+NEW_ROTATION = NO
+NEW_QUANTIZER = NO
+CUDA_GRAPH_DEVELOPMENT = NO
+PERFORMANCE_OPTIMIZATION = NO
+NEW_32K_FUTURE_KL = NO
+A800_RENTAL = NO
+GIT_PUSH = NO
+```
+
+本轮授权运行完整60条正式生成，不套用之前性能诊断的0.75 GPUh限制。
+
+必须全程记录实际GPUh，并在启动首批任务后提供剩余时间的粗略估计。估计不等于强制提前停止条件。
+
+只能使用当前真正可用且有权使用的GPU。
+
+优先4张3090。如果实际只有1至3张符合资源准入的GPU，可以在不改变科学协议的前提下使用这些设备执行已分配任务，并报告并行度变化，不得把不空闲的GPU视为可用。
+
+如果没有任何合格GPU，则完成预检后停止，不循环等待或强占资源。
+
+---
+
+## 3. 核验Dual-M正式Reference身份
+
+从服务器已有32K实验资产和manifest定位真实执行源码。
+
+优先核对以下原始SHA256：
+
+```text
+core.py
+aa338b8b83cde62b97c94fd205d1c62999f783e7ec3242cbb813dc877e01f575
+
+worker.py
+e04ec85092ee4f2207699366b2aaa61e1e71038e728c9234477b5b2c21794773
+
+codec.py
+ece859b901145c6d9d646b8befd01916037c9117ef4a80f7b801f27f79f8c23f
+```
+
+这些SHA用于识别历史32K Reference。必须核验对应文件的实际路径与原始字节，不得假设同名文件即为正确来源。
+
+保持冻结数学：
+
+```text
+Hadamard H128
+Q/K rotation at the qualified location
+
+Signed INT8
+All 8-bit codes
+
+w_i = 1
+No FP16 pivot
+No mixed precision
+
+FP16 row scale
+FP16 column scale
+
+One column least-squares fit
+Final INT8 re-encode
+
+Persistent QDQ/writeback
+```
+
+必须保留原始：
+
+- Scale floor/ceiling。
+- FP16舍入规则。
+- Round/clamp顺序。
+- LS denominator guard。
+- signed-zero及其他已知数值审计结果。
+- FP32 carrier中的QDQ状态语义。
+- 必要的有限性检查。
+- 原GDN Forward、Hadamard与确定性数值配置。
+
+本次仍然是数值意义上的INT8 QDQ状态，而不是已经实现物理Packed INT8 Resident State。
+
+禁止将该实验标注为真正的物理INT8常驻部署测试。
+
+不得为了吞吐而使用新的近似Kernel、改变LS或关闭QDQ。
+
+---
+
+## 4. AIME26统一冻结协议
+
+复用历史正式AIME26的Canonical数据集、Prompt模板、采样配置与Frozen V4评分器。
+
+数据集为30道题。
+
+问题和种子的笛卡尔积必须恰好形成60个唯一任务。
+
+采样参数：
+
+```text
+enable_thinking = True
+
+do_sample = True
+
+temperature = 1.0
+top_p = 0.95
+top_k = 20
+min_p = 0.0
+
+presence_penalty = 1.5
+repetition_penalty = 1.0
+
+max_new_tokens = 81920
+
+seeds = [1, 2]
+```
+
+Presence penalty仅作用于已生成的输出tokens，不作用于输入Prompt。
+
+保持历史正式Runner中的采样warper、采样顺序、Top-K tie规则和EOS终止逻辑，不自行改成另一种sampling算法。
+
+每个problem×seed重新建立独立：
+
+- PyTorch随机数状态。
+- CUDA采样Generator。
+- Model Cache。
+- Recurrent State。
+- Attention KV Cache。
+- 已生成token mask。
+
+模型权重可以在每个GPU worker内部复用，但不同题目之间不得复用历史Cache。
+
+不能通过修改温度、调整top_k或缩短max_new_tokens来提高成功率或减少运行成本。
+
+---
+
+## 5. 冻结Prefill与Decode量化时序
+
+本次正式采用统一协议：
+
+**FP Prefill → Prefill结束立即Dual-M QDQ → 每次Decode后Dual-M QDQ/writeback。**
+
+具体执行顺序：
+
+```text
+1. 输入完整AIME26 Prompt
+
+2. 执行原Hadamard数学下的Prefill
+
+3. 得到Prefill KV/GDN Cache和最后位置Logits
+
+4. 立即对所有24层GDN Recurrent State
+   执行Hadamard+Dual-M所要求的
+   INT8 QDQ/writeback
+
+5. 根据Prefill Logits采样第一个生成token
+
+6. 将第一个token输入下一次Model Forward
+
+7. 使用已经量化写回的GDN State
+
+8. 本次Forward后立即再次执行Dual-M QDQ/writeback
+
+9. 根据本次Logits采样下一个token
+
+10. 重复直至EOS或81920-token上限
+```
+
+需要特别核验：
+
+- Prefill结束后是否确实执行一次QDQ。
+- 第一次Decode是否消费Prefill末尾量化后的State。
+- 每个Decode Forward后是否都执行QDQ。
+- 下一次Forward是否消费上一次量化写回后的State。
+- 所有24个GDN层是否全部覆盖。
+- 是否存在重复QDQ、遗漏QDQ或未量化旁路。
+- Attention KV Cache不能误当成GDN State进行Dual-M量化。
+
+此协议**不等于Prefill内部每个Prompt token均执行QDQ**，必须在正式报告中清楚注明。
+
+也必须注明它与旧版AIME的Prefill末尾不立即QDQ存在时序差异。
+
+不能为了向历史Hadamard 41/60对齐而悄悄恢复旧时序。
+
+---
+
+## 6. 最小正式启动资格
+
+不需要重新开展庞大的科学资格项目。
+
+只进行真正必要的最小检查。
+
+### Gate A：CPU身份与冻结配置
+
+检查：
+
+- 30道题内容与顺序。
+- seeds=1、2。
+- 60个唯一job key。
+- Model/Tokenizer身份。
+- Reference Codec源码SHA。
+- Hadamard及量化配置。
+- Frozen V4评分器。
+- CUDA/PyTorch/Transformers环境。
+- 输入Prompt模板与历史合同一致。
+
+### Gate B：GPU资源与模型加载
+
+在准备使用的GPU上确认：
+
+- 型号及UUID。
+- 显存可用量。
+- 无不允许抢占的外部任务。
+- BF16模型可成功加载。
+- 不改变模型权重与Cache布局。
+- 能成功完成Prefill及短程Decode。
+
+### Gate C：短程数值Canary
+
+使用独立的非AIME固定token fixture。
+
+只做一个短程Canary，例如64至128个token。
+
+验证：
+
+- Dual-M Codec调用Reference身份正确。
+- 24层QDQ/writeback正常。
+- codes、row scales、column scales及QDQ符合原参考实现。
+- 下一token确实消费已量化State。
+- Logits finite。
+- GPU内存正常。
+- fresh-process重复满足原定数值资格要求。
+
+不要把历史FP_NATIVE对FP_H的已知失败，错误地当作本轮旧Dual-M对同一个Dual-M Reference的失败。
+
+跨物理GPU不预设bitwise完全一致；应记录设备差异，保持每个worker确定的设备映射与数值资格，不把不同GPU的历史生成当作同一轨迹逐字节比较。
+
+**Gate A/B/C通过后立即启动正式60条任务，不要继续追加与任务无关的Profiler、Kernel开发或长程Pilot。**
+
+如果某个Gate失败，只允许一次基于明确根因的配置或集成修复，不允许修改冻结科学算法或放宽数值阈值。
+
+---
+
+## 7. 四GPU任务调度
+
+正式任务是60个：
+
+```text
+(problem_01, seed_1)
+(problem_01, seed_2)
+...
+(problem_30, seed_1)
+(problem_30, seed_2)
+```
+
+优先4个独立worker，每个worker绑定一张物理3090。
+
+每个worker仅加载一份9B模型，顺序完成其分配的任务。
+
+要求：
+
+1. 每个problem×seed只允许一个worker执行。
+2. 保存物理GPU index与UUID。
+3. CUDA_VISIBLE_DEVICES映射必须正确。
+4. 所有结果写入独立文件，禁止并发覆盖。
+5. 完成一条生成后立即原子提交结果。
+6. 只有完整且通过审计的job才标记为COMPLETE。
+7. 不得因某张GPU速度慢而更换算法或采样配置。
+8. 如果某GPU提前完成任务，可以领取尚未开始的任务，但必须保持job身份与Cache隔离。
+
+可以使用固定分片或带原子领取机制的共享任务队列，优先复用已有成熟worker框架。
+
+不要求为这次60条实验重新开发复杂调度系统。
+
+### Resume规则
+
+必须支持任务级断点续跑：
+
+- 已完成且校验通过的job不重跑。
+- 正在生成但因进程中断而未完成的job不冒充COMPLETE。
+- 未完成job可在恢复时从头生成，使用原始seed及独立Cache。
+- 保留原始失败/中断尝试日志。
+- 不允许只根据结果文件存在就跳过job。
+- 不允许把不完整生成的答案评分后算入正式正确率。
+
+不强制实现token级Cache checkpoint，因为那会增加大量工程和数值恢复风险。
+
+---
+
+## 8. 显存与长生成安全要求
+
+RTX3090只有24GB显存。
+
+原Dual-M的短程测试不能保证81920-token上限处仍有足够显存。
+
+因此需要：
+
+- 每个worker固定batch=1。
+- 记录模型加载后显存。
+- 记录Prefill后显存。
+- 记录生成过程的allocated/reserved峰值。
+- 观察长程Attention KV Cache增长。
+- 保存实际生成长度和OOM发生位置。
+- 不能擅自改成更短的max_new_tokens。
+- 不能擅自启用滑动窗口、截断历史或CPU Offload。
+- 不能为了防止OOM而改变GDN State数学。
+
+在首批正式任务运行时检查显存增长趋势，若出现明确且不可恢复的系统性OOM，应保存全部证据并停止有问题的执行路径，而不是让60条任务重复失败。
+
+如某个任务发生OOM或系统性非有限数值错误：
+
+1. 保存当前job、GPU、token位置、显存与traceback。
+2. 保留已完成的有效任务。
+3. 不把该job自动记为数学答错。
+4. 不悄悄改变batch、位宽或上下文协议重新运行。
+5. 及时报告阻塞原因与可能需要的独立授权。
+
+不允许因部分任务失败而选择性忽略困难题目。
+
+---
+
+## 9. 原始数据与评分
+
+每条完整生成必须保存：
+
+```text
+task_id
+method
+model_identity
+runner_identity
+
+problem_id
+problem_idx
+seed
+canonical_job_id
+
+input_token_count
+input_token_ids_sha256
+
+generated_token_ids
+generated_token_ids_sha256
+generated_token_count
+
+raw_model_response
+finish_reason
+eos_seen
+truncated
+
+extracted_answer
+gold_answer
+correct
+
+scorer_version
+scorer_sha256
+
+latency_seconds
+tokens_per_second
+
+gpu_uuid
+peak_allocated_bytes
+peak_reserved_bytes
+
+q dq/writeback audit
+runtime_error
+nonfinite_status
+
+source_sha256_manifest
+```
+
+`q dq/writeback audit`字段实现时使用合法且固定的机器可读键名，例如 `qdq_writeback_audit`。
+
+生成原始tokens和文本必须永久保存。
+
+仅在独立AIME生成完成后，使用原Frozen V4评分器对所有结果统一判分。
+
+Frozen V4需要保持原有的最终答案提取及tentative/retraction/restatement过滤规则，不自行重写或事后放宽标准。
+
+对于达到81920-token上限的完整生成，记录`finish_reason=length`并正常交给冻结评分器；不能把合法长度截断与runtime错误混淆。
+
+如果有job未正常完成，不能提前宣称正式60样本正确率已经确定。
+
+---
+
+## 10. 正式结果统计
+
+完成全部60条后，输出：
+
+### Primary
+
+\[
+\mathrm{Accuracy}_{60}
+=
+\frac{\mathrm{Correct}_{60}}{60}
+\]
+
+### Secondary
+
+分别统计：
+
+```text
+Seed 1: correct / 30
+Seed 2: correct / 30
+
+EOS count
+Length-limit count
+Runtime errors
+Nonfinite errors
+
+Median generated length
+Total generated tokens
+Total GPU hours
+Wall-clock completion time
+
+Per-GPU throughput
+Aggregate throughput
+Peak GPU memory
+```
+
+必须明确区分：
+
+- 单卡tokens/s。
+- 四GPU合计处理吞吐。
+- 总GPUh。
+- 真实墙钟完成时间。
+
+不得把四GPU总tokens/s当作单卡吞吐。
+
+最终可以附上历史Hadamard+C128的41/60、C6R的40/60等结果作背景参考，但必须注明：
+
+**它们与本次在Prefill QDQ时序、确定性执行路径或其他Runtime合同上可能不同，不是严格matched protocol对照。**
+
+不得直接根据历史41/60就宣称Dual-M实现了严格同协议的准确率提升或下降。
+
+如果后续要做严格方法比较，需要独立运行同协议Baseline。
+
+---
+
+## 11. 运行状态与结果完整性
+
+每个worker需输出实时可检查的状态文件。
+
+至少包括：
+
+```text
+NOT_STARTED
+RUNNING
+COMPLETE
+FAILED
+INTERRUPTED
+```
+
+全局进度应显示：
+
+```text
+Total jobs: 60
+Completed: N
+Running: N
+Pending: N
+Failed: N
+
+Seed1 completed: N/30
+Seed2 completed: N/30
+
+Active GPU UUIDs
+Total generated tokens
+Actual GPU hours
+Estimated remaining time
+```
+
+运行中不需要反复对用户输出逐题正确率，不得根据中途正确率改变实验。
+
+建议每完成一个job原子更新状态和结果。
+
+长任务运行中可定期保存轻量进度日志，但不要每token写盘或同步GPU，避免影响推理效率。
+
+如果实验尚未完成，输出明确的：
+
+`FORMAL_RUNNING`
+
+而不是伪造最终科学结论。
+
+---
+
+## 12. 严格禁止事项
+
+本任务禁止：
+
+1. 重新训练Hadamard或C6R。
+2. 修改Dual-M row scale或column LS。
+3. 取消LS以提高吞吐。
+4. 把INT8改为FP16或混合精度。
+5. 使用STEPQuant6替换Dual-M。
+6. 更换尚未完成资格的旧快速Runtime。
+7. 为了速度改用SGLang。
+8. 为了速度关闭persistent QDQ。
+9. 修改Frozen V4评分。
+10. 修改Prompt与采样参数。
+11. 只跑seed1却报告60题结果。
+12. 修改81920-token上限。
+13. 按前期正确率挑选实验方法。
+14. 修改历史科学资产或seal。
+15. 自动启动额外的Future-KL或GPU训练。
+16. 在正式执行期间尝试CUDA Graph、Triton融合或性能优化。
+
+本任务首要目标是**科学正确性与完整执行**，不是TPS排名。
+
+---
+
+## 13. 交付文件
+
+建议输出目录：
+
+```text
+QWEN_GDN_HADAMARD_DUAL_M_AIME26_FORMAL_60_V1/
+```
+
+要求：
+
+```text
+FROZEN_PROTOCOL.json
+MODEL_AND_CODEC_IDENTITY.json
+
+DATASET_AND_JOB_MANIFEST.json
+GPU_ADMISSION.json
+CANARY_QUALIFICATION.json
+
+WORKER_STATUS.json
+RESOURCE_LEDGER.json
+SOURCE_SHA256_MANIFEST.json
+
+results/
+    one_result_per_problem_seed.json
+
+logs/
+    per_worker_logs
+
+FORMAL_PROGRESS.json
+FORMAL_RESULTS_60.jsonl
+
+AIME26_FROZEN_V4_SCORES.json
+AIME26_PER_PROBLEM_RESULTS.csv
+
+THROUGHPUT_AND_GPU_COST.json
+FINAL_SCIENTIFIC_REPORT.md
+
+GATE_STATUS_FINAL.json
+FIRST_FAILURE.json
+```
+
+如果实验已经启动但尚未全部完成，交付当前进度、真实worker PID与GPU UUID、独立可复核的输出目录位置和明确恢复命令。
+
+不要因为主控进程结束就自动终止已经授权、正常运行的正式worker；必须保证worker具有明确的生命周期、持久日志、资源监控和停止机制。
+
+同时不能误报后台运行成功：只有真实验证进程仍在运行，才能报告`FORMAL_RUNNING`。
+
+---
+
+## 14. 执行优先级
+
+按以下顺序执行：
+
+**Step 1：** 找到并核验原Hadamard+Dual-M 32K Reference。
+
+**Step 2：** 复用Canonical30、seeds1/2、81920与Frozen V4。
+
+**Step 3：** 确认Prefill结束立即QDQ、Decode每token QDQ。
+
+**Step 4：** 核验可用3090并完成最小短程Canary。
+
+**Step 5：** 立即启动正式60条生成，尽可能四卡并行。
+
+**Step 6：** 每条结果原子保存、支持任务级Resume。
+
+**Step 7：** 完成60条后统一评分、封存、报告正确率。
+
+不要将Step 1至4扩展成新的大型科学工程项目。
+
+不允许为吞吐问题追加此前未授权的Profiler或CUDA Graph开发。
+
+---
+
+## 15. 结束状态
+
+必须真实报告以下之一：
+
+```text
+FORMAL_COMPLETE_60_60_AND_STOP
+
+FORMAL_RUNNING
+
+PARTIAL_RESULTS_PRESERVED_AND_STOP
+
+FAIL_CLOSED_STOP
+```
+
+`FORMAL_COMPLETE_60_60_AND_STOP` 必须要求：
+
+- 30个唯一problem。
+- 两个指定seed。
+- 全部60个唯一job。
+- 每个job具有完整生成或合法长度上限终止。
+- 所有结果完成Frozen V4评分。
+- 无重复、遗漏、错位或静默失败。
+- 全部科学配置及源码身份一致且可审计。
+
+最终报告首先输出：
+
+```text
+Hadamard + Dual-M INT8
+Qwen3.5-9B / AIME26
+
+Primary:
+Correct / 60 = ?
+
+Seed 1:
+Correct / 30 = ?
+
+Seed 2:
+Correct / 30 = ?
+
+Total GPUh = ?
+Total wall time = ?
+Median tokens/s per GPU = ?
+```
+
+若仍在运行，禁止编造上述数字。
+
+**现在开始执行。优先实现一个真实运行、状态可追踪、结果可恢复的正式60-job实验，而不是继续优化Runtime或重新设计Dual-M。**

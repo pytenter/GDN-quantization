@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(id={self.id!r}, author={self.author!r}, sha={self.sha!r}, created_at={self.created_at!r}, last_modified={self.last_modified!r}, private={self.private!r}, gated={self.gated!r}, disabled={self.disabled!r}, downloads={self.downloads!r}, downloads_all_time={self.downloads_all_time!r}, likes={self.likes!r}, paperswithcode_id={self.paperswithcode_id!r}, tags={self.tags!r}, trending_score={self.trending_score!r}, card_data={self.card_data!r}, siblings={self.siblings!r}, xet_enabled={self.xet_enabled!r})"
+ return __repr__

@@ -1,0 +1,36 @@
+{
+  "TASK_ID": "QWEN_GDN_DUALM_AWARE_ROTATION_TRAINING_READINESS_V1",
+  "status": "FROZEN_BEFORE_NEW_CANDIDATE_TOKENIZATION",
+  "seed": 20261017,
+  "source_pool": "Only pre-existing cached RepoBench-P and RepoBench-P_e JSONL, source SHA/bytes and Arrow equivalence independently verified; no download",
+  "data_source_change": "Original C6R used WikiText2raw; no fresh WikiText cache has been located. New paired A/D training shares cached RepoBench data and preserves original tokenizer/truncation/capture processing. This is not exact old-C6R retraining.",
+  "historical_exclusions": "Freshly verify existing registry150raw/59 source containers, previous2/8/5docs+canaries+reusedC6R5, all96 original WikiText TRAIN/VALIDATION/HELDOUT, all30 unique AIME26 problems, known Ling4 IDs; raw, known canonical tokens, IDs and available observed token sequences.",
+  "rank": "Ascending SHA256(str(seed)+\"|\"+document_id+\"|\"+raw_SHA256), tie rawSHA then documentID; no model outputs or diagnostic ranking",
+  "future_rule": {
+    "minimum_full_tokens": 32769,
+    "consumed": 32768,
+    "retained_ids": 32769,
+    "count": 2,
+    "selection": "First2 lawful distinct raw/full/prefix candidates after rank; every lawful >=32769 candidate reserved from TRAIN/DEV regardless of selection",
+    "score_positions": "8192+64*k,k=0..383; not evaluated in this task"
+  },
+  "training_rule": {
+    "TRAIN": 64,
+    "DEVELOPMENT_VALIDATION": 16,
+    "candidates": "Ranked legal contexts with 1024<=fulltokens<32769 only, excluding all reserved future long contexts",
+    "order": "First64 accepted prefix-unique contexts TRAIN, next16 accepted contexts DEVELOPMENT_VALIDATION; no reselection by results",
+    "tokenize": "Same verified Qwen2Tokenizer, add_special_tokens=False, first1024 ids; no chat template",
+    "capture": "Sorted Random(int(raw_SHA[:16],16) XOR 20260921).sample(range(128,1024),8)",
+    "paired_arms": "Identical ordered64TRAIN and16DEV, training update sampling seed/order will be frozen by authoritative training configuration"
+  },
+  "leakage_checks": [
+    "All selected raw/full canonical1024 or32768 SHA identities distinct and exclude known history",
+    "TRAIN/DEV1024 ids must not appear as an aligned contiguous1024-token subsequence in any reserved future32769 input",
+    "TRAIN/DEV1024 ids must not appear in available historically observed token vectors",
+    "No raw/ID prefix duplication across splits; unknown repository identities never treated independent"
+  ],
+  "PROJECT_INDEPENDENCE": "UNKNOWN_UNLESS_ACTUAL_RELIABLE_SOURCE_FIELDS_EXIST",
+  "model_results_used": false,
+  "GPU_work": false,
+  "created_unix": 1792218233.705608
+}

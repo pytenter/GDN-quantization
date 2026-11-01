@@ -1,0 +1,16 @@
+def __create_fn__(_type_loss, _type_params, _type_past_key_values, _type_decoder_hidden_states, _type_decoder_attentions, _type_cross_attentions, _type_encoder_last_hidden_state, _type_encoder_hidden_states, _type_encoder_attentions, _type_loc, _type_scale, _type_static_features, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_loss, _dflt_params, _dflt_past_key_values, _dflt_decoder_hidden_states, _dflt_decoder_attentions, _dflt_cross_attentions, _dflt_encoder_last_hidden_state, _dflt_encoder_hidden_states, _dflt_encoder_attentions, _dflt_loc, _dflt_scale, _dflt_static_features, _return_type):
+ def __init__(self,loss:_type_loss=_dflt_loss,params:_type_params=_dflt_params,past_key_values:_type_past_key_values=_dflt_past_key_values,decoder_hidden_states:_type_decoder_hidden_states=_dflt_decoder_hidden_states,decoder_attentions:_type_decoder_attentions=_dflt_decoder_attentions,cross_attentions:_type_cross_attentions=_dflt_cross_attentions,encoder_last_hidden_state:_type_encoder_last_hidden_state=_dflt_encoder_last_hidden_state,encoder_hidden_states:_type_encoder_hidden_states=_dflt_encoder_hidden_states,encoder_attentions:_type_encoder_attentions=_dflt_encoder_attentions,loc:_type_loc=_dflt_loc,scale:_type_scale=_dflt_scale,static_features:_type_static_features=_dflt_static_features)->_return_type:
+  self.loss=loss
+  self.params=params
+  self.past_key_values=past_key_values
+  self.decoder_hidden_states=decoder_hidden_states
+  self.decoder_attentions=decoder_attentions
+  self.cross_attentions=cross_attentions
+  self.encoder_last_hidden_state=encoder_last_hidden_state
+  self.encoder_hidden_states=encoder_hidden_states
+  self.encoder_attentions=encoder_attentions
+  self.loc=loc
+  self.scale=scale
+  self.static_features=static_features
+  self.__post_init__()
+ return __init__

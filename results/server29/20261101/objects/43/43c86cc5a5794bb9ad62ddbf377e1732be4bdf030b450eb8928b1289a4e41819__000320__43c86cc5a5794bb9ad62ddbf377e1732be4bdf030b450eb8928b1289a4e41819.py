@@ -1,0 +1,1 @@
+lambda _cls, cafile, capath, openssl_cafile_env, openssl_cafile, openssl_capath_env, openssl_capath: _tuple_new(_cls, (cafile, capath, openssl_cafile_env, openssl_cafile, openssl_capath_env, openssl_capath))

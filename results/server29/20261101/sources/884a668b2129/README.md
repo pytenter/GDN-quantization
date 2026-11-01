@@ -1,0 +1,50 @@
+# qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_qualification_continuation_20261023
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_qualification_continuation_20261023`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`HANDOFF.md`](../../objects/5e/5e824fb9ad96d5d5066939f7490862ed71bb58ba7c991516f0bb5a83c0384e17__HANDOFF.md)
+- [`FINAL_SEAL_RECEIPT.json`](../../objects/a2/a2cada1fb9479347cb9f0db76eab72f8428f3395616abefabffe42081fa20082__FINAL_SEAL_RECEIPT.json)
+- [`src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`AIME26_SEED1_PROTOCOL.json`](../../objects/8c/8cc760b3f5bcbe75e14e0059abc7da6f0116e00a37949382f4c7c06d7f93ab9a__AIME26_SEED1_PROTOCOL.json)
+- [`FINAL_SCIENTIFIC_REPORT.md`](../../objects/b2/b25808862a008b2a7fb62a4fa1e6c763389f9ef2e923daec7548a2a1103f6b3a__FINAL_SCIENTIFIC_REPORT.md)
+- [`RESIDENT_EXECUTION_PLAN.md`](../../objects/22/224c1a94c7031dad0e1dbb1a8aa3dcd54e65a9f23efd650c5f62e473e661f887__RESIDENT_EXECUTION_PLAN.md)
+- [`provenance/PRIOR_HANDOFF.md`](../../objects/be/be1cbb600dab42bce4b6429692c28a94d4cd9489385b4855cce7829ab1c7aa0b__PRIOR_HANDOFF.md)
+- [`FINALIZER_CHAIN_STARTED.json`](../../objects/1a/1a83cccd76d4cf3b0d87d43a813005335acc3ed88ee27b1b9d9ed437d21ff928__FINALIZER_CHAIN_STARTED.json)
+- [`GPU_QUALIFICATION_FINAL.json`](../../objects/a2/a23ffce240e3fedb9798f35c766a84028a5a419bdef7b85d18fb4644ad048628__GPU_QUALIFICATION_FINAL.json)
+- [`HISTORY_SCORES_VERIFIED.json`](../../objects/27/2712561b33c3ac067fb5b92ff09a6ea3590927b49245072e42bb6cb0afc3a03e__HISTORY_SCORES_VERIFIED.json)
+- [`protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`FINAL_ARCHIVE_VERIFICATION.json`](../../objects/ec/eceecdd1a6f48a0a544c7deac7e4a6b651e12ed81184038a02fcbbbf2f913814__FINAL_ARCHIVE_VERIFICATION.json)
+- [`ACTUAL_RESOURCE_COST_SUMMARY.json`](../../objects/bb/bb8e076e2488ed2fd6b3e0dfe070ab334052e42952fab51da71f504ab2af2fc0__ACTUAL_RESOURCE_COST_SUMMARY.json)
+- [`scripts/resident_score_pass_cpu.py`](../../objects/96/96ba631ddbe861c6f8f430f3edbbd980a0d88435f42cbf604487f1a797abef28__resident_score_pass_cpu.py)
+- [`operations/FINAL_CPU_ADMISSION.json`](../../objects/ee/ee49763e6f30d39a4ff57498b4e01e94aa76cc40bfbcc077c95098b49904e354__FINAL_CPU_ADMISSION.json)
+- [`FINAL_CPU_ADMISSION_AND_RELEASE.json`](../../objects/2d/2d1f1643932655d7dcbe5aa9fe34a35ed039bc7a0a71979f2bec7b98ab29041f__FINAL_CPU_ADMISSION_AND_RELEASE.json)
+- [`analysis/CONTROL_TARGET_FINAL_1.json`](../../objects/64/642012953c26b5ce439329c65c101cabfe00ab6ae3ddf940538b4f6504f08570__CONTROL_TARGET_FINAL_1.json)
+- [`analysis/CONTROL_TARGET_FINAL_2.json`](../../objects/8d/8d06e038cbf03086dd0d1ca984eb13d4f3cc0cdabc24044cbfc26207dee6d477__CONTROL_TARGET_FINAL_2.json)
+- [`scripts/resident_finalize_offline.py`](../../objects/e3/e3e92435a1ba3d4743afe3eaee0da441d99ef9d9ec2c41b34a2def82cc5d31df__resident_finalize_offline.py)
+- [`analysis/GUARD_NATIVE_EXIT_FINAL_1.json`](../../objects/00/00e39f7fa3db6c6cf89bd9b48c6672639e9a7cfe0f33f269d4a8945ec1a9b217__GUARD_NATIVE_EXIT_FINAL_1.json)
+- [`analysis/GUARD_NATIVE_EXIT_FINAL_2.json`](../../objects/37/370cc2dbeab6fd2b85003896641e37a670f007bc61cf791a853b67c4db574231__GUARD_NATIVE_EXIT_FINAL_2.json)
+- [`analysis/NATIVE_NATIVE_EXIT_FINAL_1.json`](../../objects/4e/4ec9d57442c306d26263de6bc9b0590c4e89c95f3d234b2b661f762476bb0ce4__NATIVE_NATIVE_EXIT_FINAL_1.json)
+- [`analysis/NATIVE_NATIVE_EXIT_FINAL_2.json`](../../objects/6e/6eabfa572d433abadb98f7ffc03bac305856bae33b300e394ef5bf09f21154b7__NATIVE_NATIVE_EXIT_FINAL_2.json)
+- [`analysis/PROFILER_FINAL_FINISHER_R0.json`](../../objects/f6/f6e57f5eecc6515d3b919f4be9f31449a9143837c9f93f83a613b2fa2184dcbe__PROFILER_FINAL_FINISHER_R0.json)
+- [`analysis/PROFILER_FINAL_FINISHER_R1.json`](../../objects/f6/f6e57f5eecc6515d3b919f4be9f31449a9143837c9f93f83a613b2fa2184dcbe__PROFILER_FINAL_FINISHER_R0.json)
+- [`history/P0_Q2_ORIGINAL_SCORE_PASS_0.json`](../../objects/8d/8d7867b548ded4df2f14361f1c011aa7fcb3ee7bbe86590165e9b72a807c093e__P0_Q2_ORIGINAL_SCORE_PASS_0.json)
+- [`history/P0_Q2_ORIGINAL_SCORE_PASS_1.json`](../../objects/8d/8d7867b548ded4df2f14361f1c011aa7fcb3ee7bbe86590165e9b72a807c093e__P0_Q2_ORIGINAL_SCORE_PASS_0.json)
+- [`analysis/ACTUAL_GUARD_TARGET_FINAL_1.json`](../../objects/b7/b7283c969bd830c8363acf83e1d51b461356967bb1180d1fbe5fbe5febaa391b__ACTUAL_GUARD_TARGET_FINAL_1.json)
+- [`analysis/ACTUAL_GUARD_TARGET_FINAL_2.json`](../../objects/51/51f6af6a97dc83ce15533a606e9846fe0f241270122589fe56d4bee285936352__ACTUAL_GUARD_TARGET_FINAL_2.json)
+- [`analysis/FINISHER_NATIVE_EXIT_FINAL_1.json`](../../objects/bb/bb1b1289ccda62a4de8207f191c98a78a1c41cd421fe4db7aa8ab37fd2046227__FINISHER_NATIVE_EXIT_FINAL_1.json)
+- [`operations/deploy_final_pre_gpu_sources.py`](../../objects/6e/6e7f48803452fbcb8d031544351a2a402b5da417ab505bc0435c547771cf0fa7__deploy_final_pre_gpu_sources.py)
+- [`analysis/CONTINUATION_CPU_FINAL_REUSE_R0.json`](../../objects/a4/a495c8e807e57c87983a3ac5c82461c6a677e9feea58db289f40007e234f8e5b__CONTINUATION_CPU_FINAL_REUSE_R0.json)
+- [`analysis/CONTINUATION_CPU_FINAL_REUSE_R1.json`](../../objects/a4/a495c8e807e57c87983a3ac5c82461c6a677e9feea58db289f40007e234f8e5b__CONTINUATION_CPU_FINAL_REUSE_R0.json)
+- [`analysis/FINISHER_NATIVE_EXIT_FINAL_V2_1.json`](../../objects/bb/bb1b1289ccda62a4de8207f191c98a78a1c41cd421fe4db7aa8ab37fd2046227__FINISHER_NATIVE_EXIT_FINAL_1.json)
+- [`analysis/FINISHER_NATIVE_EXIT_FINAL_V2_2.json`](../../objects/bb/bb1b1289ccda62a4de8207f191c98a78a1c41cd421fe4db7aa8ab37fd2046227__FINISHER_NATIVE_EXIT_FINAL_1.json)
+- [`history/P0_Q2_ORIGINAL_FINAL_SEAL_RECEIPT.json`](../../objects/ab/ab718fdf248d0f9e17495fc3630a34eaa132ec8b0d2121590cdf56597799863e__P0_Q2_ORIGINAL_FINAL_SEAL_RECEIPT.json)
+- [`operations/run_native_exit_final_cpu_checks.py`](../../objects/a4/a41241e4587fa9f3afc2a9be6ed12438b7a05a6a499b8978136a604ea6e3f79e__run_native_exit_final_cpu_checks.py)
+- [`analysis/CONTINUATION_FINAL_CPU_SUPPLEMENT.json`](../../objects/8e/8e2740e84d35ab69c5b36e1c8e419a3156f0f8cffb59aa0660310e73877f4402__CONTINUATION_FINAL_CPU_SUPPLEMENT.json)
+- [`analysis/PROFILER_FINAL_FINISHER_TWO_FRESH.json`](../../objects/69/6966cccb1910fc0bc4b4fd79f187992a94fa5201d0ee9e9444feb9f456b04070__PROFILER_FINAL_FINISHER_TWO_FRESH.json)
+- [`analysis/CONTINUATION_CPU_FINAL_FINISHER_R0.json`](../../objects/a3/a3434ced4157ae3cb9d90dab9584dd09c1652c3deca71392bc5b83bf4d5c0c7f__CONTINUATION_CPU_FINAL_FINISHER_R0.json)

@@ -1,0 +1,496 @@
+{
+  "TASK_ID": "QWEN_GDN_AIME26_STEPQUANT6_VS_H_DUALM_2SEED_V1",
+  "status": "FROZEN_H_DUAL_M_MATH_IDENTITY_VERIFIED_READONLY",
+  "new_task_GPU_qualification": "NOT_RUN",
+  "new_task_generation": "NOT_RUN",
+  "no_GPU_used_by_this_audit": true,
+  "old_training_adapter_reused": false,
+  "method": {
+    "rotation": "Original QwenKeyHadamardPatch: normalize q/k if requested, separately FP32 @ normalized H128; value unchanged",
+    "key_axis": 128,
+    "GDN_layers": [
+      0,
+      1,
+      2,
+      4,
+      5,
+      6,
+      8,
+      9,
+      10,
+      12,
+      13,
+      14,
+      16,
+      17,
+      18,
+      20,
+      21,
+      22,
+      24,
+      25,
+      26,
+      28,
+      29,
+      30
+    ],
+    "state_shape": [
+      1,
+      32,
+      128,
+      128
+    ],
+    "bitwidth": 8,
+    "importance": 1,
+    "pivots": 0,
+    "row_scale_dtype": "torch.float16",
+    "column_scale_dtype": "torch.float16",
+    "LOW": 5.960464477539063e-08,
+    "HIGH": 65504.0,
+    "column_LS": "One frozen LS refinement followed by final reencode",
+    "rounding": "torch.round ties to even then clamp(-127,127)",
+    "decode_order": "(rows.float()*columns.float())*codes.float()",
+    "codec_source_SHA256": "ece859b901145c6d9d646b8befd01916037c9117ef4a80f7b801f27f79f8c23f"
+  },
+  "new_prefill_contract": {
+    "status": "ROOT_CHOSEN_REQUIRES_NEW_CANARY",
+    "prompt_mode": "same original HF batched prompt prefill for both methods",
+    "prefill_quantized": true,
+    "post_forward": "immediate codec QDQ all24states before sample_next; current logits/readout not recomputed",
+    "decode": "same HF single-token forward then method QDQ before next sample/forward",
+    "expected_QDQ_calls": "n_generated",
+    "expected_layer_writebacks": "24*n_generated",
+    "expected_next_consumption_checks": "24*(n_generated-1)"
+  },
+  "historical_timing_differences": {
+    "old_AIME_prefill_quantized": false,
+    "old_5doc_H_prompt_mode": "tokenwise streaming; QDQ after every input token including t0",
+    "not_equivalent_histories": true,
+    "historical_accuracy_is_context_only": true
+  },
+  "physical_storage": {
+    "runtime_cache": "FP32 tensor carrying exact QDQ reconstructed values",
+    "physical_packed_INT8": "NOT_QUALIFIED",
+    "recurrent_cache_bytes": 50331648,
+    "logical_INT8_codes_bytes": 12582912,
+    "FP16_rows_bytes": 196608,
+    "FP16_columns_bytes": 196608
+  },
+  "safety": {
+    "original_policy": "Per layer/head raw FP16-bound-affected nonzero energy fraction >=1e-4 AND affected relative MSE >1e-2 is STOP; finite/positive scales required; record nonsevere floor events"
+  },
+  "sources": [
+    {
+      "name": "qualified_core",
+      "original_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/src/core.py",
+      "sha256": "aa338b8b83cde62b97c94fd205d1c62999f783e7ec3242cbb813dc877e01f575",
+      "bytes": 5596,
+      "snapshot": "provenance/h_dual_m_sources/aa338b8b83cde62b97c94fd205d1c62999f783e7ec3242cbb813dc877e01f575_core.py"
+    },
+    {
+      "name": "qualified_worker",
+      "original_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/src/worker.py",
+      "sha256": "e04ec85092ee4f2207699366b2aaa61e1e71038e728c9234477b5b2c21794773",
+      "bytes": 22456,
+      "snapshot": "provenance/h_dual_m_sources/e04ec85092ee4f2207699366b2aaa61e1e71038e728c9234477b5b2c21794773_worker.py"
+    },
+    {
+      "name": "qualified_codec",
+      "original_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/src/codec.py",
+      "sha256": "ece859b901145c6d9d646b8befd01916037c9117ef4a80f7b801f27f79f8c23f",
+      "bytes": 3553,
+      "snapshot": "provenance/h_dual_m_sources/ece859b901145c6d9d646b8befd01916037c9117ef4a80f7b801f27f79f8c23f_codec.py"
+    },
+    {
+      "name": "qualified_h_manifest",
+      "original_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/source_manifest.json",
+      "sha256": "ecc5f10d5c93497769d345dbaed2056974edd92573eb8e679646acfe993fa0df",
+      "bytes": 18593,
+      "snapshot": "provenance/h_dual_m_sources/ecc5f10d5c93497769d345dbaed2056974edd92573eb8e679646acfe993fa0df_source_manifest.json"
+    },
+    {
+      "name": "qualified_h_final_status",
+      "original_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/FINAL_STATUS.json",
+      "sha256": "75dce4dc311b5d948449e6b1f5c3e402a64e5bb8e16c1643dec06b90975b487f",
+      "bytes": 1273,
+      "snapshot": "provenance/h_dual_m_sources/75dce4dc311b5d948449e6b1f5c3e402a64e5bb8e16c1643dec06b90975b487f_FINAL_STATUS.json"
+    },
+    {
+      "name": "qualified_cross_gpu_canary",
+      "original_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis/CROSS_GPU_CANARY_EXACT.json",
+      "sha256": "356ed813b9aa0d52468f01b3513953fc81deab90ff88ff47fb3340572925138b",
+      "bytes": 261,
+      "snapshot": "provenance/h_dual_m_sources/356ed813b9aa0d52468f01b3513953fc81deab90ff88ff47fb3340572925138b_CROSS_GPU_CANARY_EXACT.json"
+    },
+    {
+      "name": "canonical_rotation",
+      "original_path": "/data/zypan/analyses/qwen_hadamard_dual_axis_real_state_runtime_gate_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_REAL_STATE_RUNTIME_GATE_V1/runtime_sources/formal_c128_runner.py",
+      "sha256": "77b1e1f6dad8a0dd53a27cf5a47c02be86c26d2cf30732604ba6d3747e178f69",
+      "bytes": 34744,
+      "snapshot": "provenance/h_dual_m_sources/77b1e1f6dad8a0dd53a27cf5a47c02be86c26d2cf30732604ba6d3747e178f69_formal_c128_runner.py"
+    },
+    {
+      "name": "qualified_chunk_binding",
+      "original_path": "/data/zypan/analyses/qwen_hadamard_dual_axis_real_state_runtime_gate_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_REAL_STATE_RUNTIME_GATE_V1/runtime_sources/numerical_recovery.py",
+      "sha256": "b13152f81ecd87428936dc5eced5a2a9f1e06ff992e8ba5bbb81703206dec26c",
+      "bytes": 35065,
+      "snapshot": "provenance/h_dual_m_sources/b13152f81ecd87428936dc5eced5a2a9f1e06ff992e8ba5bbb81703206dec26c_numerical_recovery.py"
+    },
+    {
+      "name": "dual_m_frozen_math",
+      "original_path": "/data/zypan/analyses/qwen_hadamard_dual_axis_real_state_runtime_gate_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_REAL_STATE_RUNTIME_GATE_V1/inherited_cpu_v1/src/dual_axis_codec.py",
+      "sha256": "cd494824c242b2ce967dc470b50160aff25cf1776e1d45344d547a30fb6253e6",
+      "bytes": 6234,
+      "snapshot": "provenance/h_dual_m_sources/cd494824c242b2ce967dc470b50160aff25cf1776e1d45344d547a30fb6253e6_dual_axis_codec.py"
+    },
+    {
+      "name": "dual_m_reference_loader",
+      "original_path": "/data/zypan/analyses/qwen_hadamard_dual_axis_real_state_runtime_gate_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_REAL_STATE_RUNTIME_GATE_V1/inherited_cpu_v1/src/references.py",
+      "sha256": "e9b611e0f961dce27a21549018d25a00eede13a83c2a69ca8ca81984a1268dbf",
+      "bytes": 1390,
+      "snapshot": "provenance/h_dual_m_sources/e9b611e0f961dce27a21549018d25a00eede13a83c2a69ca8ca81984a1268dbf_references.py"
+    },
+    {
+      "name": "official_frozen_fit_state",
+      "original_path": "/data/zypan/analyses/qwen_hadamard_dual_axis_real_state_runtime_gate_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_REAL_STATE_RUNTIME_GATE_V1/inherited_cpu_v1/reference_sources/stepquant_quantization.py",
+      "sha256": "0c39fe6da2b5ad68e2a081471b1ec22465a9c9f914c367ed984a78ad3717ee69",
+      "bytes": 7245,
+      "snapshot": "provenance/h_dual_m_sources/0c39fe6da2b5ad68e2a081471b1ec22465a9c9f914c367ed984a78ad3717ee69_stepquant_quantization.py"
+    },
+    {
+      "name": "canonical_c128_reference",
+      "original_path": "/data/zypan/analyses/qwen_hadamard_dual_axis_real_state_runtime_gate_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_REAL_STATE_RUNTIME_GATE_V1/inherited_cpu_v1/reference_sources/cayley_rotation.py",
+      "sha256": "62e769dfad73170279daf0bdb56855b7d7e4aaf77478de897958fa87b2608067",
+      "bytes": 7549,
+      "snapshot": "provenance/h_dual_m_sources/62e769dfad73170279daf0bdb56855b7d7e4aaf77478de897958fa87b2608067_cayley_rotation.py"
+    },
+    {
+      "name": "architecture",
+      "original_path": "/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py",
+      "sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a",
+      "bytes": 88546,
+      "snapshot": "provenance/h_dual_m_sources/90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a_modeling_qwen3_5.py"
+    },
+    {
+      "name": "model_config",
+      "original_path": "/data/zypan/modelscope_models/Qwen3.5-9B/config.json",
+      "sha256": "d0883072e01861ed0b2d47be3c16c36a8e81c224c7ffaa310c6558fb3f932b05",
+      "bytes": 3126,
+      "snapshot": "provenance/h_dual_m_sources/d0883072e01861ed0b2d47be3c16c36a8e81c224c7ffaa310c6558fb3f932b05_config.json"
+    },
+    {
+      "name": "historical_aime_config",
+      "original_path": "/data/zypan/worktrees/qwen-gdn-c6r-c7-canonical60-v1/experiments/QWEN_GDN_C6R_C7_CANONICAL60_V1/configs/canonical60_generation_config.json",
+      "sha256": "6079a0c10b858ce85bcfa456b796b0440792a3b7b4ee49eda871e4ebda130aef",
+      "bytes": 1687,
+      "snapshot": "provenance/h_dual_m_sources/6079a0c10b858ce85bcfa456b796b0440792a3b7b4ee49eda871e4ebda130aef_canonical60_generation_config.json"
+    }
+  ],
+  "H_C6R_common_core_comparison": {
+    "src/core.py": {
+      "H_sha256": "aa338b8b83cde62b97c94fd205d1c62999f783e7ec3242cbb813dc877e01f575",
+      "C6R_task_unmodified_core_sha256": "aa338b8b83cde62b97c94fd205d1c62999f783e7ec3242cbb813dc877e01f575",
+      "frozen_manifest_match": true,
+      "byte_identical": true
+    },
+    "src/worker.py": {
+      "H_sha256": "e04ec85092ee4f2207699366b2aaa61e1e71038e728c9234477b5b2c21794773",
+      "C6R_task_unmodified_core_sha256": "e04ec85092ee4f2207699366b2aaa61e1e71038e728c9234477b5b2c21794773",
+      "frozen_manifest_match": true,
+      "byte_identical": true
+    },
+    "src/codec.py": {
+      "H_sha256": "ece859b901145c6d9d646b8befd01916037c9117ef4a80f7b801f27f79f8c23f",
+      "C6R_task_unmodified_core_sha256": "ece859b901145c6d9d646b8befd01916037c9117ef4a80f7b801f27f79f8c23f",
+      "frozen_manifest_match": true,
+      "byte_identical": true
+    }
+  },
+  "historical_canaries": {
+    "0": {
+      "initial_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu0/CANARY_INITIAL.json",
+      "initial_sha256": "3919125757057bfc79421743b3a8930c1b0eb092d46dae1488758c81e8494585",
+      "initial": {
+        "status": "PASS",
+        "tags": [
+          "N_OFF",
+          "A_REFERENCE",
+          "A_OFF",
+          "A_ON",
+          "D_OFF",
+          "D_ON"
+        ],
+        "H_C128_original_reference": "BYTE_EXACT_ALL_128",
+        "observer_A_D": "BYTE_EXACT",
+        "checkpoint_resume": "BYTE_EXACT_AT_64_NO_REPEATED_PREFIX"
+      },
+      "fresh_source_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu0/analysis/D_FRESH.json"
+    },
+    "1": {
+      "initial_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu1/CANARY_INITIAL.json",
+      "initial_sha256": "3919125757057bfc79421743b3a8930c1b0eb092d46dae1488758c81e8494585",
+      "initial": {
+        "status": "PASS",
+        "tags": [
+          "N_OFF",
+          "A_REFERENCE",
+          "A_OFF",
+          "A_ON",
+          "D_OFF",
+          "D_ON"
+        ],
+        "H_C128_original_reference": "BYTE_EXACT_ALL_128",
+        "observer_A_D": "BYTE_EXACT",
+        "checkpoint_resume": "BYTE_EXACT_AT_64_NO_REPEATED_PREFIX"
+      },
+      "fresh_source_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu1/analysis/D_FRESH.json"
+    },
+    "2": {
+      "initial_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu2/CANARY_INITIAL.json",
+      "initial_sha256": "3919125757057bfc79421743b3a8930c1b0eb092d46dae1488758c81e8494585",
+      "initial": {
+        "status": "PASS",
+        "tags": [
+          "N_OFF",
+          "A_REFERENCE",
+          "A_OFF",
+          "A_ON",
+          "D_OFF",
+          "D_ON"
+        ],
+        "H_C128_original_reference": "BYTE_EXACT_ALL_128",
+        "observer_A_D": "BYTE_EXACT",
+        "checkpoint_resume": "BYTE_EXACT_AT_64_NO_REPEATED_PREFIX"
+      },
+      "fresh_source_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu2/analysis/D_FRESH.json"
+    },
+    "3": {
+      "initial_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu3/CANARY_INITIAL.json",
+      "initial_sha256": "3919125757057bfc79421743b3a8930c1b0eb092d46dae1488758c81e8494585",
+      "initial": {
+        "status": "PASS",
+        "tags": [
+          "N_OFF",
+          "A_REFERENCE",
+          "A_OFF",
+          "A_ON",
+          "D_OFF",
+          "D_ON"
+        ],
+        "H_C128_original_reference": "BYTE_EXACT_ALL_128",
+        "observer_A_D": "BYTE_EXACT",
+        "checkpoint_resume": "BYTE_EXACT_AT_64_NO_REPEATED_PREFIX"
+      },
+      "fresh_source_path": "/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/qualification_gpu/gpu3/analysis/D_FRESH.json"
+    }
+  },
+  "historical_81920_runtime_observations": [
+    {
+      "path": "/data/zypan/worktrees/qwen-gdn-c6r-c7-canonical60-v1/experiments/QWEN_GDN_C6R_C7_CANONICAL60_V1/raw/c6r/aime26_17_seed1.json",
+      "sha256": "b601139ee8f5d76649fe9dba6bd0ef5af3723bbbe0cedad33a94f9b2373b3cc7",
+      "bytes": 991325,
+      "metadata": {
+        "problem_id": "aime26_17",
+        "seed": 1,
+        "generated_token_count": 81920,
+        "input_tokens": 373,
+        "latency_s": 10406.006662607193,
+        "tokens_per_s": 7.872376278055851,
+        "finish_reason": "length",
+        "nonfinite": false,
+        "runtime_error": null,
+        "peak_gpu_memory_mb": 19874.63134765625,
+        "physical_gpu_uuid": "GPU-a78176ed-f97f-c54f-6201-5a01b570f422",
+        "runtime": "canonical_manual",
+        "runtime_config_sha256": "6079a0c10b858ce85bcfa456b796b0440792a3b7b4ee49eda871e4ebda130aef",
+        "generation_source_sha256": "77b1e1f6dad8a0dd53a27cf5a47c02be86c26d2cf30732604ba6d3747e178f69",
+        "state_quantization": "INT8 symmetric C128 scale=[B,H,1,V] post-decode QDQ",
+        "writeback": null,
+        "quantizer_audit": {
+          "calls": 81919,
+          "layers": [
+            0,
+            1,
+            2,
+            4,
+            5,
+            6,
+            8,
+            9,
+            10,
+            12,
+            13,
+            14,
+            16,
+            17,
+            18,
+            20,
+            21,
+            22,
+            24,
+            25,
+            26,
+            28,
+            29,
+            30
+          ],
+          "prefill_quantized": false,
+          "qrange_observed": [
+            -127,
+            127
+          ],
+          "scale_shapes": {
+            "0": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "1": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "10": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "12": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "13": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "14": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "16": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "17": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "18": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "2": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "20": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "21": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "22": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "24": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "25": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "26": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "28": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "29": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "30": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "4": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "5": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "6": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "8": [
+              1,
+              32,
+              1,
+              128
+            ],
+            "9": [
+              1,
+              32,
+              1,
+              128
+            ]
+          }
+        }
+      },
+      "rotation_phase_counts": {
+        "chunk_prefill": 24,
+        "recurrent_decode": 1966056
+      }
+    }
+  ]
+}

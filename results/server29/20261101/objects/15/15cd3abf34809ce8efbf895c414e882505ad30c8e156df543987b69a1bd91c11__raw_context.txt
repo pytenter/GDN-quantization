@@ -1,0 +1,772 @@
+src/main/java/info/ata4/minecraft/minema/client/event/FrameImportEvent.java
+public class FrameImportEvent extends FrameEvent {
+
+    public FrameImportEvent(CaptureFrame frame, CaptureTime time, Path movieDir) {
+        super(frame, time, movieDir);
+    }
+
+}
+src/main/java/info/ata4/minecraft/minema/client/modules/exporters/FrameExporter.java
+public abstract class FrameExporter extends CaptureModule {
+
+    private static final Logger L = LogManager.getLogger();
+
+    protected ExecutorService exportService;
+    protected Future<?> exportFuture;
+
+    public FrameExporter(MinemaConfig cfg) {
+        super(cfg);
+    }
+
+    @Override
+    protected void doEnable() throws Exception {
+        exportService = Executors.newSingleThreadExecutor();
+    }
+
+    @Override
+    protected void doDisable() throws Exception {
+        exportService.shutdown();
+
+        try {
+            if (!exportService.awaitTermination(3, TimeUnit.SECONDS)) {
+                L.warn("Frame export service termination timeout");
+                exportService.shutdownNow();
+            }
+        } catch (InterruptedException ex) {
+            handleWarning(ex, "Frame export service termination interrupted");
+        }
+    }
+
+    @SubscribeEvent
+    public void onFrameImport(FrameImportEvent evt) throws ExecutionException {
+        if (!isEnabled()) {
+            return;
+        }
+
+        // wait for the previous task to complete before sending the next one
+        try {
+            if (exportFuture != null) {
+                exportFuture.get();
+            }
+        } catch (InterruptedException ex) {
+            // catch uncritical interruption exception
+            handleWarning(ex, "Frame export task interrupted");
+        }
+    }
+
+    @SubscribeEvent
+    public void onFrameExport(FrameExportEvent evt) {
+        if (!isEnabled()) {
+            return;
+        }
+
+        // export frame in the background so that the next frame can be
+        // rendered in the meantime
+        exportFuture = exportService.submit(() -> {
+            try {
+                doExportFrame(evt);
+            } catch (Exception ex) {
+                throw new RuntimeException("Can't export frame " + evt.time.getNumFrames(), ex);
+            }
+        });
+    }
+
+    protected abstract void doExportFrame(FrameExportEvent evt) throws Exception;
+}
+src/main/java/info/ata4/minecraft/minema/client/modules/modifiers/GameSettingsModifier.java
+public class GameSettingsModifier extends CaptureModule {
+
+    private static final Minecraft MC = Minecraft.getMinecraft();
+
+    private int framerateLimit;
+    private boolean vSync;
+    private boolean pauseOnLostFocus;
+
+    public GameSettingsModifier(MinemaConfig cfg) {
+        super(cfg);
+    }
+
+    @Override
+    protected void doEnable() throws Exception {
+        GameSettings gs = MC.gameSettings;
+
+        // disable build-in framerate limit
+        framerateLimit = gs.limitFramerate;
+        gs.limitFramerate = Integer.MAX_VALUE;
+
+        // disable vSync
+        vSync = gs.enableVsync;
+        gs.enableVsync = false;
+
+        // don't pause when losing focus
+        pauseOnLostFocus = gs.pauseOnLostFocus;
+        gs.pauseOnLostFocus = false;
+
+    }
+
+    @Override
+    protected void doDisable() throws Exception {
+        // restore everything
+        GameSettings gs = MC.gameSettings;
+        gs.limitFramerate = framerateLimit;
+        gs.pauseOnLostFocus = pauseOnLostFocus;
+        gs.enableVsync = vSync;
+    }
+
+}
+src/main/java/info/ata4/minecraft/minema/client/modules/importers/FrameImporter.java
+public class FrameImporter extends CaptureModule {
+
+    private static final int PBO_TARGET = GL_PIXEL_PACK_BUFFER_ARB;
+    private static final int PBO_USAGE = GL_STREAM_READ_ARB;
+    private static final int PBO_ACCESS = GL_READ_ONLY_ARB;
+
+    private final boolean usePBO;
+    private final boolean useFBO;
+
+    // PBO state variables
+    private int frontName;
+    private int backName;
+    private ByteBuffer bufferPBO;
+    private boolean firstFrame;
+
+    public FrameImporter(MinemaConfig cfg) {
+        super(cfg);
+
+        usePBO = GLContext.getCapabilities().GL_ARB_pixel_buffer_object && cfg.usePBO.get();
+        useFBO = OpenGlHelper.isFramebufferEnabled();
+    }
+
+    @SubscribeEvent
+    public void onFrameInit(FrameInitEvent e) {
+        int bufferSize = e.frame.buffer.capacity();
+
+        if (usePBO) {
+            frontName = glGenBuffersARB();
+            glBindBufferARB(PBO_TARGET, frontName);
+            glBufferDataARB(PBO_TARGET, bufferSize, PBO_USAGE);
+
+            backName = glGenBuffersARB();
+            glBindBufferARB(PBO_TARGET, backName);
+            glBufferDataARB(PBO_TARGET, bufferSize, PBO_USAGE);
+
+            glBindBufferARB(PBO_TARGET, 0);
+
+            firstFrame = true;
+        }
+    }
+
+    @SubscribeEvent
+    public void onFrameImport(FrameImportEvent e) {
+        CaptureFrame frame = e.frame;
+
+        // check if the dimensions are still the same
+        frame.checkWindowSize();
+
+        if (usePBO) {
+            glBindBufferARB(PBO_TARGET, frontName);
+        }
+
+        // read pixels
+        frame.readPixels(useFBO, usePBO);
+
+        ByteBuffer buffer = e.frame.buffer;
+
+        if (usePBO) {
+            // copy back buffer
+            glBindBufferARB(PBO_TARGET, backName);
+            bufferPBO = glMapBufferARB(PBO_TARGET, PBO_ACCESS, buffer.capacity(), bufferPBO);
+            bufferPBO.rewind();
+            buffer.rewind();
+            buffer.put(bufferPBO);
+            glUnmapBufferARB(PBO_TARGET);
+            glBindBufferARB(PBO_TARGET, 0);
+
+            // If mapping threw an error -> crash immediately please
+            Util.checkGLError();
+
+            // swap PBOs
+            int swapName = frontName;
+            frontName = backName;
+            backName = swapName;
+        }
+
+        buffer.rewind();
+        
+        // first frame is empty in PBO mode, don't export it
+        if (usePBO && firstFrame) {
+            firstFrame = false;
+            return;
+        }
+
+        // send frame export event
+        Minema.EVENT_BUS.post(new FrameExportEvent(e.frame, e.time, e.movieDir));
+        e.time.nextFrame();
+    }
+
+    @Override
+    protected void doEnable() throws Exception {
+    }
+
+    @Override
+    protected void doDisable() throws Exception {
+        if (usePBO) {
+            glDeleteBuffersARB(frontName);
+            glDeleteBuffersARB(backName);
+        }
+    }
+}
+src/main/java/info/ata4/minecraft/minema/client/util/CaptureFrame.java
+public class CaptureFrame {
+
+    private static final Minecraft MC = Minecraft.getMinecraft();
+    private static final int BPP = 3;
+    private static final int TYPE = GL_UNSIGNED_BYTE;
+    private static final int FORMAT = GL_BGR;
+
+    public final int width;
+    public final int height;
+    public final ByteBuffer buffer;
+
+    public CaptureFrame() {
+        this.width = MC.displayWidth;
+        this.height = MC.displayHeight;
+        this.buffer = ByteBuffer.allocateDirect(width * height * BPP);
+    }
+
+    public void checkWindowSize() {
+        int displayWidth = MC.displayWidth;
+        int displayHeight = MC.displayHeight;
+        if (displayWidth != width || displayHeight != height) {
+            throw new IllegalStateException(String.format(
+                "Display size changed! %dx%d not equals the start dimension of %dx%d",
+                displayWidth, displayHeight, width, height));
+        }
+    }
+
+    public void readPixels(boolean fbo, boolean pbo) {
+        buffer.rewind();
+
+        // set alignment flags
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+        // read texture from framebuffer if enabled, otherwise use slower
+        // glReadPixels
+        if (fbo) {
+            Framebuffer fb = MC.getFramebuffer();
+            fb.bindFramebufferTexture();
+            if (pbo) {
+                glGetTexImage(GL_TEXTURE_2D, 0, FORMAT, TYPE, 0);
+            } else {
+                glGetTexImage(GL_TEXTURE_2D, 0, FORMAT, TYPE, buffer);
+            }
+            fb.unbindFramebufferTexture();
+        } else {
+            if (pbo) {
+                glReadPixels(0, 0, width, height, FORMAT, TYPE, 0);
+            } else {
+                glReadPixels(0, 0, width, height, FORMAT, TYPE, buffer);
+            }
+        }
+    }
+}
+src/main/java/info/ata4/minecraft/minema/client/util/CaptureTime.java
+public class CaptureTime {
+
+    private static final Map<TimeUnit, String> TU_SUFFIX;
+
+    static {
+        Map<TimeUnit, String> tuSuffix = new EnumMap<>(TimeUnit.class);
+        tuSuffix.put(TimeUnit.DAYS, "d");
+        tuSuffix.put(TimeUnit.HOURS, "h");
+        tuSuffix.put(TimeUnit.MINUTES, "m");
+        tuSuffix.put(TimeUnit.SECONDS, "s");
+        tuSuffix.put(TimeUnit.MILLISECONDS, "ms");
+        tuSuffix.put(TimeUnit.MICROSECONDS, "µs");
+        tuSuffix.put(TimeUnit.NANOSECONDS, "ns");
+        TU_SUFFIX = Collections.unmodifiableMap(tuSuffix);
+    }
+
+    public static String getTimeUnit(long nanos) {
+        TimeUnit tu = null;
+        TimeUnit[] tus = TimeUnit.values();
+        long time = nanos;
+
+        for (int i = tus.length - 1; i >= 0; i--) {
+            tu = tus[i];
+            time = tu.convert(nanos, TimeUnit.NANOSECONDS);
+            if (time > 1) {
+                break;
+            }
+        }
+
+        return time + TU_SUFFIX.get(tu);
+    }
+
+    public static String getTimeStringFull(long nanos) {
+        long hours = TimeUnit.NANOSECONDS.toHours(nanos);
+        long minutes = TimeUnit.NANOSECONDS.toMinutes(nanos) - TimeUnit.HOURS.toMinutes(hours);
+        long seconds = TimeUnit.NANOSECONDS.toSeconds(nanos) - TimeUnit.MINUTES.toSeconds(minutes)
+                - TimeUnit.HOURS.toSeconds(hours);
+        long milis = TimeUnit.NANOSECONDS.toMillis(nanos) - TimeUnit.SECONDS.toMillis(seconds)
+                - TimeUnit.MINUTES.toMillis(minutes) - TimeUnit.HOURS.toMillis(hours);
+
+        return String.format("%02d:%02d:%02d.%03d", hours, minutes, seconds, milis);
+    }
+
+    public static String getTimeStringSimple(long nanos) {
+        long hours = TimeUnit.NANOSECONDS.toHours(nanos);
+        long minutes = TimeUnit.NANOSECONDS.toMinutes(nanos) - TimeUnit.HOURS.toMinutes(hours);
+        long seconds = TimeUnit.NANOSECONDS.toSeconds(nanos) - TimeUnit.MINUTES.toSeconds(minutes)
+                - TimeUnit.HOURS.toSeconds(hours);
+
+        return String.format("%dh %dm %ds", hours, minutes, seconds);
+    }
+
+    private final long startTime;
+    private final long nanosPerFrame;
+    private long currentFrameTime;
+    private long prevFrameTime;
+    private int frames;
+
+    public CaptureTime(double frameRate) {
+        nanosPerFrame = (long) (TimeUnit.SECONDS.toNanos(1) / frameRate);
+        startTime = currentFrameTime = prevFrameTime = System.nanoTime();
+    }
+
+    public void nextFrame() {
+        prevFrameTime = currentFrameTime;
+        currentFrameTime = System.nanoTime();
+        frames++;
+    }
+
+    public int getNumFrames() {
+        return frames;
+    }
+
+    public boolean isNextFrame() {
+        return getTimeSincePreviousFrame() >= nanosPerFrame;
+    }
+
+    public long getPreviousCaptureTime() {
+        return currentFrameTime - prevFrameTime;
+    }
+
+    public long getTimeSincePreviousFrame() {
+        return System.nanoTime() - prevFrameTime;
+    }
+
+    public long getStartTime() {
+        return startTime;
+    }
+
+    public long getRealTime() {
+        return System.nanoTime() - startTime;
+    }
+
+    public String getRealTimeString() {
+        return getTimeStringFull(getRealTime());
+    }
+
+    public long getVideoTime() {
+        return frames * nanosPerFrame;
+    }
+
+    public String getVideoTimeString() {
+        return getTimeStringFull(getVideoTime());
+    }
+
+    public double getAverageFPS() {
+        return TimeUnit.SECONDS.toNanos(1) / ((double) getRealTime() / (double) getNumFrames());
+    }
+}
+src/main/java/info/ata4/minecraft/minema/client/config/MinemaConfig.java
+public class MinemaConfig {
+
+    private static final int MAX_TEXTURE_SIZE = Minecraft.getGLMaximumTextureSize();
+
+    public static final String LANG_KEY = "minema.config";
+
+    public final ConfigBoolean useVideoEncoder = new ConfigBoolean(true);
+    public final ConfigString videoEncoderPath = new ConfigString("ffmpeg");
+    public final ConfigString videoEncoderParams = new ConfigString(
+        "-f rawvideo -pix_fmt bgr24 -s %WIDTH%x%HEIGHT% -r %FPS% -i - -vf vflip " +
+        "-c:v libx264 -preset ultrafast -tune zerolatency -qp 20 video.mp4");
+    public final ConfigEnum<SnapResolution> snapResolution = new ConfigEnum<>(SnapResolution.MOD2);
+
+    public final ConfigInteger frameWidth = new ConfigInteger(0, 0, MAX_TEXTURE_SIZE);
+    public final ConfigInteger frameHeight = new ConfigInteger(0, 0, MAX_TEXTURE_SIZE);
+    public final ConfigDouble frameRate = new ConfigDouble(30.0, 0.01, 1000.0);
+    public final ConfigInteger frameLimit = new ConfigInteger(-1, -1);
+    public final ConfigString capturePath = new ConfigString("movies");
+    public final ConfigBoolean showOverlay = new ConfigBoolean(false);
+    public final ConfigBoolean usePBO = new ConfigBoolean(true);
+
+    public final ConfigDouble engineSpeed = new ConfigDouble(1.0, 0.01);
+    // public final ConfigInteger particleLimit = new ConfigInteger(64000, -1);
+    public final ConfigBoolean syncEngine = new ConfigBoolean(true);
+    // public final ConfigBoolean preloadChunks = new ConfigBoolean(false);
+
+    public MinemaConfig(Configuration cfg) {
+        useVideoEncoder.link(cfg, "encoding.useVideoEncoder", LANG_KEY);
+        videoEncoderPath.link(cfg, "encoding.videoEncoderPath", LANG_KEY);
+        videoEncoderParams.link(cfg, "encoding.videoEncoderParams", LANG_KEY);
+        snapResolution.link(cfg, "encoding.snapResolution", LANG_KEY);
+
+        frameWidth.link(cfg, "capturing.frameWidth", LANG_KEY);
+        frameHeight.link(cfg, "capturing.frameHeight", LANG_KEY);
+        frameRate.link(cfg, "capturing.frameRate", LANG_KEY);
+        frameLimit.link(cfg, "capturing.frameLimit", LANG_KEY);
+        capturePath.link(cfg, "capturing.capturePath", LANG_KEY);
+        showOverlay.link(cfg, "capturing.showOverlay", LANG_KEY);
+        usePBO.link(cfg, "capturing.usePBO", LANG_KEY);
+
+        engineSpeed.link(cfg, "engine.engineSpeed", LANG_KEY);
+        // particleLimit.link(config, "engine.particleLimit", LANG_KEY);
+        syncEngine.link(cfg, "engine.syncEngine", LANG_KEY);
+    }
+
+    public int getFrameWidth() {
+        int width = frameWidth.get();
+        
+        // use display width if not set
+        if (width == 0) {
+            width = Display.getWidth();
+        }
+
+        // snap to nearest
+        if (useVideoEncoder.get()) {
+            width = snapResolution.get().snap(width);
+        }
+
+        return width;
+    }
+
+    public int getFrameHeight() {
+        int height = frameHeight.get();
+        
+        // use display height if not set
+        if (height == 0) {
+            height = Display.getHeight();
+        }
+
+        // snap to nearest
+        if (useVideoEncoder.get()) {
+            height = snapResolution.get().snap(height);
+        }
+
+        return height;
+    }
+
+    public boolean useFrameSize() {
+        return getFrameWidth() != Display.getWidth() || getFrameHeight() != Display.getHeight();
+    }
+
+    public boolean isSyncEngine() {
+        return Minecraft.getMinecraft().isSingleplayer() && syncEngine.get();
+    }
+}
+src/main/java/info/ata4/minecraft/minema/client/modules/exporters/PipeFrameExporter.java
+public class PipeFrameExporter extends FrameExporter {
+
+    private Process proc;
+    private WritableByteChannel pipe;
+
+    public PipeFrameExporter(MinemaConfig cfg) {
+        super(cfg);
+    }
+
+    @SubscribeEvent
+    public void onFrameInit(FrameInitEvent e) {
+        try {
+            String params = cfg.videoEncoderParams.get();
+            params = params.replace("%WIDTH%", String.valueOf(e.frame.width));
+            params = params.replace("%HEIGHT%", String.valueOf(e.frame.height));
+            params = params.replace("%FPS%", String.valueOf(cfg.frameRate.get()));
+
+            List<String> cmds = new ArrayList<>();
+            cmds.add(cfg.videoEncoderPath.get());
+            cmds.addAll(Arrays.asList(StringUtils.split(params, ' ')));
+
+            // build encoder process and redirect output
+            ProcessBuilder pb = new ProcessBuilder(cmds);
+            pb.directory(e.movieDir.toFile());
+            pb.redirectErrorStream(true);
+            pb.redirectOutput(e.movieDir.resolve("encoder.log").toFile());
+            proc = pb.start();
+
+            // Java wraps the process output stream into a BufferedOutputStream,
+            // but its little buffer is just slowing everything down with the huge
+            // amount of data we're dealing here, so unwrap it with this little hack.
+            OutputStream os = proc.getOutputStream();
+            if (os instanceof FilterOutputStream) {
+                Field outField = FilterOutputStream.class.getDeclaredField("out");
+                outField.setAccessible(true);
+                os = (OutputStream) outField.get(os);
+            }
+
+            pipe = Channels.newChannel(os);
+        } catch (Exception ex) {
+            handleError(ex, "Can't start encoder");
+        }
+    }
+
+    @Override
+    protected void doDisable() throws Exception {
+        super.doDisable();
+
+        try {
+            if (pipe.isOpen()) {
+                pipe.close();
+            }
+        } catch (IOException ex) {
+            handleWarning(ex, "Pipe not closed properly");
+        }
+
+        try {
+            if (proc != null) {
+                proc.waitFor(1, TimeUnit.MINUTES);
+                proc.destroy();
+            }
+        } catch (InterruptedException ex) {
+            handleWarning(ex, "Pipe program termination interrupted");
+        }
+    }
+
+    @Override
+    protected void doExportFrame(FrameExportEvent evt) throws Exception {
+        if (pipe.isOpen()) {
+            pipe.write(evt.frame.buffer);
+        }
+    }
+}
+src/main/java/info/ata4/minecraft/minema/client/event/FrameInitEvent.java
+public class FrameInitEvent extends FrameEvent {
+    
+    public FrameInitEvent(CaptureFrame frame, CaptureTime time, Path movieDir) {
+        super(frame, time, movieDir);
+    }
+
+}
+src/main/java/info/ata4/minecraft/minema/client/util/ChatUtils.java
+public class ChatUtils {
+
+    private static final Minecraft MC = Minecraft.getMinecraft();
+
+    public static void print(String msg, TextFormatting format, Object... args) {
+        if (MC.ingameGUI == null) {
+            return;
+        }
+
+        GuiNewChat chat = MC.ingameGUI.getChatGUI();
+        TextComponentTranslation ret = new TextComponentTranslation(msg, args);
+        ret.getStyle().setColor(format);
+
+        chat.printChatMessage(ret);
+    }
+
+}
+src/main/java/info/ata4/minecraft/minema/client/modules/modifiers/TimerModifier.java
+public class TimerModifier extends CaptureModule implements PrivateAccessor {
+
+    private static final Logger L = LogManager.getLogger();
+    private static final Minecraft MC = Minecraft.getMinecraft();
+
+    private float defaultTps;
+
+    public TimerModifier(MinemaConfig cfg) {
+        super(cfg);
+    }
+
+    @Override
+    protected void doEnable() {
+        Timer defaultTimer = minecraftGetTimer(MC);
+
+        // check if it's modified already
+        if (defaultTimer instanceof FixedTimer) {
+            L.warn("Timer is already modified!");
+            return;
+        }
+
+        // get default ticks per second if possible
+        if (defaultTimer != null) {
+            defaultTps = timerGetTicksPerSecond(defaultTimer);
+        }
+
+        float fps = cfg.frameRate.get().floatValue();
+        float speed = cfg.engineSpeed.get().floatValue();
+
+        // set fixed delay timer
+        minecraftSetTimer(MC, new FixedTimer(defaultTps, fps, speed));
+    }
+
+    @Override
+    protected void doDisable() {
+        // check if it's still modified
+        if (!(minecraftGetTimer(MC) instanceof FixedTimer)) {
+            L.warn("Timer is already restored!");
+            return;
+        }
+
+        // restore default timer
+        minecraftSetTimer(MC, new Timer(defaultTps));
+    }
+}
+src/main/java/info/ata4/minecraft/minema/client/event/FrameEvent.java
+@Cancelable
+public abstract class FrameEvent extends Event  {
+
+    public final CaptureFrame frame;
+    public final CaptureTime time;
+    public final Path movieDir;
+
+    public FrameEvent(CaptureFrame frame, CaptureTime time, Path movieDir) {
+        this.frame = frame;
+        this.time = time;
+        this.movieDir = movieDir;
+    }
+}
+src/main/java/info/ata4/minecraft/minema/client/modules/exporters/ImageFrameExporter.java
+public class ImageFrameExporter extends FrameExporter {
+
+    public ImageFrameExporter(MinemaConfig cfg) {
+        super(cfg);
+    }
+
+    @Override
+    protected void doExportFrame(FrameExportEvent evt) throws IOException {
+        String fileName = String.format("%06d.tga", evt.time.getNumFrames());
+        Path path = evt.movieDir.resolve(fileName);
+        writeImage(path, evt.frame.buffer, evt.frame.width, evt.frame.height);
+    }
+
+    private void writeImage(Path path, ByteBuffer bb, int width, int height) throws IOException {
+        ByteBuffer tgah = ByteBuffer.allocate(18);
+        tgah.order(ByteOrder.LITTLE_ENDIAN);
+
+        // image type - uncompressed true-color image
+        tgah.position(2);
+        tgah.put((byte) 2);
+
+        // width and height
+        tgah.position(12);
+        tgah.putShort((short) (width & 0xffff));
+        tgah.putShort((short) (height & 0xffff));
+
+        // bits per pixel
+        tgah.position(16);
+        tgah.put((byte) 24);
+
+        tgah.rewind();
+
+        try (FileChannel fc = FileChannel.open(path, CREATE, WRITE)) {
+            fc.write(tgah);
+            fc.write(bb);
+        }
+    }
+}
+src/main/java/info/ata4/minecraft/minema/Minema.java
+@Mod(
+    modid = Minema.ID,
+    name = Minema.NAME,
+    version = Minema.VERSION,
+    guiFactory = "info.ata4.minecraft.minema.client.config.MinemaConfigGuiFactory"
+)
+public class Minema {
+
+    public static final String NAME = "Minema";
+    public static final String ID = NAME;
+    public static final String VERSION = "@VERSION@";
+
+    @Instance(ID)
+    public static Minema instance;
+    public static final EventBus EVENT_BUS = new EventBus();
+
+    private ModMetadata metadata;
+    private Configuration configForge;
+    private MinemaConfig config;
+    private CaptureSession session;
+
+    @EventHandler
+    public void onPreInit(FMLPreInitializationEvent evt) {
+        File file = evt.getSuggestedConfigurationFile();
+        configForge = new Configuration(file);
+        config = new MinemaConfig(configForge);
+        metadata = evt.getModMetadata();
+    }
+
+    @EventHandler
+    public void onInit(FMLInitializationEvent evt) {
+        ClientCommandHandler.instance.registerCommand(new CommandMinema(this));
+        MinecraftForge.EVENT_BUS.register(new KeyHandler(this));
+    }
+    
+    public Configuration getConfigForge() {
+        return configForge;
+    }
+
+    public MinemaConfig getConfig() {
+        return config;
+    }
+
+    public ModMetadata getMetadata() {
+        return metadata;
+    }
+
+    public void enable() {
+        session = new CaptureSession(config);
+        session.enable();
+    }
+
+    public void disable() {
+        if (isEnabled()) {
+            session.disable();
+        }
+        session = null;
+    }
+
+    public boolean isEnabled() {
+        return session != null && session.isEnabled();
+    }
+}
+src/main/java/info/ata4/minecraft/minema/client/modules/modifiers/DisplaySizeModifier.java
+public class DisplaySizeModifier extends CaptureModule {
+
+    private static final Minecraft MC = Minecraft.getMinecraft();
+
+    private int originalWidth;
+    private int originalHeight;
+
+    public DisplaySizeModifier(MinemaConfig cfg) {
+        super(cfg);
+    }
+
+    @Override
+    protected void doEnable() {
+        originalWidth = Display.getWidth();
+        originalHeight = Display.getHeight();
+
+        resize(cfg.getFrameWidth(), cfg.getFrameHeight());
+
+        // render framebuffer texture in original size
+        if (OpenGlHelper.isFramebufferEnabled()) {
+            setFramebufferTextureSize(originalWidth, originalHeight);
+        }
+    }
+
+    @Override
+    protected void doDisable() {
+        resize(originalWidth, originalHeight);
+    }
+
+    public void resize(int width, int height) {
+        MC.resize(width, height);
+    }
+
+    public void setFramebufferTextureSize(int width, int height) {
+        Framebuffer fb = MC.getFramebuffer();
+        fb.framebufferTextureWidth = width;
+        fb.framebufferTextureHeight = height;
+    }
+}

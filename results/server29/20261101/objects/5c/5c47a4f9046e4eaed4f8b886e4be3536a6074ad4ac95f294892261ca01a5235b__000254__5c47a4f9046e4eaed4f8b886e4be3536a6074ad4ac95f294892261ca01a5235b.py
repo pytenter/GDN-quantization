@@ -1,0 +1,1 @@
+lambda _cls, name, device, duration: _tuple_new(_cls, (name, device, duration))

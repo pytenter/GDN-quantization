@@ -1,0 +1,1213 @@
+继续执行现有实验：
+
+```text
+EXPERIMENT =
+QWEN_GDN_FROZEN_DRIVE_ANCHOR_MECHANISM_V1
+```
+
+不要创建新的科学实验。
+
+本次只是一个：
+
+```text
+STORAGE_LIFECYCLE_AMENDMENT
+```
+
+目的：
+
+> 将原来的“4 篇 Discovery frozen drive 同时常驻磁盘”改成“逐文档 capture → 4 anchors replay → seal → release”，降低 peak disk requirement。
+
+不得改变任何 scientific semantics。
+
+---
+
+# 0. Preserve current state
+
+当前 authoritative 状态必须保留：
+
+```text
+OLD_PARENT_STOP_PRESERVED = YES
+OLD_CUMSUM_CLOSURE_FAIL_PRESERVED = YES
+OLD_PREFLIGHT_FAIL_PRESERVED = YES
+OLD_INPUT_FREEZE_AMENDMENT_FAIL_PRESERVED = YES
+
+OLD_EVIDENCE_INTEGRITY_GATE = PASS
+
+NEW_PROSPECTIVE_DOCUMENT_PROTOCOL = YES
+DISCOVERY_DOCUMENT_SELECTION_GATE = PASS
+DISCOVERY_DOC_COUNT = 4
+
+CANDIDATE_CORPUS = long_bench/repobench-p
+CANDIDATE_POOL_REVISION =
+7dcaafcb4974ad5893d9f22a7f36fd70fa811bfa8c5fc5448a931ddc0917eb9a
+
+CONFIRMATION_RULE_FROZEN = YES
+CONFIRMATION_EXECUTED = 0
+
+SCIENTIFIC_MEASUREMENT_COUNT = 0
+DISCOVERY_COMPLETE = 0/16
+```
+
+当前审计提交：
+
+```text
+6b88fdf
+```
+
+必须保留为：
+
+```text
+AUDIT_COMMIT_ONLY
+```
+
+不要把它冒充成功的 premeasurement preregistration commit。
+
+---
+
+# 1. Do NOT change frozen documents
+
+已经冻结的 4 篇 Discovery documents：
+
+```text
+MUST_REMAIN_BYTE_IDENTICAL
+```
+
+禁止：
+
+```text
+reselect docs
+replace docs
+change corpus
+change dataset revision
+change selection namespace
+change ordering
+drop a long document
+```
+
+重新验证它们的：
+
+```text
+document IDs
+content hashes
+tokenization identities
+selection manifest
+```
+
+要求：
+
+```text
+FROZEN_DISCOVERY_DOCUMENT_INTEGRITY_GATE = PASS
+```
+
+否则立即：
+
+```text
+FAIL_AND_STOP
+```
+
+---
+
+# 2. Anchor design remains unchanged
+
+仍然使用：
+
+```text
+A0 = Native INT8-C128
+A1 = Hadamard
+A2 = C6R
+A3 = C7
+```
+
+本次不得：
+
+```text
+add rotation
+remove rotation
+interpolate rotation
+train rotation
+replace C7
+replace C6R
+```
+
+如果 anchor freeze 尚未执行，现在按已有 authoritative artifacts 完成：
+
+```text
+ANCHOR_CONDITION_COUNT = 4
+```
+
+并生成：
+
+```text
+protocol/frozen_anchor_conditions.json
+```
+
+验证：
+
+```text
+Native identity
+Hadamard identity
+C6R frozen export
+C7 frozen export
+matrix/source SHA256
+orthogonality where applicable
+native-basis semantics
+```
+
+如果任意 anchor 无法唯一恢复：
+
+```text
+ANCHOR_IDENTITY_GATE = FAIL
+FINAL_ACTION = FAIL_AND_STOP
+```
+
+---
+
+# 3. Scientific protocol remains unchanged
+
+必须保持：
+
+```text
+DISCOVERY_DOC_COUNT = 4
+
+ANCHOR_CONDITION_COUNT = 4
+
+DISCOVERY_EXPECTED_UNITS = 16
+```
+
+horizons：
+
+```text
+2048
+8192
+32768
+```
+
+同一 persistent replay trajectory 跑至 32768，然后读取三个 horizon。
+
+禁止修改：
+
+```text
+metric definitions
+normalization
+dtype
+C128 quantizer
+persistent writeback
+recurrent equations
+token window
+horizons
+document set
+anchor set
+```
+
+---
+
+# 4. New storage strategy
+
+废弃旧的 storage assumption：
+
+```text
+ALL_4_DOCUMENT_DRIVES_MUST_COEXIST_ON_DISK
+```
+
+改为：
+
+```text
+STORAGE_STRATEGY =
+SEQUENTIAL_PER_DOCUMENT_CAPTURE_REPLAY_RELEASE
+
+MAX_CONCURRENT_FULL_DOCUMENT_DRIVES = 1
+```
+
+执行顺序固定：
+
+```text
+Doc 1:
+capture
+→ seal drive
+→ Native replay
+→ H replay
+→ C6R replay
+→ C7 replay
+→ seal all results
+→ release bulky drive
+→ Doc 2
+
+Doc 2:
+same
+
+Doc 3:
+same
+
+Doc 4:
+same
+```
+
+不得：
+
+```text
+capture all 4 docs first
+```
+
+---
+
+# 5. Recalculate storage requirement correctly
+
+不要再使用：
+
+```text
+TOTAL_4_DOC_STORAGE ≈ 45.4 GB
+```
+
+作为执行 gate。
+
+重新计算：
+
+```text
+PEAK_SINGLE_DOCUMENT_DRIVE_BYTES
++
+CAPTURE_TEMPORARY_BYTES
++
+ATOMIC_FINALIZE_OVERHEAD_BYTES
++
+REPLAY_TEMPORARY_BYTES
++
+RESULT_ARTIFACT_BYTES
++
+SAFETY_MARGIN_BYTES
+```
+
+得到：
+
+```text
+PEAK_REQUIRED_STORAGE_BYTES
+```
+
+读取实际：
+
+```text
+AVAILABLE_DATA_BYTES
+```
+
+不要使用十进制近似来误判边界，保存 raw byte counts。
+
+---
+
+# 6. Safety margin
+
+至少保留：
+
+```text
+SAFETY_MARGIN = max(
+    5 GiB,
+    20% of estimated single-document lifecycle peak
+)
+```
+
+不要把磁盘写到接近 100%。
+
+通过条件：
+
+```text
+PEAK_REQUIRED_STORAGE_BYTES
+<=
+AVAILABLE_DATA_BYTES - SAFETY_MARGIN_BYTES
+```
+
+如果当前 `/data` 的约 30.6 GB 足够：
+
+```text
+STORAGE_CAPACITY_GATE = PASS
+```
+
+自动继续。
+
+如果仍不足：
+
+```text
+STORAGE_CAPACITY_GATE = FAIL
+FINAL_ACTION = FAIL_AND_STOP
+```
+
+并打印：
+
+```text
+required bytes
+available bytes
+shortfall bytes
+largest storage components
+```
+
+不要再估一个笼统的 45.4 GB。
+
+---
+
+# 7. Do not optimize storage by changing scientific data
+
+明确禁止：
+
+```text
+BF16 → FP16 conversion
+FP32 → BF16 conversion
+INT8 compression of drive
+lossy compression
+dropping drive tensors
+reducing token length
+reducing layer count
+reducing document count
+reducing anchor count
+changing 32K to 8K
+```
+
+允许：
+
+```text
+lossless filesystem/file compression
+```
+
+仅当：
+
+1. load 后 byte-exact；
+2. dtype exact；
+3. 不增加复杂 numerical semantics；
+4. 实际已有成熟实现。
+
+否则不要为了省磁盘额外引入压缩代码。
+
+默认：
+
+```text
+NO_NEW_COMPRESSION_IMPLEMENTATION
+```
+
+---
+
+# 8. Drive must still be frozen before anchor replay
+
+对每篇 document：
+
+先完整生成该 doc 的 frozen drive。
+
+然后：
+
+```text
+atomic finalize
+SHA256 each shard
+SHA256 drive manifest
+mark read-only / immutable for replay
+```
+
+生成：
+
+```text
+doc_X_drive_manifest.json
+doc_X_drive_sha256.json
+```
+
+只有：
+
+```text
+DOCUMENT_DRIVE_SEAL_GATE = PASS
+```
+
+后，才能让四个 anchors 使用。
+
+四个 anchors 必须记录完全相同的：
+
+```text
+DRIVE_MANIFEST_SHA256
+```
+
+如果不同：
+
+```text
+CONTROLLED_DRIVE_IDENTITY_GATE = FAIL
+FINAL_ACTION = FAIL_AND_STOP
+```
+
+---
+
+# 9. Small capture reproducibility check before first 32K capture
+
+因为 production capture runtime 的 original CUDA `torch.cumsum` 不满足 strict deterministic policy support，所以在删除大型 drive 前，先做一个非常便宜的工程检查。
+
+只在：
+
+```text
+256-token engineering fixture
+```
+
+上运行 original production capture：
+
+```text
+fresh process ×2
+```
+
+比较：
+
+```text
+captured drive tensor hashes
+reference recurrent-state hashes
+```
+
+记录：
+
+```text
+CAPTURE_EMPIRICAL_REPRODUCIBILITY_GATE
+```
+
+首选 PASS 标准：
+
+```text
+byte-exact
+```
+
+如果不是 byte-exact，但旧 preregistered numerical policy 已存在，则可以只报告 numerical difference。
+
+不得看到差异以后临时放宽 threshold。
+
+---
+
+# 10. Capture reproducibility outcome
+
+如果 256-token capture：
+
+```text
+BYTE_EXACT = YES
+```
+
+则：
+
+```text
+DRIVE_RELEASE_AFTER_SEAL_ALLOWED = YES
+```
+
+如果不是 byte-exact：
+
+不要立刻废掉整个 frozen-drive experiment。
+
+但必须设置：
+
+```text
+DRIVE_RELEASE_AFTER_SEAL_ALLOWED = NO
+```
+
+因为删除 drive 后将无法保证未来可以重新生成 exact same external input。
+
+此时重新检查磁盘：
+
+如果不能保留已经产生的 full drive：
+
+```text
+FINAL_ACTION = FAIL_AND_STOP_STORAGE_RETENTION_REQUIRED
+```
+
+不要继续生成不可保留的 scientific input。
+
+---
+
+# 11. Drive factorization
+
+如果还未执行，继续原设计：
+
+构建：
+
+```text
+drive_dependency_graph.json
+drive_schema.json
+drive_factorization_report.md
+```
+
+严格区分：
+
+```text
+external frozen drive
+vs
+state-dependent computation
+```
+
+任何依赖 replayed recurrent state 的 tensor：
+
+```text
+不得 freeze
+```
+
+必须在 replay transition 内重新计算。
+
+如果不能严格 factorize：
+
+```text
+DRIVE_FACTORIZATION_GATE = FAIL
+FAIL_AND_STOP
+```
+
+---
+
+# 12. Replay isolation
+
+Scientific replay path 必须满足：
+
+```text
+REPLAY_BLOCKED_CUMSUM_CALL_COUNT = 0
+REPLAY_FULL_MODEL_FORWARD_COUNT = 0
+```
+
+即：
+
+```text
+frozen drive
++
+GDN recurrence
++
+quantizer
++
+rotation
++
+streaming reducer
+```
+
+不得重新执行 full Transformer。
+
+如果 replay 又调用 blocked `torch.cumsum`：
+
+```text
+REPLAY_ISOLATION_GATE = FAIL
+FAIL_AND_STOP
+```
+
+不要再 patch cumsum。
+
+---
+
+# 13. Engineering gates before Discovery
+
+继续执行原来的 gates：
+
+```text
+G0 OLD_EVIDENCE_INTEGRITY_GATE
+
+G1 FROZEN_DISCOVERY_DOCUMENT_INTEGRITY_GATE
+
+G2 ANCHOR_IDENTITY_GATE
+
+G3 STORAGE_CAPACITY_GATE
+
+G4 CAPTURE_EMPIRICAL_REPRODUCIBILITY_GATE
+
+G5 DRIVE_FACTORIZATION_GATE
+
+G6 CAPTURE_SCHEMA_GATE
+
+G7 FP_REPLAY_PARITY_GATE
+
+G8 NO_QDQ_ROTATION_INVARIANCE_GATE
+
+G9 COUNTERFACTUAL_DECOMPOSITION_GATE
+
+G10 REPLAY_ISOLATION_GATE
+
+G11 REPLAY_DETERMINISM_GATE
+
+G12 STREAMING_REDUCER_PARITY_GATE
+```
+
+所有 gates 全 PASS 后才允许 Discovery。
+
+不得降低 threshold。
+
+---
+
+# 14. Premeasurement commit
+
+在第一次 scientific 32K capture/replay 之前，必须完成：
+
+```text
+4 frozen document identities
+4 anchor identities
+storage lifecycle policy
+capture policy
+drive schema
+metric definitions
+horizon policy
+numerical policy
+replay policy
+release policy
+```
+
+生成：
+
+```text
+PREREGISTRATION.md
+preregistration.json
+PREMEASUREMENT_FREEZE_MANIFEST.json
+SHA256SUMS
+```
+
+然后 commit。
+
+记录真实：
+
+```text
+PREMEASUREMENT_COMMIT_SHA = <actual SHA>
+```
+
+只有：
+
+```text
+PREMEASUREMENT_COMMIT_SHA != null
+```
+
+才能进入 scientific Discovery。
+
+---
+
+# 15. Per-document scientific lifecycle
+
+对于冻结顺序中的每篇文档：
+
+## Step A — capacity check
+
+再次检查当前 free disk。
+
+要求：
+
+```text
+CURRENT_AVAILABLE_SPACE
+>=
+PEAK_REQUIRED_SINGLE_DOC_LIFECYCLE
+```
+
+否则 STOP。
+
+---
+
+## Step B — canonical capture
+
+运行：
+
+```text
+original production Qwen
+```
+
+到：
+
+```text
+32768 tokens
+```
+
+capture：
+
+```text
+minimum sufficient frozen external drive
++
+required FP reference checkpoints
+```
+
+不要保存完整 full-model hidden trajectory。
+
+---
+
+## Step C — seal drive
+
+完成：
+
+```text
+all shards finalized
+all hashes PASS
+manifest finalized
+```
+
+记录：
+
+```text
+DOCUMENT_DRIVE_SHA256
+```
+
+之后 drive 不得改变。
+
+---
+
+## Step D — four anchor replays
+
+严格运行：
+
+```text
+Native
+Hadamard
+C6R
+C7
+```
+
+全部使用 exact same drive。
+
+每个 persistent replay 到：
+
+```text
+32768
+```
+
+读取：
+
+```text
+2048
+8192
+32768
+```
+
+---
+
+## Step E — result completeness
+
+删除 drive 之前必须：
+
+```text
+Native:
+2K PASS
+8K PASS
+32K PASS
+
+Hadamard:
+2K PASS
+8K PASS
+32K PASS
+
+C6R:
+2K PASS
+8K PASS
+32K PASS
+
+C7:
+2K PASS
+8K PASS
+32K PASS
+```
+
+且：
+
+```text
+per-unit metrics sealed
+per-layer metrics sealed
+reducer outputs sealed
+result SHA256 PASS
+drive provenance included
+```
+
+---
+
+# 16. Release rule
+
+只有满足全部：
+
+```text
+DOCUMENT_CAPTURE_COMPLETE = YES
+
+DOCUMENT_DRIVE_SEAL_GATE = PASS
+
+ALL_4_ANCHORS_COMPLETE = YES
+
+ALL_3_HORIZONS_COMPLETE = YES
+
+RESULT_SEAL_GATE = PASS
+
+DRIVE_RELEASE_AFTER_SEAL_ALLOWED = YES
+```
+
+才允许删除：
+
+```text
+large frozen-drive shard files
+```
+
+---
+
+# 17. What must NEVER be deleted
+
+即使释放大 drive，也永久保留：
+
+```text
+frozen document ID
+document content SHA256
+token IDs hash
+tokenizer identity
+
+capture source commit/hash
+model checkpoint hash
+
+drive schema
+drive manifest
+drive manifest SHA256
+per-shard SHA256 list
+
+capture runtime metadata
+
+anchor hashes
+
+metric definitions
+
+all scientific results
+
+streaming reducer outputs
+
+result SHA256
+
+deletion/release log
+```
+
+生成：
+
+```text
+drive_release_record.json
+```
+
+至少包含：
+
+```text
+doc_id
+drive_manifest_sha256
+released_paths
+released_bytes
+release_time
+all_anchor_results_complete
+all_result_hashes_verified
+```
+
+---
+
+# 18. Never delete incomplete drive
+
+如果某 doc：
+
+```text
+Native PASS
+H PASS
+C6R FAIL
+C7 NOT_RUN
+```
+
+则：
+
+```text
+DO_NOT_DELETE_DRIVE
+```
+
+先 STOP。
+
+保留 drive 用于 debug/resume。
+
+禁止为了释放空间而删除失败实验的唯一输入。
+
+---
+
+# 19. Scientific metrics remain unchanged
+
+继续计算：
+
+```text
+E
+H
+I_PATH
+I_REF
+I_INTERACTION
+```
+
+以及：
+
+```text
+ACC_ENERGY
+HISTORY_ENERGY
+PATH_INJECTION_ENERGY
+REF_INJECTION_ENERGY
+ALIGNMENT_TERM
+```
+
+验证：
+
+```text
+E = H + I_PATH
+```
+
+和：
+
+```text
+||E||²
+=
+||H||²
++
+||I_PATH||²
++
+2<H,I_PATH>
+```
+
+不要因为 storage amendment 改任何数学定义。
+
+---
+
+# 20. Primary comparisons remain unchanged
+
+Primary：
+
+```text
+C6R vs Hadamard
+```
+
+Secondary：
+
+```text
+C7 vs C6R
+Native vs Hadamard
+```
+
+horizon：
+
+```text
+2K
+8K
+32K
+```
+
+仍然只属于：
+
+```text
+INTRINSIC_RECURRENT_ERROR_DYNAMICS_UNDER_FROZEN_EXTERNAL_DRIVE
+```
+
+不是 full-model reasoning causality。
+
+---
+
+# 21. Automatic continuation
+
+为了避免再次无意义地人工停一次：
+
+如果：
+
+```text
+single-doc storage gate PASS
++
+premeasurement commit exists
++
+all engineering gates PASS
+```
+
+则自动执行：
+
+```text
+Doc1
+→ Doc2
+→ Doc3
+→ Doc4
+```
+
+直到：
+
+```text
+DISCOVERY_COMPLETE = 16/16
+```
+
+不需要在每篇文档之间等待用户批准。
+
+但任何 gate 或 unit FAIL：
+
+```text
+立即 STOP
+```
+
+不要自动放宽规则。
+
+---
+
+# 22. Required storage report
+
+生成：
+
+```text
+storage_lifecycle_report.json
+```
+
+至少输出：
+
+```text
+OLD_TOTAL_STORAGE_ESTIMATE_BYTES
+
+ESTIMATED_SINGLE_DOC_DRIVE_BYTES
+
+TEMPORARY_CAPTURE_BYTES
+
+ATOMIC_FINALIZE_OVERHEAD_BYTES
+
+REPLAY_TEMPORARY_BYTES
+
+RESULT_BYTES
+
+SAFETY_MARGIN_BYTES
+
+PEAK_REQUIRED_STORAGE_BYTES
+
+AVAILABLE_STORAGE_BYTES
+
+HEADROOM_BYTES
+
+STORAGE_CAPACITY_GATE
+```
+
+同时报告真实运行中的：
+
+```text
+peak observed disk usage
+bytes released after each completed doc
+```
+
+---
+
+# 23. Required final status
+
+最终打印：
+
+```text
+EXPERIMENT =
+QWEN_GDN_FROZEN_DRIVE_ANCHOR_MECHANISM_V1
+
+STORAGE_LIFECYCLE_AMENDMENT =
+SEQUENTIAL_PER_DOCUMENT_CAPTURE_REPLAY_RELEASE
+
+OLD_TOTAL_STORAGE_ESTIMATE_GB =
+45.4
+
+MAX_CONCURRENT_FULL_DOCUMENT_DRIVES =
+1
+
+OLD_EVIDENCE_INTEGRITY_GATE =
+
+FROZEN_DISCOVERY_DOCUMENT_INTEGRITY_GATE =
+
+DISCOVERY_DOC_COUNT =
+4
+
+ANCHOR_CONDITION_COUNT =
+
+ANCHOR_IDENTITY_GATE =
+
+CAPTURE_EMPIRICAL_REPRODUCIBILITY_GATE =
+
+DRIVE_RELEASE_AFTER_SEAL_ALLOWED =
+
+ESTIMATED_SINGLE_DOC_DRIVE_GB =
+
+PEAK_REQUIRED_STORAGE_GB =
+
+AVAILABLE_STORAGE_GB =
+
+STORAGE_CAPACITY_GATE =
+
+PREMEASUREMENT_COMMIT_SHA =
+
+DRIVE_FACTORIZATION_GATE =
+
+CAPTURE_SCHEMA_GATE =
+
+FP_REPLAY_PARITY_GATE =
+
+NO_QDQ_ROTATION_INVARIANCE_GATE =
+
+COUNTERFACTUAL_DECOMPOSITION_GATE =
+
+REPLAY_ISOLATION_GATE =
+
+REPLAY_DETERMINISM_GATE =
+
+STREAMING_REDUCER_PARITY_GATE =
+
+DISCOVERY_EXECUTION_AUTHORIZED =
+
+DISCOVERY_COMPLETE =
+x/16
+
+HORIZON_2048_COMPLETE =
+x/16
+
+HORIZON_8192_COMPLETE =
+x/16
+
+HORIZON_32768_COMPLETE =
+x/16
+
+COMPLETED_DOC_DRIVES_RELEASED =
+x/4
+
+CONFIRMATION_EXECUTED =
+0
+
+FULL_MODEL_CLOSED_LOOP_PROPAGATION =
+NOT_EVALUATED
+
+NEW_C8_TRAINING_AUTHORIZED =
+NO
+
+NEW_AIME_GENERATION =
+0
+
+NEW_FREE_GENERATION =
+0
+
+FINAL_ACTION =
+```
+
+---
+
+# 24. Successful final action
+
+如果全部 4 docs × 4 anchors 完成：
+
+```text
+DISCOVERY_COMPLETE = 16/16
+
+HORIZON_2048_COMPLETE = 16/16
+HORIZON_8192_COMPLETE = 16/16
+HORIZON_32768_COMPLETE = 16/16
+
+FINAL_ACTION =
+DISCOVERY_COMPLETE_REPORT_ONLY
+```
+
+如果 storage 仍不足：
+
+```text
+FINAL_ACTION =
+FAIL_AND_STOP_STORAGE_CAPACITY
+```
+
+如果工程 gate FAIL：
+
+```text
+FINAL_ACTION =
+FAIL_AND_STOP
+```
+
+---
+
+# 25. Core principle
+
+本 amendment 只改变：
+
+```text
+WHEN LARGE DRIVE FILES ARE KEPT OR RELEASED
+```
+
+不改变：
+
+```text
+WHAT INPUTS ARE USED
+WHAT MODEL IS USED
+WHAT ROTATIONS ARE USED
+WHAT QUANTIZER IS USED
+WHAT RECURRENCE IS USED
+WHAT METRICS ARE USED
+WHAT HORIZONS ARE USED
+```
+
+目标是：
+
+> 用当前 `/data` 可用空间完成原定 frozen-drive mechanism experiment，而不是为了磁盘限制降低科学标准。
+
+优先简单实现。
+
+不要实现复杂 chunk-interleaved capture/replay pipeline，除非 sequential per-document lifecycle 经过真实 byte-level capacity audit 后仍无法满足当前磁盘空间。

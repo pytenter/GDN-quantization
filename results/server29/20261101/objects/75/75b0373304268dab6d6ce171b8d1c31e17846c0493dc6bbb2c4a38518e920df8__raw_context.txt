@@ -1,0 +1,2690 @@
+src/main/java/edu/isi/bmkeg/lapdf/model/ChunkBlock.java
+public interface ChunkBlock extends Block, SpatialEntity {
+
+	public int getMostPopularWordHeight();
+
+	public int getMostPopularWordSpaceWidth();
+
+	public String getMostPopularWordFont();
+
+	public String getMostPopularWordStyle();
+
+	public void setMostPopularWordHeight(int height);
+
+	public void setMostPopularWordSpaceWidth(int spaceWidth);
+
+	public void setMostPopularWordStyle(String style);
+
+	public void setMostPopularWordFont(String font);
+
+	public int readNumberOfLine();
+
+	public String readChunkText();
+
+	public Boolean isHeaderOrFooter();
+
+	public void setHeaderOrFooter(boolean headerOrFooter);
+
+	public ChunkBlock readLastChunkBlock();
+
+	boolean isMatchingRegularExpression(String regex);
+
+	boolean isUnderOneLineFlushNeighboursOfType(String type);
+
+	boolean hasNeighboursOfType(String type, int nsew);
+	
+}
+src/main/java/edu/isi/bmkeg/lapdf/classification/ruleBased/RuleBasedChunkClassifier.java
+public class RuleBasedChunkClassifier implements Classifier<ChunkBlock> {
+	
+	private static Logger logger = Logger.getLogger(RuleBasedChunkClassifier.class);
+
+	private StatelessKnowledgeSession kSession;
+	
+	private AbstractModelFactory modelFactory;
+	
+	private KnowledgeBase kbase;
+	
+	private void reportCompiledRules(String droolsFileName, 
+			DecisionTableConfiguration dtableconfiguration) throws IOException  {
+		
+		String rules = DecisionTableFactory.loadFromInputStream(ResourceFactory.newFileResource(droolsFileName).getInputStream(), dtableconfiguration);
+		logger.debug(rules);
+		
+	}
+	
+	public RuleBasedChunkClassifier(String droolsFileName,
+			AbstractModelFactory modelFactory) throws IOException  {
+
+		KnowledgeBuilder kbuilder = KnowledgeBuilderFactory.newKnowledgeBuilder();
+		kbase = KnowledgeBaseFactory.newKnowledgeBase();
+		
+		if(droolsFileName.endsWith(".csv")) {
+			
+			DecisionTableConfiguration dtableconfiguration =
+				KnowledgeBuilderFactory.newDecisionTableConfiguration();
+			
+			dtableconfiguration.setInputType( DecisionTableInputType.CSV );
+			
+			Resource xlsRes = ResourceFactory.newFileResource( droolsFileName );
+			
+			kbuilder.add( xlsRes, ResourceType.DTABLE, dtableconfiguration);
+			
+			reportCompiledRules(droolsFileName,dtableconfiguration);
+		
+		} else if(droolsFileName.endsWith(".xls")) {
+		
+			DecisionTableConfiguration dtableconfiguration =
+				KnowledgeBuilderFactory.newDecisionTableConfiguration();
+			
+			dtableconfiguration.setInputType( DecisionTableInputType.XLS );
+			
+			Resource xlsRes = ResourceFactory.newFileResource( droolsFileName );
+			
+			kbuilder.add( xlsRes, ResourceType.DTABLE, dtableconfiguration);
+			
+			reportCompiledRules(droolsFileName,dtableconfiguration);
+		
+		} else if( droolsFileName.endsWith(".drl")) {
+			
+			kbuilder.add(ResourceFactory.newFileResource(droolsFileName),
+					ResourceType.DRL);
+			
+		}
+
+		if (kbuilder.hasErrors()) {
+			logger.error(kbuilder.getErrors());
+			return;
+		}
+		
+		ArrayList<KnowledgePackage> kpkgs = new ArrayList<KnowledgePackage>(
+				kbuilder.getKnowledgePackages());
+		
+		kbase.addKnowledgePackages(kpkgs);
+		
+		this.modelFactory = modelFactory;
+	
+	}
+
+	@Override
+	public void classify(List<ChunkBlock> blockList) {
+		
+		this.kSession = kbase.newStatelessKnowledgeSession();
+		for (ChunkBlock chunk : blockList) {
+			kSession.setGlobal("chunk", chunk);
+			kSession.execute(new ChunkFeatures(chunk, modelFactory));
+		}
+		this.kSession = null;
+
+	}
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/text/SpatialLayoutFeaturesReportGenerator.java
+public class SpatialLayoutFeaturesReportGenerator implements TextWriter
+{
+	private StringBuilder sb;
+	public SpatialLayoutFeaturesReportGenerator() throws IOException
+	{
+		sb = new StringBuilder();
+	}
+
+	private StringBuilder writeFeatures(StringBuilder sb, ChunkBlock chunk, PageBlock page){
+		List<SpatialEntity> words = page.containsByType(chunk,
+				SpatialOrdering.MIXED_MODE, WordBlock.class);
+		WordBlock word;
+		if(chunk.readNumberOfLine()==1||words.size()==1){//possibly a section heading line
+			sb.append("\n-POSSIBLE SECTION HEADING-\n");
+			sb.append("\nChunk text: "+chunk.readChunkText());
+		}
+		sb.append("\nMost popular font "+chunk.getMostPopularWordFont());
+		sb.append("\nMost popular font size "+chunk.getMostPopularWordStyle());
+		sb.append("\nMost popular word height "+chunk.getMostPopularWordHeight());
+		sb.append("\nNumber of Lines "+chunk.readNumberOfLine());
+		sb.append("\nAlignment "+chunk.readLeftRightMedLine());
+
+		return sb;
+	}
+
+	@Override
+	public void write(LapdfDocument doc, String outputFilename) throws IOException,FileNotFoundException
+	{
+		PageBlock page;
+		List<ChunkBlock> chunks;
+		int totalNumberOfPages = doc.getTotalNumberOfPages();
+		for (int i = 1; i <= totalNumberOfPages; i++) {
+			sb.append("\n\n--------------------------------------------------------------------------");
+			sb.append("--------------------PAGE: "+i+"------------------------\n\n");
+			page = doc.getPage(i);
+			chunks = page.getAllChunkBlocks(SpatialOrdering.COLUMN_AWARE_MIXED_MODE);
+			sb.append("\nNumber of Blocks="+chunks.size());
+			int chunkCounter = 1;
+			for(ChunkBlock chunk : chunks){
+				sb.append("\n--------------------TEXT BLOCK:"+chunkCounter+"------------------------");
+				sb = writeFeatures(sb,chunk,page);
+				chunkCounter++;
+			}
+		}
+		ReadWriteTextFileWithEncoding.write(outputFilename, TextWriter.UTF_8, sb.toString());
+	}
+}
+src/main/java/edu/isi/bmkeg/lapdf/model/RTree/RTModelFactory.java
+public class RTModelFactory implements AbstractModelFactory {
+
+	@Override
+	public ChunkBlock createChunkBlock(int topX, int topY, int bottomX,
+			int bottomY) {
+
+		ChunkBlock chunky = new RTChunkBlock(topX, topY, bottomX, bottomY);
+
+		return chunky;
+	}
+
+	@Override
+	public PageBlock createPageBlock(int pageNumber, int pageWidth,
+			int pageHeight, LapdfDocument document) {
+
+		return new RTPageBlock(pageNumber, pageWidth, pageHeight, document);
+	}
+
+	@Override
+	public WordBlock createWordBlock(int topX, int topY, int bottomX,
+			int bottomY, int spaceWidth, String font, String style, String word) {
+
+		WordBlock wordy = new RTWordBlock(topX, topY, bottomX, bottomY,
+				spaceWidth, font, style, word);
+
+		return wordy;
+	}
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/extraction/exceptions/ClassificationException.java
+public class ClassificationException extends Exception {
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/model/Block.java
+public interface Block extends Serializable {
+
+	public static final String MIDLINE = "MIDLINE";
+	public static final String LEFT = "LEFT";
+	public static final String RIGHT = "RIGHT";
+	
+    public static final String TYPE_TITLE="title"; 
+    public static final String TYPE_AUTHORS="authors"; 
+	public static final String TYPE_BODY = "body";
+	public static final String TYPE_HEADING = "heading";
+
+	public static final String TYPE_ABSTRACT="abstract";
+	public static final String TYPE_ABSTRACT_HEADING="abstract.heading";
+    public static final String TYPE_ABSTRACT_BODY="abstract.body";	
+	
+    public static final String TYPE_FIGURE_LEGEND="figureLegend";    
+    public static final String TYPE_TABLE="table";
+    
+	public static final String TYPE_UNCLASSIFIED="unclassified";
+	public static final String TYPE_PAGE="page";
+	
+	public static final String TYPE_METHODS="methods";
+	public static final String TYPE_METHODS_HEADING="methods.heading";
+	public static final String TYPE_METHODS_BODY="methods.body";
+	public static final String TYPE_METHODS_SUBTITLE="methods.subtitle";
+	
+	public static final String TYPE_RESULTS="results";
+	public static final String TYPE_RESULTS_HEADING="results.heading";
+	public static final String TYPE_RESULTS_BODY="results.body";
+	public static final String TYPE_RESULTS_SUBTITLE="results.subtitle";
+	
+	public static final String TYPE_REFERENCES="references";
+	public static final String TYPE_REFERENCES_HEADING="references.heading";
+	public static final String TYPE_REFERENCES_BODY="references.body";
+	
+	public static final String TYPE_DISCUSSION="discussion";
+	public static final String TYPE_DISCUSSION_HEADING="discussion.heading";
+	public static final String TYPE_DISCUSSION_BODY="discussion.body";
+	public static final String TYPE_DISCUSSION_SUBTITLE="discussion.subtitle";
+	
+	public static final String TYPE_CONCLUSIONS="conclusions";
+	public static final String TYPE_CONCLUSIONS_HEADING="conclusions.heading";
+	public static final String TYPE_CONCLUSIONS_BODY="conclusions.body";
+	public static final String TYPE_CONCLUSIONS_SUBTITLE="conclusions.subtitle";
+	
+	public static final String TYPE_ACKNOWLEDGEMENTS="acknowledgements";
+	public static final String TYPE_ACKNOWLEDGEMENTS_HEADING="acknowledgements.heading";
+	public static final String TYPE_ACKNOWLEDGEMENTS_BODY="acknowledgements.body";
+	
+    public static final String TYPE_AFFLIATION="affliation";
+    public static final String TYPE_HEADER="header";
+    public static final String TYPE_FOOTER="footer";
+    public static final String TYPE_KEYWORDS="keywords";
+    
+    public static final String TYPE_INTRODUCTION="introduction";
+    public static final String TYPE_INTRODUCTION_HEADING="introduction.heading";
+    public static final String TYPE_INTRODUCTION_BODY="introduction.body";
+    public static final String TYPE_INTRODUCTION_SUBTITLE="introduction.subtitle";
+    
+    public static final String TYPE_SUPPORTING_INFORMATION="supportingInformation";
+    public static final String TYPE_SUPPORTING_INFORMATION_HEADING="supportingInformation.heading";
+    public static final String TYPE_SUPPORTING_INFORMATION_BODY="supportingInformation.body";
+    public static final String TYPE_SUPPORTING_INFORMATION_SUBTITLE="supportingInformation.subtitle";
+       
+    public static final String TYPE_CITATION="citation";
+    public static final String META_TYPE_HEADING=".heading";
+    public static final String META_TYPE_SUBTITLE=".subtitle";
+	
+    public Block getContainer();
+
+	public void setContainer(Block block);
+
+	public String readLeftRightMedLine();
+
+	public boolean isFlush(String condition, int value);
+
+	public void setType(String type);
+	
+	public String getType();
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/extraction/exceptions/EncryptionException.java
+public class EncryptionException extends Exception{
+	private String filename;
+
+	public EncryptionException(String fileName) {
+		this.filename = fileName;
+	}
+
+	@Override
+	public void printStackTrace() {
+
+		System.out.println(filename + " Permission Denied");
+		super.printStackTrace();
+	}
+}
+src/main/java/edu/isi/bmkeg/lapdf/model/LapdfDocument.java
+public class LapdfDocument implements Serializable {
+
+	private File pdfFile;
+	
+	private ArrayList<PageBlock> pageList;
+	
+	private IntegerFrequencyCounter avgHeightFrequencyCounter;
+	private FrequencyCounter fontFrequencyCounter;
+	
+	private int mostPopularWordHeight = -1;
+	private String mostPopularFontStyle = "";
+	private String nextMostPopularFontStyle = "";
+	private String mostPopularFontStyleOnLastPage = "";
+	
+	// This the rectangle that holds the text of the main 'panel' 
+	// across the whole document (excluding footers and headers)
+	private SpatialEntity bodyTextFrame;
+
+	private boolean jPedalDecodeFailed;
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	
+	public LapdfDocument(File pdfFile) {
+		this.setPdfFile(pdfFile);
+		this.setAvgHeightFrequencyCounter(new IntegerFrequencyCounter(1));
+		this.setFontFrequencyCounter(new FrequencyCounter());
+	}
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	public boolean hasjPedalDecodeFailed() {
+		return jPedalDecodeFailed;
+	}
+
+	public void setjPedalDecodeFailed(boolean jPedalDecodeFailed) {
+		this.jPedalDecodeFailed = jPedalDecodeFailed;
+	}
+
+	public int getTotalNumberOfPages() {
+		return this.pageList.size();
+	}
+
+	public File getPdfFile() {
+		return pdfFile;
+	}
+
+	public void setPdfFile(File pdfFile) {
+		this.pdfFile = pdfFile;
+	}
+
+	public IntegerFrequencyCounter getAvgHeightFrequencyCounter() {
+		return avgHeightFrequencyCounter;
+	}
+
+	public void setAvgHeightFrequencyCounter(IntegerFrequencyCounter avgHeightFrequencyCounter) {
+		this.avgHeightFrequencyCounter = avgHeightFrequencyCounter;
+	}
+	
+	public FrequencyCounter getFontFrequencyCounter() {
+		return fontFrequencyCounter;
+	}
+
+	public void setFontFrequencyCounter(FrequencyCounter fontFrequencyCounter) {
+		this.fontFrequencyCounter = fontFrequencyCounter;
+	}
+
+	public SpatialEntity getBodyTextFrame() {
+		return bodyTextFrame;
+	}
+
+	public void setBodyTextFrame(SpatialEntity bodyTextFrame) {
+		this.bodyTextFrame = bodyTextFrame;
+	}
+
+	public String getMostPopularFontStyle() {
+		return mostPopularFontStyle;
+	}
+
+	public void setMostPopularFontStyle(String mostPopularFontStyle) {
+		this.mostPopularFontStyle = mostPopularFontStyle;
+	}
+
+	public String getNextMostPopularFontStyle() {
+		return nextMostPopularFontStyle;
+	}
+
+	public void setNextMostPopularFontStyle(String nextMostPopularFontStyle) {
+		this.nextMostPopularFontStyle = nextMostPopularFontStyle;
+	}
+
+	public String getMostPopularFontStyleOnLastPage() {
+		return mostPopularFontStyleOnLastPage;
+	}
+
+	public void setMostPopularFontStyleOnLastPage(
+			String mostPopularFontStyleOnLastPage) {
+		this.mostPopularFontStyleOnLastPage = mostPopularFontStyleOnLastPage;
+	}
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	public void addPages(List<PageBlock> pageList) {
+		this.pageList = new ArrayList<PageBlock>(pageList);
+	}
+
+	public PageBlock getPage(int pageNumber) {
+
+		return pageList.get(pageNumber - 1);
+	}
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	public ChunkBlock getLastChunkBlock(ChunkBlock chunk)
+			throws InvalidPopularSpaceValueException {
+		
+		int pageNumber = ((PageBlock) chunk.getContainer()).getPageNumber();
+		PageBlock page = this.getPage(pageNumber);
+		
+		if (page.getMostPopularVerticalSpaceBetweenWordsPage() < 0
+				&& page.getMostPopularWordHeightPage() > page
+						.getMostPopularWordWidthPage() * 2) {
+			// page.getMostPopularWordHeightPage()>page.getMostPopularWordWidthPage()*2
+			
+			System.err.println(
+					"Possible page with vertical text flow at page number +"
+					+ pageNumber);
+
+			// throw new
+			// InvalidPopularSpaceValueException("Possible page with vertical text flow at page number +"+pageNumber);
+		}
+
+		if (chunk.readLastChunkBlock() != null) {
+			// System.out.println("Same page");
+			return chunk.readLastChunkBlock();
+		} else {
+			pageNumber = ((PageBlock) chunk.getContainer()).getPageNumber() - 1;
+
+			if (pageNumber == 0) {
+				return null;
+			}
+
+			page = this.getPage(pageNumber);
+			List<ChunkBlock> sortedChunkBlockList = page
+					.getAllChunkBlocks(SpatialOrdering.COLUMN_AWARE_MIXED_MODE);
+			// System.out.println("Page:"+ pageNumber);
+			return sortedChunkBlockList.get(sortedChunkBlockList.size() - 1);
+		}
+
+	}
+
+	public int readMostPopularWordHeight() {
+		
+		if( this.mostPopularWordHeight != -1 )
+			return this.mostPopularWordHeight;
+		
+		int mp = this.avgHeightFrequencyCounter.getMostPopular();
+		double mpCount = this.avgHeightFrequencyCounter.getCount(mp);
+		int nmp = this.avgHeightFrequencyCounter.getNextMostPopular();
+		double nmpCount = this.avgHeightFrequencyCounter.getCount(nmp);
+		double ratio = nmpCount / mpCount;
+
+		// Sneaky check for long reference sections
+		if (nmp > mp && ratio > 0.8) {
+			mostPopularWordHeight = nmp;
+		} else {
+			mostPopularWordHeight = mp;
+		}
+
+		return mostPopularWordHeight;
+	}	
+	
+	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	public void packForSerialization() {
+
+		this.setBodyTextFrame(null);
+		for (int i = 1; i <= this.getTotalNumberOfPages(); i++) {	
+			RTPageBlock page = (RTPageBlock) this.getPage(i);
+			page.packForSerialization();
+		}	
+	
+	}
+	
+	public void unpackFromSerialization() {
+	
+		for (int i = 1; i <= this.getTotalNumberOfPages(); i++) {	
+			RTPageBlock page = (RTPageBlock) this.getPage(i);
+			page.unpackFromSerialization();
+		}	
+		this.calculateBodyTextFrame();
+		
+	}
+
+	public void calculateBodyTextFrame() {
+
+		String mp = (String) this.fontFrequencyCounter.getMostPopular();
+		String[] mpArray = mp.split(";");
+		
+		int x_min = 10000;
+		int y_min = 10000;
+		int x_max = -1;
+		int y_max = -1;
+		
+		Iterator<PageBlock> pgIt = this.pageList.iterator();
+		while( pgIt.hasNext() ) {
+			PageBlock pg = pgIt.next();
+			
+			Iterator<WordBlock> wdIt = pg.getAllWordBlocks(SpatialOrdering.MIXED_MODE).iterator();
+			while( wdIt.hasNext() ) {
+				WordBlock wd = wdIt.next();
+
+				if( wd.getFont() == null || wd.getFontStyle() == null) 
+					continue;
+				
+				if( wd.getFont().equals(mpArray[0]) && 
+						wd.getFontStyle().equals(mpArray[1]) ) {
+				
+					if( wd.getX1() < x_min )
+						 x_min = wd.getX1();
+					if( wd.getX2() > x_max )
+						 x_max = wd.getX2();
+					if( wd.getY1() < y_min )
+						 y_min = wd.getY1();
+					if( wd.getY2() > y_max )
+						 y_max = wd.getY2();
+					
+				}
+			
+			}
+		
+		}
+		
+		this.setBodyTextFrame(new RTSpatialEntity(
+				(float) x_min, (float) y_min, (float) x_max, (float) y_max
+				));
+		
+	}
+
+	public void calculateMostPopularFontStyles() {
+
+		String lastPage = this.readMostPopularFontStyleOnLastPage();
+
+		String mp = (String) this.fontFrequencyCounter.getMostPopular();
+		String nmp = (String) this.fontFrequencyCounter.getNextMostPopular();
+		String nnmp = (String) this.fontFrequencyCounter.getThirdMostPopular();
+
+		if( mp.equals( lastPage ) ) {
+			
+			this.setMostPopularFontStyle(nmp);
+			this.setNextMostPopularFontStyle(nnmp);
+			
+		} else if( nmp.equals( lastPage ) ) {
+
+			this.setMostPopularFontStyle(mp);
+			this.setNextMostPopularFontStyle(nnmp);
+			
+		} else {
+
+			this.setMostPopularFontStyle(mp);
+			this.setNextMostPopularFontStyle(nmp);
+
+		}
+		
+	}
+
+	public String readMostPopularFontStyleOnLastPage() {
+
+		if( this.getMostPopularFontStyleOnLastPage() != null &&
+				this.getMostPopularFontStyleOnLastPage().length() > 0 ) {
+
+			return this.getMostPopularFontStyleOnLastPage();
+		
+		}
+		
+		this.setMostPopularFontStyle((String) this.fontFrequencyCounter.getMostPopular() );
+	
+		FrequencyCounter freq = new FrequencyCounter ();
+		
+		Iterator<PageBlock> pgIt = this.pageList.iterator();
+		while( pgIt.hasNext() ) {
+			PageBlock pg = pgIt.next();
+			
+			if( pg.getPageNumber() < this.pageList.size() ) {
+				continue;
+			}
+
+			
+			Iterator<WordBlock> wdIt = pg.getAllWordBlocks(SpatialOrdering.MIXED_MODE).iterator();
+			while( wdIt.hasNext() ) {
+				WordBlock wd = wdIt.next();
+
+				if( wd.getFont() == null || wd.getFontStyle() == null) 
+					continue;
+				
+				freq.add( wd.getFont() + ";" + wd.getFontStyle() );
+								
+			}
+		
+		}
+		
+		this.setMostPopularFontStyleOnLastPage((String) freq.getMostPopular() );
+		
+		return this.getMostPopularFontStyleOnLastPage();
+				
+	}
+	
+	
+}
+src/main/java/edu/isi/bmkeg/lapdf/text/SpatiallyOrderedChunkTypeFilteredTextWriter.java
+public class SpatiallyOrderedChunkTypeFilteredTextWriter implements TextWriter
+{
+	private boolean appendFigureLegendsToEnd;
+	private boolean appendTablesToEnd;
+	private StringBuilder text;
+	private StringBuilder figureLegend;
+	private StringBuilder tableText;
+	public SpatiallyOrderedChunkTypeFilteredTextWriter(boolean appendFigureLegendsToEnd,boolean appendTablesToEnd)
+	{
+		this.appendFigureLegendsToEnd = appendFigureLegendsToEnd;
+		this.appendTablesToEnd = appendFigureLegendsToEnd;
+	}
+	
+	@Override
+	public void write(LapdfDocument document, String outputFilename) throws IOException,FileNotFoundException
+	{
+		text = new StringBuilder();
+		if(appendFigureLegendsToEnd){
+			figureLegend = new StringBuilder();
+		}
+		if(appendTablesToEnd){
+			tableText = new StringBuilder();
+		}
+		int totalNumberOfPages = document.getTotalNumberOfPages();
+		PageBlock page;
+		boolean startRecording = true;
+		for (int i = 1; i <= totalNumberOfPages; i++)
+		{
+			page = document.getPage(i);
+			List<ChunkBlock> chunksPerPage = page.getAllChunkBlocks(SpatialOrdering.PAGE_COLUMN_AWARE_MIXED_MODE);
+			for(ChunkBlock chunkBlock:chunksPerPage){
+				if(chunkBlock.getType().equals(ChunkBlock.TYPE_ABSTRACT_HEADING)||chunkBlock.getType().equals(ChunkBlock.TYPE_ABSTRACT_BODY)||chunkBlock.getType().equals(ChunkBlock.TYPE_INTRODUCTION_HEADING)||chunkBlock.getType().equals(ChunkBlock.TYPE_INTRODUCTION_BODY)){
+					startRecording = true;
+				}
+				if (startRecording)
+				{
+					if (!chunkBlock.getType().equals(ChunkBlock.TYPE_TABLE)&&!chunkBlock.getType().equals(ChunkBlock.TYPE_FIGURE_LEGEND) && !chunkBlock.getType().equals(chunkBlock.TYPE_FOOTER) && !chunkBlock.getType().equals(chunkBlock.TYPE_HEADER)&& !chunkBlock.getType().equals(chunkBlock.TYPE_AUTHORS)&& !chunkBlock.getType().equals(chunkBlock.TYPE_AFFLIATION))
+					{
+						text.append(chunkBlock.readChunkText() + "\n");
+						
+					}
+					if (chunkBlock.getType().equals(ChunkBlock.TYPE_FIGURE_LEGEND))
+					{
+						if (appendFigureLegendsToEnd)
+						{
+							figureLegend.append(chunkBlock.readChunkText() + "\n");
+						}else{
+							text.append(chunkBlock.readChunkText() + "\n");
+						}
+					}
+					if(chunkBlock.getType().equals(ChunkBlock.TYPE_TABLE)){
+						if(appendTablesToEnd){
+							tableText.append(chunkBlock.readChunkText() + "\n");
+						}else{
+							text.append(chunkBlock.readChunkText() + "\n");
+						}
+					}
+				}
+			}
+		}
+		if (appendFigureLegendsToEnd)
+		{
+			text.append(figureLegend);
+		}
+		if(appendTablesToEnd){
+			text.append(tableText);
+		}
+		ReadWriteTextFileWithEncoding.write(outputFilename, TextWriter.UTF_8, text.toString());
+		
+	}
+
+		
+	
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/parser/RuleBasedParser.java
+public class RuleBasedParser implements Parser {
+
+	private static Logger logger = Logger.getLogger(RuleBasedParser.class);
+
+	private boolean debugImages = false;
+
+	private ArrayList<PageBlock> pageList;
+	
+	private JPedalExtractor extractor;
+	
+	private int idGenerator;
+	
+	private IntegerFrequencyCounter avgHeightFrequencyCounter;
+
+	private FrequencyCounter fontFrequencyCounter;
+	
+	private int northSouthSpacing;
+	
+	private int eastWestSpacing;
+	
+	protected AbstractModelFactory modelFactory;
+	
+	protected String path;
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	
+	public String getPath() {
+		return path;
+	}
+
+	public void setPath(String path) {
+		this.path = path;
+	}
+	
+	private boolean isDebugImages() {
+		return debugImages;
+	}
+
+	private void setDebugImages(boolean debugImages) {
+		this.debugImages = debugImages;
+	}
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	public RuleBasedParser(AbstractModelFactory modelFactory)
+			throws Exception {
+
+		pageList = new ArrayList<PageBlock>();
+		extractor = new JPedalExtractor(modelFactory);
+
+		idGenerator = 1;
+		this.avgHeightFrequencyCounter = new IntegerFrequencyCounter(1);
+		this.fontFrequencyCounter = new FrequencyCounter();
+
+		this.modelFactory = modelFactory;
+
+	}
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	@Override
+	public LapdfDocument parse(File file) 
+			throws Exception {
+
+		LapdfDocument document = null;
+
+		init(file);
+		List<WordBlock> pageWordBlockList = null;
+		PageBlock pageBlock = null;
+		int pageCounter = 1;
+
+		document = new LapdfDocument(file);
+		document.setjPedalDecodeFailed(true);
+
+		while (extractor.hasNext()) {
+			
+			document.setjPedalDecodeFailed(false);
+			
+			pageBlock = modelFactory.createPageBlock(
+					pageCounter++,
+					extractor.getCurrentPageBoxWidth(),
+					extractor.getCurrentPageBoxHeight(), 
+					document);
+			
+			pageList.add(pageBlock);
+			
+			pageWordBlockList = extractor.next();
+
+			idGenerator = pageBlock.initialize(pageWordBlockList, idGenerator);
+
+			this.eastWestSpacing = pageBlock.getMostPopularWordHeightPage()
+					+ pageBlock.getMostPopularHorizontalSpaceBetweenWordsPage();
+			
+			logger.debug(this.eastWestSpacing);
+			
+			this.northSouthSpacing = pageBlock.getMostPopularWordHeightPage()
+					+ pageBlock.getMostPopularVerticalSpaceBetweenWordsPage();
+
+			buildChunkBlocks(pageWordBlockList, pageBlock);
+
+			if (isDebugImages()) {
+				PageImageOutlineRenderer.createPageImage(
+						pageBlock,
+						file,
+						file.getName() + "afterBuildBlocks"
+								+ pageBlock.getPageNumber() + ".png", 0);
+			}
+
+		}
+
+		//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		
+		if (!document.hasjPedalDecodeFailed()) {
+
+			// initial parse is commplete. 
+			String s = file.getName().replaceAll("\\.pdf", "");
+			Pattern p = Pattern.compile("(\\d+)");
+			Matcher m = p.matcher(file.getName());
+			if( m.find() ) {
+				s = m.group(1);
+			}
+
+			for (PageBlock page : pageList) {
+
+				if (isDebugImages()) {
+					PageImageOutlineRenderer.createPageImage(page, file,
+							file.getName()
+									+ "beforeBuildBlocksOverlapDeletion_"
+									+ s + "_" + page.getPageNumber()
+									+ ".png", 0);
+				}
+
+				this.deleteHighlyOverlappedChunkBlocks(page);
+
+				if (isDebugImages()) {
+					PageImageOutlineRenderer.createPageImage(page, file,
+							file.getName() + "afterBuildBlocksOverlapDeletion_"
+									+ s + "_" + page.getPageNumber()
+									+ ".png", 0);
+				}
+
+				this.divideBlocksVertically(page);
+
+				if (isDebugImages()) {
+
+					PageImageOutlineRenderer.createPageImage(page, file,
+							file.getName() + "afterVerticalDivide_" + s
+									+ "_" + page.getPageNumber() + ".png", 0);
+				}
+
+				this.joinLines(page);
+
+				if (isDebugImages()) {
+					PageImageOutlineRenderer.createPageImage(page, file,
+							file.getName() + "afterJoinLines_" + s + "_"
+									+ page.getPageNumber() + ".png", 0);
+				}
+
+				this.divideBlocksHorizontally(page);
+
+				if (isDebugImages()) {
+					PageImageOutlineRenderer.createPageImage(page, file,
+							file.getName() + "afterHorizontalDivide_" + s
+									+ "_" + page.getPageNumber() + ".png", 0);
+				}
+
+				this.deleteHighlyOverlappedChunkBlocks(page);
+
+				if (isDebugImages()) {
+					PageImageOutlineRenderer.createPageImage(page, file,
+							file.getName() + "/afterOverlapDeletion_" + s
+									+ "_" + page.getPageNumber() + ".png", 0);
+				}
+
+			}
+
+			document.addPages(pageList);
+
+			document.calculateBodyTextFrame();
+			document.calculateMostPopularFontStyles();
+
+		}
+
+		return document;
+	}
+
+	private void init(File file) throws Exception {
+
+		extractor.init(file);
+		idGenerator = 1;
+		
+		this.avgHeightFrequencyCounter.reset();
+		this.fontFrequencyCounter.reset();
+
+		pageList.clear();
+
+	}
+	
+	private void buildChunkBlocks(List<WordBlock> pageWordBlockList,
+			PageBlock pageBlock) {
+
+		ChunkBlock chunkBlock = null;
+
+		LinkedBlockingQueue<WordBlock> wordBlockList = new LinkedBlockingQueue<WordBlock>();
+		ArrayList<WordBlock> seenList = new ArrayList<WordBlock>();
+		List tempList;
+		int counter;
+		ArrayList<ChunkBlock> chunkBlockList = new ArrayList<ChunkBlock>();
+
+		while (pageWordBlockList.size() > 0) {
+			wordBlockList.clear();
+			wordBlockList.add(pageWordBlockList.get(0));
+
+			counter = 0;
+			int extra;
+			seenList.clear();
+
+			while (wordBlockList.size() != 0) {
+
+				WordBlock wordBlock = wordBlockList.peek();
+
+				pageBlock.getDocument().getAvgHeightFrequencyCounter().add(
+						wordBlock.getHeight()
+						);
+				pageBlock.getDocument().getFontFrequencyCounter().add(
+						wordBlock.getFont() + ";" + wordBlock.getFontStyle() 
+						);
+				
+				pageWordBlockList.remove(wordBlock);
+				tempList = this.getOverlappingNeighbors(pageBlock, wordBlock,
+						pageWordBlockList);
+
+				tempList.removeAll(wordBlockList);
+				tempList.removeAll(seenList);
+				wordBlockList.addAll(tempList);
+
+				seenList.add(wordBlockList.poll());
+			}
+
+			pageWordBlockList.removeAll(seenList);
+
+			chunkBlock = buildChunkBlock(seenList, pageBlock);
+
+			chunkBlockList.add(chunkBlock);
+
+		}
+
+		idGenerator = pageBlock.addAll(new ArrayList<SpatialEntity>(
+				chunkBlockList), idGenerator);
+
+	}
+
+	private List<WordBlock> getOverlappingNeighbors(
+			PageBlock pageBlock,
+			WordBlock wordBlock, 
+			List<WordBlock> pageWordList) {
+
+		// expand the current word.
+		int topX = wordBlock.getX1() - this.eastWestSpacing;
+		int topY = wordBlock.getY1() - this.northSouthSpacing;
+		int bottomX = wordBlock.getX2() + this.eastWestSpacing;
+		int bottomY = wordBlock.getY2() + this.northSouthSpacing;
+
+		SpatialEntity expandedWord = modelFactory.createWordBlock(
+				topX, topY, bottomX, bottomY, 
+				0, null, null, null);
+		
+		// find all overlapping words
+		TreeSet listOfInteresectingBlock = new TreeSet<SpatialEntity>(
+				new SpatialOrdering(SpatialOrdering.MIXED_MODE)
+				);
+		listOfInteresectingBlock.addAll(pageBlock.intersects(expandedWord, null));
+		listOfInteresectingBlock.retainAll(pageWordList);
+
+		List<WordBlock> overlappingNeighbors = 
+				new ArrayList<WordBlock>(listOfInteresectingBlock);
+		
+		return overlappingNeighbors;
+
+	}
+
+	private void divideBlocksVertically(PageBlock page)
+			throws InvalidPopularSpaceValueException {
+
+		List<ChunkBlock> chunkBlockList;
+		String leftRightMidline;
+		boolean leftFlush;
+		boolean rightFlush;
+
+		chunkBlockList = new ArrayList<ChunkBlock>(page.getAllChunkBlocks(null));
+
+		for (ChunkBlock chunky : chunkBlockList) {
+			leftRightMidline = chunky.readLeftRightMedLine();
+			leftFlush = chunky.isFlush(chunky.LEFT,
+					chunky.getMostPopularWordHeight() * 2);
+			rightFlush = chunky.isFlush(chunky.RIGHT,
+					chunky.getMostPopularWordHeight() * 2);
+			int deltaH = chunky.getMostPopularWordHeight()
+					- page.getDocument().readMostPopularWordHeight();
+			if (chunky.MIDLINE.equalsIgnoreCase(leftRightMidline)
+					&& (leftFlush || rightFlush) && deltaH < 3) {
+				if (verticalSplitCandidate(chunky))
+					this.splitBlockDownTheMiddle(chunky);
+			}
+		}
+
+	}
+
+	private boolean verticalSplitCandidate(ChunkBlock block)
+			throws InvalidPopularSpaceValueException {
+
+		// 0:x,1:width
+		ArrayList<Integer[]> spaceList = new ArrayList<Integer[]>();
+		int previousX = 0;
+
+		int previousWidth = 0;
+		int currentX = 0;
+		int currentY = 0;
+		int currentWidth = 0;
+		Integer[] currentSpace = new Integer[] { -1, -1 };
+		Integer[] currentWidestSpace = new Integer[] { -1, -1 };
+
+		PageBlock parent = (PageBlock) block.getContainer();
+		List<SpatialEntity> wordBlockList = parent.containsByType(block,
+				SpatialOrdering.MIXED_MODE, WordBlock.class);
+		int pageWidth = parent.getMargin()[2] - parent.getMargin()[0];
+		int marginHeight = parent.getMargin()[3] - parent.getMargin()[1];
+		int averageWidth = 0;
+		float spaceWidthToPageWidth = 0;
+
+		for (int i = 0; i < wordBlockList.size(); i++) {
+			WordBlock wordBlock = (WordBlock) wordBlockList.get(i);
+
+			// New line started
+			if (i == 0
+					|| Math.abs(((double) (wordBlock.getY1() - currentY) / (double) marginHeight)) > 0.01) {
+
+				currentY = wordBlock.getY1();
+				currentX = wordBlock.getX1();
+				currentWidth = wordBlock.getWidth();
+				if (currentWidestSpace[1] > 0) {
+					spaceList.add(new Integer[] { currentWidestSpace[0],
+							currentWidestSpace[1] });
+				}
+				currentWidestSpace[0] = -1;
+				currentWidestSpace[1] = -1;
+				continue;
+			}
+
+			// Continuing current line
+			previousX = currentX;
+			previousWidth = currentWidth;
+			currentY = wordBlock.getY1();
+			currentX = wordBlock.getX1();
+			currentWidth = wordBlock.getWidth();
+			currentSpace[1] = currentX - (previousX + previousWidth);
+			currentSpace[0] = currentX + currentWidth;
+
+			if (currentWidestSpace[1] == -1
+					|| currentSpace[1] > currentWidestSpace[1]) {
+				currentWidestSpace[0] = currentSpace[0];
+				currentWidestSpace[1] = currentSpace[1];
+			}
+		}
+
+		// Criterium for whether the widest spaces are properly lined up:
+		// At least 20% of them have an x position within that differ with less
+		// than 1% to the x position of the previous space.
+		// The average x position doesn't matter!
+		if (spaceList.size() <= 0)
+			return false;
+
+		// Find average width of the widest spaces and make sure it's at least
+		// as wide as 2.5% of the page width.
+		for (int i = 0; i < spaceList.size(); i++)
+			averageWidth += spaceList.get(i)[1];
+		averageWidth = averageWidth / spaceList.size();
+		// spaceWidthToPageWidth = (float) averageWidth / (float) pageWidth;
+
+		/*
+		 * if (spaceWidthToPageWidth > 0.015) return true; else return false;
+		 */
+		if (averageWidth > parent
+				.getMostPopularHorizontalSpaceBetweenWordsPage())
+			return true;
+		else
+			return false;
+	}
+
+	private void splitBlockDownTheMiddle(ChunkBlock block) {
+
+		PageBlock parent = (PageBlock) block.getContainer();
+		int median = parent.getMedian();
+		ArrayList<WordBlock> leftBlocks = new ArrayList<WordBlock>();
+		ArrayList<WordBlock> rigthBlocks = new ArrayList<WordBlock>();
+		List<SpatialEntity> wordBlockList = parent.containsByType(block,
+				SpatialOrdering.MIXED_MODE, WordBlock.class);
+		String wordBlockLeftRightMidLine;
+		for (int i = 0; i < wordBlockList.size(); i++) {
+			WordBlock wordBlock = (WordBlock) wordBlockList.get(i);
+			wordBlockLeftRightMidLine = wordBlock.readLeftRightMedLine();
+
+			if (wordBlockLeftRightMidLine.equals(Block.LEFT))
+				leftBlocks.add(wordBlock);
+			else if (wordBlockLeftRightMidLine.equals(Block.RIGHT))
+				rigthBlocks.add(wordBlock);
+			else if (wordBlockLeftRightMidLine.equals(Block.MIDLINE)) {
+				// Assign the current word to the left or right side depending
+				// upon
+				// whether most of the word is on the left or right side of the
+				// median.
+
+				if (Math.abs(median - wordBlock.getX1()) > Math.abs(wordBlock
+						.getX2() - median)) {
+					wordBlock.resize(wordBlock.getX1(), wordBlock.getY1(),
+							median - wordBlock.getX1(), wordBlock.getHeight());
+
+				} else {
+					wordBlock.resize(median, wordBlock.getY1(),
+							wordBlock.getX2() - median, wordBlock.getHeight());
+					rigthBlocks.add(wordBlock);
+
+				}
+
+			}
+		}// END for
+
+		if (leftBlocks.size() == 0 || rigthBlocks.size() == 0)
+			return;
+		
+		ChunkBlock leftChunkBlock = buildChunkBlock(leftBlocks, parent);
+		ChunkBlock rightChunkBlock = buildChunkBlock(rigthBlocks, parent);
+
+		SpatialEntity entity = modelFactory.createWordBlock(
+				leftChunkBlock.getX2() + 1, leftChunkBlock.getY1(),
+				rightChunkBlock.getX1() - 1, rightChunkBlock.getY2(), 0, null,
+				null, null);
+		if (parent.intersectsByType(entity, null, WordBlock.class).size() >= 1) {
+			if (block == null) {
+				logger.info("null null");
+			}
+			for (SpatialEntity wordBlockEntity : wordBlockList)
+				((Block) wordBlockEntity).setContainer(block);
+
+			return;
+		}
+
+		double relative_overlap = leftChunkBlock
+				.getRelativeOverlap(rightChunkBlock);
+		if (relative_overlap < 0.1) {
+			parent.delete(block, block.getId());
+			parent.add(leftChunkBlock, idGenerator++);
+			parent.add(rightChunkBlock, idGenerator++);
+		}
+
+	}
+
+	private ChunkBlock buildChunkBlock(List<WordBlock> wordBlockList,
+			PageBlock pageBlock) {
+
+		ChunkBlock chunkBlock = null;
+		
+		IntegerFrequencyCounter lineHeightFrequencyCounter = new IntegerFrequencyCounter(1);
+		IntegerFrequencyCounter spaceFrequencyCounter = new IntegerFrequencyCounter(0);
+		FrequencyCounter fontFrequencyCounter = new FrequencyCounter();
+		FrequencyCounter styleFrequencyCounter = new FrequencyCounter();
+
+		for (WordBlock wordBlock : wordBlockList) {
+			
+			lineHeightFrequencyCounter.add(wordBlock.getHeight());
+			spaceFrequencyCounter.add(wordBlock.getSpaceWidth());
+
+			avgHeightFrequencyCounter.add(wordBlock.getHeight());
+			fontFrequencyCounter.add(wordBlock.getFont());
+			styleFrequencyCounter.add(wordBlock.getFontStyle());
+			
+			if (chunkBlock == null) {
+
+				chunkBlock = modelFactory
+						.createChunkBlock(wordBlock.getX1(), wordBlock.getY1(),
+								wordBlock.getX2(), wordBlock.getY2());
+
+			} else {
+			
+				SpatialEntity spatialEntity = chunkBlock.union(wordBlock);
+				chunkBlock.resize(spatialEntity.getX1(), spatialEntity.getY1(),
+						spatialEntity.getWidth(), spatialEntity.getHeight());
+
+			}
+
+			wordBlock.setContainer(chunkBlock);
+
+		}
+		
+		chunkBlock.setMostPopularWordFont(
+				(String) fontFrequencyCounter.getMostPopular()
+				);
+
+		chunkBlock.setMostPopularWordStyle(
+				(String) styleFrequencyCounter.getMostPopular()
+				);
+		
+		chunkBlock.setMostPopularWordHeight(
+				lineHeightFrequencyCounter.getMostPopular()
+				);
+		
+		chunkBlock.setMostPopularWordSpaceWidth(
+				spaceFrequencyCounter.getMostPopular()
+				);
+		
+		chunkBlock.setContainer(pageBlock);
+		
+		return chunkBlock;
+
+	}
+
+	private void divideBlocksHorizontally(PageBlock page) {
+
+		List<ChunkBlock> chunkBlockList;
+		ArrayList<Integer> breaks;
+
+		chunkBlockList = page.getAllChunkBlocks(SpatialOrdering.MIXED_MODE);
+		for (ChunkBlock chunky : chunkBlockList) {
+			breaks = this.getBreaks(chunky);
+			if (breaks.size() > 0)
+				this.splitBlockByBreaks(chunky, breaks);
+		}
+
+	}
+
+	private ArrayList<Integer> getBreaks(ChunkBlock block) {
+		ArrayList<Integer> breaks = new ArrayList<Integer>();
+		PageBlock parent = (PageBlock) block.getContainer();
+
+		int mostPopulareWordHeightOverCorpora = parent.getDocument()
+				.readMostPopularWordHeight();
+
+		List<SpatialEntity> wordBlockList = parent.containsByType(block,
+				SpatialOrdering.MIXED_MODE, WordBlock.class);
+
+		WordBlock firstWordOnLine = (WordBlock) wordBlockList.get(0);
+		WordBlock lastWordOnLine = firstWordOnLine;
+
+		int lastY = firstWordOnLine.getY1() + firstWordOnLine.getHeight() / 2;
+		int currentY = lastY;
+
+		String chunkBlockString = "";
+
+		ArrayList<Integer> breakCandidates = new ArrayList<Integer>();
+
+		ArrayList<HorizontalSplitFeature> featureList = new ArrayList<HorizontalSplitFeature>();
+		HorizontalSplitFeature feature = new HorizontalSplitFeature();
+		for (SpatialEntity entity : wordBlockList) {
+			lastY = currentY;
+			WordBlock wordBlock = (WordBlock) entity;
+			currentY = wordBlock.getY1() + wordBlock.getHeight() / 2;
+
+			if (currentY > lastY + wordBlock.getHeight() / 2) {
+				feature.calculateFeatures(block, firstWordOnLine,
+						lastWordOnLine, chunkBlockString);
+				featureList.add(feature);
+				feature = new HorizontalSplitFeature();
+				breakCandidates
+						.add((lastWordOnLine.getY2() + wordBlock.getY1()) / 2);
+
+				firstWordOnLine = wordBlock;
+				lastWordOnLine = wordBlock;
+				chunkBlockString = "";
+
+			}
+			feature.addToFrequencyCounters(wordBlock.getFont(),
+					wordBlock.getFontStyle());
+			chunkBlockString = chunkBlockString + " " + wordBlock.getWord();
+			lastWordOnLine = wordBlock;
+		}
+		feature.calculateFeatures(block, firstWordOnLine, lastWordOnLine,
+				chunkBlockString);
+		featureList.add(feature);
+		feature = null;
+		HorizontalSplitFeature featureMinusOne;
+
+		// What kind of column is this?
+		//
+		// a. Titles and large-font blocks
+		// b. centered titles
+		// c. centered blocks
+		// d. text & titles in left or right columns
+		// e. references
+		// f. figure legends
+
+		for (int i = 1; i < featureList.size(); i++) {
+			featureMinusOne = featureList.get(i - 1);
+			feature = featureList.get(i);
+
+			if (featureMinusOne.isAllCapitals() && !feature.isAllCapitals()) {
+				breaks.add(breakCandidates.get(i - 1));
+			} else if (!featureMinusOne.isAllCapitals()
+					&& feature.isAllCapitals()) {
+				breaks.add(breakCandidates.get(i - 1));
+			} else if (featureMinusOne.getMostPopularFont() != null
+					&& feature.getMostPopularFont() == null) {
+				breaks.add(breakCandidates.get(i - 1));
+			} else if (featureMinusOne.getMostPopularFont() == null
+					&& feature.getMostPopularFont() != null) {
+				breaks.add(breakCandidates.get(i - 1));
+			} else if (!featureMinusOne.getMostPopularFont().equals(
+					feature.getMostPopularFont())
+					&& !feature.isMixedFont() && !featureMinusOne.isMixedFont()) {
+				breaks.add(breakCandidates.get(i - 1));
+			} else if (Math.abs(feature.getFirstWordOnLineHeight()
+					- featureMinusOne.getFirstWordOnLineHeight()) > 2) {
+				breaks.add(breakCandidates.get(i - 1));
+
+			} else if (Math.abs(feature.getMidYOfLastWordOnLine()
+					- featureMinusOne.getMidYOfLastWordOnLine()) > (feature
+					.getFirstWordOnLineHeight() + featureMinusOne
+					.getFirstWordOnLineHeight()) * 0.75) {
+				breaks.add(breakCandidates.get(i - 1));
+			} else if (Math.abs(featureMinusOne.getFirstWordOnLineHeight()
+					- mostPopulareWordHeightOverCorpora) <= 2
+					&& Math.abs(feature.getFirstWordOnLineHeight()
+							- mostPopulareWordHeightOverCorpora) <= 2
+					&& Math.abs(featureMinusOne.getMidOffset()) < 10
+					&& Math.abs(featureMinusOne.getExtremLeftOffset()) > 10
+					&& Math.abs(featureMinusOne.getExtremeRightOffset()) > 10
+					&& Math.abs(feature.getExtremLeftOffset()) < 20
+					&& Math.abs(feature.getExtremeRightOffset()) < 10) {
+				breaks.add(breakCandidates.get(i - 1));
+			} else if (Math.abs(feature.getFirstWordOnLineHeight()
+					- mostPopulareWordHeightOverCorpora) <= 2
+					&& Math.abs(feature.getMidOffset()) < 10
+					&& Math.abs(feature.getExtremLeftOffset()) > 10
+					&& Math.abs(feature.getExtremeRightOffset()) > 10
+					&& Math.abs(featureMinusOne.getExtremLeftOffset()) < 10) {
+				breaks.add(breakCandidates.get(i - 1));
+			} else if (featureMinusOne.isEndOFLine()
+					&& Math.abs(featureMinusOne.getFirstWordOnLineHeight()
+							- mostPopulareWordHeightOverCorpora) <= 2
+					&& (Math.abs(featureMinusOne.getExtremeRightOffset()) > 10 || Math
+							.abs(feature.getExtremLeftOffset()) > 10)) {
+				breaks.add(breakCandidates.get(i - 1));
+			}
+
+		}
+
+		return breaks;
+	}
+
+	private void splitBlockByBreaks(ChunkBlock block, ArrayList<Integer> breaks) {
+
+		Collections.sort(breaks);
+		PageBlock parent = (PageBlock) block.getContainer();
+
+		List<SpatialEntity> wordBlockList = parent.containsByType(block,
+				SpatialOrdering.MIXED_MODE, WordBlock.class);
+
+		int y;
+		int breakIndex;
+		ArrayList<ArrayList<WordBlock>> bigBlockList = new ArrayList<ArrayList<WordBlock>>();
+		for (int j = 0; j < breaks.size() + 1; j++) {
+			ArrayList<WordBlock> littleBlockList = new ArrayList<WordBlock>();
+			bigBlockList.add(littleBlockList);
+		}
+
+		for (SpatialEntity entity : wordBlockList) {
+			WordBlock wordBlock = (WordBlock) entity;
+			y = wordBlock.getY1() + wordBlock.getHeight() / 2;
+			breakIndex = Collections.binarySearch(breaks, y);
+			if (breakIndex < 0) {
+				breakIndex = -1 * breakIndex - 1;
+				bigBlockList.get(breakIndex).add(wordBlock);
+
+			} else {
+				bigBlockList.get(breakIndex).add(wordBlock);
+			}
+		}
+		ChunkBlock chunky;
+		TreeSet<ChunkBlock> chunkBlockList = new TreeSet<ChunkBlock>(
+				new SpatialOrdering(SpatialOrdering.MIXED_MODE));
+		for (ArrayList<WordBlock> list : bigBlockList) {
+			if (list.size() == 0)
+				continue;
+			chunky = this.buildChunkBlock(list, parent);
+			chunkBlockList.add(chunky);
+
+		}
+		parent.delete(block, block.getId());
+		idGenerator = parent.addAll(
+				new ArrayList<SpatialEntity>(chunkBlockList), idGenerator);
+	}
+
+	private void joinLines(PageBlock page) {
+
+		LinkedBlockingQueue<ChunkBlock> chunkBlockList = new LinkedBlockingQueue<ChunkBlock>(
+				page.getAllChunkBlocks(SpatialOrdering.MIXED_MODE));
+		List wordBlockList;
+
+		int midY;
+		ChunkBlock chunky = null;
+		List<SpatialEntity> neighbouringChunkBlockList;
+		ChunkBlock neighbouringChunkBlock;
+		ArrayList<SpatialEntity> removalList = new ArrayList<SpatialEntity>();
+		while (chunkBlockList.size() > 0) {
+
+			chunky = chunkBlockList.peek();
+
+			wordBlockList = page.containsByType(chunky, null, WordBlock.class);
+			if (wordBlockList.size() < 4 && chunky.readNumberOfLine() == 1) {
+
+				neighbouringChunkBlockList = page.intersectsByType(
+						calculateBoundariesForJoin(chunky, page),
+						SpatialOrdering.MIXED_MODE, ChunkBlock.class);
+
+				if (neighbouringChunkBlockList.size() <= 1) {
+					chunkBlockList.poll();
+					continue;
+				}
+				for (SpatialEntity entity : neighbouringChunkBlockList) {
+					neighbouringChunkBlock = (ChunkBlock) entity;
+					if (neighbouringChunkBlock.equals(chunky))
+						continue;
+					midY = chunky.getY1() + chunky.getHeight() / 2;
+					if (neighbouringChunkBlock.getY1() < midY
+							&& neighbouringChunkBlock.getY2() > midY
+							&& ((neighbouringChunkBlock.getX2() < chunky
+									.getX1() && neighbouringChunkBlock
+									.readNumberOfLine() < 3) || (neighbouringChunkBlock
+									.getX1() > chunky.getX2() && neighbouringChunkBlock
+									.readNumberOfLine() == 1))) {
+						removalList.add(neighbouringChunkBlock);
+						wordBlockList.addAll(page.containsByType(
+								neighbouringChunkBlock, null, WordBlock.class));
+
+					}
+				}
+
+				if (removalList.size() > 0) {
+
+					ChunkBlock newChunkBlock = this.buildChunkBlock(
+							wordBlockList, page);
+					page.add(newChunkBlock, idGenerator++);
+					page.delete(chunky, chunky.getId());
+					chunkBlockList.removeAll(removalList);
+					for (SpatialEntity forDeleteEntity : removalList) {
+						page.delete(forDeleteEntity, forDeleteEntity.getId());
+					}
+				}
+
+			}
+			removalList.clear();
+
+			chunkBlockList.poll();
+
+		}
+
+	}
+
+	private SpatialEntity calculateBoundariesForJoin(ChunkBlock chunk,
+			PageBlock parent) {
+
+		SpatialEntity entity = null;
+		int x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+		int width = parent.getMargin()[2] - parent.getMargin()[0];
+		int height = parent.getMargin()[3] - parent.getMargin()[1];
+		String lrm = chunk.readLeftRightMedLine();
+
+		width = (int) (width * 0.25);
+		y1 = chunk.getY1();
+		y2 = chunk.getY2();
+		if (Block.LEFT.equalsIgnoreCase(lrm)) {
+			// TODO:Use reflection
+
+			x1 = (chunk.getX1() - width <= 0) ? parent.getMargin()[0] : chunk
+					.getX1() - width;
+			x2 = (chunk.getX2() + width >= parent.getMedian()) ? parent
+					.getMedian() : chunk.getX2() + width;
+
+			entity = modelFactory.createChunkBlock(x1, y1, x2, y2);
+
+		} else if (Block.RIGHT.equalsIgnoreCase(lrm)) {
+
+			x1 = (chunk.getX1() - width <= parent.getMedian()) ? parent
+					.getMedian() : chunk.getX1() - width;
+			x2 = (chunk.getX2() + width >= parent.getMargin()[2]) ? parent
+					.getMargin()[2] : chunk.getX2() + width;
+
+			entity = modelFactory.createChunkBlock(x1, y1, x2, y2);
+
+		} else {
+
+			x1 = (chunk.getX1() - width <= 0) ? parent.getMargin()[0] : chunk
+					.getX1() - width;
+			x2 = (chunk.getX2() + width >= parent.getMargin()[2]) ? parent
+					.getMargin()[2] : chunk.getX2() + width;
+			entity = modelFactory.createChunkBlock(x1, y1, x2, y2);
+		}
+
+		return entity;
+
+	}
+
+	private void deleteHighlyOverlappedChunkBlocks(PageBlock page) {
+		
+		List<ChunkBlock> chunkBlockList = page.getAllChunkBlocks(
+				SpatialOrdering.MIXED_MODE
+				);
+		
+		ChunkBlock chunky;
+		ChunkBlock neighbourChunk;
+		List<SpatialEntity> neighbouringChunkBlockList;
+		List<SpatialEntity> wordList;
+		SpatialEntity intersectingRectangle;
+		double property1, property2;
+
+		for (SpatialEntity entity : chunkBlockList) {
+
+			chunky = (ChunkBlock) entity;
+
+			neighbouringChunkBlockList = page.intersectsByType(chunky,
+					SpatialOrdering.MIXED_MODE, ChunkBlock.class);
+
+			for (SpatialEntity neighbourEntity : neighbouringChunkBlockList) {
+
+				neighbourChunk = (ChunkBlock) neighbourEntity;
+
+				intersectingRectangle = chunky
+						.getIntersectingRectangle(neighbourChunk);
+
+				property1 = (intersectingRectangle.getHeight() * intersectingRectangle
+						.getWidth())
+						/ (double) (chunky.getWidth() * chunky.getHeight());
+
+				property2 = (double) (intersectingRectangle.getHeight() * intersectingRectangle
+						.getWidth())
+						/ (double) (neighbourChunk.getWidth() * neighbourChunk
+								.getHeight());
+
+				if (property1 > property2 && property1 > 0.9) {
+					wordList = page.containsByType(chunky, null,
+							WordBlock.class);
+
+					for (SpatialEntity wordEntity : wordList)
+						((Block) wordEntity).setContainer(neighbourChunk);
+					page.delete(chunky, chunky.getId());
+
+				}
+
+				if (property2 > property1 && property2 > 0.9) {
+					wordList = page.containsByType(neighbourChunk, null,
+							WordBlock.class);
+
+					for (SpatialEntity wordEntity : wordList)
+						((Block) wordEntity).setContainer(chunky);
+					page.delete(neighbourChunk, neighbourChunk.getId());
+
+				}
+
+			}
+
+		}
+
+	}
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/model/PageBlock.java
+public interface PageBlock extends Block, SpatialRepresentation {
+
+	public int getPageNumber();
+
+	public int initialize(List<WordBlock> list, int startId);
+
+	public int getPageBoxHeight();
+
+	public int getPageBoxWidth();
+
+	public LapdfDocument getDocument();
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/xml/OpenAccessXMLWriter.java
+public class OpenAccessXMLWriter implements XMLWriter {
+
+	public static final String ENCODING = "UTF-8";
+	public static final String ELEMENT_NAME_SECTION = "sec";
+	public static final String SECTION_ATTRIBUTE_SEC_TYPE = "sec-type";
+	public static final String ELEMENT_NAME_TITLE = "title";
+	public static final String ELEMENT_NAME_PARAGRAPH = "p";
+	public static final String ELEMENT_NAME_ARTICLE = "article";
+	public static final String ELEMENT_NAME_BODY = "body";
+	public static final String ELEMENT_NAME_ABSTRACT = "abstract";
+	public static final String ELEMENT_NAME_FRONT = "front";
+	public static final String ELEMENT_NAME_ARTICLE_META = "article-meta";
+	public static final String ELEMENT_NAME_ACKNOWLEDGEMENT = "ack";
+	public static final String ELEMENT_NAME_BACK = "back";
+	public static final String ELEMENT_NAME_REFERENCES = "ref";
+	public static final AttributesImpl emptyAttribute = new AttributesImpl();
+	public HashMap<String, ArrayList<ChunkBlock>> mappedDocument = new HashMap<String, ArrayList<ChunkBlock>>();
+
+	@Override
+	public void write(LapdfDocument document, String outputFilename) {
+		try {
+			FileOutputStream XMLOutputFileStream;
+			XMLOutputFileStream = new FileOutputStream(outputFilename);
+
+			OutputFormat XMLOutputFormat = new OutputFormat("XML", ENCODING,
+					false);
+			XMLSerializer serializer = new XMLSerializer(XMLOutputFileStream,
+					XMLOutputFormat);
+			ContentHandler documentContentHandler = serializer
+					.asContentHandler();
+			populateMap(document);
+
+			documentContentHandler.startDocument();
+			documentContentHandler.startElement("", "", ELEMENT_NAME_ARTICLE,
+					emptyAttribute);
+
+			documentContentHandler.startElement("", "", ELEMENT_NAME_FRONT,
+					emptyAttribute);
+			documentContentHandler.startElement("", "",
+					ELEMENT_NAME_ARTICLE_META, emptyAttribute);
+			doAbstractAndAcknowledgment(Block.TYPE_ABSTRACT,
+					documentContentHandler);
+			documentContentHandler
+					.endElement("", "", ELEMENT_NAME_ARTICLE_META);
+			documentContentHandler.endElement("", "", ELEMENT_NAME_FRONT);
+
+			documentContentHandler.startElement("", "", ELEMENT_NAME_BODY,
+					emptyAttribute);
+			doSection(Block.TYPE_INTRODUCTION, documentContentHandler, document);
+			doSection(Block.TYPE_METHODS, documentContentHandler, document);
+			doSection(Block.TYPE_DISCUSSION, documentContentHandler, document);
+
+			doSection(Block.TYPE_RESULTS, documentContentHandler, document);
+			doSection(Block.TYPE_CONCLUSIONS, documentContentHandler, document);
+
+			documentContentHandler.endElement("", "", ELEMENT_NAME_BODY);
+			documentContentHandler.startElement("", "", ELEMENT_NAME_BACK,
+					emptyAttribute);
+			doAbstractAndAcknowledgment(Block.TYPE_ACKNOWLEDGEMENTS,
+					documentContentHandler);
+			doReferences(documentContentHandler);
+			documentContentHandler.endElement("", "", ELEMENT_NAME_BACK);
+			documentContentHandler.endElement("", "", ELEMENT_NAME_ARTICLE);
+			documentContentHandler.endDocument();
+			XMLOutputFileStream.close();
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (SAXException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+	private void doSection(String type, ContentHandler documentContentHandler,
+			LapdfDocument doc) {
+
+		ArrayList<ChunkBlock> list = mappedDocument.get(type);
+		if (list != null && list.size() > 0)
+			writeSection(documentContentHandler, list);
+	
+	}
+
+	private void writeSection(ContentHandler documentContentHandler, 
+			ArrayList<ChunkBlock> chunkList) {
+
+		Collections.sort(chunkList, new SpatialOrdering(
+				SpatialOrdering.PAGE_COLUMN_AWARE_MIXED_MODE));
+		ArrayList<ChunkBlock> headingList = new ArrayList<ChunkBlock>();
+		String lastEncounteredType = "";
+
+		String chunkText = null;
+		boolean hasSectionStarted = false;
+		try {
+
+			for (ChunkBlock chunk : chunkList) {
+				if (chunk.getType().contains(Block.META_TYPE_HEADING)) {
+
+					headingList.add(chunk);
+				}
+
+				if (headingList.size() > 0) {
+					chunkText = createStringFromChunk(headingList);
+
+					String openAccessType = createSectionType(headingList
+							.get(0));
+					AttributesImpl sectionAttribute = new AttributesImpl();
+					sectionAttribute
+							.addAttribute("", "", SECTION_ATTRIBUTE_SEC_TYPE,
+									"CDATA", openAccessType);
+
+					documentContentHandler.startElement("", "",
+							ELEMENT_NAME_SECTION, sectionAttribute);
+					documentContentHandler.startElement("", "",
+							ELEMENT_NAME_TITLE, null);
+					documentContentHandler.characters(chunkText.toCharArray(),
+							0, chunkText.toCharArray().length);
+					documentContentHandler.endElement("", "",
+							ELEMENT_NAME_TITLE);
+					chunkList.removeAll(headingList);
+					headingList.clear();
+				} else {
+					documentContentHandler.startElement("", "",
+							ELEMENT_NAME_SECTION, emptyAttribute);
+				}
+
+				break;
+			}
+
+			StringBuilder builder=new StringBuilder();
+			for (ChunkBlock chunk : chunkList) {
+				if (chunk.getType().contains(Block.META_TYPE_SUBTITLE)) {
+
+					headingList.add(chunk);
+				} else {
+					if (headingList.size() > 0) {
+						if (hasSectionStarted)
+							documentContentHandler.endElement("", "",
+									ELEMENT_NAME_SECTION);
+						else
+							hasSectionStarted = true;
+						chunkText = createStringFromChunk(headingList);
+						headingList.clear();
+						documentContentHandler.startElement("", "",
+								ELEMENT_NAME_SECTION, emptyAttribute);
+						documentContentHandler.startElement("", "",
+								ELEMENT_NAME_TITLE, emptyAttribute);
+
+						documentContentHandler.characters(chunkText
+								.toCharArray(), 0,
+								chunkText.toCharArray().length);
+						documentContentHandler.endElement("", "",
+								ELEMENT_NAME_TITLE);
+
+					}
+					chunkText = chunk.readChunkText();
+					if(chunkText.indexOf("-")==chunkText.length()-1){
+						builder.append(chunkText.substring(0,chunkText.length()-1));
+					}else{
+						builder.append(chunkText.substring(0,chunkText.length()));
+						documentContentHandler.startElement("", "",
+								ELEMENT_NAME_PARAGRAPH, emptyAttribute);
+
+						documentContentHandler.characters(builder.toString().toCharArray(),
+								0, builder.toString().toCharArray().length);
+						documentContentHandler.endElement("", "",
+								ELEMENT_NAME_PARAGRAPH);
+						builder.delete(0, builder.length());
+					}
+					
+
+				}
+			}
+			if (hasSectionStarted)
+				documentContentHandler.endElement("", "", ELEMENT_NAME_SECTION);
+			documentContentHandler.endElement("", "", ELEMENT_NAME_SECTION);
+		} catch (SAXException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+	private String createSectionType(ChunkBlock chunk) {
+		if (chunk.getType().contains(Block.TYPE_INTRODUCTION)) {
+			return "intro";
+		} else if (chunk.getType().contains(Block.TYPE_METHODS)) {
+			return "materials|methods";
+		} else if (chunk.getType().contains(Block.TYPE_DISCUSSION)) {
+			return "discussion";
+		} else if (chunk.getType().contains(Block.TYPE_CONCLUSIONS)) {
+			return "conclusions";
+		} else if (chunk.getType().contains(Block.TYPE_RESULTS)) {
+			return "results";
+		}
+		return null;
+	}
+
+	private String createStringFromChunk(ArrayList<ChunkBlock> chunkList) {
+		String returnString = "";
+		for (ChunkBlock chunk : chunkList)
+			returnString = returnString + chunk.readChunkText().trim();
+		return returnString.trim();
+	}
+
+	private void doAbstractAndAcknowledgment(String type,
+			ContentHandler documentContentHandler) {
+		ArrayList<ChunkBlock> list;
+		list = mappedDocument.get(type);
+		if(list==null ||list.size()==0)
+        	return;
+		ArrayList<ChunkBlock> headingList = new ArrayList<ChunkBlock>();
+
+		String chunkText = null;
+		boolean hasSectionStarted = false;
+		String element;
+		if (Block.TYPE_ABSTRACT.equals(type)) {
+			element = ELEMENT_NAME_ABSTRACT;
+		} else {
+			element = ELEMENT_NAME_ACKNOWLEDGEMENT;
+
+		}
+		if (list != null && list.size() > 0) {
+			Collections.sort(list, new SpatialOrdering(
+					SpatialOrdering.PAGE_COLUMN_AWARE_MIXED_MODE));
+			try {
+				documentContentHandler.startElement("", "", element,
+						emptyAttribute);
+				documentContentHandler.startElement("", "",
+						ELEMENT_NAME_SECTION, emptyAttribute);
+				StringBuilder builder=new StringBuilder();
+				for (ChunkBlock chunk : list) {
+					if (chunk.getType().contains(Block.META_TYPE_SUBTITLE)) {
+
+						headingList.add(chunk);
+					} else {
+						if (headingList.size() > 0) {
+							if (hasSectionStarted)
+								documentContentHandler.endElement("", "",
+										ELEMENT_NAME_SECTION);
+							else
+								hasSectionStarted = true;
+							chunkText = createStringFromChunk(headingList);
+							headingList.clear();
+							documentContentHandler.startElement("", "",
+									ELEMENT_NAME_SECTION, emptyAttribute);
+							documentContentHandler.startElement("", "",
+									ELEMENT_NAME_TITLE, emptyAttribute);
+
+							documentContentHandler.characters(chunkText
+									.toCharArray(), 0,
+									chunkText.toCharArray().length);
+							documentContentHandler.endElement("", "",
+									ELEMENT_NAME_TITLE);
+
+						}
+						chunkText = chunk.readChunkText();
+						if(chunkText.indexOf("-")==chunkText.length()-1){
+							builder.append(chunkText.substring(0,chunkText.length()-1));
+						}else{
+							builder.append(chunkText.substring(0,chunkText.length()));
+							documentContentHandler.startElement("", "",
+									ELEMENT_NAME_PARAGRAPH, emptyAttribute);
+
+							documentContentHandler.characters(builder.toString().toCharArray(),
+									0, builder.toString().toCharArray().length);
+							documentContentHandler.endElement("", "",
+									ELEMENT_NAME_PARAGRAPH);
+							builder.delete(0, builder.length());
+						}
+
+					}
+				}
+				if (hasSectionStarted)
+					documentContentHandler.endElement("", "",
+							ELEMENT_NAME_SECTION);
+				documentContentHandler.endElement("", "", ELEMENT_NAME_SECTION);
+				documentContentHandler.endElement("", "", element);
+			} catch (SAXException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+
+		}
+	}
+
+	private void populateMap(LapdfDocument document) {
+		int totalNumberOfPages = document.getTotalNumberOfPages();
+		PageBlock page;
+		List<ChunkBlock> chunks;
+		ArrayList<ChunkBlock> chunkList;
+		for (int i = 1; i <= totalNumberOfPages; i++) {
+			page = document.getPage(i);
+
+			chunks = page.getAllChunkBlocks(SpatialOrdering.COLUMN_AWARE_MIXED_MODE);
+			for (ChunkBlock chunk : chunks) {
+				String type = (chunk.getType().contains(".")) ? chunk.getType()
+						.substring(0, chunk.getType().indexOf(".")) : chunk
+						.getType();
+				chunkList = mappedDocument.get(type);
+				if (chunkList == null) {
+					chunkList = new ArrayList<ChunkBlock>();
+					chunkList.add(chunk);
+					mappedDocument.put(type, chunkList);
+				} else {
+					chunkList.add(chunk);
+				}
+			}
+		}
+	}
+
+	private void doReferences(ContentHandler documentContentHandler) {
+		StringBuilder builder = new StringBuilder();
+		ArrayList<ChunkBlock> list;
+		list = mappedDocument.get(Block.TYPE_REFERENCES);
+        if(list==null ||list.size()==0)
+        	return;
+		String chunkText;
+		for (ChunkBlock chunk : list) {
+
+			if (!chunk.getType().contains(Block.META_TYPE_HEADING)) {
+				builder.append(chunk.readChunkText());
+			}
+		}
+
+		try {
+			documentContentHandler.startElement("", "",
+					ELEMENT_NAME_REFERENCES, emptyAttribute);
+			documentContentHandler.startElement("", "",
+					ELEMENT_NAME_SECTION, emptyAttribute);
+			documentContentHandler.startElement("", "",
+					ELEMENT_NAME_PARAGRAPH, emptyAttribute);
+			documentContentHandler.characters(builder.toString().toCharArray(),
+					0, builder.toString().toCharArray().length);
+			documentContentHandler.endElement("", "", ELEMENT_NAME_PARAGRAPH);
+			documentContentHandler.endElement("", "", ELEMENT_NAME_SECTION);
+			documentContentHandler.endElement("", "", ELEMENT_NAME_REFERENCES);
+		} catch (SAXException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/text/SpatiallyOrderedChunkTextWriter.java
+public class SpatiallyOrderedChunkTextWriter implements TextWriter
+{
+	private StringBuilder text;
+	public SpatiallyOrderedChunkTextWriter()
+	{
+	}
+
+	@Override
+	public void write(LapdfDocument document, String outputFilename) throws IOException,FileNotFoundException
+	{
+		text = new StringBuilder();
+		int totalNumberOfPages = document.getTotalNumberOfPages();
+		PageBlock page;
+		for (int i = 1; i <= totalNumberOfPages; i++)
+		{
+			page = document.getPage(i);
+			List<ChunkBlock> chunksPerPage = page.getAllChunkBlocks(SpatialOrdering.PAGE_COLUMN_AWARE_MIXED_MODE);
+			for(ChunkBlock chunkBlock:chunksPerPage){
+				if(!chunkBlock.getType().equals(ChunkBlock.TYPE_FOOTER)&&!chunkBlock.getType().equals(ChunkBlock.TYPE_HEADER)){
+					text.append(chunkBlock.readChunkText() + "\n");
+				}
+			}
+		}
+		ReadWriteTextFileWithEncoding.write(outputFilename, TextWriter.UTF_8, text.toString());
+
+	}
+
+
+
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/utils/PageImageOutlineRenderer.java
+public class PageImageOutlineRenderer {
+	
+	private static TreeMap<Integer, String> colorMap = new TreeMap<Integer, String>();
+	private static TreeMap<String, Integer> countMap = new TreeMap<String, Integer>();
+	private static final int TYPE_UNCLASSIFIED_COLOR_CODE = 0xFBF5EF;
+
+	public static void createPageImage(PageBlock page, File outputFile, String label, int mode) throws IOException {
+
+		int width = page.getPageBoxWidth();
+		int height = page.getPageBoxHeight();
+
+		BufferedImage image = new BufferedImage(width, height,
+				BufferedImage.TYPE_INT_ARGB);
+		image.getGraphics().setColor(Color.white);
+		image.getGraphics().fillRect(0, 0, width, height);
+		image.getGraphics().setColor(Color.red);
+
+		drawWord(width / 2 - 50, 10, image, Color.black,
+				label + ":" + page.getPageNumber(), 10);
+
+		List<ChunkBlock> cbList = page.getAllChunkBlocks(SpatialOrdering.MIXED_MODE);
+		List<Block> list = new ArrayList<Block>(cbList);
+		
+		// renderBlockPerImage(list, image, fileName);
+		renderBlockByColor(list, image, mode);
+
+		List<WordBlock> wbList = page.getAllWordBlocks(SpatialOrdering.MIXED_MODE);
+		list = new ArrayList<Block>(wbList);
+		renderBlockByColor(list, image, mode);
+
+		ImageIO.write(image, "png", outputFile);
+
+	}
+
+	private static void renderBlockByColor(
+			List<Block> entityList,
+			BufferedImage image, int mode) {
+
+		for (Block block : entityList) {
+			if (block instanceof ChunkBlock) {
+
+				ChunkBlock chunky = (ChunkBlock) block;
+				Integer colorCode = colorDecider(chunky.getType());
+
+				if (colorMap.get(colorCode) == null) {
+					if (colorCode == TYPE_UNCLASSIFIED_COLOR_CODE)
+						colorMap.put(colorCode, Block.TYPE_UNCLASSIFIED);
+					else
+						colorMap.put(colorCode, chunky.getType());
+				}
+
+				if (colorCode == TYPE_UNCLASSIFIED_COLOR_CODE) {
+					if (countMap.get(Block.TYPE_UNCLASSIFIED) == null) {
+						countMap.put(Block.TYPE_UNCLASSIFIED, 1);
+					} else {
+						countMap.put(Block.TYPE_UNCLASSIFIED,
+								countMap.get(Block.TYPE_UNCLASSIFIED) + 1);
+					}
+				} else {
+					if (countMap.get(chunky.getType()) == null) {
+						countMap.put(chunky.getType(), 1);
+					} else {
+						countMap.put(chunky.getType(),
+								countMap.get(chunky.getType()) + 1);
+					}
+				}
+				
+				drawRectangle(chunky.getX1(), chunky.getY1(),
+						chunky.getWidth(), chunky.getHeight(), image,
+						Color.red, chunky, mode);
+				
+				String text = chunky.getMostPopularWordFont() + ";" + chunky.getMostPopularWordStyle();
+				if( mode != LapdfMode.BLOCK_ONLY )
+					text = chunky.getType();
+				
+				drawWord( chunky.getX1() - 20, 
+						chunky.getY1() , 
+						image, 
+						Color.black,
+						text, 12);
+				
+			} else if (block != null) {
+
+				WordBlock wordBlock = (WordBlock) block;
+				ChunkBlock chunky = (ChunkBlock) wordBlock.getContainer();
+
+				Integer colorCode = (mode == 1) ? colorDecider(chunky.getType())
+						: 0x000000;
+
+				drawRectangle(wordBlock.getX1() + 2, wordBlock.getY1() + 2,
+						wordBlock.getWidth() - 4, wordBlock.getHeight() - 4,
+						image, new Color(colorCode), block, mode);
+
+
+				if( wordBlock.getFontStyle() != null) {
+				
+					String text = wordBlock.getFontStyle();
+				
+					text = text.substring(10, text.length()-2);
+
+					drawWord( wordBlock.getX1(), 
+							wordBlock.getY1() + wordBlock.getHeight(), 
+							image, 
+							Color.black,
+							text, 6);
+				}
+
+			}
+
+		}
+
+	}
+
+	private static int colorDecider(String type) {
+		
+		if (Block.TYPE_METHODS_HEADING.equals(type)) {
+			return 0x0000ff;
+		} else if (Block.TYPE_METHODS_BODY.equals(type)) {
+			return 0x008000;
+		} else if (Block.TYPE_METHODS_SUBTITLE.equals(type)) {
+			return 0x00bfff;
+		} else if (Block.TYPE_RESULTS_HEADING.equals(type)) {
+			return 0x800080;
+		} else if (Block.TYPE_RESULTS_BODY.equals(type)) {
+			return 0x800000;
+		} else if (Block.TYPE_RESULTS_SUBTITLE.equals(type)) {
+			return 0x7cfc00;
+		} else if (Block.TYPE_REFERENCES_HEADING.equals(type)) {
+			return 0xffff00;
+		} else if (Block.TYPE_REFERENCES_BODY.equals(type)) {
+			return 0xff69b4;
+		} else if (Block.TYPE_DISCUSSION_HEADING.equals(type)) {
+			return 0xff0000;
+		} else if (Block.TYPE_DISCUSSION_BODY.equals(type)) {
+			return 0xfa8072;
+		} else if (Block.TYPE_DISCUSSION_SUBTITLE.equals(type)) {
+			return 0xff4500;
+		} else if (Block.TYPE_CONCLUSIONS_HEADING.equals(type)) {
+			return 0xb8860b;
+		} else if (Block.TYPE_CONCLUSIONS_BODY.equals(type)) {
+			return 0xbc8f8f;
+		} else if (Block.TYPE_CONCLUSIONS_SUBTITLE.equals(type)) {
+			return 0xbdb76b;
+		} else if (Block.TYPE_ACKNOWLEDGEMENTS_HEADING.equals(type)) {
+			return 0x4b0082;
+		} else if (Block.TYPE_ACKNOWLEDGEMENTS_BODY.equals(type)) {
+			return 0x556b2f;
+		} else if (Block.TYPE_ABSTRACT_HEADING.equals(type)) {
+			return 0xA9D0F5;
+		} else if (Block.TYPE_ABSTRACT_BODY.equals(type)) {
+			return 0x00FFFF;
+		} else if (Block.TYPE_TITLE.equals(type)) {
+			return 0xdc143c;
+		} else if (Block.TYPE_AUTHORS.equals(type)) {
+			return 0xffa500;
+		} else if (Block.TYPE_INTRODUCTION_HEADING.equals(type)) {
+			return 0xcd853f;
+		} else if (Block.TYPE_INTRODUCTION_BODY.equals(type)) {
+			return 0xd2691e;
+		} else if (Block.TYPE_INTRODUCTION_SUBTITLE.equals(type)) {
+			return 0xd2b48c;
+		} else if (Block.TYPE_SUPPORTING_INFORMATION_HEADING.equals(type)) {
+			return 0x8b4513;
+		} else if (Block.TYPE_SUPPORTING_INFORMATION_BODY.equals(type)) {
+			return 0x8fbc8f;
+		} else if (Block.TYPE_SUPPORTING_INFORMATION_SUBTITLE.equals(type)) {
+			return 0x90ee90;
+		} else if (Block.TYPE_FIGURE_LEGEND.equals(type)) {
+			return 0x000000;
+		} else if (Block.TYPE_AFFLIATION.equals(type)) {
+			return TYPE_UNCLASSIFIED_COLOR_CODE;
+		} else if (Block.TYPE_HEADER.equals(type)) {
+			return TYPE_UNCLASSIFIED_COLOR_CODE;
+		} else if (Block.TYPE_FOOTER.equals(type)) {
+			return TYPE_UNCLASSIFIED_COLOR_CODE;
+		} else if (Block.TYPE_KEYWORDS.equals(type)) {
+			return TYPE_UNCLASSIFIED_COLOR_CODE;
+		} else if (Block.TYPE_TABLE.equals(type)) {
+			return TYPE_UNCLASSIFIED_COLOR_CODE;
+		} else if (Block.TYPE_CITATION.equals(type)) {
+			return TYPE_UNCLASSIFIED_COLOR_CODE;
+		} else {
+			return TYPE_UNCLASSIFIED_COLOR_CODE;
+		}
+
+	}
+
+	private static void drawRectangle(int x, int y, int width, int height,
+			BufferedImage image, Color color, Block block, int mode) {
+
+		Graphics2D graphics = image.createGraphics();
+
+		graphics.setPaint(color);
+
+		Rectangle rect = new Rectangle(x, y, width, height);
+		if ( block instanceof WordBlock && mode == LapdfMode.BLOCK_ONLY ) {
+
+			graphics.draw(rect);
+			graphics.fill(rect);
+			
+		} else {
+
+			graphics.draw(rect);
+
+		}
+
+	}
+
+	private static void drawWord(int x, int y, int width, int height,
+			BufferedImage image, Color color, WordBlock word) {
+		Graphics2D graphics = image.createGraphics();
+		Font plainFont = new Font(word.getFont(), Font.PLAIN, word.getHeight());
+
+		AttributedString as = new AttributedString(word.getWord());
+		as.addAttribute(TextAttribute.FONT, plainFont);
+
+		graphics.setPaint(color);
+		graphics.drawString(as.getIterator(), x, y);
+
+	}
+
+	private static void drawWord(
+			int x, int y, 
+			BufferedImage image,
+			Color color, 
+			String word,
+			int size) {
+		
+		Graphics2D graphics = image.createGraphics();
+		Font plainFont = new Font(Font.SANS_SERIF, Font.PLAIN, size);
+		AttributedString as = new AttributedString(word);
+		as.addAttribute(TextAttribute.FONT, plainFont);
+		graphics.setPaint(color);
+		graphics.drawString(as.getIterator(), x, y);
+
+	}
+
+	public static void createReport(String fileName) {
+
+		if (colorMap.size() == 0 || countMap.size() == 0) {
+			throw new IllegalStateException(
+					"Before calling this method you should use createPageImage to draw the individual pages");
+		}
+
+		BufferedImage image = new BufferedImage(500, 800,
+				BufferedImage.TYPE_INT_ARGB);
+		Graphics2D graphics = image.createGraphics();
+		image.getGraphics().setColor(Color.white);
+		image.getGraphics().fillRect(0, 0, 500, 800);
+		String sectionType;
+		int x = 20;
+		int y = 20;
+		Font plainFont = new Font(Font.SANS_SERIF, Font.PLAIN, 20);
+		for (Integer color : colorMap.keySet()) {
+			sectionType = colorMap.get(color);
+			Shape circle = new Ellipse2D.Float(x, y, 20, 20);
+			graphics.setPaint(new Color(color));
+			graphics.draw(circle);
+			graphics.fill(circle);
+			graphics.setColor(Color.black);
+			AttributedString as = new AttributedString(sectionType);
+			as.addAttribute(TextAttribute.FONT, plainFont);
+			graphics.drawString(as.getIterator(), x + 22, y + 20);
+			as = new AttributedString(countMap.get(sectionType) + "");
+
+			graphics.drawString(as.getIterator(), 380, y + 20);
+
+			x = 20;
+			y = y + 24;
+		}
+
+		try {
+
+			File outputfile = new File(fileName);
+			ImageIO.write(image, "png", outputfile);
+		} catch (IOException e) {
+
+		}
+		colorMap.clear();
+		countMap.clear();
+	
+	}
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/xml/SpatialXMLWriter.java
+public class SpatialXMLWriter implements XMLWriter {
+	
+	private static final String NEWLINE = System.getProperty("line.separator");
+	private static final String ENCODING = "UTF-8";
+	private static final String ELEMENT_NAME_DOCUMENT = "Document";
+	private static final String ELEMENT_NAME_PAGE = "Page";
+	private static final String ELEMENT_NAME_CHUNK = "Chunk";
+	private static final String ELEMENT_NAME_WORD = "Word";
+	private static final String BLOCK_ATTRIBUTE_X1 = "x1";
+	private static final String BLOCK_ATTRIBUTE_X2 = "x2";
+	private static final String BLOCK_ATTRIBUTE_Y1 = "y1";
+	private static final String BLOCK_ATTRIBUTE_Y2 = "y2";
+	private static final String BLOCK_ATTRIBUTE_TYPE = "type";
+	private static final String PAGE_ATTRIBUTE_PAGENUMBER = "pageNumber";
+	private static final String PAGE_ATTRIBUTE_CHUNK_COUNT = "chunkCount";
+	private static final String PAGE_ATTRIBUTE_WORD_COUNT = "wordCount";
+	private static final String WORD_ATTRIBUTE_WORD_FONT = "font";
+	private static final String WORD_ATTRIBUTE_WORD_STYLE = "style";
+	private static final String ELEMENT_NAME_TYPE = "type";
+
+	public void write(LapdfDocument document, String outputFilename) {
+
+		try {
+			FileOutputStream XMLOutputFileStream;
+			XMLOutputFileStream = new FileOutputStream(outputFilename);
+
+			OutputFormat XMLOutputFormat = new OutputFormat("XML", ENCODING,
+					true);
+			XMLSerializer serializer = new XMLSerializer(XMLOutputFileStream,
+					XMLOutputFormat);
+			ContentHandler documentContentHandler = serializer
+					.asContentHandler();
+			documentContentHandler.startDocument();
+			AttributesImpl documentAttribute = new AttributesImpl();
+			AttributesImpl chunkAttribute = new AttributesImpl();
+			AttributesImpl wordAttribute = new AttributesImpl();
+			AttributesImpl pageAttribute = new AttributesImpl();
+			PageBlock page;
+			List<ChunkBlock> chunks;
+			List<SpatialEntity> words;
+			WordBlock word;
+			documentContentHandler.startElement("", "", ELEMENT_NAME_DOCUMENT,
+					documentAttribute);
+			int totalNumberOfPages = document.getTotalNumberOfPages();
+			for (int i = 1; i <= totalNumberOfPages; i++) {
+				page = document.getPage(i);
+				pageAttribute.clear();
+				pageAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_X1, "CDATA",
+						page.getMargin()[0] + "");
+				pageAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_Y1, "CDATA",
+						page.getMargin()[1] + "");
+				pageAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_X2, "CDATA",
+						page.getMargin()[2] + "");
+				pageAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_Y2, "CDATA",
+						page.getMargin()[3] + "");
+
+				pageAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_TYPE,
+						"CDATA", page.getType() + "");
+
+				pageAttribute.addAttribute("", "", PAGE_ATTRIBUTE_CHUNK_COUNT,
+						"CDATA", page.getAllChunkBlocks(null).size() + "");
+				pageAttribute.addAttribute("", "", PAGE_ATTRIBUTE_PAGENUMBER,
+						"CDATA", page.getPageNumber() + "");
+				pageAttribute.addAttribute("", "", PAGE_ATTRIBUTE_WORD_COUNT,
+						"CDATA", page.getAllWordBlocks(null).size() + "");
+				documentContentHandler.startElement("", "", ELEMENT_NAME_PAGE,
+						pageAttribute);
+				chunks = page
+						.getAllChunkBlocks(SpatialOrdering.COLUMN_AWARE_MIXED_MODE);
+				for (ChunkBlock chunk : chunks) {
+					chunkAttribute.clear();
+					chunkAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_X1,
+							"CDATA", chunk.getX1() + "");
+					chunkAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_Y1,
+							"CDATA", chunk.getY1() + "");
+					chunkAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_X2,
+							"CDATA", chunk.getX2() + "");
+					chunkAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_Y2,
+							"CDATA", chunk.getY2() + "");
+					chunkAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_TYPE,
+							"CDATA", chunk.getType() + "");
+					documentContentHandler.startElement("", "",
+							ELEMENT_NAME_CHUNK, chunkAttribute);
+					words = page.containsByType(chunk,
+							SpatialOrdering.MIXED_MODE, WordBlock.class);
+					for (SpatialEntity entity : words) {
+						word = (WordBlock) entity;
+						wordAttribute.clear();
+						wordAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_X1,
+								"CDATA", word.getX1() + "");
+						wordAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_Y1,
+								"CDATA", word.getY1() + "");
+						wordAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_X2,
+								"CDATA", word.getX2() + "");
+						wordAttribute.addAttribute("", "", BLOCK_ATTRIBUTE_Y2,
+								"CDATA", word.getY2() + "");
+						wordAttribute.addAttribute("", "",
+								WORD_ATTRIBUTE_WORD_FONT, "CDATA",
+								word.getFont() + "");
+						wordAttribute.addAttribute("", "",
+								WORD_ATTRIBUTE_WORD_STYLE, "CDATA",
+								word.getFontStyle() + "");
+						documentContentHandler.startElement("", "",
+								ELEMENT_NAME_WORD, wordAttribute);
+						documentContentHandler.characters(word.getWord()
+								.toCharArray(), 0,
+								word.getWord().toCharArray().length);
+						documentContentHandler.endElement("", "",
+								ELEMENT_NAME_WORD);
+					}
+					documentContentHandler.endElement("", "",
+							ELEMENT_NAME_CHUNK);
+				}
+				documentContentHandler.endElement("", "", ELEMENT_NAME_PAGE);
+			}
+			documentContentHandler.endElement("", "", ELEMENT_NAME_DOCUMENT);
+			documentContentHandler.endDocument();
+			XMLOutputFileStream.close();
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (SAXException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+}
+src/main/java/edu/isi/bmkeg/lapdf/model/ordering/SpatialOrdering.java
+public class SpatialOrdering implements Comparator<SpatialEntity> {
+
+	public static final String HORIZONTAL_MODE = "horizontal";
+	public static final String VERTICAL_MODE = "vertical";
+	public static final String MIXED_MODE = "mixed";
+	public static final String MIXED_MODE_ABSOLUTE="mixedAbs";
+	public static final String COLUMN_AWARE_MIXED_MODE = "camd";
+	public static final String PAGE_COLUMN_AWARE_MIXED_MODE = "pcamd";
+	public String mode;
+
+	public SpatialOrdering(String mode) {
+		this.mode = mode;
+	}
+
+	@Override
+	public int compare(SpatialEntity o1, SpatialEntity o2) {
+
+		if (HORIZONTAL_MODE.equalsIgnoreCase(mode)) {
+			return horizontalOrdering(o1, o2);
+		} else if (VERTICAL_MODE.equalsIgnoreCase(mode)) {
+			return verticalOrdering(o1, o2);
+		} else if (MIXED_MODE.equalsIgnoreCase(mode)) {
+			return mixedOrdering(o1, o2);
+		}else if (MIXED_MODE_ABSOLUTE.equalsIgnoreCase(mode)) {
+			return mixedOrderingAbsolute(o1, o2);
+		} 
+		else if (COLUMN_AWARE_MIXED_MODE.equalsIgnoreCase(mode)) {
+			return camdOrdering(o1, o2);
+		} else if (PAGE_COLUMN_AWARE_MIXED_MODE.equalsIgnoreCase(mode)) {
+			return pcamdOrdering(o1, o2);
+		} else {
+			return 0;
+		}
+
+	}
+
+	private int camdOrdering(SpatialEntity o1, SpatialEntity o2) {
+
+		String o1Allignment = ((Block) o1).readLeftRightMedLine();
+		String o2Allignment = ((Block) o2).readLeftRightMedLine();
+		int pageNumber = ((PageBlock) ((Block) o1).getContainer())
+				.getPageNumber();
+		int o1y1 = o1.getY1();
+		int o2y1 = o2.getY1();
+		int pageHeight = ((PageBlock) ((Block) o1).getContainer())
+				.getPageBoxHeight();
+
+		if (pageNumber == 1 && Math.abs(o1y1 - o2y1) >= .5 * pageHeight) {
+			return mixedOrdering(o1, o2);
+		} else if (executeHeaderFooterCheck((ChunkBlock) o1, (ChunkBlock) o2)) {
+			return mixedOrdering(o1, o2);
+		}
+
+		if (o1Allignment.equals(o2Allignment)) {
+			return mixedOrdering(o1, o2);
+		} else if (Block.MIDLINE.equalsIgnoreCase(o1Allignment)
+				|| Block.MIDLINE.equalsIgnoreCase(o2Allignment)) {
+			return mixedOrdering(o1, o2);
+
+		} else if (Block.LEFT.equalsIgnoreCase(o1Allignment)) {
+
+			return -1;
+		} else if (Block.RIGHT.equalsIgnoreCase(o1Allignment)) {
+			return 1;
+		}
+		return 0;
+	}
+
+	private int pcamdOrdering(SpatialEntity o1, SpatialEntity o2) {
+
+		int pageNumbero1 = ((PageBlock) ((Block) o1).getContainer())
+				.getPageNumber();
+		int pageNumbero2 = ((PageBlock) ((Block) o2).getContainer())
+				.getPageNumber();
+		return (pageNumbero1 == pageNumbero2) ? camdOrdering(o1, o2)
+				: pageNumbero1 - pageNumbero2;
+
+	}
+
+	private int horizontalOrdering(SpatialEntity o1, SpatialEntity o2) {
+		int x1Diff = o1.getX1() - o2.getX1();
+		if (x1Diff == 0)
+			return o1.getX2() - o2.getX2();
+		return x1Diff;
+	}
+
+	private int verticalOrdering(SpatialEntity o1, SpatialEntity o2) {
+		Block block = (Block) o1;
+		PageBlock page = (PageBlock) ((block.getContainer() instanceof PageBlock) ? block
+				.getContainer()
+				: block.getContainer().getContainer());
+		int y1Diff = o1.getY1() - o2.getY1();
+		
+		if (Math.abs(y1Diff) < page.getMostPopularWordHeightPage()/2)
+			return (Math.abs(o1.getY2() - o2.getY2()) < page
+					.getMostPopularWordHeightPage()) ? 0 : o1.getY2()
+					- o2.getY2();
+		return y1Diff;
+		/*int y1Diff = o1.getY1() - o2.getY1();
+		if (y1Diff==0)
+			return o1.getY2()
+					- o2.getY2();
+		return y1Diff;*/
+	}
+
+	
+	private int verticalOrderingAbsolute(SpatialEntity o1, SpatialEntity o2) {
+		
+		int y1Diff = o1.getY1() - o2.getY1();
+		if (y1Diff==0)
+			return o1.getY2()
+					- o2.getY2();
+		return y1Diff;
+	}
+	/**
+	 * Note: in order to implement the fix for the superscript subscript induced bug (fix implemented by Abhishek November 10th)
+	 * replace the return mixedOrderingAbsolute with other commented code. 
+	 * @param o1
+	 * @param o2
+	 * @return
+	 */
+	private int mixedOrdering(SpatialEntity o1, SpatialEntity o2) {
+		//return mixedOrderingAbsolute(o1, o2);
+		int y = verticalOrdering(o1, o2);
+		if (y == 0) {
+			return horizontalOrdering(o1, o2);
+		} else {
+			return y;
+		}
+	}
+	
+	private int mixedOrderingAbsolute(SpatialEntity o1, SpatialEntity o2) {
+		int y = verticalOrderingAbsolute(o1, o2);
+		if (y == 0) {
+			return horizontalOrdering(o1, o2);
+
+		} else {
+			return y;
+		}
+	}
+
+	// GULLY TODO: THIS IS VERY IMPORTANT
+	private boolean executeHeaderFooterCheck(ChunkBlock o1, ChunkBlock o2) {
+
+		if (o1.isHeaderOrFooter() != null && o1.isHeaderOrFooter())
+			return true;
+
+		if (o2.isHeaderOrFooter() != null && o2.isHeaderOrFooter())
+			return true;
+
+		if ((o1.isHeaderOrFooter() != null && !o1.isHeaderOrFooter())
+				&& (o2.isHeaderOrFooter() != null && !o2.isHeaderOrFooter()))
+			return false;
+
+		boolean containsFirstLine1 = false;
+		boolean containsFirstLine2 = false;
+		boolean numberOfLineOne1 = false;
+		boolean numberofLineOne2 = false;
+		boolean containsLastLine1 = false;
+		boolean containsLastLine2 = false;
+
+		PageBlock p1 = (PageBlock) o1.getContainer();
+		PageBlock p2 = (PageBlock) o1.getContainer();
+		numberOfLineOne1 = o1.readNumberOfLine() == 1;
+		numberofLineOne2 = o2.readNumberOfLine() == 1;
+
+		if (!numberOfLineOne1 && !numberofLineOne2) {
+			o1.setHeaderOrFooter(false);
+			o2.setHeaderOrFooter(false);
+			return false;
+		}
+
+		if (numberOfLineOne1) {
+			containsFirstLine1 = Math.abs(o1.getY1() - p1.getMargin()[1]) < p1
+					.getDocument().readMostPopularWordHeight();
+			if (containsFirstLine1) {
+				o1.setHeaderOrFooter(true);
+				return true;
+			}
+			containsLastLine1 = Math.abs(o1.getY2() - p1.getMargin()[3]) < p1
+					.getDocument().readMostPopularWordHeight();
+			if (containsLastLine1) {
+				o1.setHeaderOrFooter(true);
+				return true;
+			}
+			o1.setHeaderOrFooter(false);
+		}
+
+		if (numberofLineOne2) {
+			containsFirstLine2 = Math.abs(o2.getY1() - p2.getMargin()[1]) < p2
+					.getDocument().readMostPopularWordHeight();
+			if (containsFirstLine2) {
+				o2.setHeaderOrFooter(true);
+				return true;
+			}
+			containsLastLine2 = Math.abs(o2.getY2() - p2.getMargin()[3]) < p2
+					.getDocument().readMostPopularWordHeight();
+			if (containsLastLine2) {
+				o2.setHeaderOrFooter(true);
+				return true;
+			}
+			o2.setHeaderOrFooter(false);
+		}
+
+		return false;
+
+	}
+
+	public static void main(String argsd[]) {
+		Boolean value = null;
+		if (value != null)
+			System.out.println("bklusd");
+	}
+}
+src/main/java/edu/isi/bmkeg/lapdf/utils/JPedalPDFRenderer.java
+public class JPedalPDFRenderer {
+
+	private static final String DIRECTORY_SEPARATOR = System
+			.getProperty("file.separator");
+	private static final String PDF_SUFFIX = ".pdf";
+
+	private String ocr[] = { "TeleForm" }; // creators that produce OCR PDFs??
+	private static final int DPI = 144; // 72 dpi is default - use 144
+										// production
+
+	private String outputDirectory;
+	private ArrayList<String> inputFilenames;
+	private RenderingHints hints;
+
+	public JPedalPDFRenderer() {
+		
+		hints = new RenderingHints(RenderingHints.KEY_INTERPOLATION,
+				RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+		hints.put(RenderingHints.KEY_RENDERING,
+				RenderingHints.VALUE_RENDER_QUALITY);
+		hints.put(RenderingHints.KEY_ANTIALIASING,
+				RenderingHints.VALUE_ANTIALIAS_ON);
+		hints.put(RenderingHints.KEY_TEXT_ANTIALIASING, // tommy
+				RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+	}
+
+	/**
+	 * Generates one JPEG image per page of the input PDFs. The images are named
+	 * according to the leaf filename and page number of the input. E.g. for
+	 * page 2 of "/tmp/Heidinger_1997_767_279.pdf", the output file would be
+	 * "/path/to/output/Heidinger_1997_767_279_2.jpg".
+	 * 
+	 * @return A list of all generated files.
+	 */
+	public List<File> generateImages(File pdf, File outputDir) 
+			throws IOException, PdfException {
+
+		int startPage = 1;
+		int endPage;
+		double h = -0.01;
+		double w = -0.01;
+		List<File> generatedFiles = new ArrayList<File>();
+
+		String pdfName = pdf.getName();
+		String pdfStem = pdfName.substring(0, pdfName.lastIndexOf("."));
+
+		PdfDecoder decoder = new PdfDecoder(true);
+	
+		// decoder.setExtractionMode(0, DPI, DPI/72);
+		decoder.setExtractionMode(PdfDecoder.TEXT + PdfDecoder.RAWIMAGES
+					+ PdfDecoder.FINALIMAGES, DPI, DPI / 72);
+		decoder.openPdfFile(pdf.getPath());
+
+		endPage = decoder.getPageCount();
+		for (int pageNumber = startPage; pageNumber <= endPage; pageNumber++) {
+			String outputImageName = pdfStem + "_" + pageNumber + ".png";
+			File outputImageFile = new File( outputImageName );
+			generatedFiles.add(outputImageFile);
+
+			PdfFileInformation currentFileInformation = decoder
+					.getFileInformationData();
+			
+			String values[] = currentFileInformation.getFieldValues();
+			String fields[] = PdfFileInformation.getFieldNames();
+			
+			for (int i = 0; i < fields.length; i++) {
+				if (fields[i].equals("Creator")) {
+					for (int j = 0; j < ocr.length; j++) {
+						if (values[i].equals(ocr[j])) {
+							decoder.setRenderMode(PdfDecoder.RENDERIMAGES);
+							//decoder.setsetEnableLegacyJPEGConversion(true);
+						}
+					}
+				}
+			}
+
+			BufferedImage image_to_save = decoder
+						.getPageAsImage(pageNumber);
+			h = image_to_save.getHeight();
+			w = image_to_save.getWidth();
+
+			ImageIO.write(image_to_save, "png", outputImageFile);
+
+
+		}
+
+		return generatedFiles;
+	
+	}
+
+	//
+	// Not sure if this works. Seems to be a PNG -> JPG converter.
+	//
+	private void writeImage(File outputFile, BufferedImage img)
+			throws FileNotFoundException, IOException {
+		
+		Iterator<ImageWriter> it = ImageIO.getImageWritersByFormatName("jpeg");
+		ImageWriter iw = it.next();
+		ImageWriteParam iwp = iw.getDefaultWriteParam();
+		iwp.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+		iwp.setCompressionQuality(1);
+
+		FileImageOutputStream outs = new FileImageOutputStream(outputFile);
+		iw.setOutput(outs);
+		IIOImage ioimage = new IIOImage(img, null, null);
+		iw.write(null, ioimage, iwp);
+		iw.dispose();
+	
+	}
+
+}

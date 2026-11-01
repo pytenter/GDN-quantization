@@ -1,0 +1,3658 @@
+src/main/java/io/mycat/net2/NIOHandler.java
+public interface NIOHandler<T extends Connection> {
+
+	/**
+	 * 连接建立成功的通知事件
+	 * 
+	 * @param con
+	 *            当前连接
+	 */
+	public void onConnected(T con) throws IOException;
+
+	/**
+	 * 连接失败
+	 * 
+	 * @param con
+	 *            失败的连接
+	 * @param e
+	 *            连接异常
+	 */
+	public void onConnectFailed(T con, Throwable e);
+	
+	/**
+	 * 连接关闭通知
+	 * @param con
+	 * @throws IOException
+	 */
+	public void onClosed(T con,String reason);
+
+	/**
+	 * 收到数据需要处理
+	 * 
+	 * @param con
+	 *            当前连接
+	 * @param data
+	 *            收到的数据包
+	 */
+	void handle(T con, ByteBufferArray nioData);
+
+}
+src/main/java/io/mycat/net2/mysql/packet/ResultSetHeaderPacket.java
+public class ResultSetHeaderPacket extends MySQLPacket {
+
+    public int fieldCount;
+    public long extra;
+
+    public void read(ByteBufferArray bufferArray, int packetIndex) {
+        MySQLMessage mm = new MySQLMessage(bufferArray, packetIndex);
+        this.packetLength = mm.readUB3();
+        this.packetId = mm.read();
+        this.fieldCount = (int) mm.readLength();
+        if (mm.hasRemaining()) {
+            this.extra = mm.readLength();
+        }
+    }
+
+    @Override
+    public void write(ByteBufferArray bufferArray) {
+        int size = calcPacketSize();
+        ByteBuffer buffer = bufferArray.checkWriteBuffer(packetHeaderSize + size);
+        BufferUtil.writeUB3(buffer, size);
+        buffer.put(packetId);
+        BufferUtil.writeLength(buffer, fieldCount);
+        if (extra > 0) {
+            BufferUtil.writeLength(buffer, extra);
+        }
+    }
+
+    @Override
+    public int calcPacketSize() {
+        int size = BufferUtil.getLength(fieldCount);
+        if (extra > 0) {
+            size += BufferUtil.getLength(extra);
+        }
+        return size;
+    }
+
+    @Override
+    protected String getPacketInfo() {
+        return "MySQL ResultSetHeader Packet";
+    }
+
+}
+src/main/java/io/mycat/net2/mysql/packet/util/CommonPacketUtil.java
+public class CommonPacketUtil {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(CommonPacketUtil.class);
+
+	public final static int msyql_packetHeaderSize = 4;
+
+	public final static int mysql_packetTypeSize = 1;
+
+	private static final boolean validateHeader(int offset, int position) {
+		return offset + msyql_packetHeaderSize + mysql_packetTypeSize <= position;
+	}
+
+	/**
+	 * 获取报文长度
+	 * 
+	 * @param buffer
+	 *			报文buffer
+	 * @param offset
+	 *			buffer解析位置偏移量
+	 * @param position
+	 *			buffer已读位置偏移量
+	 * @return 报文长度(Header长度+内容长度)
+	 */
+	private static final int getPacketLength(ByteBuffer buffer, int offset, int position) {
+		int length = buffer.get(offset) & 0xff;
+		length |= (buffer.get(++offset) & 0xff) << 8;
+		length |= (buffer.get(++offset) & 0xff) << 16;
+		return length + msyql_packetHeaderSize;
+	}
+
+	/**
+	 * 获取报文类型(0-255)
+	 * 
+	 * @param buffer
+	 *			报文buffer
+	 * @param offset
+	 *			buffer解析位置偏移量
+	 * @param position
+	 *			buffer已读位置偏移量
+	 * @return 报文类型标识
+	 */
+	private static final byte getPacketType(ByteBuffer buffer, int packetLength, int offset, int position,
+			MySQLConnection con) {
+		byte type = 0;
+		byte field = buffer.get(offset);
+		int connectedStatus = con.getConnectedStatus();
+		// 目前基本上报文类型可以由data[4]一个字节确定，切mycat-nio中定义的报文类型枚举值与该字节值保持一致
+		// 考虑到后面可能会根据报文类型处理部分业务并修改Connection中的状态变量，留出下方各个类型代码入口
+		switch (con.getState()) {
+		case connecting:
+			// check quit packet
+			if (packetLength == MySQLPacket.COM_QUIT_PACKET_LENGTH && field == MySQLPacket.COM_QUIT) {
+				type = MySQLPacket.QUIT_PACKET;
+			} else if (connectedStatus == MySQLFrontendConnection.LOGIN_STATUS) {
+				// 区分开front和end的登录
+				type = MySQLPacket.AUTH_PACKET;
+				// Fake for unit test
+				con.setState(Connection.State.connected);
+				// Fake for unit test
+			} else if (connectedStatus == MySQLBackendConnection.LOGIN_STATUS) {
+				// 区分开front和end的登录
+				type = handleLogin(field, con);
+			}
+			break;
+		case connected:
+			type = handleBusiness(field, con);
+			break;
+		default:
+			LOGGER.warn("not handled connecton state  err " + con.getState() + " for con " + con);
+			break;
+		}
+		return type;
+	}
+
+	private static final byte handleBusiness(byte field, MySQLConnection con) {
+		byte type = 0;
+		switch (field) {
+		case MySQLPacket.OK_FIELD_COUNT:
+			type = MySQLPacket.OK_PACKET;
+			break;
+		case MySQLPacket.ERROR_FIELD_COUNT:
+			type = MySQLPacket.ERROR_PACKET;
+			break;
+		case MySQLPacket.EOF_FIELD_COUNT:
+			type = MySQLPacket.EOF_PACKET;
+			break;
+		case MySQLPacket.COM_INIT_DB:
+			type = MySQLPacket.COM_INIT_DB;
+			break;
+		case MySQLPacket.COM_QUERY:
+			type = MySQLPacket.COM_QUERY;
+			break;
+		case MySQLPacket.COM_PING:
+			type = MySQLPacket.COM_PING;
+			break;
+		case MySQLPacket.COM_QUIT:
+			type = MySQLPacket.COM_QUIT;
+			break;
+		case MySQLPacket.COM_PROCESS_KILL:
+			type = MySQLPacket.COM_PROCESS_KILL;
+			break;
+		case MySQLPacket.COM_STMT_PREPARE:
+			type = MySQLPacket.COM_STMT_PREPARE;
+			break;
+		case MySQLPacket.COM_STMT_EXECUTE:
+			type = MySQLPacket.COM_STMT_EXECUTE;
+			break;
+		case MySQLPacket.COM_STMT_CLOSE:
+			type = MySQLPacket.COM_STMT_CLOSE;
+			break;
+		case MySQLPacket.COM_HEARTBEAT:
+			type = MySQLPacket.COM_HEARTBEAT;
+			break;
+		default:
+			// TODO
+			break;
+		}
+		// 状态转移
+		con.setNextConnectedStatus(type);
+		return type;
+	}
+
+	private static final byte handleLogin(byte field, MySQLConnection con) {
+		byte type = 0;
+		switch (field) {
+		case MySQLPacket.OK_FIELD_COUNT:
+			type = MySQLPacket.OK_PACKET;
+			break;
+		case MySQLPacket.ERROR_FIELD_COUNT:
+			type = MySQLPacket.ERROR_PACKET;
+			break;
+		case MySQLPacket.EOF_FIELD_COUNT:
+			type = MySQLPacket.EOF_PACKET;
+			break;
+		default:
+			// TODO
+			break;
+		}
+		return type;
+	}
+
+	/**
+	 * 将当前解析bytebuffer被截断的部分复制到新的buffer里，新buffer作为bufferArray的队列最新位置
+	 * 
+	 * @param readBuffer
+	 *			当前（最后一个bytebuffer）
+	 * @param offset
+	 *			上次解析的位置偏移量
+	 */
+	private static void copyToNewBuffer(ByteBufferArray bufferArray, ByteBuffer readBuffer, int offset) {
+		ByteBuffer newReadBuffer = bufferArray.addNewBuffer();
+		// 复制新的包的数据到下一段里
+		readBuffer.position(offset);
+		newReadBuffer.put(readBuffer);
+		// 为了计算TotalBytesLength，设置当前buffer终点
+		readBuffer.position(offset);
+	}
+
+	/**
+	 * 解析出Packet边界,Packet为MSQL格式的报文，其他报文可以类比，
+	 * 
+	 * @param readBuffer
+	 *			当前（最后一个bytebuffer）
+	 * @param readBufferOffset
+	 *			上次解析的位置偏移量
+	 * @return 下次解析的位置偏移量
+	 */
+	public static int parsePackets(ByteBufferArray bufferArray, ByteBuffer readBuffer, int readBufferOffset,
+			MySQLConnection con) {
+		int offset = readBufferOffset, length = 0, position = readBuffer.position();
+		while (offset < position) {
+			int curPacakgeLen = bufferArray.getCurPacageLength();
+			int packetType = bufferArray.getCurPacageType();
+			if (curPacakgeLen == 0) {// 还没有解析包头获取到长度
+				if (!validateHeader(offset, position)) {
+					copyToNewBuffer(bufferArray, readBuffer, offset);
+					offset = 0;
+					break;
+				}
+				length = getPacketLength(readBuffer, offset, position);
+				// 读取到了包头和长度
+				bufferArray.setCurPacketLength(length);
+				offset += msyql_packetHeaderSize;
+				// 解析报文类型
+				packetType = getPacketType(readBuffer, length, offset, position, con);
+				bufferArray.setCurPacketType(packetType);
+				offset += mysql_packetTypeSize;
+			} else {
+				// 判断当前的数据包是否完整读取
+				int totalPacketSize = bufferArray.calcTotalPacketSize();
+				int totalLength = bufferArray.getTotalBytesLength();
+				int exceededSize = totalLength - totalPacketSize;
+				if (exceededSize >= 0) {// 刚好当前报文结束,或者有空间结余
+					bufferArray.increatePacketIndex();
+					offset = position - exceededSize;
+				} else {// 当前数据包还没读完
+					offset = 0;
+					// 立即返回，否则会将当前ByteBuffer当成新报文去读
+					break;
+				}
+
+			}
+
+		}
+		// 返回下一次读取的标记位置
+		return offset;
+
+	}
+}
+src/main/java/io/mycat/net2/mysql/handler/ResponseHandler.java
+public interface ResponseHandler {
+
+    /**
+     * 无法获取连接
+     * 
+     * @param e
+     * @param conn
+     */
+    public void connectionError(Throwable e, BackendConnection conn);
+
+    /**
+     * 已获得有效连接的响应处理
+     */
+    void connectionAcquired(BackendConnection conn);
+
+    /**
+     * 收到数据包的响应处理
+     */
+    void handleResponse(ByteBufferArray bufferArray, BackendConnection conn);
+
+    /**
+     * 收到行数据包结束的响应处理
+     */
+    void finishResponse(BackendConnection conn);
+
+    /**
+     * on connetion close event
+     */
+    void connectionClose(BackendConnection conn, String reason);
+
+}
+src/main/java/io/mycat/net2/mysql/parser/ServerParse.java
+public final class ServerParse {
+
+	public static final int OTHER = -1;
+	public static final int BEGIN = 1;
+	public static final int COMMIT = 2;
+	public static final int DELETE = 3;
+	public static final int INSERT = 4;
+	public static final int REPLACE = 5;
+	public static final int ROLLBACK = 6;
+	public static final int SELECT = 7;
+	public static final int SET = 8;
+	public static final int SHOW = 9;
+	public static final int START = 10;
+	public static final int UPDATE = 11;
+	public static final int KILL = 12;
+	public static final int SAVEPOINT = 13;
+	public static final int USE = 14;
+	public static final int EXPLAIN = 15;
+	public static final int KILL_QUERY = 16;
+	public static final int HELP = 17;
+	public static final int MYSQL_CMD_COMMENT = 18;
+	public static final int MYSQL_COMMENT = 19;
+	public static final int CALL = 20;
+	public static final int DESCRIBE = 21;
+    public static final int LOAD_DATA_INFILE_SQL = 99;
+    public static final int DDL = 100;
+    private static final  Pattern pattern = Pattern.compile("(load)+\\s+(data)+\\s+\\w*\\s*(infile)+",Pattern.CASE_INSENSITIVE);
+
+	public static int parse(String stmt) {
+		int lenth = stmt.length();
+		for (int i = 0; i < lenth; ++i) {
+			switch (stmt.charAt(i)) {
+			case ' ':
+			case '\t':
+			case '\r':
+			case '\n':
+				continue;
+			case '/':
+				// such as /*!40101 SET character_set_client = @saved_cs_client
+				// */;
+				if (i == 0 && stmt.charAt(1) == '*' && stmt.charAt(2) == '!'
+						&& stmt.charAt(lenth - 2) == '*'
+						&& stmt.charAt(lenth - 1) == '/') {
+					return MYSQL_CMD_COMMENT;
+				}
+			case '#':
+				i = ParseUtil.comment(stmt, i);
+				if (i + 1 == lenth) {
+					return MYSQL_COMMENT;
+				}
+				continue;
+			case 'A':
+			case 'a':
+				return aCheck(stmt,i);
+			case 'B':
+			case 'b':
+				return beginCheck(stmt, i);
+			case 'C':
+			case 'c':
+				return commitOrCallCheckOrCreate(stmt, i);
+			case 'D':
+			case 'd':
+				return deleteOrdCheck(stmt, i);
+			case 'E':
+			case 'e':
+				return explainCheck(stmt, i);
+			case 'I':
+			case 'i':
+				return insertCheck(stmt, i);
+			case 'R':
+			case 'r':
+				return rCheck(stmt, i);
+			case 'S':
+			case 's':
+				return sCheck(stmt, i);
+			case 'T':
+			case 't':
+				return tCheck(stmt, i);
+			case 'U':
+			case 'u':
+				return uCheck(stmt, i);
+			case 'K':
+			case 'k':
+				return killCheck(stmt, i);
+			case 'H':
+			case 'h':
+				return helpCheck(stmt, i);
+				case 'L':
+				case 'l':
+					return loadDataCheck(stmt, i);
+			default:
+				return OTHER;
+			}
+		}
+		return OTHER;
+	}
+
+
+	static int loadDataCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 3) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			if ((c1 == 'O' || c1 == 'o') && (c2 == 'A' || c2 == 'a')
+					&& (c3 == 'D' || c3 == 'd')) {
+				Matcher matcher = pattern.matcher(stmt);
+				return matcher.find() ? LOAD_DATA_INFILE_SQL : OTHER;
+			}
+		}
+
+		return OTHER;
+	}
+
+
+	// HELP' '
+	static int helpCheck(String stmt, int offset) {
+		if (stmt.length() > offset + "ELP ".length()) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			if ((c1 == 'E' || c1 == 'e') && (c2 == 'L' || c2 == 'l')
+					&& (c3 == 'P' || c3 == 'p')) {
+				return (offset << 8) | HELP;
+			}
+		}
+		return OTHER;
+	}
+
+	// EXPLAIN' '
+	static int explainCheck(String stmt, int offset) {
+		if (stmt.length() > offset + "XPLAIN ".length()) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			char c6 = stmt.charAt(++offset);
+			char c7 = stmt.charAt(++offset);
+			if ((c1 == 'X' || c1 == 'x') && (c2 == 'P' || c2 == 'p')
+					&& (c3 == 'L' || c3 == 'l') && (c4 == 'A' || c4 == 'a')
+					&& (c5 == 'I' || c5 == 'i') && (c6 == 'N' || c6 == 'n')
+					&& (c7 == ' ' || c7 == '\t' || c7 == '\r' || c7 == '\n')) {
+				return (offset << 8) | EXPLAIN;
+			}
+		}
+		return OTHER;
+	}
+
+	// KILL' '
+	static int killCheck(String stmt, int offset) {
+		if (stmt.length() > offset + "ILL ".length()) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			if ((c1 == 'I' || c1 == 'i') && (c2 == 'L' || c2 == 'l')
+					&& (c3 == 'L' || c3 == 'l')
+					&& (c4 == ' ' || c4 == '\t' || c4 == '\r' || c4 == '\n')) {
+				while (stmt.length() > ++offset) {
+					switch (stmt.charAt(offset)) {
+					case ' ':
+					case '\t':
+					case '\r':
+					case '\n':
+						continue;
+					case 'Q':
+					case 'q':
+						return killQueryCheck(stmt, offset);
+					default:
+						return (offset << 8) | KILL;
+					}
+				}
+				return OTHER;
+			}
+		}
+		return OTHER;
+	}
+
+	// KILL QUERY' '
+	static int killQueryCheck(String stmt, int offset) {
+		if (stmt.length() > offset + "UERY ".length()) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			if ((c1 == 'U' || c1 == 'u') && (c2 == 'E' || c2 == 'e')
+					&& (c3 == 'R' || c3 == 'r') && (c4 == 'Y' || c4 == 'y')
+					&& (c5 == ' ' || c5 == '\t' || c5 == '\r' || c5 == '\n')) {
+				while (stmt.length() > ++offset) {
+					switch (stmt.charAt(offset)) {
+					case ' ':
+					case '\t':
+					case '\r':
+					case '\n':
+						continue;
+					default:
+						return (offset << 8) | KILL_QUERY;
+					}
+				}
+				return OTHER;
+			}
+		}
+		return OTHER;
+	}
+
+	// BEGIN
+	static int beginCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 4) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			if ((c1 == 'E' || c1 == 'e')
+					&& (c2 == 'G' || c2 == 'g')
+					&& (c3 == 'I' || c3 == 'i')
+					&& (c4 == 'N' || c4 == 'n')
+					&& (stmt.length() == ++offset || ParseUtil.isEOF(stmt
+							.charAt(offset)))) {
+				return BEGIN;
+			}
+		}
+		return OTHER;
+	}
+	//truncate
+	private static int tCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 7) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			char c6 = stmt.charAt(++offset);
+			char c7 = stmt.charAt(++offset);
+			char c8 = stmt.charAt(++offset);
+
+			if ((c1 == 'R' || c1 == 'r')
+					&& (c2 == 'U' || c2 == 'u')
+					&& (c3 == 'N' || c3 == 'n')
+					&& (c4 == 'C' || c4 == 'c')
+					&& (c5 == 'A' || c5 == 'a')
+					&& (c6 == 't' || c6 == 't')
+					&& (c7 == 'E' || c7 == 'e')
+					&& (c8 == ' ' || c8 == '\t' || c8 == '\r' || c8 == '\n')) {
+				return DDL;
+			}
+		}
+		return OTHER;
+	}
+	//alter table/view/...
+	private static int aCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 4) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			if ((c1 == 'L' || c1 == 'l')
+					&& (c2 == 'T' || c2 == 't')
+					&& (c3 == 'E' || c3 == 'e')
+					&& (c4 == 'R' || c4 == 'r')
+					&& (c5 == ' ' || c5 == '\t' || c5 == '\r' || c5 == '\n')) {
+				return DDL;
+			}
+		}
+		return OTHER;
+	}
+	// COMMIT
+	static int commitCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 5) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			if ((c1 == 'O' || c1 == 'o')
+					&& (c2 == 'M' || c2 == 'm')
+					&& (c3 == 'M' || c3 == 'm')
+					&& (c4 == 'I' || c4 == 'i')
+					&& (c5 == 'T' || c5 == 't')
+					&& (stmt.length() == ++offset || ParseUtil.isEOF(stmt
+							.charAt(offset)))) {
+				return COMMIT;
+			}
+		}
+
+		return OTHER;
+	}
+
+	// CALL
+	static int callCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 3) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			if ((c1 == 'A' || c1 == 'a') && (c2 == 'L' || c2 == 'l')
+					&& (c3 == 'L' || c3 == 'l')) {
+				return CALL;
+			}
+		}
+
+		return OTHER;
+	}
+
+	static int commitOrCallCheckOrCreate(String stmt, int offset) {
+		int sqlType = OTHER;
+		switch (stmt.charAt((offset + 1))) {
+		case 'O':
+		case 'o':
+			sqlType = commitCheck(stmt, offset);
+			break;
+		case 'A':
+		case 'a':
+			sqlType = callCheck(stmt, offset);
+			break;
+		case 'R':
+		case 'r':
+			sqlType = createCheck(stmt, offset);
+			break;
+		default:
+			sqlType = OTHER;
+		}
+		return sqlType;
+	}
+
+	//create table/view/...
+	private static int createCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 5) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			char c6 = stmt.charAt(++offset);
+			if ((c1 == 'R' || c1 == 'r')
+					&& (c2 == 'E' || c2 == 'e')
+					&& (c3 == 'A' || c3 == 'a')
+					&& (c4 == 'T' || c4 == 't')
+					&& (c5 == 'E' || c5 == 'e')
+					&& (c6 == ' ' || c6 == '\t' || c6 == '\r' || c6 == '\n')) {
+				return DDL;
+			}
+		}
+		return OTHER;
+	}
+	//drop
+	private static int dropCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 3) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			if ((c1 == 'R' || c1 == 'r')
+					&& (c2 == 'O' || c2 == 'o')
+					&& (c3 == 'P' || c3 == 'p')
+					&& (c4 == ' ' || c4 == '\t' || c4 == '\r' || c4 == '\n')) {
+				return DDL;
+			}
+		}
+		return OTHER;
+	}
+	// delete or drop
+    static int deleteOrdCheck(String stmt, int offset){
+    	int sqlType = OTHER;
+		switch (stmt.charAt((offset + 1))) {
+		case 'E':
+		case 'e':
+			sqlType = dCheck(stmt, offset);
+			break;
+		case 'R':
+		case 'r':
+			sqlType = dropCheck(stmt, offset);
+			break;
+		default:
+			sqlType = OTHER;
+		}
+		return sqlType;
+    }
+	// DESCRIBE or desc or DELETE' '
+	static int dCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 4) {
+			int res = describeCheck(stmt, offset);
+			if (res == DESCRIBE) {
+				return res;
+			}
+		}
+		// continue check
+		if (stmt.length() > offset + 6) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			char c6 = stmt.charAt(++offset);
+			if ((c1 == 'E' || c1 == 'e') && (c2 == 'L' || c2 == 'l')
+					&& (c3 == 'E' || c3 == 'e') && (c4 == 'T' || c4 == 't')
+					&& (c5 == 'E' || c5 == 'e')
+					&& (c6 == ' ' || c6 == '\t' || c6 == '\r' || c6 == '\n')) {
+				return DELETE;
+			}
+		}
+		return OTHER;
+	}
+
+	// DESCRIBE' ' 或 desc' '
+	static int describeCheck(String stmt, int offset) {
+		//desc
+		if (stmt.length() > offset + 4) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			if ((c1 == 'E' || c1 == 'e') && (c2 == 'S' || c2 == 's')
+					&& (c3 == 'C' || c3 == 'c')
+					&& (c4 == ' ' || c4 == '\t' || c4 == '\r' || c4 == '\n')) {
+				return DESCRIBE;
+			}
+			//describe
+			if (stmt.length() > offset + 4) {
+				char c5 = stmt.charAt(++offset);
+				char c6 = stmt.charAt(++offset);
+				char c7 = stmt.charAt(++offset);
+				char c8 = stmt.charAt(++offset);
+				if ((c1 == 'E' || c1 == 'e') && (c2 == 'S' || c2 == 's')
+						&& (c3 == 'C' || c3 == 'c') && (c4 == 'R' || c4 == 'r')
+						&& (c5 == 'I' || c5 == 'i') && (c6 == 'B' || c6 == 'b')
+						&& (c7 == 'E' || c7 == 'e')
+						&& (c8 == ' ' || c8 == '\t' || c8 == '\r' || c8 == '\n')) {
+					return DESCRIBE;
+				}
+			}
+		}
+		return OTHER;
+	}
+
+	// INSERT' '
+	static int insertCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 6) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			char c6 = stmt.charAt(++offset);
+			if ((c1 == 'N' || c1 == 'n') && (c2 == 'S' || c2 == 's')
+					&& (c3 == 'E' || c3 == 'e') && (c4 == 'R' || c4 == 'r')
+					&& (c5 == 'T' || c5 == 't')
+					&& (c6 == ' ' || c6 == '\t' || c6 == '\r' || c6 == '\n')) {
+				return INSERT;
+			}
+		}
+		return OTHER;
+	}
+
+	static int rCheck(String stmt, int offset) {
+		if (stmt.length() > ++offset) {
+			switch (stmt.charAt(offset)) {
+			case 'E':
+			case 'e':
+				return replaceCheck(stmt, offset);
+			case 'O':
+			case 'o':
+				return rollabckCheck(stmt, offset);
+			default:
+				return OTHER;
+			}
+		}
+		return OTHER;
+	}
+
+	// REPLACE' '
+	static int replaceCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 6) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			char c6 = stmt.charAt(++offset);
+			if ((c1 == 'P' || c1 == 'p') && (c2 == 'L' || c2 == 'l')
+					&& (c3 == 'A' || c3 == 'a') && (c4 == 'C' || c4 == 'c')
+					&& (c5 == 'E' || c5 == 'e')
+					&& (c6 == ' ' || c6 == '\t' || c6 == '\r' || c6 == '\n')) {
+				return REPLACE;
+			}
+		}
+		return OTHER;
+	}
+
+	// ROLLBACK
+	static int rollabckCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 6) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			char c6 = stmt.charAt(++offset);
+			if ((c1 == 'L' || c1 == 'l')
+					&& (c2 == 'L' || c2 == 'l')
+					&& (c3 == 'B' || c3 == 'b')
+					&& (c4 == 'A' || c4 == 'a')
+					&& (c5 == 'C' || c5 == 'c')
+					&& (c6 == 'K' || c6 == 'k')
+					&& (stmt.length() == ++offset || ParseUtil.isEOF(stmt
+							.charAt(offset)))) {
+				return ROLLBACK;
+			}
+		}
+		return OTHER;
+	}
+
+	static int sCheck(String stmt, int offset) {
+		if (stmt.length() > ++offset) {
+			switch (stmt.charAt(offset)) {
+			case 'A':
+			case 'a':
+				return savepointCheck(stmt, offset);
+			case 'E':
+			case 'e':
+				return seCheck(stmt, offset);
+			case 'H':
+			case 'h':
+				return showCheck(stmt, offset);
+			case 'T':
+			case 't':
+				return startCheck(stmt, offset);
+			default:
+				return OTHER;
+			}
+		}
+		return OTHER;
+	}
+
+	// SAVEPOINT
+	static int savepointCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 8) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			char c5 = stmt.charAt(++offset);
+			char c6 = stmt.charAt(++offset);
+			char c7 = stmt.charAt(++offset);
+			char c8 = stmt.charAt(++offset);
+			if ((c1 == 'V' || c1 == 'v') && (c2 == 'E' || c2 == 'e')
+					&& (c3 == 'P' || c3 == 'p') && (c4 == 'O' || c4 == 'o')
+					&& (c5 == 'I' || c5 == 'i') && (c6 == 'N' || c6 == 'n')
+					&& (c7 == 'T' || c7 == 't')
+					&& (c8 == ' ' || c8 == '\t' || c8 == '\r' || c8 == '\n')) {
+				return SAVEPOINT;
+			}
+		}
+		return OTHER;
+	}
+
+	static int seCheck(String stmt, int offset) {
+		if (stmt.length() > ++offset) {
+			switch (stmt.charAt(offset)) {
+			case 'L':
+			case 'l':
+				return selectCheck(stmt, offset);
+			case 'T':
+			case 't':
+				if (stmt.length() > ++offset) {
+					char c = stmt.charAt(offset);
+					if (c == ' ' || c == '\r' || c == '\n' || c == '\t'
+							|| c == '/' || c == '#') {
+						return (offset << 8) | SET;
+					}
+				}
+				return OTHER;
+			default:
+				return OTHER;
+			}
+		}
+		return OTHER;
+	}
+
+	// SELECT' '
+	static int selectCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 4) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			if ((c1 == 'E' || c1 == 'e')
+					&& (c2 == 'C' || c2 == 'c')
+					&& (c3 == 'T' || c3 == 't')
+					&& (c4 == ' ' || c4 == '\t' || c4 == '\r' || c4 == '\n'
+							|| c4 == '/' || c4 == '#')) {
+				return (offset << 8) | SELECT;
+			}
+		}
+		return OTHER;
+	}
+
+	// SHOW' '
+	static int showCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 3) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			if ((c1 == 'O' || c1 == 'o') && (c2 == 'W' || c2 == 'w')
+					&& (c3 == ' ' || c3 == '\t' || c3 == '\r' || c3 == '\n')) {
+				return (offset << 8) | SHOW;
+			}
+		}
+		return OTHER;
+	}
+
+	// START' '
+	static int startCheck(String stmt, int offset) {
+		if (stmt.length() > offset + 4) {
+			char c1 = stmt.charAt(++offset);
+			char c2 = stmt.charAt(++offset);
+			char c3 = stmt.charAt(++offset);
+			char c4 = stmt.charAt(++offset);
+			if ((c1 == 'A' || c1 == 'a') && (c2 == 'R' || c2 == 'r')
+					&& (c3 == 'T' || c3 == 't')
+					&& (c4 == ' ' || c4 == '\t' || c4 == '\r' || c4 == '\n')) {
+				return (offset << 8) | START;
+			}
+		}
+		return OTHER;
+	}
+
+	// UPDATE' ' | USE' '
+	static int uCheck(String stmt, int offset) {
+		if (stmt.length() > ++offset) {
+			switch (stmt.charAt(offset)) {
+			case 'P':
+			case 'p':
+				if (stmt.length() > offset + 5) {
+					char c1 = stmt.charAt(++offset);
+					char c2 = stmt.charAt(++offset);
+					char c3 = stmt.charAt(++offset);
+					char c4 = stmt.charAt(++offset);
+					char c5 = stmt.charAt(++offset);
+					if ((c1 == 'D' || c1 == 'd')
+							&& (c2 == 'A' || c2 == 'a')
+							&& (c3 == 'T' || c3 == 't')
+							&& (c4 == 'E' || c4 == 'e')
+							&& (c5 == ' ' || c5 == '\t' || c5 == '\r' || c5 == '\n')) {
+						return UPDATE;
+					}
+				}
+				break;
+			case 'S':
+			case 's':
+				if (stmt.length() > offset + 2) {
+					char c1 = stmt.charAt(++offset);
+					char c2 = stmt.charAt(++offset);
+					if ((c1 == 'E' || c1 == 'e')
+							&& (c2 == ' ' || c2 == '\t' || c2 == '\r' || c2 == '\n')) {
+						return (offset << 8) | USE;
+					}
+				}
+				break;
+			default:
+				return OTHER;
+			}
+		}
+		return OTHER;
+	}
+
+}
+src/main/java/io/mycat/net2/mysql/packet/MySQLPacket.java
+public abstract class MySQLPacket {
+    
+    public static int packetHeaderSize = 4;
+    
+    // 后端报文类型
+    public static final byte OK_FIELD_COUNT = 0;
+    public static final byte ERROR_FIELD_COUNT = (byte) 0xFF;
+    public static final byte EOF_FIELD_COUNT = (byte) 0xFE;
+    public static final byte REQUEST_FILE_FIELD_COUNT = (byte) 251;
+
+    public static final byte OK_PACKET = 0;
+    public static final byte ERROR_PACKET = (byte) 0xFF;
+    public static final byte EOF_PACKET = (byte) 0xFE;
+    public static final byte FIELD_EOF_PACKET = (byte) 0xFE;
+    public static final byte ROW_EOF_PACKET = (byte) 0xFE;
+    public static final byte AUTH_PACKET = 1;
+    public static final byte QUIT_PACKET = 2;
+
+    // 前端报文类型
+    /**
+     * none, this is an internal thread state
+     */
+    public static final byte COM_SLEEP = 0;
+
+    /**
+     * mysql_close
+     */
+    public static final byte COM_QUIT = 1;
+
+    public static final int COM_QUIT_PACKET_LENGTH = 1;
+
+    /**
+     * mysql_select_db
+     */
+    public static final byte COM_INIT_DB = 2;
+
+    /**
+     * mysql_real_query
+     */
+    public static final byte COM_QUERY = 3;
+
+    /**
+     * mysql_list_fields
+     */
+    public static final byte COM_FIELD_LIST = 4;
+
+    /**
+     * mysql_create_db (deprecated)
+     */
+    public static final byte COM_CREATE_DB = 5;
+
+    /**
+     * mysql_drop_db (deprecated)
+     */
+    public static final byte COM_DROP_DB = 6;
+
+    /**
+     * mysql_refresh
+     */
+    public static final byte COM_REFRESH = 7;
+
+    /**
+     * mysql_shutdown
+     */
+    public static final byte COM_SHUTDOWN = 8;
+
+    /**
+     * mysql_stat
+     */
+    public static final byte COM_STATISTICS = 9;
+
+    /**
+     * mysql_list_processes
+     */
+    public static final byte COM_PROCESS_INFO = 10;
+
+    /**
+     * none, this is an internal thread state
+     */
+    public static final byte COM_CONNECT = 11;
+
+    /**
+     * mysql_kill
+     */
+    public static final byte COM_PROCESS_KILL = 12;
+
+    /**
+     * mysql_dump_debug_info
+     */
+    public static final byte COM_DEBUG = 13;
+
+    /**
+     * mysql_ping
+     */
+    public static final byte COM_PING = 14;
+
+    /**
+     * none, this is an internal thread state
+     */
+    public static final byte COM_TIME = 15;
+
+    /**
+     * none, this is an internal thread state
+     */
+    public static final byte COM_DELAYED_INSERT = 16;
+
+    /**
+     * mysql_change_user
+     */
+    public static final byte COM_CHANGE_USER = 17;
+
+    /**
+     * used by slave server mysqlbinlog
+     */
+    public static final byte COM_BINLOG_DUMP = 18;
+
+    /**
+     * used by slave server to get master table
+     */
+    public static final byte COM_TABLE_DUMP = 19;
+
+    /**
+     * used by slave to log connection to master
+     */
+    public static final byte COM_CONNECT_OUT = 20;
+
+    /**
+     * used by slave to register to master
+     */
+    public static final byte COM_REGISTER_SLAVE = 21;
+
+    /**
+     * mysql_stmt_prepare
+     */
+    public static final byte COM_STMT_PREPARE = 22;
+
+    /**
+     * mysql_stmt_execute
+     */
+    public static final byte COM_STMT_EXECUTE = 23;
+
+    /**
+     * mysql_stmt_send_long_data
+     */
+    public static final byte COM_STMT_SEND_LONG_DATA = 24;
+
+    /**
+     * mysql_stmt_close
+     */
+    public static final byte COM_STMT_CLOSE = 25;
+
+    /**
+     * mysql_stmt_reset
+     */
+    public static final byte COM_STMT_RESET = 26;
+
+    /**
+     * mysql_set_server_option
+     */
+    public static final byte COM_SET_OPTION = 27;
+
+    /**
+     * mysql_stmt_fetch
+     */
+    public static final byte COM_STMT_FETCH = 28;
+
+    /**
+     * Mycat heartbeat
+     */
+    public static final byte COM_HEARTBEAT = 64;
+    
+    
+    public int packetLength;
+    public byte packetId;
+
+    /**
+     * 把数据包写到BufferArray中
+     */
+    public void write(ByteBufferArray bufferArray) {
+        throw new UnsupportedOperationException();
+    }
+
+    /**
+     * 计算数据包大小，不包含包头长度。
+     */
+    public abstract int calcPacketSize();
+
+    /**
+     * 取得数据包信息
+     */
+    protected abstract String getPacketInfo();
+
+    @Override
+    public String toString() {
+        return new StringBuilder().append(getPacketInfo()).append("{length=")
+                .append(packetLength).append(",id=").append(packetId)
+                .append('}').toString();
+    }
+}
+src/main/java/io/mycat/net2/mysql/MockMySQLServer.java
+public class MockMySQLServer {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MockMySQLServer.class);
+    public static final int PORT = 8066;
+
+    public static final String MOCK_HOSTNAME = "host1";
+
+    public static final String MOCK_SCHEMA = "mycat_db1";
+
+    public static final Map<String, PhysicalDBNode> mockDBNodes;
+
+    static {
+        mockDBNodes = new HashMap<>();
+        DBHostConfig config = new DBHostConfig("host1", "127.0.0.1", 3306, "", "root", "root");
+        config.setMaxCon(10);
+        PhysicalDatasource dbSource = new MySQLDataSource(config, false);
+        PhysicalDBPool dbPool = new PhysicalDBPool("host1", new PhysicalDatasource[] { dbSource }, new HashMap<>());
+        PhysicalDBNode dbNode = new PhysicalDBNode("host1", "mycat_db1", dbPool);
+        mockDBNodes.put("host1", dbNode);
+    }
+
+    public static void main(String[] args) throws IOException {
+        // Business Executor ，用来执行那些耗时的任务
+        NameableExecutor businessExecutor = ExecutorUtil.create("BusinessExecutor", 10);
+        // 定时器Executor，用来执行定时任务
+        NamebleScheduledExecutor timerExecutor = ExecutorUtil.createSheduledExecute("Timer", 5);
+
+        SharedBufferPool sharedPool = new SharedBufferPool(1024 * 1024 * 100, 1024);
+        new NetSystem(sharedPool, businessExecutor, timerExecutor);
+        // Reactor pool
+        NIOReactorPool reactorPool = new NIOReactorPool("Reactor Pool", 5, sharedPool);
+        NIOConnector connector = new NIOConnector("NIOConnector", reactorPool);
+        connector.start();
+        NetSystem.getInstance().setConnector(connector);
+        NetSystem.getInstance().setNetConfig(new SystemConfig());
+
+        MySQLFrontendConnectionFactory frontFactory = new MySQLFrontendConnectionFactory();
+        NIOAcceptor server = new NIOAcceptor("Server", "127.0.0.1", PORT, frontFactory, reactorPool);
+        server.start();
+        // server started
+        LOGGER.info(server.getName() + " is started and listening on " + server.getPort());
+    }
+}
+src/main/java/io/mycat/net2/Connection.java
+public abstract class Connection implements ClosableConnection {
+    public static Logger LOGGER = LoggerFactory.getLogger(Connection.class);
+    protected String host;
+    protected int port;
+    protected int localPort;
+    protected long id;
+
+    public enum State {
+        connecting, connected, closing, closed, failed
+    }
+
+    private State state = State.connecting;
+
+    // 连接的方向，in表示是客户端连接过来的，out表示自己作为客户端去连接对端Sever
+    public enum Direction {
+        in, out
+    }
+
+    private Direction direction = Direction.in;
+
+    protected final SocketChannel channel;
+
+    private SelectionKey processKey;
+    private static final int OP_NOT_READ = ~SelectionKey.OP_READ;
+    private static final int OP_NOT_WRITE = ~SelectionKey.OP_WRITE;
+    private ByteBufferArray readBufferArray;
+    private int readBufferOffset;
+    private ByteBuffer writeBuffer;
+    private final WriteQueue writeQueue = new WriteQueue(1024 * 1024 * 16);
+    private final ReentrantLock writeQueueLock = new ReentrantLock();
+    private long lastLargeMessageTime;
+    protected boolean isClosed;
+    protected boolean isSocketClosed;
+    protected long startupTime;
+    protected long lastReadTime;
+    protected long lastWriteTime;
+    protected int netInBytes;
+    protected int netOutBytes;
+    protected int pkgTotalSize;
+    protected int pkgTotalCount;
+    private long idleTimeout;
+    private long lastPerfCollectTime;
+    @SuppressWarnings("rawtypes")
+    protected NIOHandler handler;
+    private int maxPacketSize;
+    private int packetHeaderSize;
+    private ReactorBufferPool myBufferPool;
+
+    public Connection(SocketChannel channel) {
+        this.channel = channel;
+        this.isClosed = false;
+        this.startupTime = TimeUtil.currentTimeMillis();
+        this.lastReadTime = startupTime;
+        this.lastWriteTime = startupTime;
+        this.lastPerfCollectTime = startupTime;
+    }
+
+    public void resetPerfCollectTime() {
+        netInBytes = 0;
+        netOutBytes = 0;
+        pkgTotalCount = 0;
+        pkgTotalSize = 0;
+        lastPerfCollectTime = TimeUtil.currentTimeMillis();
+    }
+
+    public long getLastPerfCollectTime() {
+        return lastPerfCollectTime;
+    }
+
+    public long getIdleTimeout() {
+        return idleTimeout;
+    }
+
+    public void setIdleTimeout(long idleTimeout) {
+        this.idleTimeout = idleTimeout;
+    }
+
+    public String getHost() {
+        return host;
+    }
+
+    public void setHost(String host) {
+        this.host = host;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    public void setPort(int port) {
+        this.port = port;
+    }
+
+    public long getId() {
+        return id;
+    }
+
+    public int getLocalPort() {
+        return localPort;
+    }
+
+    public void setLocalPort(int localPort) {
+        this.localPort = localPort;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    public boolean isIdleTimeout() {
+        return TimeUtil.currentTimeMillis() > Math.max(lastWriteTime, lastReadTime) + idleTimeout;
+
+    }
+
+    public SocketChannel getChannel() {
+        return channel;
+    }
+
+    public long getStartupTime() {
+        return startupTime;
+    }
+
+    public long getLastReadTime() {
+        return lastReadTime;
+    }
+
+    public long getLastWriteTime() {
+        return lastWriteTime;
+    }
+
+    public long getNetInBytes() {
+        return netInBytes;
+    }
+
+    public long getNetOutBytes() {
+        return netOutBytes;
+    }
+
+    private ByteBuffer allocate() {
+        return NetSystem.getInstance().getBufferPool().allocate();
+    }
+
+    private final void recycle(ByteBuffer buffer) {
+        NetSystem.getInstance().getBufferPool().recycle(buffer);
+    }
+
+    public void setHandler(NIOHandler<? extends Connection> handler) {
+        this.handler = handler;
+
+    }
+
+    @SuppressWarnings("rawtypes")
+    public NIOHandler getHandler() {
+        return this.handler;
+    }
+
+    @SuppressWarnings("unchecked")
+    public void handle(final ByteBuffer data, final int start, final int readedLength) {
+        // handler.handle(this, data, start, readedLength);
+    }
+
+    public boolean isConnected() {
+        return (this.state == Connection.State.connected);
+    }
+
+    private ByteBuffer compactReadBuffer(ByteBuffer buffer, int offset) {
+        if (buffer == null)
+            return null;
+        buffer.limit(buffer.position());
+        buffer.position(offset);
+        buffer = buffer.compact();
+        readBufferOffset = 0;
+        return buffer;
+    }
+
+    // public void write(byte[] src) {
+    // try {
+    // writeQueueLock.lock();
+    // ByteBuffer buffer = this.allocate();
+    // int offset = 0;
+    // int remains = src.length;
+    // while (remains > 0) {
+    // int writeable = buffer.remaining();
+    // if (writeable >= remains) {
+    // // can write whole srce
+    // buffer.put(src, offset, remains);
+    // this.writeQueue.offer(buffer);
+    // break;
+    // } else {
+    // // can write partly
+    // buffer.put(src, offset, writeable);
+    // offset += writeable;
+    // remains -= writeable;
+    // writeQueue.offer(buffer);
+    // buffer = allocate();
+    // continue;
+    // }
+    //
+    // }
+    // } finally {
+    // writeQueueLock.unlock();
+    // }
+    // this.enableWrite(true);
+    // }
+
+    @SuppressWarnings("unchecked")
+    public void close(String reason) {
+        if (!isClosed) {
+            closeSocket();
+            this.cleanup();
+            isClosed = true;
+            NetSystem.getInstance().removeConnection(this);
+            LOGGER.info("close connection,reason:" + reason + " ," + this.getClass());
+            if (handler != null) {
+                handler.onClosed(this, reason);
+            }
+        }
+    }
+
+    /**
+     * asyn close (executed later in thread) 该函数使用多线程异步关闭
+     * Connection，会存在并发安全问题，暂时注释
+     * 
+     * @param reason
+     */
+    // public void asynClose(final String reason) {
+    // Runnable runn = new Runnable() {
+    // public void run() {
+    // Connection.this.close(reason);
+    // }
+    // };
+    // NetSystem.getInstance().getTimer().schedule(runn, 1, TimeUnit.SECONDS);
+    //
+    // }
+
+    public boolean isClosed() {
+        return isClosed;
+    }
+
+    public void idleCheck() {
+        if (isIdleTimeout()) {
+            LOGGER.info(toString() + " idle timeout");
+            close(" idle ");
+        }
+    }
+
+    /**
+     * 清理资源
+     */
+
+    protected void cleanup() {
+
+        // 清理资源占用
+        this.readBufferArray.recycle();
+        this.writeQueue.recycle();
+        if (writeBuffer != null) {
+            // recycle(writeBuffer);
+            this.writeBuffer = null;
+        }
+    }
+
+    public WriteQueue getWriteQueue() {
+        return writeQueue;
+    }
+
+    @SuppressWarnings("unchecked")
+    public void register(Selector selector, ReactorBufferPool myBufferPool) throws IOException {
+        this.myBufferPool = myBufferPool;
+        processKey = channel.register(selector, SelectionKey.OP_READ, this);
+        NetSystem.getInstance().addConnection(this);
+        this.readBufferArray = myBufferPool.allocate();
+        readBufferArray.addNewBuffer();
+        this.handler.onConnected(this);
+
+    }
+
+    public void doWriteQueue() {
+        try {
+            boolean noMoreData = write0();
+            lastWriteTime = TimeUtil.currentTimeMillis();
+            if (noMoreData) {
+                if ((processKey.isValid() && (processKey.interestOps() & SelectionKey.OP_WRITE) != 0)) {
+                    disableWrite();
+                }
+
+            } else {
+
+                if ((processKey.isValid() && (processKey.interestOps() & SelectionKey.OP_WRITE) == 0)) {
+                    enableWrite(false);
+                }
+            }
+
+        } catch (IOException e) {
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("caught err:", e);
+            }
+            close("err:" + e);
+        }
+
+    }
+
+    public void write(ByteBufferArray bufferArray) {
+        // try {
+        // writeQueueLock.lock();
+        // List<ByteBuffer> blockes = bufferArray.getWritedBlockLst();
+        // if (!bufferArray.getWritedBlockLst().isEmpty()) {
+        // for (ByteBuffer curBuf : blockes) {
+        // writeQueue.offer(curBuf);
+        // }
+        // }
+        // ByteBuffer curBuf = bufferArray.getCurWritingBlock();
+        // if (curBuf.position() == 0) {// empty
+        // this.recycle(curBuf);
+        // } else {
+        // writeQueue.offer(curBuf);
+        // }
+        // } finally {
+        // writeQueueLock.unlock();
+        // bufferArray.clear();
+        // }
+        // this.enableWrite(true);
+        writeQueueLock.lock();
+        try {
+            writeQueue.add(bufferArray);
+        } finally {
+            writeQueueLock.unlock();
+        }
+        this.enableWrite(true);
+    }
+
+    public void write(byte[] data) {
+        ByteBufferArray bufferArray = myBufferPool.allocate();
+        ByteBuffer buffer = bufferArray.addNewBuffer();
+        buffer.put(data);
+        write(bufferArray);
+    }
+
+    private boolean write0() throws IOException {
+
+        for (;;) {
+            int written = 0;
+            ByteBufferArray arry = writeQueue.pull();
+            if (arry == null) {
+                break;
+            }
+            for (ByteBuffer buffer : arry.getWritedBlockLst()) {
+                buffer.flip();
+
+                // ByteBuffer buffer = writeBuffer;
+                if (buffer != null) {
+                    while (buffer.hasRemaining()) {
+                        written = channel.write(buffer);
+                        if (written > 0) {
+                            netOutBytes += written;
+                            NetSystem.getInstance().addNetOutBytes(written);
+
+                        } else {
+                            break;
+                        }
+                    }
+                   
+                }
+            }
+            if (arry.getLastByteBuffer().hasRemaining()) {
+                return false;
+            } else {
+                writeBuffer = null;
+                // recycle(buffer);
+                arry.recycle();
+            }
+        }
+        // while ((buffer = writeQueue.poll()) != null) {
+        // if (buffer.limit() == 0) {
+        // recycle(buffer);
+        // close("quit send");
+        // return true;
+        // }
+        // buffer.flip();
+        // while (buffer.hasRemaining()) {
+        // written = channel.write(buffer);
+        // if (written > 0) {
+        // netOutBytes += written;
+        // NetSystem.getInstance().addNetOutBytes(written);
+        // lastWriteTime = TimeUtil.currentTimeMillis();
+        // } else {
+        // break;
+        // }
+        // }
+        // if (buffer.hasRemaining()) {
+        // writeBuffer = buffer;
+        // return false;
+        // } else {
+        // recycle(buffer);
+        // }
+        // }
+        return true;
+    }
+
+    private void disableWrite() {
+        try {
+            SelectionKey key = this.processKey;
+            key.interestOps(key.interestOps() & OP_NOT_WRITE);
+        } catch (Exception e) {
+            LOGGER.warn("can't disable write " + e + " con " + this);
+        }
+
+    }
+
+    public void enableWrite(boolean wakeup) {
+        boolean needWakeup = false;
+        try {
+            SelectionKey key = this.processKey;
+            key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
+            needWakeup = true;
+        } catch (Exception e) {
+            LOGGER.warn("can't enable write " + e);
+
+        }
+        if (needWakeup && wakeup) {
+            processKey.selector().wakeup();
+        }
+    }
+
+    public void disableRead() {
+
+        SelectionKey key = this.processKey;
+        key.interestOps(key.interestOps() & OP_NOT_READ);
+    }
+
+    public void enableRead() {
+
+        boolean needWakeup = false;
+        try {
+            SelectionKey key = this.processKey;
+            key.interestOps(key.interestOps() | SelectionKey.OP_READ);
+            needWakeup = true;
+        } catch (Exception e) {
+            LOGGER.warn("enable read fail " + e);
+        }
+        if (needWakeup) {
+            processKey.selector().wakeup();
+        }
+    }
+
+    public void setState(State newState) {
+        this.state = newState;
+    }
+
+    /**
+     * 异步读取数据,only nio thread call
+     * 
+     * @throws IOException
+     */
+    protected void asynRead() throws IOException {
+        if (this.isClosed) {
+            return;
+        }
+
+        boolean readAgain = true;
+        int got = 0;
+        while (readAgain) {
+            ByteBuffer readBuffer = readBufferArray.getLastByteBuffer();
+            got = channel.read(readBuffer);
+            switch (got) {
+            case 0: {
+                // 如果空间不够了，继续分配空间读取
+                if (readBuffer.remaining() == 0) {
+                    readBufferArray.addNewBuffer();
+                } else {
+                    readAgain = false;
+                }
+                break;
+            }
+            case -1: {
+                readAgain = false;
+                break;
+            }
+            default: {// readed some bytes
+
+                if (readBuffer.hasRemaining()) {
+                    // 没有可读的机会，等待下次读取
+                    readAgain = false;
+                }
+
+                // 子类负责解析报文
+                readBufferOffset = parseProtocolPakage(this.readBufferArray, readBuffer, readBufferOffset);
+                // 解析后处理
+                handler.handle(this, this.readBufferArray);
+            }
+            }
+        }
+        if (got == -1) {
+            return;
+        }
+        if (readBufferArray.getCurPacageLength() > 0) {
+            // pkgTotalCount+=readBufferArray
+            // pkgTotalSize += length;
+            // todo 把完整解析的数据报文拿出来供处理
+
+        }
+
+    }
+
+    protected abstract int parseProtocolPakage(ByteBufferArray readBufferArray, ByteBuffer readBuffer,
+            int readBufferOffset);
+
+    private void closeSocket() {
+
+        if (channel != null) {
+            boolean isSocketClosed = true;
+            try {
+                processKey.cancel();
+                channel.close();
+            } catch (Throwable e) {
+            }
+            boolean closed = isSocketClosed && (!channel.isOpen());
+            if (!closed) {
+                LOGGER.warn("close socket of connnection failed " + this);
+            }
+
+        }
+    }
+
+    public State getState() {
+        return state;
+    }
+
+    public Direction getDirection() {
+        return direction;
+    }
+
+    public void setDirection(Connection.Direction in) {
+        this.direction = in;
+
+    }
+
+    public int getPkgTotalSize() {
+        return pkgTotalSize;
+    }
+
+    public int getPkgTotalCount() {
+        return pkgTotalCount;
+    }
+
+    @Override
+    public String toString() {
+        return "Connection [host=" + host + ",  port=" + port + ", id=" + id + ", state=" + state + ", direction="
+                + direction + ", startupTime=" + startupTime + ", lastReadTime=" + lastReadTime + ", lastWriteTime="
+                + lastWriteTime + "]";
+    }
+
+    public void setMaxPacketSize(int maxPacketSize) {
+        this.maxPacketSize = maxPacketSize;
+
+    }
+
+    public void setPacketHeaderSize(int packetHeaderSize) {
+        this.packetHeaderSize = packetHeaderSize;
+
+    }
+
+    public ReactorBufferPool getMyBufferPool() {
+        return myBufferPool;
+    }
+
+}
+src/main/java/io/mycat/net2/mysql/connection/back/MySQLBackendConnection.java
+public class MySQLBackendConnection extends MySQLConnection implements BackendConnection {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(MySQLBackendConnection.class);
+
+    public static final int LOGIN_STATUS = 2; // 区分于front
+    public static final int CMD_SENT_STATUS = 11;
+    public static final int RESULT_WAIT_STATUS = 21;
+    public static final int RESULT_INIT_STATUS = 22;
+    public static final int RESULT_HEADER_STATUS = 24;
+    public static final int RESULT_FETCH_STATUS = 23;
+    public static final int RESULT_FAIL_STATUS = 29;
+    public static final int IDLE_STATUS = -1;
+
+    private final boolean readNode;
+
+    private String user;
+    private String password;
+    private String schema;
+    private ResponseHandler responseHandler;
+    private PhysicalDatasource pool;
+
+    private HandshakePacket handshake;
+
+    private boolean authenticated;
+
+    private long clientFlags;
+
+    private long maxPacketSize = 16 * 1024 * 1024;
+
+    private int charsetIndex;
+
+    private PhysicalDatasource datasource;
+
+    public MySQLBackendConnection(SocketChannel channel, boolean readNode) {
+        super(channel);
+        connectedStatus = new MySQLBackendConnectionStatus();
+        this.readNode = readNode;
+        this.clientFlags = initClientFlags();
+    }
+
+    private static long initClientFlags() {
+        int flag = 0;
+        flag |= Capabilities.CLIENT_LONG_PASSWORD;
+        flag |= Capabilities.CLIENT_FOUND_ROWS;
+        flag |= Capabilities.CLIENT_LONG_FLAG;
+        flag |= Capabilities.CLIENT_CONNECT_WITH_DB;
+        // flag |= Capabilities.CLIENT_NO_SCHEMA;
+        boolean usingCompress = false;
+        if (usingCompress) {
+            flag |= Capabilities.CLIENT_COMPRESS;
+        }
+        flag |= Capabilities.CLIENT_ODBC;
+        flag |= Capabilities.CLIENT_LOCAL_FILES;
+        flag |= Capabilities.CLIENT_IGNORE_SPACE;
+        flag |= Capabilities.CLIENT_PROTOCOL_41;
+        flag |= Capabilities.CLIENT_INTERACTIVE;
+        // flag |= Capabilities.CLIENT_SSL;
+        flag |= Capabilities.CLIENT_IGNORE_SIGPIPE;
+        flag |= Capabilities.CLIENT_TRANSACTIONS;
+        // flag |= Capabilities.CLIENT_RESERVED;
+        flag |= Capabilities.CLIENT_SECURE_CONNECTION;
+        // client extension
+        flag |= Capabilities.CLIENT_MULTI_STATEMENTS;
+        flag |= Capabilities.CLIENT_MULTI_RESULTS;
+        return flag;
+    }
+
+    @Override
+    public String getCharset() {
+        return null;
+    }
+
+    private class MySQLBackendConnectionStatus extends MySQLConnectionStatus {
+
+        @Override
+        public void setNextStatus(byte packetType) {
+            int status = this.getStatus();
+            switch (status) {
+            case LOGIN_STATUS:
+                if (packetType == MySQLPacket.AUTH_PACKET) {
+                    this.setStatus(IDLE_STATUS);
+                    LOGGER.debug("DB status: IDLE");
+                }
+                break;
+            case IDLE_STATUS:
+                if (packetType == MySQLPacket.COM_QUERY) {
+                    this.setStatus(RESULT_INIT_STATUS);
+                    LOGGER.debug("DB status: Result Init");
+                } else if (packetType == MySQLPacket.COM_QUIT) {
+                    // TODO 退出
+                }
+                break;
+            case RESULT_INIT_STATUS:
+                if (packetType == MySQLPacket.OK_PACKET) {
+                    this.setStatus(IDLE_STATUS);
+                    LOGGER.debug("DB status: IDLE");
+                } else if (packetType == MySQLPacket.ERROR_PACKET) {
+                    this.setStatus(IDLE_STATUS);
+                    LOGGER.debug("DB status: IDLE");
+                } else {
+                    this.setStatus(RESULT_HEADER_STATUS);
+                    LOGGER.debug("DB status: Result Header");
+                    LOGGER.debug("DB status: Result Field");
+                }
+                break;
+            case RESULT_HEADER_STATUS:
+                if (packetType == MySQLPacket.EOF_PACKET) {
+                    this.setStatus(RESULT_FETCH_STATUS);
+                    LOGGER.debug("DB status: Fetch Row");
+                } else if (packetType == MySQLPacket.ERROR_PACKET) {
+                    this.setStatus(IDLE_STATUS);
+                    LOGGER.debug("DB status: IDLE");
+                } else {
+                    LOGGER.debug("DB status: Result Field");
+                }
+                break;
+            case RESULT_FETCH_STATUS:
+                if (packetType == MySQLPacket.EOF_PACKET) {
+                    this.setStatus(IDLE_STATUS);
+                    LOGGER.debug("DB status: IDLE");
+                } else if (packetType == MySQLPacket.ERROR_PACKET) {
+                    this.setStatus(IDLE_STATUS);
+                    LOGGER.debug("DB status: IDLE");
+                } else {
+                    LOGGER.debug("DB status: Reading row");
+                }   
+                break;
+            case RESULT_FAIL_STATUS:
+                if (packetType == MySQLPacket.EOF_PACKET) {
+                    this.setStatus(IDLE_STATUS);
+                }
+                break;
+            default:
+                LOGGER.warn("Error connected status.", status);
+                break;
+            }
+        }
+
+        @Override
+        public int initialValue() {
+            return LOGIN_STATUS;
+        }
+
+    }
+
+    public String getUser() {
+        return user;
+    }
+
+    public void setUser(String user) {
+        this.user = user;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getSchema() {
+        return schema;
+    }
+
+    public void setSchema(String schema) {
+        this.schema = schema;
+    }
+
+    public ResponseHandler getResponseHandler() {
+        return responseHandler;
+    }
+
+    public void setResponseHandler(ResponseHandler responseHandler) {
+        this.responseHandler = responseHandler;
+    }
+
+    public PhysicalDatasource getPool() {
+        return pool;
+    }
+
+    public void setPool(PhysicalDatasource pool) {
+        this.pool = pool;
+    }
+
+    public boolean isReadNode() {
+        return readNode;
+    }
+
+    public HandshakePacket getHandshake() {
+        return handshake;
+    }
+
+    public void setHandshake(HandshakePacket handshake) {
+        this.handshake = handshake;
+    }
+
+    public boolean isAuthenticated() {
+        return authenticated;
+    }
+
+    public void setAuthenticated(boolean authenticated) {
+        this.authenticated = authenticated;
+    }
+
+    public void authenticate() {
+        AuthPacket packet = new AuthPacket();
+        packet.packetId = 1;
+        packet.clientFlags = clientFlags;
+        packet.maxPacketSize = maxPacketSize;
+        packet.charsetIndex = this.charsetIndex;
+        packet.user = user;
+        try {
+            packet.password = passwd(password, handshake);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e.getMessage());
+        }
+        packet.database = schema;
+        ByteBufferArray bufferArray = this.getMyBufferPool().allocate();
+        bufferArray.addNewBuffer();
+        packet.write(bufferArray);
+        // write to connection
+        this.write(bufferArray);
+
+    }
+
+    private static byte[] passwd(String pass, HandshakePacket hs) throws NoSuchAlgorithmException {
+        if (pass == null || pass.length() == 0) {
+            return null;
+        }
+        byte[] passwd = pass.getBytes();
+        int sl1 = hs.seed.length;
+        int sl2 = hs.restOfScrambleBuff.length;
+        byte[] seed = new byte[sl1 + sl2];
+        System.arraycopy(hs.seed, 0, seed, 0, sl1);
+        System.arraycopy(hs.restOfScrambleBuff, 0, seed, sl1, sl2);
+        return SecurityUtil.scramble411(passwd, seed);
+    }
+
+    @Override
+    public boolean isBorrowed() {
+        return false;
+    }
+
+    @Override
+    public boolean isClosedOrQuit() {
+        return false;
+    }
+
+    @Override
+    public void setBorrowed(boolean b) {
+    }
+
+    @Override
+    public boolean isFromSlaveDB() {
+        return false;
+    }
+
+    public PhysicalDatasource getDatasource() {
+        return datasource;
+    }
+
+    public void setDatasource(PhysicalDatasource datasource) {
+        this.datasource = datasource;
+    }
+
+    public void release() {
+        this.datasource.releaseChannel(this);
+    }
+
+}
+src/main/java/io/mycat/net2/mysql/packet/MySQLMessage.java
+public class MySQLMessage {
+    public static final long NULL_LENGTH = -1;
+    private static final byte[] EMPTY_BYTES = new byte[0];
+
+    // private final byte[] data;
+    private final int length;
+    private int position;
+    private final ByteBufferArray bufferArray;
+    private final int packetIndex;
+
+    public MySQLMessage(ByteBufferArray bufferArray, int packetIndex) {
+        this.bufferArray = bufferArray;
+        this.length = bufferArray.getPacageLength(packetIndex);
+        this.position = 0;
+        this.packetIndex = packetIndex;
+    }
+
+    public int length() {
+        return length;
+    }
+
+    public int position() {
+        return position;
+    }
+
+    // public byte[] bytes() {
+    // return data;
+    // }
+
+    public void move(int i) {
+        position += i;
+    }
+
+    public void position(int i) {
+        this.position = i;
+    }
+
+    public boolean hasRemaining() {
+        return length > position;
+    }
+
+    public byte read(int i) {
+        return bufferArray.readPacket(packetIndex, i);
+    }
+
+    public byte read() {
+        return bufferArray.readPacket(packetIndex, position++);
+    }
+
+    public int readUB2() {
+        int i = read() & 0xff;
+        i |= (read() & 0xff) << 8;
+        return i;
+    }
+
+    public int readUB3() {
+        int i = read() & 0xff;
+        i |= (read() & 0xff) << 8;
+        i |= (read() & 0xff) << 16;
+        return i;
+    }
+
+    public long readUB4() {
+        long l = (long) (read() & 0xff);
+        l |= (long) (read() & 0xff) << 8;
+        l |= (long) (read() & 0xff) << 16;
+        l |= (long) (read() & 0xff) << 24;
+        return l;
+    }
+
+    public int readInt() {
+        int i = read() & 0xff;
+        i |= (read() & 0xff) << 8;
+        i |= (read() & 0xff) << 16;
+        i |= (read() & 0xff) << 24;
+        return i;
+    }
+
+    public float readFloat() {
+        return Float.intBitsToFloat(readInt());
+    }
+
+    public long readLong() {
+        long l = (long) (read() & 0xff);
+        l |= (long) (read() & 0xff) << 8;
+        l |= (long) (read() & 0xff) << 16;
+        l |= (long) (read() & 0xff) << 24;
+        l |= (long) (read() & 0xff) << 32;
+        l |= (long) (read() & 0xff) << 40;
+        l |= (long) (read() & 0xff) << 48;
+        l |= (long) (read() & 0xff) << 56;
+        return l;
+    }
+
+    public double readDouble() {
+        return Double.longBitsToDouble(readLong());
+    }
+
+    public long readLength() {
+        int length = read() & 0xff;
+        switch (length) {
+        case 251:
+            return NULL_LENGTH;
+        case 252:
+            return readUB2();
+        case 253:
+            return readUB3();
+        case 254:
+            return readLong();
+        default:
+            return length;
+        }
+    }
+
+    private void arraycopy(byte[] dest) {
+        arraycopy(dest, dest.length);
+    }
+
+    private void arraycopy(byte[] dest, int length) {
+        for (int i = 0; i < length; i++) {
+            dest[i] = read(position + i);
+        }
+    }
+
+    public byte[] readBytes() {
+        if (position >= length) {
+            return EMPTY_BYTES;
+        }
+        byte[] ab = new byte[length - position];
+        // System.arraycopy(data, position, ab, 0, ab.length);
+        arraycopy(ab);
+        position = length;
+        return ab;
+    }
+
+    public byte[] readBytes(int length) {
+        byte[] ab = new byte[length];
+        // System.arraycopy(data, position, ab, 0, length);
+        arraycopy(ab, length);
+        position += length;
+        return ab;
+    }
+
+    public byte[] readBytesWithNull() {
+        if (position >= length) {
+            return EMPTY_BYTES;
+        }
+        int offset = -1;
+        for (int i = position; i < length; i++) {
+            if (read(i) == 0) {
+                offset = i;
+                break;
+            }
+        }
+        switch (offset) {
+        case -1:
+            byte[] ab1 = new byte[length - position];
+            // System.arraycopy(b, position, ab1, 0, ab1.length);
+            arraycopy(ab1);
+            position = length;
+            return ab1;
+        case 0:
+            position++;
+            return EMPTY_BYTES;
+        default:
+            byte[] ab2 = new byte[offset - position];
+            // System.arraycopy(b, position, ab2, 0, ab2.length);
+            arraycopy(ab2);
+            position = offset + 1;
+            return ab2;
+        }
+    }
+
+    public byte[] readBytesWithLength() {
+        int length = (int) readLength();
+        if (length == NULL_LENGTH) {
+            return null;
+        }
+        if (length <= 0) {
+            return EMPTY_BYTES;
+        }
+
+        byte[] ab = new byte[length];
+        // System.arraycopy(data, position, ab, 0, ab.length);
+        arraycopy(ab);
+        position += length;
+        return ab;
+    }
+
+    public String readString() {
+        if (position >= length) {
+            return null;
+        }
+        byte[] ab = new byte[length - position];
+        arraycopy(ab);
+        String s = new String(ab);
+        position = length;
+        return s;
+    }
+
+    public String readString(String charset) throws UnsupportedEncodingException {
+        if (position >= length) {
+            return null;
+        }
+        byte[] ab = new byte[length - position];
+        arraycopy(ab);
+        String s = new String(ab, charset);
+        position = length;
+        return s;
+    }
+
+    public String readStringWithNull() {
+        if (position >= length) {
+            return null;
+        }
+        int offset = -1;
+        for (int i = position; i < length; i++) {
+            if (read(i) == 0) {
+                offset = i;
+                break;
+            }
+        }
+        if (offset == -1) {
+            byte[] ab = new byte[length - position];
+            arraycopy(ab);
+            String s = new String(ab);
+            position = length;
+            return s;
+        }
+        if (offset > position) {
+            byte[] ab = new byte[offset - position];
+            arraycopy(ab);
+            String s = new String(ab);
+            position = offset + 1;
+            return s;
+        } else {
+            position++;
+            return null;
+        }
+    }
+
+    public String readStringWithNull(String charset) throws UnsupportedEncodingException {
+        if (position >= length) {
+            return null;
+        }
+        int offset = -1;
+        for (int i = position; i < length; i++) {
+            if (read(i) == 0) {
+                offset = i;
+                break;
+            }
+        }
+        switch (offset) {
+        case -1:
+            byte[] ab = new byte[length - position];
+            arraycopy(ab);
+            String s1 = new String(ab, charset);
+            position = length;
+            return s1;
+        case 0:
+            position++;
+            return null;
+        default:
+            byte[] b = new byte[offset - position];
+            arraycopy(b);
+            String s2 = new String(b, charset);
+            position = offset + 1;
+            return s2;
+        }
+    }
+
+    public String readStringWithLength() {
+        int length = (int) readLength();
+        if (length <= 0) {
+            return null;
+        }
+        byte[] ab = new byte[length - position];
+        arraycopy(ab);
+        String s = new String(ab);
+        position += length;
+        return s;
+    }
+
+    public String readStringWithLength(String charset) throws UnsupportedEncodingException {
+        int length = (int) readLength();
+        if (length <= 0) {
+            return null;
+        }
+        byte[] ab = new byte[length - position];
+        arraycopy(ab);
+        String s = new String(ab, charset);
+        position += length;
+        return s;
+    }
+
+    public java.sql.Time readTime() {
+        move(6);
+        int hour = read();
+        int minute = read();
+        int second = read();
+        Calendar cal = getLocalCalendar();
+        cal.set(0, 0, 0, hour, minute, second);
+        return new Time(cal.getTimeInMillis());
+    }
+
+    public java.util.Date readDate() {
+        byte length = read();
+        int year = readUB2();
+        byte month = read();
+        byte date = read();
+        int hour = read();
+        int minute = read();
+        int second = read();
+        if (length == 11) {
+            long nanos = readUB4();
+            Calendar cal = getLocalCalendar();
+            cal.set(year, --month, date, hour, minute, second);
+            Timestamp time = new Timestamp(cal.getTimeInMillis());
+            time.setNanos((int) nanos);
+            return time;
+        } else {
+            Calendar cal = getLocalCalendar();
+            cal.set(year, --month, date, hour, minute, second);
+            return new java.sql.Date(cal.getTimeInMillis());
+        }
+    }
+
+    public BigDecimal readBigDecimal() {
+        String src = readStringWithLength();
+        return src == null ? null : new BigDecimal(src);
+    }
+
+    public String toString() {
+        return bufferArray.toString();
+    }
+
+    private static final ThreadLocal<Calendar> localCalendar = new ThreadLocal<Calendar>();
+
+    private static final Calendar getLocalCalendar() {
+        Calendar cal = localCalendar.get();
+        if (cal == null) {
+            cal = Calendar.getInstance();
+            localCalendar.set(cal);
+        }
+        return cal;
+    }
+
+}
+src/main/java/io/mycat/net2/mysql/packet/FieldPacket.java
+public class FieldPacket extends MySQLPacket {
+    private static final byte[] DEFAULT_CATALOG = "def".getBytes();
+    private static final byte[] FILLER = new byte[2];
+
+    public byte[] catalog = DEFAULT_CATALOG;
+    public byte[] db;
+    public byte[] table;
+    public byte[] orgTable;
+    public byte[] name;
+    public byte[] orgName;
+    public int charsetIndex;
+    public long length;
+    public int type;
+    public int flags;
+    public byte decimals;
+    public byte[] definition;
+
+    /**
+     * 把字节数组转变成FieldPacket
+     */
+    public void read(ByteBufferArray bufferArray, int packetIndex) {
+        MySQLMessage mm = new MySQLMessage(bufferArray, packetIndex);
+        this.packetLength = mm.readUB3();
+        this.packetId = mm.read();
+        readBody(mm);
+    }
+    //
+    // /**
+    // * 把BinaryPacket转变成FieldPacket
+    // */
+    // public void read(BinaryPacket bin) {
+    // this.packetLength = bin.packetLength;
+    // this.packetId = bin.packetId;
+    // readBody(new MySQLMessage(bin.data));
+    // }
+
+    @Override
+    public void write(ByteBufferArray bufferArray) {
+        int size = calcPacketSize();
+        ByteBuffer buffer = bufferArray.checkWriteBuffer(packetHeaderSize + size);
+        BufferUtil.writeUB3(buffer, size);
+        buffer.put(packetId);
+        writeBody(buffer);
+    }
+
+    @Override
+    public int calcPacketSize() {
+        int size = (catalog == null ? 1 : BufferUtil.getLength(catalog));
+        size += (db == null ? 1 : BufferUtil.getLength(db));
+        size += (table == null ? 1 : BufferUtil.getLength(table));
+        size += (orgTable == null ? 1 : BufferUtil.getLength(orgTable));
+        size += (name == null ? 1 : BufferUtil.getLength(name));
+        size += (orgName == null ? 1 : BufferUtil.getLength(orgName));
+        size += 13;// 1+2+4+1+2+1+2
+        if (definition != null) {
+            size += BufferUtil.getLength(definition);
+        }
+        return size;
+    }
+
+    @Override
+    protected String getPacketInfo() {
+        return "MySQL Field Packet";
+    }
+
+    private void readBody(MySQLMessage mm) {
+        this.catalog = mm.readBytesWithLength();
+        this.db = mm.readBytesWithLength();
+        this.table = mm.readBytesWithLength();
+        this.orgTable = mm.readBytesWithLength();
+        this.name = mm.readBytesWithLength();
+        this.orgName = mm.readBytesWithLength();
+        mm.move(1);
+        this.charsetIndex = mm.readUB2();
+        this.length = mm.readUB4();
+        this.type = mm.read() & 0xff;
+        this.flags = mm.readUB2();
+        this.decimals = mm.read();
+        mm.move(FILLER.length);
+        if (mm.hasRemaining()) {
+            this.definition = mm.readBytesWithLength();
+        }
+    }
+
+    private void writeBody(ByteBuffer buffer) {
+        byte nullVal = 0;
+        BufferUtil.writeWithLength(buffer, catalog, nullVal);
+        BufferUtil.writeWithLength(buffer, db, nullVal);
+        BufferUtil.writeWithLength(buffer, table, nullVal);
+        BufferUtil.writeWithLength(buffer, orgTable, nullVal);
+        BufferUtil.writeWithLength(buffer, name, nullVal);
+        BufferUtil.writeWithLength(buffer, orgName, nullVal);
+        buffer.put((byte) 0x0C);
+        BufferUtil.writeUB2(buffer, charsetIndex);
+        BufferUtil.writeUB4(buffer, length);
+        buffer.put((byte) (type & 0xff));
+        BufferUtil.writeUB2(buffer, flags);
+        buffer.put(decimals);
+        buffer.put((byte) 0x00);
+        buffer.put((byte) 0x00);
+        // buffer.position(buffer.position() + FILLER.length);
+        if (definition != null) {
+            BufferUtil.writeWithLength(buffer, definition);
+        }
+    }
+
+}
+src/main/java/io/mycat/net2/mysql/packet/RowDataPacket.java
+public class RowDataPacket extends MySQLPacket {
+    private static final byte NULL_MARK = (byte) 251;
+    private static final byte EMPTY_MARK = (byte) 0;
+    public int fieldCount;
+    public final List<byte[]> fieldValues;
+
+    public RowDataPacket(int fieldCount) {
+        this.fieldCount = fieldCount;
+        this.fieldValues = new ArrayList<byte[]>(fieldCount);
+    }
+
+    public void add(byte[] value) {
+        // 这里应该修改value
+        fieldValues.add(value);
+    }
+
+    public void addFieldCount(int add) {
+        // 这里应该修改field
+        fieldCount = fieldCount + add;
+    }
+
+    public void read(ByteBufferArray bufferArray, int packetIndex) {
+        MySQLMessage mm = new MySQLMessage(bufferArray, packetIndex);
+        packetLength = mm.readUB3();
+        packetId = mm.read();
+        for (int i = 0; i < fieldCount; i++) {
+            fieldValues.add(mm.readBytesWithLength());
+        }
+    }
+
+    @Override
+    public void write(ByteBufferArray bufferArray) {
+        int size = calcPacketSize();
+        ByteBuffer buffer = bufferArray.checkWriteBuffer(packetHeaderSize + size);
+        BufferUtil.writeUB3(buffer, size);
+        buffer.put(packetId);
+        for (int i = 0; i < fieldCount; i++) {
+            byte[] fv = fieldValues.get(i);
+            if (fv == null) {
+                buffer = bufferArray.checkWriteBuffer(1);
+                buffer.put(RowDataPacket.NULL_MARK);
+            } else if (fv.length == 0) {
+                buffer = bufferArray.checkWriteBuffer(1);
+                buffer.put(RowDataPacket.EMPTY_MARK);
+            } else {
+                buffer = bufferArray.checkWriteBuffer(BufferUtil.getLength(fv.length));
+                BufferUtil.writeLength(buffer, fv.length);
+                bufferArray.write(fv);
+            }
+        }
+    }
+
+    public void write(Connection conn) {
+        int size = calcPacketSize();
+        int totalSize = size + packetHeaderSize;
+        if (NetSystem.getInstance().getBufferPool().getChunkSize() >= totalSize) {
+            ByteBufferArray bufferArray = conn.getMyBufferPool().allocate();
+            ByteBuffer buffer = bufferArray.addNewBuffer();
+            BufferUtil.writeUB3(buffer, size);
+            buffer.put(packetId);
+            for (int i = 0; i < fieldCount; i++) {
+                byte[] fv = fieldValues.get(i);
+                if (fv == null) {
+                    buffer.put(RowDataPacket.NULL_MARK);
+                } else if (fv.length == 0) {
+                    buffer.put(RowDataPacket.EMPTY_MARK);
+                } else {
+                    BufferUtil.writeLength(buffer, fv.length);
+                    buffer.put(fv);
+                }
+            }
+            conn.write(bufferArray);
+        } else {
+            ByteBufferArray bufArray = conn.getMyBufferPool().allocate();
+            write(bufArray);
+            conn.write(bufArray);
+        }
+
+    }
+
+    @Override
+    public int calcPacketSize() {
+        int size = 0;
+        for (int i = 0; i < fieldCount; i++) {
+            byte[] v = fieldValues.get(i);
+            size += (v == null || v.length == 0) ? 1 : BufferUtil.getLength(v);
+        }
+        return size;
+    }
+
+    @Override
+    protected String getPacketInfo() {
+        return "MySQL RowData Packet";
+    }
+
+}
+src/main/java/io/mycat/net2/mysql/packet/EOFPacket.java
+public class EOFPacket extends MySQLPacket {
+
+    public static final byte FIELD_COUNT = (byte) 0xfe;
+    public byte fieldCount = FIELD_COUNT;
+    public int warningCount;
+    public int status = 2;
+
+    public void read(ByteBufferArray bufferArray, int packetIndex) {
+        MySQLMessage mm = new MySQLMessage(bufferArray, packetIndex);
+        packetLength = mm.readUB3();
+        packetId = mm.read();
+        fieldCount = mm.read();
+        warningCount = mm.readUB2();
+        status = mm.readUB2();
+    }
+
+    @Override
+    public void write(ByteBufferArray bufferArray) {
+        int size = calcPacketSize();
+        ByteBuffer buffer = bufferArray.checkWriteBuffer(packetHeaderSize + size);
+        BufferUtil.writeUB3(buffer, size);
+        buffer.put(packetId);
+        buffer.put(fieldCount);
+        BufferUtil.writeUB2(buffer, warningCount);
+        BufferUtil.writeUB2(buffer, status);
+    }
+
+    public void write(Connection con) {
+        int size = calcPacketSize();
+        ByteBufferArray bufferArray = con.getMyBufferPool().allocate();
+        ByteBuffer buffer = bufferArray.addNewBuffer();
+        BufferUtil.writeUB3(buffer, size);
+        buffer.put(packetId);
+        buffer.put(fieldCount);
+        BufferUtil.writeUB2(buffer, warningCount);
+        BufferUtil.writeUB2(buffer, status);
+        con.write(bufferArray);
+    }
+
+    @Override
+    public int calcPacketSize() {
+        return 5;// 1+2+2;
+    }
+
+    @Override
+    protected String getPacketInfo() {
+        return "MySQL EOF Packet";
+    }
+
+}
+src/main/java/io/mycat/net2/mysql/definination/ErrorCode.java
+public interface ErrorCode {
+
+	// mycat error code
+    public static final int ERR_BAD_LOGICDB = 3000;
+    public static final int ERR_OPEN_SOCKET = 3001;
+    public static final int ERR_CONNECT_SOCKET = 3002;
+    public static final int ERR_REGISTER = 3004;
+    public static final int ERR_READ = 3005;
+    public static final int ERR_PUT_WRITE_QUEUE = 3006;
+    public static final int ERR_WRITE_BY_EVENT = 3007;
+    public static final int ERR_WRITE_BY_QUEUE = 3008;
+    public static final int ERR_HANDLE_DATA = 3009;
+    public static final int ERR_NOT_SUPPORTED = 3010;
+    public static final int ERR_MULTI_NODE_FAILED = 3011;
+    public static final int ERR_WRONG_USED = 3012;
+    public static final int ERR_FOUND_EXCEPION = 3344;
+	// mysql error code
+    public static final int ER_HASHCHK = 1000;
+    public static final int ER_NISAMCHK = 1001;
+    public static final int ER_NO = 1002;
+    public static final int ER_YES = 1003;
+    public static final int ER_CANT_CREATE_FILE = 1004;
+    public static final int ER_CANT_CREATE_TABLE = 1005;
+    public static final int ER_CANT_CREATE_DB = 1006;
+    public static final int ER_DB_CREATE_EXISTS = 1007;
+    public static final int ER_DB_DROP_EXISTS = 1008;
+    public static final int ER_DB_DROP_DELETE = 1009;
+    public static final int ER_DB_DROP_RMDIR = 1010;
+    public static final int ER_CANT_DELETE_FILE = 1011;
+    public static final int ER_CANT_FIND_SYSTEM_REC = 1012;
+    public static final int ER_CANT_GET_STAT = 1013;
+    public static final int ER_CANT_GET_WD = 1014;
+    public static final int ER_CANT_LOCK = 1015;
+    public static final int ER_CANT_OPEN_FILE = 1016;
+    public static final int ER_FILE_NOT_FOUND = 1017;
+    public static final int ER_CANT_READ_DIR = 1018;
+    public static final int ER_CANT_SET_WD = 1019;
+    public static final int ER_CHECKREAD = 1020;
+    public static final int ER_DISK_FULL = 1021;
+    public static final int ER_DUP_KEY = 1022;
+    public static final int ER_ERROR_ON_CLOSE = 1023;
+    public static final int ER_ERROR_ON_READ = 1024;
+    public static final int ER_ERROR_ON_RENAME = 1025;
+    public static final int ER_ERROR_ON_WRITE = 1026;
+    public static final int ER_FILE_USED = 1027;
+    public static final int ER_FILSORT_ABORT = 1028;
+    public static final int ER_FORM_NOT_FOUND = 1029;
+    public static final int ER_GET_ERRNO = 1030;
+    public static final int ER_ILLEGAL_HA = 1031;
+    public static final int ER_KEY_NOT_FOUND = 1032;
+    public static final int ER_NOT_FORM_FILE = 1033;
+    public static final int ER_NOT_KEYFILE = 1034;
+    public static final int ER_OLD_KEYFILE = 1035;
+    public static final int ER_OPEN_AS_READONLY = 1036;
+    public static final int ER_OUTOFMEMORY = 1037;
+    public static final int ER_OUT_OF_SORTMEMORY = 1038;
+    public static final int ER_UNEXPECTED_EOF = 1039;
+    public static final int ER_CON_COUNT_ERROR = 1040;
+    public static final int ER_OUT_OF_RESOURCES = 1041;
+    public static final int ER_BAD_HOST_ERROR = 1042;
+    public static final int ER_HANDSHAKE_ERROR = 1043;
+    public static final int ER_DBACCESS_DENIED_ERROR = 1044;
+    public static final int ER_ACCESS_DENIED_ERROR = 1045;
+    public static final int ER_NO_DB_ERROR = 1046;
+    public static final int ER_UNKNOWN_COM_ERROR = 1047;
+    public static final int ER_BAD_NULL_ERROR = 1048;
+    public static final int ER_BAD_DB_ERROR = 1049;
+    public static final int ER_TABLE_EXISTS_ERROR = 1050;
+    public static final int ER_BAD_TABLE_ERROR = 1051;
+    public static final int ER_NON_UNIQ_ERROR = 1052;
+	public static final int ER_SERVER_SHUTDOWN = 1053;
+	public static final int ER_BAD_FIELD_ERROR = 1054;
+	public static final int ER_WRONG_FIELD_WITH_GROUP = 1055;
+	public static final int ER_WRONG_GROUP_FIELD = 1056;
+	public static final int ER_WRONG_SUM_SELECT = 1057;
+	public static final int ER_WRONG_VALUE_COUNT = 1058;
+	public static final int ER_TOO_LONG_IDENT = 1059;
+	public static final int ER_DUP_FIELDNAME = 1060;
+	public static final int ER_DUP_KEYNAME = 1061;
+	public static final int ER_DUP_ENTRY = 1062;
+	public static final int ER_WRONG_FIELD_SPEC = 1063;
+	public static final int ER_PARSE_ERROR = 1064;
+	public static final int ER_EMPTY_QUERY = 1065;
+	public static final int ER_NONUNIQ_TABLE = 1066;
+	public static final int ER_INVALID_DEFAULT = 1067;
+	public static final int ER_MULTIPLE_PRI_KEY = 1068;
+	public static final int ER_TOO_MANY_KEYS = 1069;
+	public static final int ER_TOO_MANY_KEY_PARTS = 1070;
+	public static final int ER_TOO_LONG_KEY = 1071;
+	public static final int ER_KEY_COLUMN_DOES_NOT_EXITS = 1072;
+	public static final int ER_BLOB_USED_AS_KEY = 1073;
+	public static final int ER_TOO_BIG_FIELDLENGTH = 1074;
+	public static final int ER_WRONG_AUTO_KEY = 1075;
+	public static final int ER_READY = 1076;
+	public static final int ER_NORMAL_SHUTDOWN = 1077;
+	public static final int ER_GOT_SIGNAL = 1078;
+	public static final int ER_SHUTDOWN_COMPLETE = 1079;
+	public static final int ER_FORCING_CLOSE = 1080;
+	public static final int ER_IPSOCK_ERROR = 1081;
+	public static final int ER_NO_SUCH_INDEX = 1082;
+	public static final int ER_WRONG_FIELD_TERMINATORS = 1083;
+	public static final int ER_BLOBS_AND_NO_TERMINATED = 1084;
+	public static final int ER_TEXTFILE_NOT_READABLE = 1085;
+	public static final int ER_FILE_EXISTS_ERROR = 1086;
+	public static final int ER_LOAD_INFO = 1087;
+	public static final int ER_ALTER_INFO = 1088;
+	public static final int ER_WRONG_SUB_KEY = 1089;
+	public static final int ER_CANT_REMOVE_ALL_FIELDS = 1090;
+	public static final int ER_CANT_DROP_FIELD_OR_KEY = 1091;
+	public static final int ER_INSERT_INFO = 1092;
+	public static final int ER_UPDATE_TABLE_USED = 1093;
+	public static final int ER_NO_SUCH_THREAD = 1094;
+	public static final int ER_KILL_DENIED_ERROR = 1095;
+	public static final int ER_NO_TABLES_USED = 1096;
+	public static final int ER_TOO_BIG_SET = 1097;
+	public static final int ER_NO_UNIQUE_LOGFILE = 1098;
+	public static final int ER_TABLE_NOT_LOCKED_FOR_WRITE = 1099;
+	public static final int ER_TABLE_NOT_LOCKED = 1100;
+	public static final int ER_BLOB_CANT_HAVE_DEFAULT = 1101;
+	public static final int ER_WRONG_DB_NAME = 1102;
+	public static final int ER_WRONG_TABLE_NAME = 1103;
+	public static final int ER_TOO_BIG_SELECT = 1104;
+	public static final int ER_UNKNOWN_ERROR = 1105;
+	public static final int ER_UNKNOWN_PROCEDURE = 1106;
+	public static final int ER_WRONG_PARAMCOUNT_TO_PROCEDURE = 1107;
+	public static final int ER_WRONG_PARAMETERS_TO_PROCEDURE = 1108;
+	public static final int ER_UNKNOWN_TABLE = 1109;
+	public static final int ER_FIELD_SPECIFIED_TWICE = 1110;
+	public static final int ER_INVALID_GROUP_FUNC_USE = 1111;
+	public static final int ER_UNSUPPORTED_EXTENSION = 1112;
+	public static final int ER_TABLE_MUST_HAVE_COLUMNS = 1113;
+	public static final int ER_RECORD_FILE_FULL = 1114;
+	public static final int ER_UNKNOWN_CHARACTER_SET = 1115;
+	public static final int ER_TOO_MANY_TABLES = 1116;
+	public static final int ER_TOO_MANY_FIELDS = 1117;
+	public static final int ER_TOO_BIG_ROWSIZE = 1118;
+	public static final int ER_STACK_OVERRUN = 1119;
+	public static final int ER_WRONG_OUTER_JOIN = 1120;
+	public static final int ER_NULL_COLUMN_IN_INDEX = 1121;
+	public static final int ER_CANT_FIND_UDF = 1122;
+	public static final int ER_CANT_INITIALIZE_UDF = 1123;
+	public static final int ER_UDF_NO_PATHS = 1124;
+	public static final int ER_UDF_EXISTS = 1125;
+	public static final int ER_CANT_OPEN_LIBRARY = 1126;
+	public static final int ER_CANT_FIND_DL_ENTRY = 1127;
+	public static final int ER_FUNCTION_NOT_DEFINED = 1128;
+	public static final int ER_HOST_IS_BLOCKED = 1129;
+	public static final int ER_HOST_NOT_PRIVILEGED = 1130;
+	public static final int ER_PASSWORD_ANONYMOUS_USER = 1131;
+	public static final int ER_PASSWORD_NOT_ALLOWED = 1132;
+	public static final int ER_PASSWORD_NO_MATCH = 1133;
+	public static final int ER_UPDATE_INFO = 1134;
+	public static final int ER_CANT_CREATE_THREAD = 1135;
+	public static final int ER_WRONG_VALUE_COUNT_ON_ROW = 1136;
+	public static final int ER_CANT_REOPEN_TABLE = 1137;
+	public static final int ER_INVALID_USE_OF_NULL = 1138;
+	public static final int ER_REGEXP_ERROR = 1139;
+	public static final int ER_MIX_OF_GROUP_FUNC_AND_FIELDS = 1140;
+	public static final int ER_NONEXISTING_GRANT = 1141;
+	public static final int ER_TABLEACCESS_DENIED_ERROR = 1142;
+	public static final int ER_COLUMNACCESS_DENIED_ERROR = 1143;
+	public static final int ER_ILLEGAL_GRANT_FOR_TABLE = 1144;
+	public static final int ER_GRANT_WRONG_HOST_OR_USER = 1145;
+	public static final int ER_NO_SUCH_TABLE = 1146;
+	public static final int ER_NONEXISTING_TABLE_GRANT = 1147;
+	public static final int ER_NOT_ALLOWED_COMMAND = 1148;
+	public static final int ER_SYNTAX_ERROR = 1149;
+	public static final int ER_DELAYED_CANT_CHANGE_LOCK = 1150;
+	public static final int ER_TOO_MANY_DELAYED_THREADS = 1151;
+	public static final int ER_ABORTING_CONNECTION = 1152;
+	public static final int ER_NET_PACKET_TOO_LARGE = 1153;
+	public static final int ER_NET_READ_ERROR_FROM_PIPE = 1154;
+	public static final int ER_NET_FCNTL_ERROR = 1155;
+	public static final int ER_NET_PACKETS_OUT_OF_ORDER = 1156;
+	public static final int ER_NET_UNCOMPRESS_ERROR = 1157;
+	public static final int ER_NET_READ_ERROR = 1158;
+	public static final int ER_NET_READ_INTERRUPTED = 1159;
+	public static final int ER_NET_ERROR_ON_WRITE = 1160;
+	public static final int ER_NET_WRITE_INTERRUPTED = 1161;
+	public static final int ER_TOO_LONG_STRING = 1162;
+	public static final int ER_TABLE_CANT_HANDLE_BLOB = 1163;
+	public static final int ER_TABLE_CANT_HANDLE_AUTO_INCREMENT = 1164;
+	public static final int ER_DELAYED_INSERT_TABLE_LOCKED = 1165;
+	public static final int ER_WRONG_COLUMN_NAME = 1166;
+	public static final int ER_WRONG_KEY_COLUMN = 1167;
+	public static final int ER_WRONG_MRG_TABLE = 1168;
+	public static final int ER_DUP_UNIQUE = 1169;
+	public static final int ER_BLOB_KEY_WITHOUT_LENGTH = 1170;
+	public static final int ER_PRIMARY_CANT_HAVE_NULL = 1171;
+	public static final int ER_TOO_MANY_ROWS = 1172;
+	public static final int ER_REQUIRES_PRIMARY_KEY = 1173;
+	public static final int ER_NO_RAID_COMPILED = 1174;
+	public static final int ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE = 1175;
+	public static final int ER_KEY_DOES_NOT_EXITS = 1176;
+	public static final int ER_CHECK_NO_SUCH_TABLE = 1177;
+	public static final int ER_CHECK_NOT_IMPLEMENTED = 1178;
+	public static final int ER_CANT_DO_THIS_DURING_AN_TRANSACTION = 1179;
+	public static final int ER_ERROR_DURING_COMMIT = 1180;
+	public static final int ER_ERROR_DURING_ROLLBACK = 1181;
+	public static final int ER_ERROR_DURING_FLUSH_LOGS = 1182;
+	public static final int ER_ERROR_DURING_CHECKPOINT = 1183;
+	public static final int ER_NEW_ABORTING_CONNECTION = 1184;
+	public static final int ER_DUMP_NOT_IMPLEMENTED = 1185;
+	public static final int ER_FLUSH_MASTER_BINLOG_CLOSED = 1186;
+	public static final int ER_INDEX_REBUILD = 1187;
+	public static final int ER_MASTER = 1188;
+	public static final int ER_MASTER_NET_READ = 1189;
+	public static final int ER_MASTER_NET_WRITE = 1190;
+	public static final int ER_FT_MATCHING_KEY_NOT_FOUND = 1191;
+	public static final int ER_LOCK_OR_ACTIVE_TRANSACTION = 1192;
+	public static final int ER_UNKNOWN_SYSTEM_VARIABLE = 1193;
+	public static final int ER_CRASHED_ON_USAGE = 1194;
+	public static final int ER_CRASHED_ON_REPAIR = 1195;
+	public static final int ER_WARNING_NOT_COMPLETE_ROLLBACK = 1196;
+	public static final int ER_TRANS_CACHE_FULL = 1197;
+	public static final int ER_SLAVE_MUST_STOP = 1198;
+	public static final int ER_SLAVE_NOT_RUNNING = 1199;
+	public static final int ER_BAD_SLAVE = 1200;
+	public static final int ER_MASTER_INFO = 1201;
+	public static final int ER_SLAVE_THREAD = 1202;
+	public static final int ER_TOO_MANY_USER_CONNECTIONS = 1203;
+	public static final int ER_SET_CONSTANTS_ONLY = 1204;
+	public static final int ER_LOCK_WAIT_TIMEOUT = 1205;
+	public static final int ER_LOCK_TABLE_FULL = 1206;
+	public static final int ER_READ_ONLY_TRANSACTION = 1207;
+	public static final int ER_DROP_DB_WITH_READ_LOCK = 1208;
+	public static final int ER_CREATE_DB_WITH_READ_LOCK = 1209;
+	public static final int ER_WRONG_ARGUMENTS = 1210;
+	public static final int ER_NO_PERMISSION_TO_CREATE_USER = 1211;
+	public static final int ER_UNION_TABLES_IN_DIFFERENT_DIR = 1212;
+	public static final int ER_LOCK_DEADLOCK = 1213;
+	public static final int ER_TABLE_CANT_HANDLE_FT = 1214;
+	public static final int ER_CANNOT_ADD_FOREIGN = 1215;
+	public static final int ER_NO_REFERENCED_ROW = 1216;
+	public static final int ER_ROW_IS_REFERENCED = 1217;
+	public static final int ER_CONNECT_TO_MASTER = 1218;
+	public static final int ER_QUERY_ON_MASTER = 1219;
+	public static final int ER_ERROR_WHEN_EXECUTING_COMMAND = 1220;
+	public static final int ER_WRONG_USAGE = 1221;
+	public static final int ER_WRONG_NUMBER_OF_COLUMNS_IN_SELECT = 1222;
+	public static final int ER_CANT_UPDATE_WITH_READLOCK = 1223;
+	public static final int ER_MIXING_NOT_ALLOWED = 1224;
+	public static final int ER_DUP_ARGUMENT = 1225;
+	public static final int ER_USER_LIMIT_REACHED = 1226;
+	public static final int ER_SPECIFIC_ACCESS_DENIED_ERROR = 1227;
+	public static final int ER_LOCAL_VARIABLE = 1228;
+	public static final int ER_GLOBAL_VARIABLE = 1229;
+	public static final int ER_NO_DEFAULT = 1230;
+	public static final int ER_WRONG_VALUE_FOR_VAR = 1231;
+	public static final int ER_WRONG_TYPE_FOR_VAR = 1232;
+	public static final int ER_VAR_CANT_BE_READ = 1233;
+	public static final int ER_CANT_USE_OPTION_HERE = 1234;
+	public static final int ER_NOT_SUPPORTED_YET = 1235;
+	public static final int ER_MASTER_FATAL_ERROR_READING_BINLOG = 1236;
+	public static final int ER_SLAVE_IGNORED_TABLE = 1237;
+	public static final int ER_INCORRECT_GLOBAL_LOCAL_VAR = 1238;
+	public static final int ER_WRONG_FK_DEF = 1239;
+	public static final int ER_KEY_REF_DO_NOT_MATCH_TABLE_REF = 1240;
+	public static final int ER_OPERAND_COLUMNS = 1241;
+	public static final int ER_SUBQUERY_NO_1_ROW = 1242;
+	public static final int ER_UNKNOWN_STMT_HANDLER = 1243;
+	public static final int ER_CORRUPT_HELP_DB = 1244;
+	public static final int ER_CYCLIC_REFERENCE = 1245;
+	public static final int ER_AUTO_CONVERT = 1246;
+	public static final int ER_ILLEGAL_REFERENCE = 1247;
+	public static final int ER_DERIVED_MUST_HAVE_ALIAS = 1248;
+	public static final int ER_SELECT_REDUCED = 1249;
+	public static final int ER_TABLENAME_NOT_ALLOWED_HERE = 1250;
+	public static final int ER_NOT_SUPPORTED_AUTH_MODE = 1251;
+	public static final int ER_SPATIAL_CANT_HAVE_NULL = 1252;
+	public static final int ER_COLLATION_CHARSET_MISMATCH = 1253;
+	public static final int ER_SLAVE_WAS_RUNNING = 1254;
+	public static final int ER_SLAVE_WAS_NOT_RUNNING = 1255;
+	public static final int ER_TOO_BIG_FOR_UNCOMPRESS = 1256;
+	public static final int ER_ZLIB_Z_MEM_ERROR = 1257;
+	public static final int ER_ZLIB_Z_BUF_ERROR = 1258;
+	public static final int ER_ZLIB_Z_DATA_ERROR = 1259;
+	public static final int ER_CUT_VALUE_GROUP_CONCAT = 1260;
+	public static final int ER_WARN_TOO_FEW_RECORDS = 1261;
+	public static final int ER_WARN_TOO_MANY_RECORDS = 1262;
+	public static final int ER_WARN_NULL_TO_NOTNULL = 1263;
+	public static final int ER_WARN_DATA_OUT_OF_RANGE = 1264;
+	public static final int WARN_DATA_TRUNCATED = 1265;
+	public static final int ER_WARN_USING_OTHER_HANDLER = 1266;
+	public static final int ER_CANT_AGGREGATE_2COLLATIONS = 1267;
+	public static final int ER_DROP_USER = 1268;
+	public static final int ER_REVOKE_GRANTS = 1269;
+	public static final int ER_CANT_AGGREGATE_3COLLATIONS = 1270;
+	public static final int ER_CANT_AGGREGATE_NCOLLATIONS = 1271;
+	public static final int ER_VARIABLE_IS_NOT_STRUCT = 1272;
+	public static final int ER_UNKNOWN_COLLATION = 1273;
+	public static final int ER_SLAVE_IGNORED_SSL_PARAMS = 1274;
+	public static final int ER_SERVER_IS_IN_SECURE_AUTH_MODE = 1275;
+	public static final int ER_WARN_FIELD_RESOLVED = 1276;
+	public static final int ER_BAD_SLAVE_UNTIL_COND = 1277;
+	public static final int ER_MISSING_SKIP_SLAVE = 1278;
+	public static final int ER_UNTIL_COND_IGNORED = 1279;
+	public static final int ER_WRONG_NAME_FOR_INDEX = 1280;
+	public static final int ER_WRONG_NAME_FOR_CATALOG = 1281;
+	public static final int ER_WARN_QC_RESIZE = 1282;
+	public static final int ER_BAD_FT_COLUMN = 1283;
+	public static final int ER_UNKNOWN_KEY_CACHE = 1284;
+	public static final int ER_WARN_HOSTNAME_WONT_WORK = 1285;
+	public static final int ER_UNKNOWN_STORAGE_ENGINE = 1286;
+	public static final int ER_WARN_DEPRECATED_SYNTAX = 1287;
+	public static final int ER_NON_UPDATABLE_TABLE = 1288;
+	public static final int ER_FEATURE_DISABLED = 1289;
+	public static final int ER_OPTION_PREVENTS_STATEMENT = 1290;
+	public static final int ER_DUPLICATED_VALUE_IN_TYPE = 1291;
+	public static final int ER_TRUNCATED_WRONG_VALUE = 1292;
+	public static final int ER_TOO_MUCH_AUTO_TIMESTAMP_COLS = 1293;
+	public static final int ER_INVALID_ON_UPDATE = 1294;
+	public static final int ER_UNSUPPORTED_PS = 1295;
+	public static final int ER_GET_ERRMSG = 1296;
+	public static final int ER_GET_TEMPORARY_ERRMSG = 1297;
+	public static final int ER_UNKNOWN_TIME_ZONE = 1298;
+	public static final int ER_WARN_INVALID_TIMESTAMP = 1299;
+	public static final int ER_INVALID_CHARACTER_STRING = 1300;
+	public static final int ER_WARN_ALLOWED_PACKET_OVERFLOWED = 1301;
+	public static final int ER_CONFLICTING_DECLARATIONS = 1302;
+	public static final int ER_SP_NO_RECURSIVE_CREATE = 1303;
+	public static final int ER_SP_ALREADY_EXISTS = 1304;
+	public static final int ER_SP_DOES_NOT_EXIST = 1305;
+	public static final int ER_SP_DROP_FAILED = 1306;
+	public static final int ER_SP_STORE_FAILED = 1307;
+	public static final int ER_SP_LILABEL_MISMATCH = 1308;
+	public static final int ER_SP_LABEL_REDEFINE = 1309;
+	public static final int ER_SP_LABEL_MISMATCH = 1310;
+	public static final int ER_SP_UNINIT_VAR = 1311;
+	public static final int ER_SP_BADSELECT = 1312;
+	public static final int ER_SP_BADRETURN = 1313;
+	public static final int ER_SP_BADSTATEMENT = 1314;
+	public static final int ER_UPDATE_LOG_DEPRECATED_IGNORED = 1315;
+	public static final int ER_UPDATE_LOG_DEPRECATED_TRANSLATED = 1316;
+	public static final int ER_QUERY_INTERRUPTED = 1317;
+	public static final int ER_SP_WRONG_NO_OF_ARGS = 1318;
+	public static final int ER_SP_COND_MISMATCH = 1319;
+	public static final int ER_SP_NORETURN = 1320;
+	public static final int ER_SP_NORETURNEND = 1321;
+	public static final int ER_SP_BAD_CURSOR_QUERY = 1322;
+	public static final int ER_SP_BAD_CURSOR_SELECT = 1323;
+	public static final int ER_SP_CURSOR_MISMATCH = 1324;
+	public static final int ER_SP_CURSOR_ALREADY_OPEN = 1325;
+	public static final int ER_SP_CURSOR_NOT_OPEN = 1326;
+	public static final int ER_SP_UNDECLARED_VAR = 1327;
+	public static final int ER_SP_WRONG_NO_OF_FETCH_ARGS = 1328;
+	public static final int ER_SP_FETCH_NO_DATA = 1329;
+	public static final int ER_SP_DUP_PARAM = 1330;
+	public static final int ER_SP_DUP_VAR = 1331;
+	public static final int ER_SP_DUP_COND = 1332;
+	public static final int ER_SP_DUP_CURS = 1333;
+	public static final int ER_SP_CANT_ALTER = 1334;
+	public static final int ER_SP_SUBSELECT_NYI = 1335;
+	public static final int ER_STMT_NOT_ALLOWED_IN_SF_OR_TRG = 1336;
+	public static final int ER_SP_VARCOND_AFTER_CURSHNDLR = 1337;
+	public static final int ER_SP_CURSOR_AFTER_HANDLER = 1338;
+	public static final int ER_SP_CASE_NOT_FOUND = 1339;
+	public static final int ER_FPARSER_TOO_BIG_FILE = 1340;
+	public static final int ER_FPARSER_BAD_HEADER = 1341;
+	public static final int ER_FPARSER_EOF_IN_COMMENT = 1342;
+	public static final int ER_FPARSER_ERROR_IN_PARAMETER = 1343;
+	public static final int ER_FPARSER_EOF_IN_UNKNOWN_PARAMETER = 1344;
+	public static final int ER_VIEW_NO_EXPLAIN = 1345;
+	public static final int ER_FRM_UNKNOWN_TYPE = 1346;
+	public static final int ER_WRONG_OBJECT = 1347;
+	public static final int ER_NONUPDATEABLE_COLUMN = 1348;
+	public static final int ER_VIEW_SELECT_DERIVED = 1349;
+	public static final int ER_VIEW_SELECT_CLAUSE = 1350;
+	public static final int ER_VIEW_SELECT_VARIABLE = 1351;
+	public static final int ER_VIEW_SELECT_TMPTABLE = 1352;
+	public static final int ER_VIEW_WRONG_LIST = 1353;
+	public static final int ER_WARN_VIEW_MERGE = 1354;
+	public static final int ER_WARN_VIEW_WITHOUT_KEY = 1355;
+	public static final int ER_VIEW_INVALID = 1356;
+	public static final int ER_SP_NO_DROP_SP = 1357;
+	public static final int ER_SP_GOTO_IN_HNDLR = 1358;
+	public static final int ER_TRG_ALREADY_EXISTS = 1359;
+	public static final int ER_TRG_DOES_NOT_EXIST = 1360;
+	public static final int ER_TRG_ON_VIEW_OR_TEMP_TABLE = 1361;
+	public static final int ER_TRG_CANT_CHANGE_ROW = 1362;
+	public static final int ER_TRG_NO_SUCH_ROW_IN_TRG = 1363;
+	public static final int ER_NO_DEFAULT_FOR_FIELD = 1364;
+	public static final int ER_DIVISION_BY_ZERO = 1365;
+	public static final int ER_TRUNCATED_WRONG_VALUE_FOR_FIELD = 1366;
+	public static final int ER_ILLEGAL_VALUE_FOR_TYPE = 1367;
+	public static final int ER_VIEW_NONUPD_CHECK = 1368;
+	public static final int ER_VIEW_CHECK_FAILED = 1369;
+	public static final int ER_PROCACCESS_DENIED_ERROR = 1370;
+	public static final int ER_RELAY_LOG_FAIL = 1371;
+	public static final int ER_PASSWD_LENGTH = 1372;
+	public static final int ER_UNKNOWN_TARGET_BINLOG = 1373;
+	public static final int ER_IO_ERR_LOG_INDEX_READ = 1374;
+	public static final int ER_BINLOG_PURGE_PROHIBITED = 1375;
+	public static final int ER_FSEEK_FAIL = 1376;
+	public static final int ER_BINLOG_PURGE_FATAL_ERR = 1377;
+	public static final int ER_LOG_IN_USE = 1378;
+	public static final int ER_LOG_PURGE_UNKNOWN_ERR = 1379;
+	public static final int ER_RELAY_LOG_INIT = 1380;
+	public static final int ER_NO_BINARY_LOGGING = 1381;
+	public static final int ER_RESERVED_SYNTAX = 1382;
+	public static final int ER_WSAS_FAILED = 1383;
+	public static final int ER_DIFF_GROUPS_PROC = 1384;
+	public static final int ER_NO_GROUP_FOR_PROC = 1385;
+	public static final int ER_ORDER_WITH_PROC = 1386;
+	public static final int ER_LOGGING_PROHIBIT_CHANGING_OF = 1387;
+	public static final int ER_NO_FILE_MAPPING = 1388;
+	public static final int ER_WRONG_MAGIC = 1389;
+	public static final int ER_PS_MANY_PARAM = 1390;
+	public static final int ER_KEY_PART_0 = 1391;
+	public static final int ER_VIEW_CHECKSUM = 1392;
+	public static final int ER_VIEW_MULTIUPDATE = 1393;
+	public static final int ER_VIEW_NO_INSERT_FIELD_LIST = 1394;
+	public static final int ER_VIEW_DELETE_MERGE_VIEW = 1395;
+	public static final int ER_CANNOT_USER = 1396;
+	public static final int ER_XAER_NOTA = 1397;
+	public static final int ER_XAER_INVAL = 1398;
+	public static final int ER_XAER_RMFAIL = 1399;
+	public static final int ER_XAER_OUTSIDE = 1400;
+	public static final int ER_XAER_RMERR = 1401;
+	public static final int ER_XA_RBROLLBACK = 1402;
+	public static final int ER_NONEXISTING_PROC_GRANT = 1403;
+	public static final int ER_PROC_AUTO_GRANT_FAIL = 1404;
+	public static final int ER_PROC_AUTO_REVOKE_FAIL = 1405;
+	public static final int ER_DATA_TOO_LONG = 1406;
+	public static final int ER_SP_BAD_SQLSTATE = 1407;
+	public static final int ER_STARTUP = 1408;
+	public static final int ER_LOAD_FROM_FIXED_SIZE_ROWS_TO_VAR = 1409;
+	public static final int ER_CANT_CREATE_USER_WITH_GRANT = 1410;
+	public static final int ER_WRONG_VALUE_FOR_TYPE = 1411;
+	public static final int ER_TABLE_DEF_CHANGED = 1412;
+	public static final int ER_SP_DUP_HANDLER = 1413;
+	public static final int ER_SP_NOT_VAR_ARG = 1414;
+	public static final int ER_SP_NO_RETSET = 1415;
+	public static final int ER_CANT_CREATE_GEOMETRY_OBJECT = 1416;
+	public static final int ER_FAILED_ROUTINE_BREAK_BINLOG = 1417;
+	public static final int ER_BINLOG_UNSAFE_ROUTINE = 1418;
+	public static final int ER_BINLOG_CREATE_ROUTINE_NEED_SUPER = 1419;
+	public static final int ER_EXEC_STMT_WITH_OPEN_CURSOR = 1420;
+	public static final int ER_STMT_HAS_NO_OPEN_CURSOR = 1421;
+	public static final int ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG = 1422;
+	public static final int ER_NO_DEFAULT_FOR_VIEW_FIELD = 1423;
+	public static final int ER_SP_NO_RECURSION = 1424;
+	public static final int ER_TOO_BIG_SCALE = 1425;
+	public static final int ER_TOO_BIG_PRECISION = 1426;
+	public static final int ER_M_BIGGER_THAN_D = 1427;
+	public static final int ER_WRONG_LOCK_OF_SYSTEM_TABLE = 1428;
+	public static final int ER_CONNECT_TO_FOREIGN_DATA_SOURCE = 1429;
+	public static final int ER_QUERY_ON_FOREIGN_DATA_SOURCE = 1430;
+	public static final int ER_FOREIGN_DATA_SOURCE_DOESNT_EXIST = 1431;
+	public static final int ER_FOREIGN_DATA_STRING_INVALID_CANT_CREATE = 1432;
+	public static final int ER_FOREIGN_DATA_STRING_INVALID = 1433;
+	public static final int ER_CANT_CREATE_FEDERATED_TABLE = 1434;
+	public static final int ER_TRG_IN_WRONG_SCHEMA = 1435;
+	public static final int ER_STACK_OVERRUN_NEED_MORE = 1436;
+	public static final int ER_TOO_LONG_BODY = 1437;
+	public static final int ER_WARN_CANT_DROP_DEFAULT_KEYCACHE = 1438;
+	public static final int ER_TOO_BIG_DISPLAYWIDTH = 1439;
+	public static final int ER_XAER_DUPID = 1440;
+	public static final int ER_DATETIME_FUNCTION_OVERFLOW = 1441;
+	public static final int ER_CANT_UPDATE_USED_TABLE_IN_SF_OR_TRG = 1442;
+	public static final int ER_VIEW_PREVENT_UPDATE = 1443;
+	public static final int ER_PS_NO_RECURSION = 1444;
+	public static final int ER_SP_CANT_SET_AUTOCOMMIT = 1445;
+	public static final int ER_NO_VIEW_USER = 1446;
+	public static final int ER_VIEW_FRM_NO_USER = 1447;
+	public static final int ER_VIEW_OTHER_USER = 1448;
+	public static final int ER_NO_SUCH_USER = 1449;
+	public static final int ER_FORBID_SCHEMA_CHANGE = 1450;
+	public static final int ER_ROW_IS_REFERENCED_2 = 1451;
+	public static final int ER_NO_REFERENCED_ROW_2 = 1452;
+	public static final int ER_SP_BAD_VAR_SHADOW = 1453;
+	public static final int ER_PARTITION_REQUIRES_VALUES_ERROR = 1454;
+	public static final int ER_PARTITION_WRONG_VALUES_ERROR = 1455;
+	public static final int ER_PARTITION_MAXVALUE_ERROR = 1456;
+	public static final int ER_PARTITION_SUBPARTITION_ERROR = 1457;
+	public static final int ER_PARTITION_WRONG_NO_PART_ERROR = 1458;
+	public static final int ER_PARTITION_WRONG_NO_SUBPART_ERROR = 1459;
+	public static final int ER_CONST_EXPR_IN_PARTITION_FUNC_ERROR = 1460;
+	public static final int ER_NO_CONST_EXPR_IN_RANGE_OR_LIST_ERROR = 1461;
+	public static final int ER_FIELD_NOT_FOUND_PART_ERROR = 1462;
+	public static final int ER_LIST_OF_FIELDS_ONLY_IN_HASH_ERROR = 1463;
+	public static final int ER_INCONSISTENT_PARTITION_INFO_ERROR = 1464;
+	public static final int ER_PARTITION_FUNC_NOT_ALLOWED_ERROR = 1465;
+	public static final int ER_PARTITIONS_MUST_BE_DEFINED_ERROR = 1466;
+	public static final int ER_RANGE_NOT_INCREASING_ERROR = 1467;
+	public static final int ER_INCONSISTENT_TYPE_OF_FUNCTIONS_ERROR = 1468;
+	public static final int ER_MULTIPLE_DEF_CONST_IN_LIST_PART_ERROR = 1469;
+	public static final int ER_PARTITION_ENTRY_ERROR = 1470;
+	public static final int ER_MIX_HANDLER_ERROR = 1471;
+	public static final int ER_PARTITION_NOT_DEFINED_ERROR = 1472;
+	public static final int ER_TOO_MANY_PARTITIONS_ERROR = 1473;
+	public static final int ER_SUBPARTITION_ERROR = 1474;
+	public static final int ER_CANT_CREATE_HANDLER_FILE = 1475;
+	public static final int ER_BLOB_FIELD_IN_PART_FUNC_ERROR = 1476;
+	public static final int ER_CHAR_SET_IN_PART_FIELD_ERROR = 1477;
+	public static final int ER_UNIQUE_KEY_NEED_ALL_FIELDS_IN_PF = 1478;
+	public static final int ER_NO_PARTS_ERROR = 1479;
+	public static final int ER_PARTITION_MGMT_ON_NONPARTITIONED = 1480;
+	public static final int ER_DROP_PARTITION_NON_EXISTENT = 1481;
+	public static final int ER_DROP_LAST_PARTITION = 1482;
+	public static final int ER_COALESCE_ONLY_ON_HASH_PARTITION = 1483;
+	public static final int ER_ONLY_ON_RANGE_LIST_PARTITION = 1484;
+	public static final int ER_ADD_PARTITION_SUBPART_ERROR = 1485;
+	public static final int ER_ADD_PARTITION_NO_NEW_PARTITION = 1486;
+	public static final int ER_COALESCE_PARTITION_NO_PARTITION = 1487;
+	public static final int ER_REORG_PARTITION_NOT_EXIST = 1488;
+	public static final int ER_SAME_NAME_PARTITION = 1489;
+	public static final int ER_CONSECUTIVE_REORG_PARTITIONS = 1490;
+	public static final int ER_REORG_OUTSIDE_RANGE = 1491;
+	public static final int ER_DROP_PARTITION_FAILURE = 1492;
+	public static final int ER_DROP_PARTITION_WHEN_FK_DEFINED = 1493;
+	public static final int ER_PLUGIN_IS_NOT_LOADED = 1494;
+	public static final int ER_USER_READ_ONLY = 1495;
+
+}
+src/main/java/io/mycat/net2/mysql/packet/AuthPacket.java
+public class AuthPacket extends MySQLPacket {
+    private static final byte[] FILLER = new byte[23];
+
+    public long clientFlags;
+    public long maxPacketSize;
+    public int charsetIndex;
+    public byte[] extra;// from FILLER(23)
+    public String user;
+    public byte[] password;
+    public String database;
+
+    public void read(ByteBufferArray bufferArray, int packetIndex) {
+        MySQLMessage mm = new MySQLMessage(bufferArray, packetIndex);
+        packetLength = mm.readUB3();
+        packetId = mm.read();
+        clientFlags = mm.readUB4();
+        maxPacketSize = mm.readUB4();
+        charsetIndex = (mm.read() & 0xff);
+        // read extra
+        int current = mm.position();
+        int len = (int) mm.readLength();
+//        if (len > 0 && len < FILLER.length) {
+//            byte[] ab = new byte[len];
+//            System.arraycopy(mm.bytes(), mm.position(), ab, 0, len);
+//            this.extra = ab;
+//        }
+        mm.position(current + FILLER.length);
+        user = mm.readStringWithNull();
+        password = mm.readBytesWithLength();
+        if (((clientFlags & Capabilities.CLIENT_CONNECT_WITH_DB) != 0) && mm.hasRemaining()) {
+            database = mm.readStringWithNull();
+        }
+    }
+
+    public void write(OutputStream out) throws IOException {
+        StreamUtil.writeUB3(out, calcPacketSize());
+        StreamUtil.write(out, packetId);
+        StreamUtil.writeUB4(out, clientFlags);
+        StreamUtil.writeUB4(out, maxPacketSize);
+        StreamUtil.write(out, (byte) charsetIndex);
+        out.write(FILLER);
+        if (user == null) {
+            StreamUtil.write(out, (byte) 0);
+        } else {
+            StreamUtil.writeWithNull(out, user.getBytes());
+        }
+        if (password == null) {
+            StreamUtil.write(out, (byte) 0);
+        } else {
+            StreamUtil.writeWithLength(out, password);
+        }
+        if (database == null) {
+            StreamUtil.write(out, (byte) 0);
+        } else {
+            StreamUtil.writeWithNull(out, database.getBytes());
+        }
+    }
+
+    public void write(ByteBufferArray bufferArray) {
+        int size = calcPacketSize();
+        ByteBuffer buffer = bufferArray.checkWriteBuffer(packetHeaderSize + size);
+        BufferUtil.writeUB3(buffer, calcPacketSize());
+        buffer.put(packetId);
+        BufferUtil.writeUB4(buffer, clientFlags);
+        BufferUtil.writeUB4(buffer, maxPacketSize);
+        buffer.put((byte) charsetIndex);
+        buffer = bufferArray.write(FILLER);
+        if (user == null) {
+            buffer = bufferArray.checkWriteBuffer(1);
+            buffer.put((byte) 0);
+        } else {
+            byte[] userData = user.getBytes();
+            buffer = bufferArray.checkWriteBuffer(userData.length + 1);
+            BufferUtil.writeWithNull(buffer, userData);
+        }
+        if (password == null) {
+            buffer = bufferArray.checkWriteBuffer(1);
+            buffer.put((byte) 0);
+        } else {
+            buffer = bufferArray.checkWriteBuffer(BufferUtil.getLength(password));
+            BufferUtil.writeWithLength(buffer, password);
+        }
+        if (database == null) {
+            buffer = bufferArray.checkWriteBuffer(1);
+            buffer.put((byte) 0);
+        } else {
+            byte[] databaseData = database.getBytes();
+            buffer = bufferArray.checkWriteBuffer(databaseData.length + 1);
+            BufferUtil.writeWithNull(buffer, databaseData);
+        }
+
+    }
+
+    @Override
+    public int calcPacketSize() {
+        int size = 32;// 4+4+1+23;
+        size += (user == null) ? 1 : user.length() + 1;
+        size += (password == null) ? 1 : BufferUtil.getLength(password);
+        size += (database == null) ? 1 : database.length() + 1;
+        return size;
+    }
+
+    @Override
+    protected String getPacketInfo() {
+        return "MySQL Authentication Packet";
+    }
+
+}
+src/main/java/io/mycat/net2/BackendConnection.java
+public interface BackendConnection extends ClosableConnection {
+
+    public abstract String getSchema();
+
+    public abstract void setSchema(String newSchema);
+
+    public abstract boolean isBorrowed();
+
+    public abstract PhysicalDatasource getPool();
+
+    public abstract boolean isClosedOrQuit();
+
+    public abstract void setBorrowed(boolean b);
+
+    public abstract boolean isFromSlaveDB();
+
+    public abstract void setResponseHandler(ResponseHandler commandHandler);
+    
+    public abstract void release();
+    
+    public abstract void setDatasource(PhysicalDatasource datasource);
+}
+src/main/java/io/mycat/net2/mysql/handler/SelectHandler.java
+public final class SelectHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(SelectHandler.class);
+
+    public static void handle(String stmt, MySQLFrontendConnection c, int offs) {
+        int offset = offs;
+        switch (ServerParseSelect.parse(stmt, offs)) {
+        case ServerParseSelect.VERSION_COMMENT:
+            SelectVersionComment.response(c);
+            break;
+        case ServerParseSelect.DATABASE:
+            // SelectDatabase.response(c);
+            break;
+        case ServerParseSelect.USER:
+            // SelectUser.response(c);
+            break;
+        case ServerParseSelect.VERSION:
+            // SelectVersion.response(c);
+            break;
+        case ServerParseSelect.SESSION_INCREMENT:
+            // SessionIncrement.response(c);
+            break;
+        case ServerParseSelect.SESSION_ISOLATION:
+            // SessionIsolation.response(c);
+            break;
+        case ServerParseSelect.LAST_INSERT_ID:
+            // offset = ParseUtil.move(stmt, 0, "select".length());
+            loop: for (int l = stmt.length(); offset < l; ++offset) {
+                switch (stmt.charAt(offset)) {
+                case ' ':
+                    continue;
+                case '/':
+                case '#':
+                    offset = ParseUtil.comment(stmt, offset);
+                    continue;
+                case 'L':
+                case 'l':
+                    break loop;
+                }
+            }
+            offset = ServerParseSelect.indexAfterLastInsertIdFunc(stmt, offset);
+            offset = ServerParseSelect.skipAs(stmt, offset);
+            // SelectLastInsertId.response(c, stmt, offset);
+            break;
+        case ServerParseSelect.IDENTITY:
+            // offset = ParseUtil.move(stmt, 0, "select".length());
+            loop: for (int l = stmt.length(); offset < l; ++offset) {
+                switch (stmt.charAt(offset)) {
+                case ' ':
+                    continue;
+                case '/':
+                case '#':
+                    offset = ParseUtil.comment(stmt, offset);
+                    continue;
+                case '@':
+                    break loop;
+                }
+            }
+            int indexOfAtAt = offset;
+            offset += 2;
+            offset = ServerParseSelect.indexAfterIdentity(stmt, offset);
+            String orgName = stmt.substring(indexOfAtAt, offset);
+            offset = ServerParseSelect.skipAs(stmt, offset);
+            // SelectIdentity.response(c, stmt, offset, orgName);
+            break;
+        case ServerParseSelect.SELECT_VAR_ALL:
+            // SelectVariables.execute(c, stmt);
+            break;
+        default:
+            // c.execute(stmt, ServerParse.SELECT);
+            LOGGER.debug("Execute sql message at DB.");
+            c.setNextConnectedStatus(MySQLPacket.OK_PACKET);
+            LOGGER.debug("Send response packets to client.");
+            c.setNextConnectedStatus(MySQLPacket.OK_PACKET);
+            FakeResultSet.response(c);
+            LOGGER.debug("Finish sql executing.");
+            c.setNextConnectedStatus(MySQLPacket.EOF_PACKET);
+        }
+    }
+
+}
+src/main/java/io/mycat/net2/ByteBufferArray.java
+public class ByteBufferArray {
+
+    /** packageLengths数组中表示报文类型的偏移量 */
+    private static final int PACKAGE_TYPE_SHIFT = 24;
+
+    /** packageLengths数组中表示包长度低 24位 */
+    private static final int PACKAGE_LENGTH_UNIT = (1 << PACKAGE_TYPE_SHIFT) - 1;
+
+    /** packageLengths数组容量 */
+    private static final int CAPACITY = 4;
+
+    private final ReactorBufferPool bufferPool;
+
+    private final ArrayList<ByteBuffer> writedBlockLst = new ArrayList<ByteBuffer>(4);
+    // 此Array中包括的消息报文长度（byte 字节的长度而不是writedBlockLst中的次序）
+    private int[] packetLengths = new int[CAPACITY];
+    private int curPacageIndex = 0;
+    private final int blockCapasity;
+    private int curHandlingPacageIndex = 0;
+
+    public ByteBufferArray(ReactorBufferPool bufferPool) {
+        super();
+        this.bufferPool = bufferPool;
+        blockCapasity = bufferPool.getSharedBufferPool().getChunkSize();
+    }
+
+    public int getCurPacageIndex() {
+        return curPacageIndex;
+    }
+
+    /**
+     * 当前线程是否是此对象所属的Reactor线程
+     * 
+     * @return
+     */
+    public boolean iscurReactorThread() {
+        return (Thread.currentThread() == bufferPool.getReactorThread());
+    }
+
+    /**
+     * 获取当前ByteBuffer Posion位置相对应的绝对位置，比如此ByteBuffer之前有2个ByteBuffer，则绝对位置为
+     * 第一个的长度+第二个的长度+本身的postion
+     * 
+     * @return
+     */
+    public int getAbsByteBufPosion(ByteBuffer theButBuf) {
+        int absPos = 0;
+        int endBlock = writedBlockLst.size() - 1;
+        for (int i = 0; i < endBlock; i++) {
+            ByteBuffer bytBuf = writedBlockLst.get(i);
+            if (bytBuf != theButBuf) {
+                absPos += bytBuf.position();
+            }
+        }
+        return absPos + theButBuf.position();
+
+    }
+
+    /**
+     * 返回当前所有bytebuffer里的字节数长度总和
+     * 
+     * @return
+     */
+    public int getTotalBytesLength() {
+        int totalLen = 0;
+        int endBlock = writedBlockLst.size();
+        for (int i = 0; i < endBlock; i++) {
+            ByteBuffer bytBuf = writedBlockLst.get(i);
+            totalLen += bytBuf.position();
+        }
+        return totalLen;
+    }
+
+    /**
+     * 计算所有packages的字节总数
+     * 
+     * @return
+     */
+    public int calcTotalPacketSize() {
+        int totalBytes = 0;
+        for (int i = 0; i < this.curPacageIndex + 1; i++) {
+            totalBytes += packetLengths[i] & PACKAGE_LENGTH_UNIT;
+        }
+        return totalBytes;
+    }
+
+    /**
+     * 得到队列中最后一个ByteBuffer，也即当前可以写入的位置，如果队列为空，则返回NULL
+     * 
+     * @return
+     */
+    public ByteBuffer getLastByteBuffer() {
+        return writedBlockLst.get(writedBlockLst.size() - 1);
+
+    }
+
+    public int getBlockCount() {
+        return writedBlockLst.size();
+    }
+
+    public ByteBuffer getBlock(int i) {
+        return writedBlockLst.get(i);
+    }
+
+    /**
+     * 申请一个ByteBuffer，并且放入队列，并且返回此ByteBuffer
+     * 
+     * @return
+     */
+    public ByteBuffer addNewBuffer() {
+        ByteBuffer buf = this.bufferPool.allocateByteBuffer();
+        writedBlockLst.add(buf);
+        return buf;
+    }
+
+    public ArrayList<ByteBuffer> getWritedBlockLst() {
+        return writedBlockLst;
+    }
+
+    /**
+     * 设置package
+     * 
+     * @param packegeNum
+     * @param startIndex
+     */
+    public void setCurPacketLength(int packageLenth) {
+        this.packetLengths[curPacageIndex] = (getCurPacageType() << PACKAGE_TYPE_SHIFT) | packageLenth;
+    }
+
+    public void setCurPacketType(int packageType) {
+        this.packetLengths[curPacageIndex] = (packageType << PACKAGE_TYPE_SHIFT) | getCurPacageLength();
+    }
+
+    /**
+     * 将一个数组写入队列中
+     * 
+     * @param src
+     */
+    public ByteBuffer write(byte[] src) {
+        ByteBuffer curWritingBlock = null;
+        if (this.writedBlockLst.isEmpty()) {
+            curWritingBlock = this.addNewBuffer();
+        } else {
+            curWritingBlock = getLastByteBuffer();
+        }
+        int offset = 0;
+        int remains = src.length;
+        while (remains > 0) {
+            int writeable = curWritingBlock.remaining();
+            if (writeable >= remains) {
+                // can write whole srce
+                curWritingBlock.put(src, offset, remains);
+                break;
+            } else {
+                // can write partly
+                curWritingBlock.put(src, offset, writeable);
+                offset += writeable;
+                remains -= writeable;
+                curWritingBlock = addNewBuffer();
+                continue;
+            }
+
+        }
+        return curWritingBlock;
+    }
+
+    public ByteBuffer checkWriteBuffer(int capacity) {
+        ByteBuffer curWritingBlock = getLastByteBuffer();
+        if (capacity > curWritingBlock.remaining()) {
+            curWritingBlock = addNewBuffer();
+            return curWritingBlock;
+        } else {
+            return curWritingBlock;
+        }
+    }
+
+    public int getCurPacageLength() {
+        return this.packetLengths[this.curPacageIndex] & PACKAGE_LENGTH_UNIT;
+    }
+
+    public byte getCurPacageType() {
+        return getPacageType(this.curPacageIndex);
+    }
+
+    public byte getPacageType(int index) {
+        return (byte) (this.packetLengths[index] >>> PACKAGE_TYPE_SHIFT);
+    }
+
+    public byte getPacageLength(int index) {
+        return (byte) (this.packetLengths[index] & PACKAGE_LENGTH_UNIT);
+    }
+
+    /**
+     * 回收此对象，用完需要在合适的地方释放，否則產生內存泄露問題
+     */
+    public void recycle() {
+        bufferPool.recycle(this);
+    }
+
+    protected void clear() {
+        curPacageIndex = 0;
+        this.writedBlockLst.clear();
+        for (int i = 0; i < packetLengths.length; i++) {
+            packetLengths[i] = 0;
+        }
+
+    }
+
+    public void increatePacketIndex() {
+        // 超过预期报文数量，将数组容量扩展
+        if (++curPacageIndex >= CAPACITY) {
+            packetLengths = Arrays.copyOf(packetLengths, packetLengths.length + CAPACITY);
+        }
+    }
+
+    public byte readPacket(int packetIndex, int offset) {
+        // TODO 性能可能很低
+        final int blockCapasity = this.blockCapasity;
+        int totalBytes = 0;
+        for (int i = 0; i < packetIndex; i++) {
+            totalBytes += packetLengths[i] & PACKAGE_LENGTH_UNIT;
+        }
+        totalBytes += offset;
+        int blockIndex = 0;
+        int blockOffset = 0;
+        int endBlock = writedBlockLst.size();
+        for (int i = 0; i < endBlock; i++) {
+            ByteBuffer bytBuf = writedBlockLst.get(i);
+            if (totalBytes >= bytBuf.position()) {
+                totalBytes -= bytBuf.position();
+                blockIndex++;
+            } else {
+                blockOffset = totalBytes;
+                break;
+            }
+        }
+        return writedBlockLst.get(blockIndex).get(blockOffset);
+    }
+
+    public int getCurHandlingPacageIndex() {
+        return curHandlingPacageIndex;
+    }
+
+    public void setCurHandlingPacageIndex(int curHandlingPacageIndex) {
+        this.curHandlingPacageIndex = curHandlingPacageIndex;
+    }
+
+}

@@ -1,0 +1,6 @@
+def __create_fn__(_type_gradients_to_parameters, _type_gradients_to_user_inputs, _type_loss_output, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,gradients_to_parameters:_type_gradients_to_parameters,gradients_to_user_inputs:_type_gradients_to_user_inputs,loss_output:_type_loss_output)->_return_type:
+  self.gradients_to_parameters=gradients_to_parameters
+  self.gradients_to_user_inputs=gradients_to_user_inputs
+  self.loss_output=loss_output
+ return __init__

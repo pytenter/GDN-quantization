@@ -1,0 +1,1 @@
+lambda _cls, total, available, percent, used, free, active, inactive, buffers, cached, shared, slab: _tuple_new(_cls, (total, available, percent, used, free, active, inactive, buffers, cached, shared, slab))

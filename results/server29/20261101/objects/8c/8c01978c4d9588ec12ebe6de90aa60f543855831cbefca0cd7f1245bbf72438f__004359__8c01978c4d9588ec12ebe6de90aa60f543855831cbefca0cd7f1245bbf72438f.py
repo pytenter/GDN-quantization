@@ -1,0 +1,1 @@
+lambda _cls, user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice: _tuple_new(_cls, (user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice))

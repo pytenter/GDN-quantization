@@ -1,0 +1,1 @@
+lambda _cls, start_node, end_node, base_op_node: _tuple_new(_cls, (start_node, end_node, base_op_node))

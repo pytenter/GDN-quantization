@@ -1,0 +1,246 @@
+{
+  "task_id": "QWEN_GDN_AIME26_STEPQUANT6_VS_H_DUALM_2SEED_V1",
+  "status": "FAIL_CLOSED_STOP",
+  "scope": "Independent read-only actual failure/log, ledger, source and AST review. No model load, CUDA computation, source repair or experiment restart.",
+  "reviewed_utc": "2026-10-17T09:14:33.014751+00:00",
+  "actual_failure": {
+    "worker_pid": 5601,
+    "worker_returncode": 1,
+    "stage": "calibration",
+    "completed_segments": 0,
+    "exception": "ValueError: Unaudited calibration kernel kwargs: ['cu_seqlens', 'use_cache']",
+    "origin": "source/stepquant_calibration_adapter.py:41, before calling native kernel or official shadow",
+    "classification": "Engineering adapter/model-call interface qualification failure; algorithm quality and full9B STEPQuant calibration remain untested.",
+    "exact_allowlist_interpretation": "cu_seqlens is already allowlisted; set(extra)-{cu_seqlens} contains use_cache. Error text prints all extra keys, not only forbidden keys.",
+    "no_plan_or_statistics_generated": true,
+    "formal_generations": {
+      "STEPQUANT6": 0,
+      "H_DUALM": 0
+    },
+    "correctness": "NOT_EVALUATED_NO_FORMAL_GENERATIONS"
+  },
+  "kwargs_semantics": {
+    "runtime_observed": "Actual exception confirms extra keyword names cu_seqlens and use_cache. Their values were not logged.",
+    "use_cache_source_inference": {
+      "expected_value": true,
+      "evidence": [
+        "stepquant_calibration.py:101 calls model(...,use_cache=True,logits_to_keep=1)",
+        "frozen90d ForCausalLM.forward:1629-1636 forwards use_cache to TextModel",
+        "frozen90d TextModel.forward:1204-1211 forwards use_cache to decoder",
+        "decoder/GDN forwards residual **kwargs to torch_chunk_gated_delta_rule at520-530"
+      ],
+      "certainty": "Source-level inference, not a captured runtime value"
+    },
+    "cu_seqlens_source_inference": {
+      "expected_value": null,
+      "evidence": [
+        "Calibration model call has no cu_seq_lens_q argument",
+        "frozen90d GDN.forward:529 passes cu_seqlens=kwargs.pop(cu_seq_lens_q,None)"
+      ],
+      "certainty": "Source-level default inference; no runtime value capture"
+    },
+    "native_fallback_contract": "Both frozen90d native kernels accept **kwargs, and AST shows neither reads kwargs in its numeric function body. No claim is made that relaxing the adapter would be validated or authorized."
+  },
+  "why_CPU_qualification_did_not_cover_actual_boundary": {
+    "CPU_source": "source/stepquant_cpu_qualification.py:45-55",
+    "covered": "Direct AST-extracted native kernel calls on synthetic q/k/v/g/beta/state, FP32/BF16 lengths9/64/128, exact wrapper return/state preservation and original official reference tolerances.",
+    "not_covered": "Full model→TextModel→decoder→GDN forwarding chain, real decorators/module integration, actual 9B call kwargs, GPU execution.",
+    "synthetic_kwargs": [
+      "g",
+      "beta",
+      "initial_state",
+      "output_final_state",
+      "use_qk_l2norm_in_kernel"
+    ],
+    "missing_call_boundary_kwargs": [
+      "cu_seqlens",
+      "use_cache"
+    ],
+    "CPU_receipts_remain_limited": "PASS_CPU_CONTRACT_ONLY and PASS_CPU_SOURCE_IMPORT_AND_CLOSURE_ONLY were limited evidence, not actual9B runtime qualification. This actual failure supersedes any readiness inference."
+  },
+  "release_and_cost": {
+    "ledger_status": "FAIL_CLOSED_STOP",
+    "all_GPUs_released": true,
+    "NVML_status": "VERIFIED",
+    "occupied_seconds": 24.64998060464859,
+    "GPU_hours": 0.006847216834624609,
+    "fresh_tracked_process_check": [
+      {
+        "pid": 5598,
+        "proc_exists": false
+      },
+      {
+        "pid": 5601,
+        "proc_exists": false
+      }
+    ],
+    "fresh_NVML_compute_apps_stdout": ""
+  },
+  "actual_evidence": {
+    "remote_unix": 1792230216.501175,
+    "evidence": {
+      "FIRST_FAILURE.json": {
+        "sha256": "37e1c7b0fd531200b0a1bdccce55d3b7b44c8e9c2dc96205de49cba6d243f6a5",
+        "bytes": 556,
+        "value": {
+          "status": "FAIL_CLOSED_STOP",
+          "stage": "calibration",
+          "unix": 1792230131.6222193,
+          "traceback": "Traceback (most recent call last):\n  File \"/data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/source/task_coordinator.py\", line 129, in run\n    if code: raise RuntimeError('Worker exited nonzero; inspect log and preserved receipt: '+str(j['logfile']))\nRuntimeError: Worker exited nonzero; inspect log and preserved receipt: /data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/execution/calibration/gpu0.log\n"
+        }
+      },
+      "qualification/gpu0/calibration/FIRST_FAILURE.json": {
+        "sha256": "9e8a76e3ce7e951b81a5a54abff373e6f010856515248354b8a8c427b0a8da26",
+        "bytes": 4261,
+        "value": {
+          "mode": "calibration",
+          "pid": 5601,
+          "status": "INCOMPLETE",
+          "traceback": "Traceback (most recent call last):\n  File \"/data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/source/shared_runtime_worker.py\", line 605, in main\n    result=run_calibration(model,tok,qmod,root,read(root/'CALIBRATION_INPUTS.json'),\n  File \"/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/torch/utils/_contextlib.py\", line 116, in decorate_context\n    return func(*args, **kwargs)\n  File \"/data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/source/stepquant_calibration.py\", line 101, in run_calibration\n    result = model(input_ids=ids, use_cache=True, logits_to_keep=1)\n  File \"/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1747, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/data/zypan/transformers-qwen35/src/transformers/utils/generic.py\", line 939, in wrapper\n    output = func(self, *args, **kwargs)\n  File \"/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py\", line 1629, in forward\n    outputs: BaseModelOutputWithPast = self.model(\n  File \"/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1747, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/data/zypan/transformers-qwen35/src/transformers/utils/generic.py\", line 1068, in wrapper\n    output = func(self, *args, **kwargs)\n  File \"/data/zypan/transformers-qwen35/src/transformers/utils/output_capturing.py\", line 262, in wrapper\n    outputs = func(self, *args, **kwargs)\n  File \"/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py\", line 1204, in forward\n    hidden_states = decoder_layer(\n  File \"/data/zypan/transformers-qwen35/src/transformers/modeling_layers.py\", line 114, in __call__\n    return super().__call__(*args, **kwargs)\n  File \"/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1747, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py\", line 769, in forward\n    hidden_states = self.linear_attn(\n  File \"/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1844, in _call_impl\n    return inner()\n  File \"/data/ydai/miniconda3/envs/bitdecode/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1790, in inner\n    result = forward_call(*args, **kwargs)\n  File \"/data/zypan/transformers-qwen35/src/transformers/integrations/accelerate.py\", line 949, in wrapped\n    output = forward_func(self, *args, **kwargs)\n  File \"/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py\", line 520, in forward\n    core_attn_out, last_recurrent_state = torch_chunk_gated_delta_rule(\n  File \"/data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/source/stepquant_calibration_adapter.py\", line 80, in dispatch\n    return self.wrap(original, self.current_name)(*args, **kwargs)\n  File \"/data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/source/stepquant_calibration_adapter.py\", line 41, in wrapped\n    raise ValueError('Unaudited calibration kernel kwargs: ' + str(sorted(extra)))\nValueError: Unaudited calibration kernel kwargs: ['cu_seqlens', 'use_cache']\n",
+          "unix": 1792230130.0535185
+        }
+      },
+      "execution/calibration/RESULT.json": {
+        "sha256": "37439d24c1cdafbb778e53c64788e4503fb776f91d44be817795424005bbc8a4",
+        "bytes": 177,
+        "value": {
+          "status": "FAIL_CLOSED_STOP",
+          "stage": "calibration",
+          "all_GPUs_released": true,
+          "ledger_sha256": "42d0a973e8e56578a8ce6bcdf95c7344f2bda95b4d6b0f0940db3a5b954743c1"
+        }
+      },
+      "execution/calibration/STARTED.json": {
+        "sha256": "228c3a7e585b83a9da165932dbf3552ab7fd2f8c15cfd96f5344d84a7912c550",
+        "bytes": 653,
+        "value": {
+          "task_id": "QWEN_GDN_AIME26_STEPQUANT6_VS_H_DUALM_2SEED_V1",
+          "mode": "calibration",
+          "pid": 5598,
+          "identity": {
+            "start_tick": "7083166320",
+            "cmdline": "/data/ydai/miniconda3/envs/bitdecode/bin/python /data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/source/task_coordinator.py --root /data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1 --mode calibration --authorization /data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/AUTHORIZATION_CALIBRATION.json "
+          },
+          "unix": 1792230106.9199388,
+          "authorization_sha256": "57c5602675ac2d1b86400aa7789cf97f74369093c1f99ab6a337c292edb1b72d"
+        }
+      },
+      "GPU_RESOURCE_LEDGER.json": {
+        "sha256": "42d0a973e8e56578a8ce6bcdf95c7344f2bda95b4d6b0f0940db3a5b954743c1",
+        "bytes": 2225,
+        "value": {
+          "TASK_ID": "QWEN_GDN_AIME26_STEPQUANT6_VS_H_DUALM_2SEED_V1",
+          "status": "FAIL_CLOSED_STOP",
+          "GPU_EXECUTION_AUTHORIZED": true,
+          "authorized_physical_GPUs": {
+            "0": "GPU-a78176ed-f97f-c54f-6201-5a01b570f422",
+            "1": "GPU-596e6591-b065-bb91-fd35-a1e90ba8f9e3",
+            "2": "GPU-b7ed673d-18ba-39ca-d7bc-c846af4f6b31",
+            "3": "GPU-30b07aba-a728-7649-4899-e09d33f8bc75"
+          },
+          "maximum_GPU_hours": null,
+          "budget_note": "No new-task GPUh hard cap specified; older readiness1GPUh and C6R20GPUh budgets are separate tasks and are not reused or reset here",
+          "dispatches": [
+            {
+              "stage": "calibration",
+              "gpu": 0,
+              "gpu_uuid": "GPU-a78176ed-f97f-c54f-6201-5a01b570f422",
+              "pid": 5601,
+              "dispatch_unix": 1792230106.9226701,
+              "dispatch_monotonic": 70831663.38483731,
+              "identity": {
+                "start_tick": "7083166338",
+                "cmdline": "/data/ydai/miniconda3/envs/bitdecode/bin/python /data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/source/shared_runtime_worker.py --root /data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1 --gpu 0 --mode calibration --authorization /data/zypan/analyses/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/AUTHORIZATION_CALIBRATION.json "
+              },
+              "occupied_seconds": 24.64998060464859,
+              "returncode": 1,
+              "process_exited": true,
+              "NVML_released": true,
+              "release_monotonic": 70831688.03481792
+            }
+          ],
+          "cumulative_GPU_occupied_seconds": 24.64998060464859,
+          "cumulative_GPU_hours": 0.006847216834624609,
+          "formal_generations_completed": {
+            "STEPQUANT6": 0,
+            "H_DUALM": 0
+          },
+          "A800_actions": 0,
+          "accounting": "For each worker, measure remote monotonic dispatch through actual process exit and NVML release; do not mix client and server wall clocks",
+          "resource_prediction_status": "PENDING_REAL_NEW_METHOD_CANARY_MEASUREMENT",
+          "physical_state_note": "Both planned native runtime carriers hold FP32 reconstructed QDQ values, not physical packed INT8; exact encoded payload/FP16 scales/pivots will be separately reported",
+          "all_GPUs_released": true,
+          "own_NVML_pids_remaining": [],
+          "updated_unix": 1792230131.7142456,
+          "NVML_status": "VERIFIED",
+          "NVML_error": null
+        }
+      },
+      "CALIBRATION_INPUTS.json": {
+        "sha256": "99898dfcaf45392eea81bc9aca6e6ae6ef5485a9c50f0e3bf00f4ca005c0598f",
+        "bytes": 2472
+      },
+      "SOURCE_MANIFEST.json": {
+        "sha256": "7ff7e44726b623bf491621729ea0e40908df85388f722a4aa4fceb49e8beca34",
+        "bytes": 696526
+      },
+      "PREREGISTRATION.json": {
+        "sha256": "bf7f88a290afdeeb969b431ae360c5f14ca6792f4947004d15938313dd0c1fed",
+        "bytes": 6706
+      },
+      "source/stepquant_calibration.py": {
+        "sha256": "69b7cc84e348d2d208eb01668ec9b4c9e71bb37bac3ac5754d4a4e82ff761728",
+        "bytes": 11673
+      },
+      "source/stepquant_calibration_adapter.py": {
+        "sha256": "09175da5111f7e9527987209ee9171804e4c77fcf050dc52ec41489f93b304c2",
+        "bytes": 4778
+      },
+      "source/stepquant_cpu_qualification.py": {
+        "sha256": "746d511e8a8ebba740582117320773c8fbda5deecb10f02957cc39e1b3c4c707",
+        "bytes": 5758
+      },
+      "execution/calibration/gpu0.log": {
+        "sha256": "d0d3e259b2281fa5b450dde8b39cd6265849ee087c2cc4614d7d8ae40e100eaf",
+        "bytes": 9679
+      }
+    },
+    "native_source": {
+      "path": "/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py",
+      "sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a",
+      "bytes": 88546,
+      "kernel_AST": {
+        "torch_chunk_gated_delta_rule": {
+          "line": 249,
+          "end_line": 327,
+          "variadic_keyword": "kwargs",
+          "keyword_names_read_in_body": []
+        },
+        "torch_recurrent_gated_delta_rule": {
+          "line": 331,
+          "end_line": 380,
+          "variadic_keyword": "kwargs",
+          "keyword_names_read_in_body": []
+        }
+      }
+    },
+    "asset_existence": {
+      "qwen35_9b_statistics.pt": false,
+      "qwen35_9b_stepquant6_plan.pt": false,
+      "CALIBRATION_RESULT.json": false,
+      "PLAN_CPU_QUALIFICATION.json": false
+    },
+    "tracked_processes": [
+      {
+        "pid": 5598,
+        "proc_exists": false
+      },
+      {
+        "pid": 5601,
+        "proc_exists": false
+      }
+    ],
+    "NVML_compute_apps_stdout": ""
+  },
+  "actions": "No repair, no source edits, no second GPU dispatch, no fake Plan, no fake calibration qualification. Preserve STOP and all original receipts."
+}

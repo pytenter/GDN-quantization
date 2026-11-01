@@ -1,0 +1,1 @@
+lambda _cls, block_m, block_n, block_k: _tuple_new(_cls, (block_m, block_n, block_k))

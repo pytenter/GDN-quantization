@@ -1,0 +1,1 @@
+lambda _cls, start, end: _tuple_new(_cls, (start, end))

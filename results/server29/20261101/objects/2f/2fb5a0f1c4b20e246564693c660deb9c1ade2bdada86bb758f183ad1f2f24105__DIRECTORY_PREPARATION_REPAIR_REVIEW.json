@@ -1,0 +1,91 @@
+{
+  "status": "PASS_DIRECTORY_PREPARATION_MINIMAL_REPAIR_AND_REAL_GUARD_CPU_SCOPE",
+  "monotonic": 0.044553708,
+  "execution_attempt": "QWEN_GDN_OSCAR_RESIDENT_ROTATION_EFFICIENT_QUALIFICATION_V1_DIRECTORY_REPAIR_RERUN_20261022",
+  "root_cause": "Sealed134 worker reached real guard target.mkdir without existing qualification parent; no model/Torch forward had run. Fake child parents=True masked this missing deployment invariant in earlier CPU tests.",
+  "production_change": {
+    "file": "scripts/resident_controller.py",
+    "helper": "prepare_execution_directories(root)",
+    "scope": "stdlib filesystem only; no GDN/rotation/codec/model/Sampler/scorer/math changes",
+    "validated_before_mutation": [
+      "ordinary existing root",
+      "all existing required path components are real directories",
+      "no ordinary or dangling symlink in required directories",
+      "no non-directory file/FIFO overwrite"
+    ],
+    "directories": [
+      "qualification",
+      "formal",
+      "logs",
+      "logs/qualification",
+      "logs/formal",
+      "operations",
+      "dispatch",
+      "dispatch/qualification",
+      "monitoring"
+    ],
+    "creation": "mkdir(parents=True,exist_ok=True) for directory parents only; all preconditions checked before any mkdir",
+    "invocation": [
+      "main before operations creation and before CONTROLLER_STARTED, with prior STARTED refusal",
+      "run before creating CONTROLLER_STARTED",
+      "each dispatch before source/GPU recheck and Popen"
+    ],
+    "leaf_guards": "all existing qualification/formal unit targets refused using lexists, including dangling symlinks; no unit target is created by preparation"
+  },
+  "test_change": "Actual controller subprocess fake child now uses mkdir(exist_ok=False), so missing parent cannot be silently repaired by the fake child; prepared formal root must remain empty, no dispatch.",
+  "actual_guard_CPU": {
+    "receipt": "analysis/ACTUAL_GUARD_DIRECTORY_REPAIR_CPU_1.json",
+    "checks": 74,
+    "guard_sha256": "73db6633f2a8ae05b4f5601c611dbe13fb638a35d766170c44c49447263aacb0",
+    "body": "actual unchanged qualification_guards.admit_single_unit source+permit+dispatch/parent+flock+target.mkdir+admissionJSON",
+    "mocks": [
+      "process_identity",
+      "oldP1_release",
+      "NVML",
+      "model_external",
+      "driver_identity_no_CUDA",
+      "data_free_space"
+    ],
+    "old_failure_reproduced": true,
+    "fresh_all9parents_absent_then_prepare_and_admit": true,
+    "negative_scopes": [
+      "27 combinations of parent path x ordinaryfile/symlink/dangling symlink",
+      "duplicate unit target and no overwrite",
+      "existing STARTED refusal before parent creation",
+      "dangling unit target refusal before Popen"
+    ],
+    "Torch_imported": false,
+    "GPU_dispatches": 0
+  },
+  "existing_controller_CPU": {
+    "receipt": "analysis/CONTROL_DIRECTORY_REPAIR_CPU_1.json",
+    "checks": 79,
+    "status": "PASS_ISOLATED_STDLIB_CPU_CONTROL_TESTS",
+    "real_fakechild_process_failure_cleanup": true,
+    "foreign_process_survived": true
+  },
+  "peer_review": "resident_implementation independently inspected actual guard test design and minimal production helper; no mocked guard or precreated qualification parent masked the bug",
+  "files": [
+    {
+      "path": "scripts/resident_controller.py",
+      "bytes": 27931,
+      "sha256": "e8f9517341187e5d339a47696b1b747036f916d72b3b92621cd3951ac917af01"
+    },
+    {
+      "path": "scripts/test_resident_control_cpu.py",
+      "bytes": 28731,
+      "sha256": "275ca56994f5a3bab51ef1706bff9efdc258b4a0255ba141f3b121b5540a57bb"
+    },
+    {
+      "path": "scripts/test_directory_preparation_cpu.py",
+      "bytes": 12137,
+      "sha256": "570b7e63756199f012619669aa0f2dee384e8f0774956cd9629987be67d69e9a"
+    }
+  ],
+  "old134_source_freeze_unchanged": true,
+  "old109_local_frozen_files_freshSHA_unchanged": true,
+  "old25raw_assets_not_downloaded": true,
+  "old_frozen_attempt_restarted": false,
+  "new_GPU_or_SSH_launches_by_reviewer": 0,
+  "remaining": "Parent must run both79+74 suites in two fresh actual targetPython3.10 processes, prepare/check all actual55parentdirs and absent unit leaves, then oncefreeze/newpermit before unique authorized newlaunch. CPU tests do not establish actualGPU admission/qualification."
+}

@@ -1,0 +1,7 @@
+def __create_fn__(_type_left_end_lineno, _type_left_end_offset, _type_right_start_lineno, _type_right_start_offset, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,left_end_lineno:_type_left_end_lineno,left_end_offset:_type_left_end_offset,right_start_lineno:_type_right_start_lineno,right_start_offset:_type_right_start_offset)->_return_type:
+  self.left_end_lineno=left_end_lineno
+  self.left_end_offset=left_end_offset
+  self.right_start_lineno=right_start_lineno
+  self.right_start_offset=right_start_offset
+ return __init__

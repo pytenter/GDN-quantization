@@ -1,0 +1,108 @@
+{
+  "GPU_dispatches": 0,
+  "actual_functions": {
+    "forward": {
+      "line": 433,
+      "sha256": "c5651a3ff6da6299cd665edf5d93dbc120af69dee9f122873a14f8f4a3f0cf3b"
+    },
+    "torch_chunk_gated_delta_rule": {
+      "line": 249,
+      "sha256": "70c5fbcca74b52b8da19ea77b7ef1d53dcf42ecf8565d7e11b732bec298da78c"
+    },
+    "torch_recurrent_gated_delta_rule": {
+      "line": 331,
+      "sha256": "26339a7fbd20524e2357617cebed105619a4e4de5d9dba28faee1284ab61f625"
+    }
+  },
+  "alpha": "exp(g.float()), g=-exp(A_log.float())*softplus(a.float()+dt_bias), head scalar",
+  "architecture": {
+    "bytes": 88546,
+    "path": "/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py",
+    "sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a"
+  },
+  "beta": "sigmoid(b), head scalar",
+  "config": {
+    "attention_bias": false,
+    "attention_dropout": 0.0,
+    "attn_output_gate": true,
+    "dtype": "bfloat16",
+    "eos_token_id": 248044,
+    "full_attention_interval": 4,
+    "head_dim": 256,
+    "hidden_act": "silu",
+    "hidden_size": 4096,
+    "initializer_range": 0.02,
+    "intermediate_size": 12288,
+    "layer_types": [
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention",
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention",
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention",
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention",
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention",
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention",
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention",
+      "linear_attention",
+      "linear_attention",
+      "linear_attention",
+      "full_attention"
+    ],
+    "linear_conv_kernel_dim": 4,
+    "linear_key_head_dim": 128,
+    "linear_num_key_heads": 16,
+    "linear_num_value_heads": 32,
+    "linear_value_head_dim": 128,
+    "mamba_ssm_dtype": "float32",
+    "max_position_embeddings": 262144,
+    "mlp_only_layers": [],
+    "model_type": "qwen3_5_text",
+    "mtp_num_hidden_layers": 1,
+    "mtp_use_dedicated_embeddings": false,
+    "num_attention_heads": 16,
+    "num_hidden_layers": 32,
+    "num_key_value_heads": 4,
+    "rms_norm_eps": 1e-06,
+    "rope_parameters": {
+      "mrope_interleaved": true,
+      "mrope_section": [
+        11,
+        11,
+        10
+      ],
+      "partial_rotary_factor": 0.25,
+      "rope_theta": 10000000,
+      "rope_type": "default"
+    },
+    "use_cache": true,
+    "vocab_size": 248320
+  },
+  "fused_kernel": "Runtime uses bound torch helpers, not an assumed FLA fused equivalence",
+  "injection": "after causal convolution and SiLU and repeat_interleave and before GDN arithmetic; no rotation through nonlinear convolution",
+  "matrix_orientation": "column kA=A.T k; stored row k transforms row@A; stateA=A.T S; backprojection A stateA",
+  "normalization": "BF16 normalize before FP32 cast; same original native l2norm expression",
+  "readout": "state Key-axis reduction with query divided by sqrt128",
+  "rotation_dtype": "normalize in original input dtype, castFP32 then matmul A32; core cast back to original value dtypeBF16",
+  "single_token_prefill": "chunk helper first token, padding64; recurrent helper later; both must be independently checked",
+  "state": "batch,32,Key128,Value128; recurrent native FP32",
+  "status": "PASS_STATIC_BOUND_SOURCE_AUDIT"
+}

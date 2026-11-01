@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Offline supplementary resource audit using the exact frozen CPU reducer."""
+import collections,datetime,hashlib,json,math
+from pathlib import Path
+HERE=Path(__file__).resolve().parent
+LOCAL=HERE.parents[1]
+def read(p):return json.loads(Path(p).read_text())
+def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+def require(x,m):
+ if not x:raise RuntimeError(m)
+def write(name,x):
+ with(HERE/name).open('x')as f:json.dump(x,f,ensure_ascii=False,sort_keys=True,indent=2,allow_nan=False);f.write('\n')
+def utc(t):return datetime.datetime.fromtimestamp(t,datetime.timezone.utc).isoformat()
+def main():
+ obs=read(HERE/'RESOURCE_TERMINAL_OBSERVATIONS.json');num=read(HERE/'RESOURCE_NUMERICAL_STATUS_SUPPLEMENT.json');confirmation=read(LOCAL/'analysis/REAL_FOUR_GPU_START_CONFIRMATION.json');active=read(confirmation['snapshot'])
+ require(sha(confirmation['snapshot'])==confirmation['snapshot_sha256'],'Historical start observation changed')
+ require(obs['shared']['FIRST_FAILURE.json']['json']['status']=='FAIL_CLOSED_STOP' and obs['shared']['SESSION_RESULT.json']['json']['status']=='FAIL_CLOSED_STOP','Actual STOP not proven')
+ src=LOCAL/'staging/payload_v1/gpu0/qualification/resource_event_reducer.py';raw=src.read_bytes();copied=HERE/'FROZEN_RESOURCE_EVENT_REDUCER.py'
+ with copied.open('xb')as f:f.write(raw)
+ ns={};exec(compile(raw,str(copied),'exec'),ns);reduce_events=ns['reduce_events'];cards=[];lo=hi=physicalspan=preh=0.;all_checks={}
+ for n in range(4):
+  key='gpu'+str(n);v=obs['cards'][key];units=v['units'];require(len(units)==1 and units[0]['unit_id']=='B0_FP_Q0','Unexpected dispatched unit roster:'+key);u=units[0]
+  remote_reducer=v['reducer_source'];require(remote_reducer['sha256']==sha(src) and remote_reducer['raw'].encode()==raw,'Remote reducer changed:'+key)
+  frozen=read(LOCAL/'staging/payload_v1'/key/'SOURCE_MANIFEST.json');binding=next(x for x in frozen['execution_sources']if x['path']=='qualification/resource_event_reducer.py');require(binding['sha256']==sha(src)and binding['bytes']==len(raw),'Frozen reducer source manifest changed')
+  evstream=v['resource_event_stream'];events=[json.loads(s)for s in evstream['raw'].splitlines()if s.strip()];require(hashlib.sha256(evstream['raw'].encode()).hexdigest()==evstream['sha256'],'Event text hash mismatch')
+  kinds=collections.Counter(x['kind']for x in events)
+  require(all(kinds[k]==1 for k in ['dispatch_before_spawn','spawn_observed','first_process_exit_observed','first_exit_and_release_observed']),'Nonunique initial/terminal observation:'+key)
+  require(all(x['unit_id']=='B0_FP_Q0'for x in events),'Unexpected event unit')
+  reduced=reduce_events(events);require(not reduced['has_incomplete_units']and len(reduced['units'])==1,'Incomplete event bounds')
+  rr=reduced['units'][0];ledger=v['metadata']['RESOURCE_LEDGER.json']['json'];require(ledger['reduced_units']==reduced['units'],'Frozen live ledger differs from independent event replay:'+key)
+  dispatch=next(x for x in events if x['kind']=='dispatch_before_spawn');spawn=next(x for x in events if x['kind']=='spawn_observed');ex=next(x for x in events if x['kind']=='first_process_exit_observed');release=next(x for x in events if x['kind']=='first_exit_and_release_observed');busy=[x for x in events if x['kind']=='busy_observed']
+  require(busy and all(x['pid']==spawn['pid']for x in events if 'pid'in x),'Worker PID changed in event stream')
+  start=u['metadata']['STARTED.json']['json'];dp=u['metadata']['DISPATCH.json']['json'];cm=v['metadata']['execution/CONTROLLER_STARTED.json']['json'];auth=read(LOCAL/'staging/payload_v1'/key/'AUTHORIZATION.json')
+  w=next(x for x in confirmation['workers']if x['card']==key);require(start['pid']==spawn['pid']==w['pid']and start['process_identity']['starttick']==w['starttick']and dispatch['command']==w['cmdline'],'Historical worker PID/starttick/actualcmdline/dispatch mismatch:'+key)
+  require(start['authorization_sha256']==dp['authorization_sha256']==cm['authorization_sha256']==sha(LOCAL/'staging/payload_v1'/key/'AUTHORIZATION.json')and start['source_manifest_sha256']==dp['source_manifest_sha256']==cm['source_manifest_sha256']==auth['source_manifest_sha256'],'Worker/controller frozen identity mismatch')
+  cproc=next(x for x in active['actual_process_identities']if x['pid']==cm['controller_pid']);require(cproc['starttick']==cm['controller_starttick']and cproc['cmdline']==cm['controller_cmdline'],'Historical controller realcmdline/starttick mismatch')
+  for pid in [spawn['pid'],cm['controller_pid']]:require(obs['historical_PID_current_observations'][str(pid)]is None,'Historical task process still alive/reused')
+  toks=num['cards'][key]['tokens'];count=len(toks);require([x['token']for x in toks]==list(range(count)),'Noncontiguous committed tokens')
+  require([x['sha256']for x in toks]==[x['sha256']for x in u['numeric_committed_receipts']],'Token metadata changed between independent observations')
+  require(all(x['role']=='FULL_REFERENCE'and x['actual_bytes_compared']is False and x['byte_equal']is True and x['cache_cursor']==x['token']+1 and x['has_raw_archive'] for x in toks),'Baseline receipt role/cursor/archive failure')
+  idx=num['cards'][key]['index'];result=u['metadata']['RESULT.json'];actual_status=result['json']['status']if result else 'NO_RESULT_RECEIPT_PARTIAL'
+  if n==3:
+   require(count==256 and idx and idx['json']['status']=='PASS'and idx['json']['reference']is True and idx['json']['actual_bytes_compared']is False,'Expected complete reference-only index absent')
+   require(actual_status=='FAIL_CLOSED_STOP','Full reference incorrectly treated as unit PASS')
+   require(len(idx['json']['token_receipts'])==256 and all(a['sha256']==b['sha256']and a['bytes']==b['bytes']for a,b in zip(idx['json']['token_receipts'],toks)),'Index token binding mismatch')
+  else:require(idx is None and result is None and count<256,'Partial baseline has fabricated terminal result/index')
+  require(v['metadata']['qualification/FP_NUMERICAL_VERDICT.json']is None and v['metadata']['qualification/PERFORMANCE_VERDICT.json']is None,'Unexpected group/performance verdict')
+  progress=u['progress'];require(progress['last_token_committed']['token']==count-1,'Progress versus committed count mismatch')
+  phases={x['phase']:x['monotonic_seconds']for x in progress['phase_transitions']};pre=busy[0]['monotonic_seconds']-dispatch['monotonic_seconds'];observed=busy[-1]['monotonic_seconds']-busy[0]['monotonic_seconds']
+  lo+=rr['occupied_seconds_lower'];hi+=rr['occupied_seconds_upper'];physicalspan+=observed;preh+=pre
+  cards.append(dict(card=key,device=auth['device'],unit_id='B0_FP_Q0',worker_pid=start['pid'],worker_starttick=start['process_identity']['starttick'],actual_worker_cmdline=w['cmdline'],controller_pid=cm['controller_pid'],controller_starttick=cm['controller_starttick'],source_manifest_sha256=auth['source_manifest_sha256'],authorization_sha256=start['authorization_sha256'],resource_events_sha256=evstream['sha256'],resource_events_bytes=evstream['bytes'],event_counts=dict(kinds),frozen_reducer_result=rr,reservation_hours_lower=rr['occupied_seconds_lower']/3600,reservation_hours_upper=rr['occupied_seconds_upper']/3600,dispatch_utc=utc(dispatch['unix']),first_exit_observed_utc=utc(ex['unix']),first_release_observed_utc=utc(release['unix']),worker_exit_returncode=ex['returncode'],dispatch_to_first_NVML_presence_seconds=pre,first_NVML_presence_observed_utc=utc(busy[0]['unix']),last_NVML_presence_observed_utc=utc(busy[-1]['unix']),NVML_presence_observation_span_seconds=observed,source_admission_to_configure_marker_seconds=phases['configure_runtime']-phases['source_admission'],model_load_marker_seconds=phases['model_load_complete']-phases['model_load_started'],committed_token_receipts=count,committed_positions=[0,count-1],raw_reference_only=True,actual_byte_comparison_runs=0,NUMERICAL_INDEX_status=idx['json']['status']if idx else 'ABSENT',NUMERICAL_INDEX_actual_bytes_compared=idx['json']['actual_bytes_compared']if idx else None,unit_RESULT_status=actual_status,group_numerical_status='NOT_QUALIFIED_FOUR_FRESH_RUNS_NOT_COMPLETED',performance_status='NOT_RUN',current_PID_absence_verified=True))
+ require(obs['NVML_COMPUTE_APPS']['returncode']==0 and obs['NVML_COMPUTE_APPS']['stdout'].strip()=='','GPU release not current observed')
+ require(not obs['current_matching_processes'],'Taskcmdline still live');require('qwen-fast-runtime-4gpu-20261019'not in obs['tmux_sessions']['stdout'].splitlines(),'Offline task session still alive')
+ summary=dict(status='FAIL_CLOSED_STOP_RESOURCE_AND_TERMINAL_AUDIT_COMPLETE',task_id='QWEN_GDN_FAST_RUNTIME_QUALIFICATION_V1',execution_run_id='QWEN_GDN_FAST_RUNTIME_QUALIFICATION_GPU_20261019_V1',no_new_GPU_work_or_retry=True,observed_UTC=obs['remote_utc'],source_observation_sha256=sha(HERE/'RESOURCE_TERMINAL_OBSERVATIONS.json'),numeric_supplement_sha256=sha(HERE/'RESOURCE_NUMERICAL_STATUS_SUPPLEMENT.json'),frozen_resource_reducer_sha256=sha(copied),frozen_reducer_replayed_all_four=True,live_ledgers_exactly_reproduced=True,unique_dispatches=4,unique_worker_starts=4,unique_first_exit_observations=4,unique_first_exit_release_observations=4,all_other_units_NOT_RUN=True,reservation_seconds_lower=lo,reservation_seconds_upper=hi,reservation_GPUh_lower=lo/3600,reservation_GPUh_upper=hi/3600,exact_physical_GPUh='UNKNOWN_NOT_DERIVED_FROM_POLLING',resource_semantics='Frozen lower=last_NVML_busy_observation minus spawn_observed, upper=first_exit_and_release_observed minus dispatch_before_spawn. These are worker/device reservation brackets and include pre-CUDA CPU source/weight hashing and import. They are not exact physical CUDA occupancy or GPU execution time.',sum_dispatch_to_first_NVML_presence_seconds=preh,sum_NVML_presence_observation_span_seconds=physicalspan,sum_NVML_presence_observation_span_GPUh=physicalspan/3600,NVML_span_semantics='Descriptive first-to-last observed process presence, not a measured busy-compute integral or rigorous physical residence lower bound without continuity assumptions.',actual_resource_cap=None,no_old_budget_applied=True,full_unit_PASS=0,complete_256_reference_indexes=1,strict_four_run_numerical_group_PASS=0,performance_runs=0,codec_H_runs=0,Dual_M_runs=0,committed_token_counts=[x['committed_token_receipts']for x in cards],partial_RESULT_policy='gpu0/gpu1/gpu2 RESULT absent remains absent; gpu3 actual FAIL_CLOSED_STOP retained. Reference NUMERICAL_INDEX PASS is not a comparison or unit PASS.',release=dict(current_NVML_compute_apps_empty=True,current_task_process_cmdlines_absent=True,old_worker_and_controller_PIDs_absent=True,current_task_tmux_absent=True,telemetry_observed_utc=obs['NVML_COMPUTE_APPS']['observed_utc']),first_failure=obs['shared']['FIRST_FAILURE.json']['json'],cards=cards)
+ write('RESOURCE_TERMINAL_AUDIT.json',summary)
+ lines=['# 独立资源与终态核验','',f'本轮真实 FAIL_CLOSED_STOP；仅四卡各派发一次 B0_FP_Q0，未启动其余单位。提交 token 数为 {summary["committed_token_counts"]}。GPU3 完成 256 token 的 reference index 后实际 RESULT 为失败；它没有做 fresh 字节比较，不能标作数值资格通过。GPU0–2 没有 RESULT，保持部分结果原貌。','',f'冻结事件 reducer 逐卡重算与四份最终 live ledger 完全一致：派发资源预留为 {lo/3600:.12f}–{hi/3600:.12f} 卡时。该范围从 worker 派发/启动计入，包括 CUDA 之前的源/权重 hash；不是精确物理 GPU 执行卡时。物理执行卡时 UNKNOWN。','',f'首次至末次 NVML 进程存在观测跨度合计 {physicalspan/3600:.12f} 卡时，仅为描述性观测跨度，不能替代 GPU 忙碌积分。四卡派发至首次 NVML 进程出现合计 {preh:.6f} 秒。','', '| 卡 | 提交 token | 预留下界(h) | 预留上界(h) | 进程退出码 | 单位 RESULT |','|---|---:|---:|---:|---:|---|']
+ for a in cards:lines.append(f'|{a["card"]}|{a["committed_token_receipts"]}|{a["reservation_hours_lower"]:.12f}|{a["reservation_hours_upper"]:.12f}|{a["worker_exit_returncode"]}|{a["unit_RESULT_status"]}|')
+ lines+=['',f'在 {obs["NVML_COMPUTE_APPS"]["observed_utc"]} 独立只读核验：NVML compute-apps 为空，任务 cmdline/旧 worker 与 coordinator PID 均不存在，任务 tmux session 已结束。初始实际 PID/starttick/cmdline、四次唯一首次退出/释放观测和 current release 证据已逐项绑定。未改冻结 ledger 或源程序，也未重试。','']
+ with(HERE/'RESOURCE_LEDGER_SUMMARY.md').open('x')as f:f.write('\n'.join(lines))
+ print(json.dumps({k:summary[k]for k in ['status','reservation_GPUh_lower','reservation_GPUh_upper','sum_NVML_presence_observation_span_GPUh','committed_token_counts','exact_physical_GPUh','unique_dispatches','full_unit_PASS']},indent=2))
+if __name__=='__main__':main()

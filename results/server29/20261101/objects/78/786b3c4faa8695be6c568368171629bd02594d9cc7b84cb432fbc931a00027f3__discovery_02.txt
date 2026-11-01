@@ -1,0 +1,4431 @@
+src/main/java/es/uvigo/darwin/prottest/selection/DT.java
+public class DT extends InformationCriterion
+{
+	
+	private BIC bic;
+	private TreeDistancesCache distancesCache;
+	
+	/**
+	 * Instantiates a new Decision Theory Information Criterion.
+	 * 
+	 * @param models the models
+	 * @param confidenceInterval the confidence interval
+	 * @param sampleSize the sample size if different of the default
+	 */
+	public DT (ModelCollection models, double confidenceInterval, double sampleSize) 
+		{
+		super(models, confidenceInterval, sampleSize);
+		Collections.sort(selectionModels);
+		}
+	
+	/* (non-Javadoc)
+	 * @see es.uvigo.darwin.prottest.selection.InformationCriterion#getSelectionModels(es.uvigo.darwin.prottest.util.collection.ModelIterator)
+	 */
+	protected List<SelectionModel> getSelectionModels(List<Model> models) {
+		ModelCollection modelCollection = new SingleModelCollection(
+                        models.toArray(new Model[0]),
+                        alignment);
+		bic = new BIC(modelCollection, confidenceInterval, sampleSize);
+		distancesCache = TreeEuclideanDistancesCache.getInstance();
+		
+		List<SelectionModel> list = new ArrayList<SelectionModel>();
+		for (Model model : models) {
+			SelectionModel toAdd = new DTSelectionModel(
+					model, 
+					sampleSize,
+					bic,
+					distancesCache); 
+			list.add( toAdd );
+			hashModels.put(model, toAdd);
+		}
+		return list;
+	}
+
+	/* (non-Javadoc)
+	 * @see es.uvigo.darwin.prottest.selection.InformationCriterion#getCriterionName()
+	 */
+	public String getCriterionName() {
+		return "DT";
+	}
+}
+src/main/java/es/uvigo/darwin/prottest/selection/BIC.java
+public class BIC extends InformationCriterion
+{
+	
+//	/**
+//	 * Instantiates a new Bayesian Information Criterion.
+//	 * 
+//	 * @param models the models
+//	 * @param confidenceInterval the confidence interval
+//	 */
+//	public BIC (ModelCollection models, double confidenceInterval) 
+//		{
+//		super(models, confidenceInterval);
+//		
+//		Collections.sort(selectionModels);
+//		}
+	
+	/**
+	 * Instantiates a new Bayesian Information Criterion.
+	 * 
+	 * @param models the models
+	 * @param confidenceInterval the confidence interval
+	 * @param sampleSize the sample size if different of the default
+	 */
+	public BIC (ModelCollection models, double confidenceInterval, double sampleSize) 
+		{
+		super(models, confidenceInterval, sampleSize);
+		
+		Collections.sort(selectionModels);
+		}
+	
+	/* (non-Javadoc)
+	 * @see es.uvigo.darwin.prottest.selection.InformationCriterion#getSelectionModels(es.uvigo.darwin.prottest.util.collection.ModelIterator)
+	 */
+	protected List<SelectionModel> getSelectionModels(List<Model> models) {
+		List<SelectionModel> list = new ArrayList<SelectionModel>();
+		for (Model model : models) {
+			SelectionModel toAdd = new BICSelectionModel(
+					model, 
+					sampleSize); 
+			list.add( toAdd );
+			hashModels.put(model, toAdd);
+		}
+		return list;
+	}
+
+	/* (non-Javadoc)
+	 * @see es.uvigo.darwin.prottest.selection.InformationCriterion#getCriterionName()
+	 */
+	public String getCriterionName() {
+		return "BIC";
+	}
+}
+src/main/java/es/uvigo/darwin/prottest/util/exception/ProtTestInternalException.java
+public class ProtTestInternalException extends RuntimeException {
+
+	/** The Constant serialVersionUID. */
+	private static final long serialVersionUID = 20090728L;
+
+	/**
+	 * Instantiates a new prot test internal exception.
+	 */
+	public ProtTestInternalException() {}
+	
+	/**
+	 * Instantiates a new prot test internal exception.
+	 * 
+	 * @param description the description
+	 */
+	public ProtTestInternalException(String description) {
+		super(description);
+	}
+
+}
+src/main/java/es/uvigo/darwin/prottest/model/Model.java
+public abstract class Model implements Serializable {
+
+    /** The serialVersionUID. */
+    private static final long serialVersionUID = 20090804L;
+
+    // distributions
+    /** Useful constant for uniform distribution. */
+    public static final int DISTRIBUTION_UNIFORM = 0;
+    /** Useful constant for distribution with a proportion of invariable sites. */
+    public static final int DISTRIBUTION_INVARIABLE = 1;
+    /** Useful constant for gamma distribution. */
+    public static final int DISTRIBUTION_GAMMA = 2;
+    /** Useful constant for gamma distribution with a proportion of invariable sites. */
+    public static final int DISTRIBUTION_GAMMA_INV = 3;
+    
+    // frequencies distribution
+    /** The value of Uniform Frequencies Distribution. */
+    static final int FREQ_DISTRIBUTION_UNIFORM = 1;
+    /** The value of Empirical Frequencies Distribution. */
+    static final int FREQ_DISTRIBUTION_EMPIRICAL = 2;
+    /** The value of Maximum Likelihood Frequencies Distribution. */
+    static final int FREQ_DISTRIBUTION_MAXIMUM_LIKELIHOOD = 3;
+    /** The value of any other frequencies distribution. */
+    static final int FREQ_DISTRIBUTION_OTHER = 4;
+    
+    /** Useful constant for consider observed frequencies. */
+    public static final String PROP_PLUS_F = "plusF";
+    /** The matrix name. */
+    private String matrix;
+    /** The distribution. */
+    private int distribution;
+    /** Consider observed frequencies. */
+    private boolean plusF;
+    /** The frequencies distribution. */
+    protected int frequenciesDistribution;
+    /** The alignment hashcode. */
+    private int alignment;
+    /** The number of sequences. */
+    private int numberOfSequences;
+    /** The tree. */
+    private Tree tree;
+    /** The number of model parameters. */
+//	private  int numModelParameters;
+    /** The number of transition categories. */
+    private int numOfTransCategories;
+    /** The likelihood calculation state. */
+    private ModelLkState lkState;
+    /** The external executor command line. */
+    private String[] commandLine;
+
+    /**
+     * Gets the likelihood estimated value.
+     * 
+     * @return the likelihood estimated value
+     */
+    public double getLk() {
+        return lkState.getLk();
+    }
+
+    /**
+     * Checks if is computed.
+     * 
+     * @return true, if is computed
+     */
+    public boolean isComputed() {
+        return (lkState instanceof ModelFilledLkState);
+    }
+
+    /**
+     * Sets the likelihood estimated value.
+     * 
+     * @param lk the new likelihood estimated value
+     */
+    public void setLk(double lk) {
+        lkState = lkState.setLk(lk);
+    }
+
+    /**
+     * Gets the alpha estimated value.
+     * 
+     * @return the alpha estimated value
+     */
+    public double getAlpha() {
+        return lkState.getAlpha();
+    }
+
+    /**
+     * Sets the alpha estimated value.
+     * 
+     * @param alpha the new alpha estimated value
+     */
+    public void setAlpha(double alpha) {
+        lkState = lkState.setAlpha(alpha);
+    }
+
+    /**
+     * Gets the proportion of invariant sites.
+     * 
+     * @return the proportion of invariant sites
+     */
+    public double getInv() {
+        return lkState.getInv();
+    }
+
+    /**
+     * Sets the proportion of invariant sites.
+     * 
+     * @param inv the new proportion of invariant sites
+     */
+    public void setInv(double inv) {
+        lkState = lkState.setInv(inv);
+    }
+
+    /**
+     * Gets the alignment hashcode.
+     * 
+     * @return the alignment hashcode
+     */
+    public int getAlignment() {
+        return alignment;
+    }
+
+    /**
+     * Sets the alignment only if there wasn't set or it is a different instance of the same object.
+     * 
+     * @param alignment the new alignment
+     */
+    public void setAlignment(Alignment alignment) {
+        if (this.alignment != 0 && this.alignment != alignment.toString().hashCode()) {
+            throw new ProtTestInternalException("cannot set a different alignment");
+        }
+        this.alignment = alignment.toString().hashCode();
+        this.numberOfSequences = alignment.getSequenceCount();
+    }
+
+    /**
+     * Checks if an alignment matches the internal model alignment
+     * 
+     * @return alignment equality
+     */
+    public boolean checkAlignment(Alignment alignment) {
+        if (alignment == null) {
+            return false;
+        }
+        return (this.alignment == alignment.toString().hashCode() &&
+                this.numberOfSequences == alignment.getSequenceCount());
+    }
+
+    /**
+     * Gets the tree.
+     * 
+     * @return the tree
+     */
+    public Tree getTree() {
+        return tree;
+    }
+
+    /**
+     * Sets the tree.
+     * 
+     * @param tree the new tree
+     */
+    public void setTree(Tree tree) {
+        this.tree = tree;
+    }
+
+    /**
+     * Gets the command line.
+     * 
+     * @return the command line
+     */
+    public String[] getCommandLine() {
+        return commandLine;
+    }
+
+    /**
+     * Sets the command line.
+     * 
+     * @param commandLine the new command line
+     */
+    public void setCommandLine(String[] commandLine) {
+        this.commandLine = commandLine;
+    }
+
+    /**
+     * Gets the number of transition categories.
+     * 
+     * @return the number of transition categories
+     */
+    public int getNumberOfTransitionCategories() {
+        return numOfTransCategories;
+    }
+
+    /**
+     * Instantiates a new substitution model.
+     * 
+     * @param matrix the matrix name
+     * @param distribution the distribution value
+     * @param plusF consider observed frequencies
+     * @param alignment the alignment
+     * @param tree the tree
+     * @param ncat the ncat
+     */
+    public Model(String matrix, int distribution, boolean plusF, Alignment alignment, Tree tree, int ncat) {
+
+        if (distribution < 0 || distribution > 3) {
+            throw new ProtTestInternalException("Distribution not supported " + distribution);
+        }
+
+        if (alignment == null) {
+            throw new ProtTestInternalException("Null alignment");
+        }
+
+        this.matrix = matrix;
+        this.distribution = distribution;
+        this.plusF = plusF;
+        this.alignment = alignment.toString().hashCode();
+        this.numberOfSequences = alignment.getSequenceCount();
+        this.tree = tree;
+        this.lkState = new ModelEmptyLkState();
+
+//		numBranches = 2*alignment.getSequenceCount() - 3;
+        switch (distribution) {
+            case DISTRIBUTION_UNIFORM:
+                numOfTransCategories = 1;
+                break;
+            case DISTRIBUTION_INVARIABLE:
+                numOfTransCategories = 1;
+                break;
+            case DISTRIBUTION_GAMMA:
+                numOfTransCategories = ncat;
+                break;
+            case DISTRIBUTION_GAMMA_INV:
+                numOfTransCategories = ncat;
+                break;
+            }
+
+    }
+
+    /**
+     * Gets the number of parameters according with the distribution.
+     * 
+     * @return the distribution parameters according with the distribution
+     */
+    public int getDistributionParameters() {
+        int value = -1;
+        switch (distribution) {
+            case DISTRIBUTION_UNIFORM:
+                value = 0;
+                break;
+            case DISTRIBUTION_INVARIABLE:
+                value = 1;
+                break;
+            case DISTRIBUTION_GAMMA:
+                value = 1;
+                break;
+            case DISTRIBUTION_GAMMA_INV:
+                value = 2;
+                break;
+            }
+        return value;
+    }
+
+    /**
+     * Gets the number of model parameters.
+     * 
+     * @return the number of model parameters
+     */
+    public abstract int getNumberOfModelParameters();
+
+    /**
+     * Gets the matrix name.
+     * 
+     * @return the matrix name
+     */
+    public String getMatrix() {
+        return matrix;
+    }
+
+    /**
+     * Gets the distribution.
+     * 
+     * @return the distribution
+     */
+    public int getDistribution() {
+        return distribution;
+    }
+
+    /**
+     * Checks if observed frequencies are considered.
+     * 
+     * @return true, if the model considers observed frequencies
+     */
+    public boolean isPlusF() {
+        return plusF;
+    }
+
+    /* (non-Javadoc)
+     * @see java.lang.Object#hashCode()
+     */
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + distribution;
+        result = prime * result + ((matrix == null) ? 0 : matrix.hashCode());
+        result = prime * result + (isPlusF() ? 1231 : 1237);
+        return result;
+    }
+
+    /* (non-Javadoc)
+     * @see java.lang.Object#equals(java.lang.Object)
+     */
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null) {
+            return false;
+        }
+        if (getClass() != obj.getClass()) {
+            return false;
+        }
+        Model other = (Model) obj;
+        if (distribution != other.distribution) {
+            return false;
+        }
+        if (matrix == null) {
+            if (other.matrix != null) {
+                return false;
+            }
+        } else if (!matrix.equals(other.matrix)) {
+            return false;
+        }
+        if (isPlusF() != other.isPlusF()) {
+            return false;
+        }
+        return true;
+    }
+
+    /* (non-Javadoc)
+     * @see java.lang.Object#toString()
+     */
+    @Override
+    public String toString() {
+        return "Model [distribution=" + distribution + ", matrix=" + matrix + ", plusF=" + isPlusF();
+//		+ ", weight=" + weight + "]";
+    }
+
+    /**
+     * Gets the complete model name.
+     * 
+     * @return the model name
+     */
+    public abstract String getModelName();
+
+    /**
+     * Gets the number of branches.
+     * 
+     * @return the number of branches
+     */
+    public int getNumBranches() {
+        return 2 * numberOfSequences - 3;
+    }
+
+    /**
+     * Checks if distribution is gamma.
+     * 
+     * @return true, if is gamma
+     */
+    public boolean isGamma() {
+        return (distribution == DISTRIBUTION_GAMMA ||
+                distribution == DISTRIBUTION_GAMMA_INV);
+    }
+
+    /**
+     * Checks if a proportion of invariant sites are considered.
+     * 
+     * @return true, if considers a proportion of invariant sites
+     */
+    public boolean isInv() {
+        return (distribution == DISTRIBUTION_INVARIABLE ||
+                distribution == DISTRIBUTION_GAMMA_INV);
+    }
+
+    /**
+     * Prints the model status report.
+     */
+    public void printReport() {
+
+        println("Model................................ : " + getModelName());
+        print("  Number of parameters............... : " + getNumberOfModelParameters());
+        println(" (" + (getNumberOfModelParameters() - getNumBranches()) + " + " +
+                getNumBranches() + " branch length estimates)");
+
+        if (isComputed()) {
+            if (isGamma()) {
+                println("    gamma shape (" + getNumberOfTransitionCategories() + " rate categories).. = " + getAlpha());
+            }
+            if (isInv()) {
+                println("    proportion of invariable sites... = " + getInv());
+            }
+            if (isPlusF()) {
+                println("    aminoacid frequencies............ = observed (see above)");
+            }
+            print(" -lnL................................ = " + ProtTestFormattedOutput.getDecimalString((-1 * getLk()), 2));
+            println("");
+
+            verboseln("The tree:");
+            verboseln("---------");
+            StringWriter ascciiSw = new StringWriter();
+            TreeUtils.report(getTree(), new PrintWriter(ascciiSw));
+            ascciiSw.flush();
+            verboseln(ascciiSw.toString());
+            StringWriter newickSw = new StringWriter();
+            verboseln("---------");
+            TreeUtils.printNH(getTree(), new PrintWriter(newickSw));
+            newickSw.flush();
+            verboseln(newickSw.toString());
+            verboseln("");
+        }
+        flush(Model.class);
+    }
+
+    private void print(String message) {
+        info(message, Model.class);
+    }
+
+    private void println(String message) {
+        infoln(message, Model.class);
+    }
+
+    private void verbose(String message) {
+        finer(message, Model.class);
+    }
+
+    private void verboseln(String message) {
+        finerln(message, Model.class);
+    }
+}
+src/main/java/es/uvigo/darwin/prottest/observer/ObservableModelUpdater.java
+public abstract class ObservableModelUpdater {
+
+    /** Collection of observers */
+    private Collection<ModelUpdaterObserver> modelUpdaterObservers;
+
+    /**
+     * Constructor for observable objects.
+     */
+    public ObservableModelUpdater() {
+        modelUpdaterObservers = new ArrayList<ModelUpdaterObserver>();
+    }
+
+    /**
+     * Adds a new observer.
+     * 
+     * @param o the observer
+     */
+    public void addObserver(ModelUpdaterObserver o) {
+        modelUpdaterObservers.add(o);
+    }
+
+    /**
+     * Removes an observer.
+     * 
+     * @param o the observer
+     */
+    public void removeObserver(ModelUpdaterObserver o) {
+        modelUpdaterObservers.remove(o);
+    }
+
+    /**
+     * Notifies all observers.
+     */
+    public void notifyObservers() {
+        for (ModelUpdaterObserver o : modelUpdaterObservers) {
+            o.update(this, null, null);
+        }
+    }
+
+    /**
+     * Notifies all observers with a model an options
+     * 
+     * @param model the substitution models
+     * @param options the application options
+     */
+    public void notifyObservers(Model model, ApplicationOptions options) {
+        for (ModelUpdaterObserver o : modelUpdaterObservers) {
+            o.update(this, model, options);
+        }
+    }
+}
+src/main/java/es/uvigo/darwin/prottest/global/ApplicationGlobals.java
+public static final Properties APPLICATION_PROPERTIES;
+src/main/java/es/uvigo/darwin/prottest/util/FixedBitSet.java
+public class FixedBitSet implements Comparable<FixedBitSet> {
+    int[] bits;
+    int size;
+    //private int intSize = Integer.SIZE;
+
+    private final static int ADDRESS_BITS_PER_UNIT = 5;
+    private final static int BITS_PER_UNIT = 1 << ADDRESS_BITS_PER_UNIT;
+    private final static int BIT_INDEX_MASK = BITS_PER_UNIT - 1;
+
+
+    private static int unitIndex(int bitIndex) {
+        return bitIndex >> ADDRESS_BITS_PER_UNIT;
+    }
+
+    private int countBits(int b) {
+        int sum = 0;
+
+        while (b != 0) {
+            // remove most significant bit
+            b = b & (b - 1);
+            ++sum;
+        }
+        return sum;
+    }
+
+    /**
+     * Given a bit index, return a unit that masks that bit in its unit.
+     * @return the mask
+     */
+    private static int bit(int bitIndex) {
+        return 1 << (bitIndex & BIT_INDEX_MASK);
+    }
+
+    public FixedBitSet(int size) {
+        this.size = size;
+        bits = new int[(unitIndex(size - 1) + 1)];
+    }
+
+    public FixedBitSet(FixedBitSet bs) {
+        bits = bs.bits.clone();
+        size = bs.size;
+    }
+
+
+    public void set(int position) {
+        int unitIndex = unitIndex(position);
+        bits[unitIndex] |= bit(position);
+    }
+
+    public void clear(int position) {
+        int unitIndex = unitIndex(position);
+        bits[unitIndex] &= ~bit(position);
+    }
+
+    /**
+     * @param bitset
+     * @return true if bitset contains this set (this <= bitset)
+     */
+    public boolean setInclusion(final FixedBitSet bitset) {
+        for (int k = 0; k < bits.length; ++k) {
+            if (bits[k] != (bits[k] & bitset.bits[k])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public void union(FixedBitSet b) {
+        for (int k = 0; k < Math.min(bits.length, b.bits.length); ++k) {
+            bits[k] |= b.bits[k];
+        }
+    }
+
+    public void intersect(FixedBitSet b) {
+        for (int k = 0; k < Math.min(bits.length, b.bits.length); ++k) {
+            bits[k] &= b.bits[k];
+        }
+    }
+
+    public void setMinus(FixedBitSet b) {
+        for (int k = 0; k < Math.min(bits.length, b.bits.length); ++k) {
+            bits[k] &= ~b.bits[k];
+        }
+    }
+
+    public int intersectCardinality(FixedBitSet b) {
+        int c = 0;
+        for (int k = 0; k < Math.min(bits.length, b.bits.length); ++k) {
+            c += countBits(bits[k] & b.bits[k]);
+        }
+        return c;
+    }
+
+    public static FixedBitSet complement(FixedBitSet b) {
+        FixedBitSet t = new FixedBitSet(b);
+        t.complement();
+        return t;
+    }
+
+    public void complement() {
+        int k;
+        for (k = 0; k < bits.length - 1; ++k) {
+            bits[k] = ~ bits[k];
+        }
+
+        bits[k] = ~bits[k];
+        // reset all higher order bits
+        final int mask = bit(size) - 1;
+        if( mask != 0 ) {
+            bits[k] &= mask;
+        }
+    }
+
+    private final static byte firstBitLocation[] = {
+            -1, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0};
+
+    private int firstOnBit(int i) {
+        for (int k = 0; k < 4; ++k) {
+            char b = (char) (i & 0xff);
+            if (b != 0) {
+                return 8 * k + firstBitLocation[b];
+            }
+            i = i >> 8;
+        }
+        return -1;
+    }
+
+    /**
+     * Iteration helper. A typical iteration on set bits might be
+     * FixedBitSet b;
+     * for(int i = b.nextOnBit(0); i >= 0; i = b.nextOnBit(i+1)) ...
+     *
+     * @param fromIndex
+     * @return Next set member whose index is >= fromIndex. -1 if none.
+     */
+    public int nextOnBit(int fromIndex) {
+        int u = unitIndex(fromIndex);
+        int testIndex = (fromIndex & BIT_INDEX_MASK);
+        int unit = bits[u] >> testIndex;
+
+        if (unit == 0) {
+            testIndex = 0;
+
+            while ((unit == 0) && (u < bits.length - 1))
+                unit = bits[++u];
+        }
+
+        if (unit == 0)
+            return -1;
+
+        testIndex += firstOnBit(unit);
+        return ((u * BITS_PER_UNIT) + testIndex);
+    }
+
+    public int cardinality() {
+        int sum = 0;
+        for (int b : bits) {
+            sum += countBits(b);
+        }
+        return sum;
+    }
+
+    public boolean contains(final int i) {
+        final int unitIndex = unitIndex(i);
+        return (bits[unitIndex] & bit(i)) != 0;
+    }
+
+    @Override
+    public int hashCode() {
+        int code = 0;
+
+        for (int bit : bits) {
+            code = code ^ bit;
+        }
+        return code;
+    }
+
+    @Override
+    public boolean equals(Object x) {
+        if (x instanceof FixedBitSet) {
+            final FixedBitSet b = (FixedBitSet) x;
+
+            return b.size == size && Arrays.equals(bits, b.bits);
+        }
+        return false;
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder rep = new StringBuilder();
+        rep.append("{");
+        for (int b = 0; b < size; ++b) {
+            if (contains(b)) {
+                if (rep.length() > 0) {
+                    rep.append("," + b);
+                } else {
+                    rep.append("" + b);
+                }
+            }
+        }
+        rep.append("}");
+        return rep.toString();
+    }
+    
+    public String splitRepresentation() {
+        StringBuilder rep = new StringBuilder();
+        for (int b = 0; b < size; ++b) {
+            if (contains(b)) {
+                rep.append("*");
+            }
+            else {
+                rep.append("-");
+            }
+        }
+        return rep.toString();
+    }
+
+    public int compareTo(FixedBitSet fbs) {
+        int minSize;
+        int defaultValue;
+        if (size < fbs.size) {
+            minSize = size;
+            defaultValue = -1;
+        } else {
+            minSize = fbs.size;
+            if (size == fbs.size)
+                defaultValue = 0;
+            else
+                defaultValue = 1;
+        }
+        
+        for (int i = 0; i < minSize; i++) {
+            if (this.contains(i) && !fbs.contains(i)) {
+                return -1;
+            }
+            if (!this.contains(i) && fbs.contains(i)) {
+                return 1;
+            }
+        }
+        return defaultValue;
+    }
+
+}
+src/main/java/es/uvigo/darwin/xprottest/XProtTestApp.java
+public class XProtTestApp extends SingleFrameApplication {
+
+    public static final int ERROR_BEHAVIOR_CONTINUE = 0;
+    public static final int ERROR_BEHAVIOR_STOP = 1;
+    public static final Font FONT_CONSOLE;
+    public static final Font FONT_LABEL;
+    public static final Font FONT_PANEL_TITLE;
+    public static final Font FONT_OPTION_LABEL;
+    
+    private ProtTestFacade prottestFacade;
+
+    static {
+        if (Utilities.isWindows() == false) {
+            FONT_CONSOLE = new Font(Font.MONOSPACED, 0, 10);
+        } else {
+            FONT_CONSOLE = new Font("Lucida Console", 0, 11);
+        }
+        FONT_LABEL = new Font("Application", 1, 9);
+        FONT_OPTION_LABEL = new Font("Application", 0, 10);
+        FONT_PANEL_TITLE = new Font("Application", 1, 10);
+    }
+
+    /**
+     * At startup create and show the main frame of the application.
+     */
+    @Override
+    protected void startup() {
+        prottestFacade = new ProtTestFacadeThread(
+                Runtime.getRuntime().availableProcessors());
+//        prottestFacade = new ProtTestFacadeSequential();
+        XProtTestView view = new XProtTestView(this, prottestFacade);
+        show(view);
+    }
+
+    /**
+     * This method is to initialize the specified window by injecting resources.
+     * Windows shown in our application come fully initialized from the GUI
+     * builder, so this additional configuration is not needed.
+     */
+    @Override
+    protected void configureWindow(java.awt.Window root) {
+    }
+
+    /**
+     * A convenient static getter for the application instance.
+     * @return the instance of XProtTestApp
+     */
+    public static XProtTestApp getApplication() {
+        return Application.getInstance(XProtTestApp.class);
+    }
+
+    /**
+     * Main method launching the application.
+     */
+    public static void main(String[] args) {
+        launch(XProtTestApp.class, args);
+    }
+
+    public static JFileChooser createFileChooser(String title) {
+        JFileChooser fc = new JFileChooser();
+        fc.setDialogTitle(title);
+        fc.setFileFilter(fc.getAcceptAllFileFilter());
+        fc.setCurrentDirectory(new File("."));
+        return fc;
+    }
+}
+src/main/java/es/uvigo/darwin/prottest/global/options/ApplicationOptions.java
+public class ApplicationOptions {
+
+    /** Verbose mode on/off. */
+    protected boolean debug = DEFAULT_DEBUG;
+    /** The sample size. It is only useful if the sample size mode is custom */
+    protected double sampleSize = 0.0;
+    /** The alignment filename. */
+    protected String align_file = null;
+    /** The tree filename. */
+    protected String tree_file = null;
+    /** Logging Enabled/Disabled **/
+    protected boolean logEnabled = true;
+    /** The log filename. */
+    protected String log_file = null;
+    /** The alignment, according to the alignment input file. */
+    protected Alignment alignment;
+    /** The tree, according to the tree filename. */
+    protected Tree tree;
+    /** The number of categories. It is only useful if the distribution is gamma */
+    public int ncat = 4;
+    /** The optimization strategy mode. */
+    public int strategyMode = DEFAULT_STRATEGY_MODE;
+    /** The matrices of the models to optimize. */
+    private List<String> matrices = new ArrayList<String>();	//{"JTT", "MtREV", "Dayhoff", "WAG"};
+    /** The distributions of the models to optimize. */
+    private List<Integer> distributions = new ArrayList<Integer>();	//{0,1,2,3};
+    /** Hash table with the relationship between distribution name and distribution internal parameter. */
+    private HashMap<String, Integer> distributionsHash;
+    /** Boolean value to consider or not different kind of amino-acid frequencies. */
+    private boolean plusF = false;
+    // display options
+    /** Display Newick tree on results. */
+    private boolean displayNewickTree = DEFAULT_DISPLAY_NEWICK_TREE;
+    /** Display ASCII tree on results. */
+    private boolean displayASCIITree = DEFAULT_DISPLAY_ASCII_TREE;
+    /** Display Consensus tree on results. */
+    private boolean displayConsensusTree = DEFAULT_DISPLAY_CONSENSUS_TREE;
+    /** Consensus threshold **/
+    private double consensusThreshold;
+    /** Display a 7-framework comparison. */
+    private boolean compareAll = DEFAULT_COMPARE_ALL;
+    /** Write a log file. */
+    public boolean writeLog = true;
+    /** Criterion to sort the models. */
+    private boolean doAIC,doBIC,doAICc,doDT;
+    /** Tree search operation */
+    private String treeSearchOperation = TREE_SEARCH_NNI;
+
+    @Override
+    public boolean equals(Object obj) {
+System.out.println("Check equals");
+        if (this == obj) return true;
+        if (obj == null) return false;
+        if (getClass() != obj.getClass()) return false;
+        ApplicationOptions other = (ApplicationOptions) obj;
+        if (align_file == null || other.align_file == null) {
+            return false;
+        } else if (!align_file.equals(other.align_file)) {
+            return false;
+        }
+        if (strategyMode != other.strategyMode) return false;
+        if (ncat != other.ncat) return false;
+        if (tree_file != other.tree_file &&
+              (tree_file == null || !tree_file.equals(other.tree_file)))
+            return false;
+        if (!alignment.equals(other.alignment)) return false;
+        if (!tree.equals(other.tree)) return false;
+        return true;
+    }
+
+    /**
+     * Sets the number of categories.
+     * 
+     * @param ncat the new number of categories
+     */
+    public void setNumberOfCategories(int ncat) {
+        this.ncat = ncat;
+    }
+
+    /**
+     * Gets the value of plusF attribute.
+     * 
+     * @return the plusF value
+     */
+    public boolean isPlusF() {
+        return plusF;
+    }
+
+    /**
+     * Sets the empirical amino-acid frequencies usage.
+     * 
+     * @param plusF the new value for consider empirical frequencies
+     */
+    public void setPlusF(boolean plusF) {
+        this.plusF = plusF;
+    }
+
+    /**
+     * Checks if is required to display newick tree.
+     * 
+     * @return true, if is required to display newick tree
+     */
+    public boolean isDisplayNewickTree() {
+        return displayNewickTree;
+    }
+
+    /**
+     * Checks if is required to display ascii tree.
+     * 
+     * @return true, if is required to display ascii tree
+     */
+    public boolean isDisplayASCIITree() {
+        return displayASCIITree;
+    }
+
+    /**
+     * Checks whether PhyML logging is enabled
+     * 
+     * @return true, if PhyML logging is enabled
+     */
+    public boolean isLogEnabled() {
+    	return logEnabled;
+    }
+    
+    /**
+     * Checks if is required to display consensus tree.
+     * 
+     * @return true, if is required to display consensus tree
+     */
+    public boolean isDisplayConsensusTree() {
+        return displayConsensusTree;
+    }
+
+    /**
+     * Gets the threshold to create consensus tree.
+     * 
+     * @return the threshold
+     */
+    public double getConsensusThreshold() {
+        return consensusThreshold;
+    }
+
+    /**
+     * Check if should compute the AIC criterion
+     * 
+     * @return true, if AIC should be computed
+     */
+    public boolean isAIC() {
+        return doAIC;
+    }
+    
+    /**
+     * Check if should compute the BIC criterion
+     * 
+     * @return true, if BIC should be computed
+     */
+    public boolean isBIC() {
+        return doBIC;
+    }
+    
+    /**
+     * Check if should compute the AICc criterion
+     * 
+     * @return true, if AICc should be computed
+     */
+    public boolean isAICc() {
+        return doAICc;
+    }
+    
+    /**
+     * Check if should compute the DT criterion
+     * 
+     * @return true, if DT should be computed
+     */
+    public boolean isDT() {
+        return doDT;
+    }
+    public String getTreeSearchOperation() {
+		return treeSearchOperation;
+	}
+
+	public void setTreeSearchOperation(String treeSearchOperation) {
+		this.treeSearchOperation = treeSearchOperation;
+	}
+
+	/**
+     * Sets the alignment filename without checking
+     * 
+     * @param alignFile the alignment filename
+     */
+    public void setAlignmentFilename(String alignFile) {
+        this.align_file = alignFile;
+    }
+
+    /**
+     * Sets the alignment file
+     * 
+     * @param alignFile the alignment filename
+     * 
+     * @return true, if successful
+     * 
+     * @throws AlignmentParseException Signals that the alignment filename is not correct.
+     * @throws IOException Signals that an I/O exception has occurred.
+     */
+    public boolean setAlignment(String alignFile)
+            throws AlignmentParseException,
+            IOException {
+
+        this.align_file = alignFile;
+
+        StringWriter sw = new StringWriter();
+        setAlignment(AlignmentReader.readAlignment(new PrintWriter(sw), alignFile, debug));
+        sw.flush();
+        println(sw.toString());
+
+        return alignFile != null;
+    }
+
+    /**
+     * Gets the alignment.
+     * 
+     * @return the alignment
+     */
+    public Alignment getAlignment() {
+        return alignment;
+    }
+
+    /**
+     * Gets the tree.
+     * 
+     * @return the tree
+     */
+    public Tree getTree() {
+        return tree;
+    }
+
+    /**
+     * Sets the alignment.
+     * 
+     * @param alignment the new alignment
+     */
+    public void setAlignment(Alignment alignment) {
+        this.alignment = alignment;
+    }
+
+    /**
+     * Sets the tree.
+     * 
+     * @param tree the new tree
+     */
+    public synchronized void setTree(Tree tree) {
+        this.tree = tree;
+    }
+
+    /**
+     * Checks if is debug (verbose mode).
+     * 
+     * @return true, if is debug
+     */
+    public boolean isDebug() {
+        return debug;
+    }
+
+    /**
+     * Sets the debug mode value.
+     * 
+     * @param debug the new debug mode value
+     */
+    public void setDebug(boolean debug) {
+        this.debug = debug;
+    }
+
+    /**
+     * Checks if a 7-framework comparison should be displayed.
+     * 
+     * @return true, if a 7-framework comparison should be displayed
+     */
+    public boolean isAll() {
+        return compareAll;
+    }
+
+    /**
+     * Sets the 7-framework comparison display value.
+     * 
+     * @param all the new 7-framework comparison display value
+     */
+    public void setAll(boolean all) {
+        this.compareAll = all;
+    }
+
+    /**
+     * Gets the tree filename.
+     * 
+     * @return the tree filename
+     */
+    public String getTreeFile() {
+        return tree_file;
+    }
+
+    /**
+     * Sets the tree filename.
+     * 
+     * @param treeFile the new tree filename
+     * 
+     * @throws TreeFormatException Signals there was an error parsing the tree file
+     */
+    public void setTreeFile(String treeFile)
+            throws TreeFormatException, FileNotFoundException, IOException {
+        if (treeFile != null) {
+            this.tree_file = treeFile;
+
+            StringWriter sw = new StringWriter();
+            setTree(AlignmentReader.readTree(new PrintWriter(sw), treeFile, debug));
+            sw.flush();
+            println(sw.toString());
+        }
+    }
+
+    /**
+     * Gets the number of model matrices.
+     * 
+     * @return the number of model matrices
+     */
+    public int getNumberOfMatrices() {
+        return matrices.size();
+    }
+
+    /**
+     * Gets the model matrices.
+     * 
+     * @return the model matrices
+     */
+    public List<String> getMatrices() {
+        List<String> matricesClone = new ArrayList<String>(matrices);
+        return matricesClone;
+    }
+
+    /**
+     * Sets the model matrices.
+     * 
+     * @param newMatrices the new model matrices
+     */
+    public void setMatrices(List<String> newMatrices) {
+        matrices = newMatrices;
+    }
+
+    /**
+     * Gets the matrix at a certain position.
+     * 
+     * @param pos the position of the matrix
+     * 
+     * @return the matrix at the required position
+     */
+    public String getMatrixAt(int pos) {
+        return matrices.get(pos);
+    }
+
+    /**
+     * Check if one matrix exists in the model matrices set of the application.
+     * 
+     * @param matrix the matrix to check out
+     * 
+     * @return true, if the set of matrices contains the model matrix
+     */
+    public boolean existsMatrix(String matrix) {
+        return matrices.contains(matrix);
+    }
+
+    /**
+     * Removes one matrix of the set.
+     * 
+     * @param matrix the matrix to remove
+     * 
+     * @return true, if the matrix was successfully removed
+     */
+    public boolean removeMatrix(String matrix) {
+        return matrices.remove(matrix);
+    }
+
+    /**
+     * Adds one matrix to the set.
+     * 
+     * @param matrix the matrix to add
+     */
+    public void addMatrix(String matrix) {
+        if (!matrices.contains(matrix)) {
+            matrices.add(matrix);
+        }
+    }
+
+    /**
+     * Gets the distributions.
+     * 
+     * @return the distributions
+     */
+    public List<Integer> getDistributions() {
+        List<Integer> distributionsClone = new ArrayList<Integer>(distributions);
+        return distributionsClone;
+    }
+
+    /**
+     * Sets the distributions.
+     * 
+     * @param newDistributions the new distributions
+     */
+    public void setDistributions(List<Integer> newDistributions) {
+        distributions = newDistributions;
+    }
+
+    /**
+     * Gets the number of distributions.
+     * 
+     * @return the number of distributions
+     */
+    public int getNumberOfDistributions() {
+        return distributions.size();
+    }
+
+    /**
+     * Gets the distribution at a certain position of the list.
+     * 
+     * @param pos the position of the distribution to get
+     * 
+     * @return the distribution at the required position
+     */
+    public int getDistributionAt(int pos) {
+        return distributions.get(pos);
+    }
+
+    /**
+     * Gets the internal value of a distribution.
+     * 
+     * @param distribution the distribution name
+     * 
+     * @return the distribution value
+     */
+    public int getDistribution(String distribution) {
+        return distributionsHash.get(distribution);
+    }
+
+    /**
+     * Check if exist one distribution in the distribution set.
+     * 
+     * @param distribution the distribution to check out
+     * 
+     * @return true, if the set of distribution contains the distribution
+     */
+    public boolean existsDistribution(String distribution) {
+        return distributionsHash.containsKey(distribution);
+    }
+
+    /**
+     * Adds one distribution to the distributions set.
+     * 
+     * @param distribution the distribution to add
+     */
+    public void addDistribution(String distribution) {
+        Integer distributionValue = distributionsHash.get(distribution);
+        if (!distributions.contains(distributionValue)) {
+            distributions.add(distributionValue);
+        }
+    }
+
+    /**
+     * Removes the distribution from the distributions set.
+     * 
+     * @param distribution the distribution to remove
+     * 
+     * @return true, if the distribution was successfully removed
+     */
+    public boolean removeDistribution(String distribution) {
+        Integer distributionValue = distributionsHash.get(distribution);
+        return distributions.remove(distributionValue);
+    }
+
+    /**
+     * Gets the sample size.
+     * 
+     * @return the sample size
+     */
+    public double getSampleSize() {
+        return alignment.getSiteCount();
+    }
+
+    /**
+     * Sets the sample size.
+     * 
+     * @param sampleSize the new sample size
+     */
+    public void setSampleSize(double sampleSize) {
+        this.sampleSize = sampleSize;
+    }
+
+    /**
+     * Sets the strategy mode.
+     * 
+     * @param strategyMode the new strategy mode
+     */
+    public void setStrategyMode(int strategyMode) {
+        if (strategyMode == OPTIMIZE_USER && getTreeFile() == null) {
+            throw new ProtTestInternalException("User defined topology must be set");
+        }
+        this.strategyMode = strategyMode;
+    }
+
+    /**
+     * Instantiates a new application options.
+     */
+    public ApplicationOptions() {
+        initLists();
+    }
+
+    /**
+     * Fill in attribute values with the arguments.
+     * 
+     * @param arguments the arguments too fill the application options instance in
+     */
+    public void fillIn(ProtTestArgumentParser arguments) {
+
+    	if(arguments.exists(ProtTestArgumentParser.PARAM_HELP))
+        {
+        	usage();
+        	System.exit(0);
+        }
+    	
+        if (arguments.exists(ProtTestArgumentParser.PARAM_ALIGNMENT_FILE)) {
+            try {
+                setAlignment(arguments.getValue(ProtTestArgumentParser.PARAM_ALIGNMENT_FILE));
+            } catch (AlignmentParseException e) {
+                throw new IllegalArgumentException(e.getMessage());
+            } catch (IOException e) {
+                throw new IllegalArgumentException(e.getMessage());
+            }
+        } else {
+            throw new IllegalArgumentException("Required input file argument -i");
+        }
+        if (arguments.exists(ProtTestArgumentParser.PARAM_TREE_FILE)) {
+            try {
+                setTreeFile(arguments.getValue(ProtTestArgumentParser.PARAM_TREE_FILE));
+            } catch (FileNotFoundException ex) {
+                throw new IllegalArgumentException(ex.getMessage());
+            } catch (IOException ex) {
+                throw new IllegalArgumentException(ex.getMessage());
+            }
+        }
+        if (arguments.exists(ProtTestArgumentParser.PARAM_OUTPUT_FILE)) {
+            //open the PrintWriter with file
+            try {
+                FileOutputStream fo = new FileOutputStream(arguments.getValue(ProtTestArgumentParser.PARAM_OUTPUT_FILE));
+                ProtTestLogger.getDefaultLogger().addHandler(fo, Level.INFO);
+            } catch (FileNotFoundException fnfe) {
+                throw new ProtTestInternalException(fnfe.getMessage());
+            }
+        }
+
+        if (arguments.exists(ProtTestArgumentParser.PARAM_LOGGING)) {
+            logEnabled = arguments.getValue(ProtTestArgumentParser.PARAM_LOGGING).equalsIgnoreCase("enabled");
+        }
+            
+        if (arguments.exists(ProtTestArgumentParser.PARAM_TREE_SEARCH_OP)) {
+            setTreeSearchOperation(arguments.getValue(ProtTestArgumentParser.PARAM_TREE_SEARCH_OP));
+        }
+        setDebug(arguments.isSet(ProtTestArgumentParser.PARAM_VERBOSE));
+        displayASCIITree = arguments.isSet(ProtTestArgumentParser.PARAM_DISPLAY_ASCII_TREE);
+        displayNewickTree = arguments.isSet(ProtTestArgumentParser.PARAM_DISPLAY_NEWICK_TREE);
+        displayConsensusTree = arguments.isSet(ProtTestArgumentParser.PARAM_DISPLAY_CONSENSUS_TREE);
+        if (arguments.exists(ProtTestArgumentParser.PARAM_DISPLAY_CONSENSUS_TREE)) {
+            displayConsensusTree = true;
+            try {
+                consensusThreshold = Double.parseDouble(arguments.getValue(ProtTestArgumentParser.PARAM_DISPLAY_CONSENSUS_TREE));
+            } catch  (NumberFormatException e) {
+                throw new IllegalArgumentException("Consensus threshold must be a number between 0.5 (majority rule) and 1 (strict). You used " + arguments.getValue(ProtTestArgumentParser.PARAM_DISPLAY_CONSENSUS_TREE));
+            }
+            if (consensusThreshold < 0.5 || consensusThreshold > 1.0) {
+                throw new IllegalArgumentException("Consensus threshold must be a number between 0.5 (majority rule) and 1 (strict). You used " + consensusThreshold);
+            }
+        }
+        setAll(arguments.isSet(ProtTestArgumentParser.PARAM_ALL_FRAMEWORK_COMPARISON));
+        if (arguments.exists(ProtTestArgumentParser.PARAM_OPTIMIZATION_STRATEGY)) {
+            if (getTreeFile() != null) {
+                strategyMode = OPTIMIZE_USER;
+            } else {
+                strategyMode = Integer.parseInt(arguments.getValue(ProtTestArgumentParser.PARAM_OPTIMIZATION_STRATEGY));
+                // Check
+                if (strategyMode == OPTIMIZE_USER &&
+                        getTreeFile() == null) {
+                    throw new IllegalArgumentException("User defined topology must be set");
+                }
+            }
+        }
+        if (arguments.exists(ProtTestArgumentParser.PARAM_DO_AIC)) {
+            doAIC = arguments.isSet(ProtTestArgumentParser.PARAM_DO_AIC);
+        }
+        if (arguments.exists(ProtTestArgumentParser.PARAM_DO_BIC)) {
+            doBIC = arguments.isSet(ProtTestArgumentParser.PARAM_DO_BIC);
+        }
+        if (arguments.exists(ProtTestArgumentParser.PARAM_DO_AICC)) {
+            doAICc = arguments.isSet(ProtTestArgumentParser.PARAM_DO_AICC);
+        }
+        if (arguments.exists(ProtTestArgumentParser.PARAM_DO_DT)) {
+            doDT = arguments.isSet(ProtTestArgumentParser.PARAM_DO_DT);
+        }
+
+        setSampleSize(ProtTestAlignment.calculateSampleSize(alignment));
+
+        boolean existsMatrix = false;
+        for (String matrix : arguments.getMatrices()) {
+            if (arguments.isSet(matrix)) {
+                addMatrix(matrix);
+                existsMatrix = true;
+            } else {
+                removeMatrix(matrix);
+            }
+        }
+        if (!existsMatrix) {
+            throw new IllegalArgumentException("You must specify at least one model matrix");
+        }
+
+        // distributions
+        addDistribution("Uniform");
+        boolean plusG = false, plusIG = false;
+        if (arguments.isSet(ProtTestArgumentParser.PARAM_PLUSI)) {
+            addDistribution("+I");
+        }
+        if (arguments.exists(ProtTestArgumentParser.PARAM_PLUSG)) {
+            addDistribution("+G");
+            plusG = true;
+        }
+        if (arguments.exists(ProtTestArgumentParser.PARAM_PLUSIG)) {
+            addDistribution("+I+G");
+            plusIG = true;
+        }
+        if (plusG || plusIG) {
+            try {
+                setNumberOfCategories(Integer.parseInt(arguments.getValue(ProtTestArgumentParser.PARAM_NCAT)));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid number of categories " + arguments.getValue(ProtTestArgumentParser.PARAM_PLUSG));
+            }
+        }
+        if (arguments.isSet(ProtTestArgumentParser.PARAM_PLUSF)) {
+            setPlusF(true);
+        }
+    }
+
+    /**
+     * Inits the Lists.
+     */
+    private void initLists() {
+//        for(int i=0; i<ALL_MATRICES.length; i++) {
+//            matrixes.addElement(ALL_MATRICES[i]);
+//        }
+        distributionsHash = new HashMap<String, Integer>();
+        distributionsHash.put("Uniform", new Integer(Model.DISTRIBUTION_UNIFORM));
+        distributionsHash.put("+I", new Integer(Model.DISTRIBUTION_INVARIABLE));
+        distributionsHash.put("+G", new Integer(Model.DISTRIBUTION_GAMMA));
+        distributionsHash.put("+I+G", new Integer(Model.DISTRIBUTION_GAMMA_INV));
+    }
+
+    /**
+     * Display the command line usage of the application.
+     */
+    public static void usage() {
+        println("-------------------------------------------------------------------------------------------------");
+        println("Basic usage: ");
+        println(" - Sequential version: ");
+        println("        java -jar prottest-"+ProtTest.versionNumber+".jar -i align_file [OPTIONS]");
+        println("        ./prottest3 -i align_file [OPTIONS]");
+        println(" - Parallel version: ");
+        println("        mpjrun.sh -wdir $PWD/ -np [NUM_PROCS] -jar prottest-"+ProtTest.versionNumber+".jar -i align_file [OPTIONS]");
+        println("OPTIONS:");
+        println(" -i alignment_filename");
+        println("            Alignment input file (required)");
+        println(" -t tree_filename");
+        println("            Tree file       (optional) [default: NJ tree]");
+        println(" -o output_filename");
+        println("            Output file     (optional) [default: standard output]");
+        println(" -log enabled/disabled");
+        println("            Enables / Disables PhyML logging into log directory (see prottest.properties)");
+        println(" -[matrix]");
+        print(  "            Include matrix (Amino-acid) = "  );
+        int count = 0;
+        List<String> matrices = ProtTestFactory.getInstance().getApplicationGlobals().getSupportedMatrices();
+        for (String matrix : matrices) {
+            print(matrix + " ");
+            if (count == (7)) {
+                println("");
+                print("	                                  ");
+            }
+            count++;
+        }
+        println("");
+        println("                If you don't specify any matrix, all matrices displayed above will");
+        println("                be included.");
+        println(" -I");
+        println("            Include models with a proportion of invariable sites");
+        println(" -G");
+        println("            Include models with rate variation among sites and number of categories");
+        println(" -IG");
+        println("            include models with both +I and +G properties");
+        println(" -all-distributions");
+        println("            Include models with rate variation among sites, number of categories and both");
+        println(" -ncat number_of_categories");
+        println("            Define number of categories for +G and +I+G models [default: " + DEFAULT_NCAT + "]");
+        println(" -F");
+        println("            Include models with empirical frequency estimation ");
+        println(" -AIC");
+        println("            Display models sorted by Akaike Information Criterion (AIC)");
+        println(" -BIC");
+        println("            Display models sorted by Bayesian Information Criterion (BIC)");
+        println(" -AICC");
+        println("            Display models sorted by Corrected Akaike Information Criterion (AICc)");
+        println(" -DT");
+        println("            Display models sorted by Decision Theory Criterion");
+        println(" -all");
+        println("            Displays a 7-framework comparison table");
+        println(" -S optimization_strategy");
+        println("            Optimization strategy mode: [default: " + DEFAULT_STRATEGY_MODE + "]");
+        for (int i = 0; i < OPTIMIZE_NAMES.length; i++) {
+            println("             		" + i + ": " + OPTIMIZE_NAMES[i]);
+        }
+        println(" -s moves");
+        println("            Tree search operation for ML search: ");
+        println("            NNI (fastest), SPR (slowest), BEST (best of NNI and SPR) [default: NNI]");
+        println(" -t1      				");
+        println("            Display best-model's newick tree [default: " + DEFAULT_DISPLAY_NEWICK_TREE + "]");
+        println(" -t2      				");
+        println("            Display best-model's ASCII tree  [default: " + DEFAULT_DISPLAY_ASCII_TREE + "]");
+        println(" -tc consensus_threshold ");
+        println("            Display consensus tree with the specified threshold, between 0.5 and 1.0");
+        println("            [0.5 = majority rule consensus ; 1.0 = strict consensus]");
+        println(" -threads number_or_threads			");
+        println("            Number of threads requested to compute (only if MPJ is not used) [default: " +
+                DEFAULT_THREADS + "]");
+        println(" -verbose");
+        println("            Verbose mode [default: " + DEFAULT_DEBUG + "]");
+        println("-------------------------------------------------------------------------------------------------");
+        println("Example: ");
+        println("- Sequential version:");
+        println("    java -jar prottest-"+ProtTest.versionNumber+".jar -i align_file -t tree_file -S 0 -all-distributions -F -AIC -BIC -tc 0.5 > output");
+        println("- Parallel version:");
+        println("    mpjrun.sh -wdir $PWD/ -np 2 -jar prottest-"+ProtTest.versionNumber+".jar -i align_file -t tree_file -S 0 -all-distributions -F -AIC -BIC -tc 0.5");
+    }
+
+    public void reportModelOptimization() {
+        String tmp;
+        tmp = "BioNJ";
+        if (tree_file != null) {
+            tmp = tree_file;
+        }
+        println("");
+        println("ProtTest options");
+        println("----------------");
+        println("  Alignment file........... : " + align_file);
+        println("  Tree..................... : " + tmp);
+        println("  StrategyMode............. : " + OPTIMIZE_NAMES[strategyMode]);
+
+        println("  Candidate models......... : ");
+        print("    Matrices............... : ");
+        for (int i = 0; i < matrices.size(); i++) {
+            print(matrices.get(i) + " ");
+        }
+        println("");
+        print("    Distributions.......... : ");
+        for (String dist : distributionsHash.keySet()) {
+            Integer value = (Integer) distributionsHash.get(dist);
+            if (distributions.contains(value)) {
+                print(dist + " ");
+            }
+        }
+        println("");
+        println("    Observed frequencies... : " + plusF);
+        println("");
+    }
+
+    /**
+     * Report the current options.
+     */
+    public void reportComplete() {
+        reportModelOptimization();
+
+        println("  Statistical framework");
+        println("    Sort models according to....: ");
+        StringBuilder sb = new StringBuilder();
+        if (doAIC) {
+            sb.append(" AIC ");
+        }
+        if (doBIC) {
+            sb.append(" BIC ");
+        }
+        if (doAICc) {
+            sb.append(" AICc ");
+        }
+        if (doDT) {
+            sb.append(" DT ");
+        }
+        if (!(doAIC|doBIC|doAICc|doDT))
+            sb.append(" lnL");
+        println("      " + sb.toString());
+        println("    Sample size.................: " + sampleSize);
+        println("  Other options:");
+        println("    Display best tree in ASCII..: " + displayASCIITree);
+        println("    Display best tree in Newick.: " + displayNewickTree);
+        println("    Display consensus tree......: " + displayConsensusTree);
+        if (displayConsensusTree) {
+            println("    Consensus threshold.........: " + consensusThreshold);
+        }
+        println("    Verbose.....................: " + debug);
+
+        println("");
+    }
+
+    private static void print(String message) {
+        info(message, ApplicationOptions.class);
+    }
+
+    private static void println(String message) {
+        infoln(message, ApplicationOptions.class);
+    }
+}
+src/main/java/es/uvigo/darwin/prottest/consensus/Consensus.java
+public class Consensus {
+
+    /** Display branch suport as percent. */
+    final static public boolean SUPPORT_AS_PERCENT = false;
+    /** Calculate branch lengths as weighted average. */
+    final static public int BRANCH_LENGTHS_AVERAGE = 1;
+    /** Calculate branch lengths as weighted median. */
+    final static public int BRANCH_LENGTHS_MEDIAN = 2;
+    /** Default branch lengths algorithm */
+    private static final BranchDistances DEFAULT_BRANCH_DISTANCES =
+            BranchDistances.WeightedMedian;
+    /** The Constant FIRST (just for source code visibility). */
+    private static final int FIRST = 0;
+    /** The weighted trees in consensus. */
+    private List<WeightedTree> trees;
+    /** The cummulative weight. */
+    private double cumWeight = 0.0;
+    /** The number of taxa. */
+    private int numTaxa;
+    /** The common id group of the tree set. */
+    private IdGroup idGroup;
+    /** The set of clade supports. */
+    private Map<FixedBitSet, Support> support =
+            new HashMap<FixedBitSet, Support>();
+    /** The set of clade supports to get from outside this class. */
+    private Map<FixedBitSet, Double> cladeSupport;
+    /** The inner consensus tree. */
+    private Tree consensusTree;
+    /** The splits included in consensus tree */
+    private List<FixedBitSet> splitsInConsensus = new ArrayList<FixedBitSet>();
+    /** The splits not included in consensus tree */
+    private List<FixedBitSet> splitsOutFromConsensus = new ArrayList<FixedBitSet>();
+
+    /**
+     * Gets the clade support, with Support instances
+     * 
+     * @return the map of the support for each bitSet
+     */
+    private Map<FixedBitSet, Support> getSupport() {
+        return support;
+    }
+
+    /**
+     * Gets the double precision clade support
+     * 
+     * @return the map of the support for each bitSet
+     */
+    public Map<FixedBitSet, Double> getCladeSupport() {
+
+        if (cladeSupport == null) {
+            cladeSupport = new HashMap<FixedBitSet, Double>(support.size());
+            FixedBitSet[] keys = support.keySet().toArray(new FixedBitSet[0]);
+            Arrays.sort(keys);
+
+            for (FixedBitSet fbs : keys) {
+                cladeSupport.put(fbs, support.get(fbs).treesWeightWithClade / cumWeight);
+            }
+        }
+        return cladeSupport;
+    }
+
+    /**
+     * Gets the Id Group of the set of trees
+     * 
+     * @return the id group
+     */
+    public IdGroup getIdGroup() {
+        return idGroup;
+    }
+
+    /**
+     * Gets the consensus tree
+     * 
+     * @return the consensus tree
+     */
+    public Tree getConsensusTree() {
+        return consensusTree;
+    }
+
+    /**
+     * Gets the set of trees included in the consensus.
+     * 
+     * @return the trees
+     */
+    public Collection<WeightedTree> getTrees() {
+        return trees;
+    }
+
+    /**
+     * Adds a weighted tree to the set.
+     * 
+     * @param wTree the weighted tree
+     * 
+     * @return true, if successful
+     */
+    private boolean addTree(WeightedTree wTree) {
+        //check integrity
+        if (wTree.getTree() == null || wTree.getWeight() < 0.0) {
+            throw new ProtTestInternalException();
+        }
+        //check compatibility
+        if (trees.isEmpty()) {
+            trees.add(wTree);
+            numTaxa = wTree.getTree().getIdCount();
+            idGroup = pal.tree.TreeUtils.getLeafIdGroup(wTree.getTree());
+        } else {
+            if (wTree.getTree().getIdCount() != numTaxa) {
+                return false;
+            }
+            Tree pTree = trees.get(FIRST).getTree();
+            for (int i = 0; i < numTaxa; i++) {
+                boolean found = false;
+                for (int j = 0; j < numTaxa; j++) {
+                    if (wTree.getTree().getIdentifier(i).equals(pTree.getIdentifier(j))) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    System.out.println("NOT COMPATIBLE TREES");
+                    return false;
+                }
+            }
+            trees.add(wTree);
+        }
+        cumWeight += wTree.getWeight();
+        return true;
+    }
+
+    /**
+     * Instantiates a new consensus tree builder.
+     * 
+     * @param ic the information criterion to build the weighted trees
+     * @param supportThreshold the minimum support for a clade
+     */
+    public Consensus(InformationCriterion ic, double supportThreshold) {
+        this(ic, supportThreshold, 0);
+    }
+
+    /**
+     * Instantiates a new consensus tree builder.
+     * 
+     * @param ic the information criterion to build the weighted trees
+     * @param supportThreshold the minimum support for a clade
+     * @param branchDistances the method to get the consensus branch lengths
+     */
+    public Consensus(InformationCriterion ic, double supportThreshold, int branchDistances) {
+        this.trees = new ArrayList<WeightedTree>();
+        for (SelectionModel model : ic.getConfidenceModels()) {
+            WeightedTree wTree = new WeightedTree(
+                    model.getModel().getTree(),
+                    model.getWeightValue());
+            this.addTree(wTree);
+        }
+        consensusTree = buildTree(supportThreshold, getBranchDistances(branchDistances));
+    }
+
+    /**
+     * Instantiates a new unweighted consensus builder.
+     *
+     * @param trees the trees
+     * @param supportThreshold the minimum support for a clade
+     * @param branchDistances the method to get the consensus branch lengths
+     */
+    public Consensus(List<WeightedTree> trees, double supportThreshold, int branchDistances) {
+        this.trees = new ArrayList<WeightedTree>();
+        for (WeightedTree tree : trees) {
+            this.addTree(tree);
+        }
+
+        consensusTree = buildTree(supportThreshold, getBranchDistances(branchDistances));
+    }
+
+    /**
+     * Instantiates a new unweighted consensus builder.
+     * 
+     * @param treesFile the file with the set of trees in Newick format
+     * @param supportThreshold the minimum support for a clade
+     * @throws IOException 
+     */
+    public Consensus(File treesFile, double supportThreshold)
+            throws ProtTestInternalException, IOException {
+
+        this(treesFile, supportThreshold, 0);
+
+    }
+
+    /**
+     * Instantiates a new unweighted consensus builder.
+     * 
+     * @param treesFile the file with the set of trees in Newick format
+     * @param supportThreshold the minimum support for a clade
+     * @param branchDistances the method to get the consensus branch lengths
+     * @throws IOException 
+     */
+    public Consensus(File treesFile, double supportThreshold, int branchDistances)
+            throws ProtTestInternalException, IOException {
+
+        TreeReader treeReader;
+
+        try {
+            treeReader = new NexusTreeReader(treesFile);
+        } catch (ImportException ex) {
+            treeReader = new SimpleNewickTreeReader(treesFile);
+        }
+
+        this.trees = treeReader.getWeightedTreeList();
+        this.cumWeight = treeReader.getCumWeight();
+        this.numTaxa = treeReader.getNumTaxa();
+        this.idGroup = treeReader.getIdGroup();
+
+        consensusTree = buildTree(supportThreshold, getBranchDistances(branchDistances));
+
+        String fileName = treesFile.getName();
+        if (fileName.contains(".")) {
+            fileName = fileName.substring(0, fileName.lastIndexOf("."));
+        }
+
+        File resultDir = new File("results");
+        if (!resultDir.exists()) {
+            resultDir.mkdir();
+        }
+        File outFile = File.createTempFile(fileName, ".con", resultDir);
+
+        NexusExporter nw = new NexusExporter(outFile);
+        nw.printConsensusBlock(consensusTree, ((NexusTreeReader) treeReader).getNexusId());
+        nw.close();
+
+    }
+
+    /**
+     * Calculates rooted support.
+     * 
+     * @param wTree the weighted tree instance
+     * @param node the node
+     * @param support the support
+     * 
+     * @return the fixed bit set
+     */
+    private FixedBitSet rootedSupport(WeightedTree wTree, Node node, Map<FixedBitSet, Support> support) {
+        FixedBitSet clade = new FixedBitSet(numTaxa);
+        if (node.isLeaf()) {
+            clade.set(idGroup.whichIdNumber(node.getIdentifier().getName()));
+        } else {
+            for (int i = 0; i < node.getChildCount(); i++) {
+                Node n = node.getChild(i);
+                FixedBitSet childClade = rootedSupport(wTree, n, support);
+                clade.union(childClade);
+            }
+        }
+
+        Support s = support.get(clade);
+        if (s == null) {
+            s = new Support();
+            support.put(clade, s);
+        }
+        s.add(wTree.getWeight(), TreeUtils.safeNodeHeight(wTree.getTree(), node), node.getBranchLength());
+        return clade;
+    }
+
+    /**
+     * Detach the children of a tree.
+     * 
+     * @param tree the tree
+     * @param node the node to detach
+     * @param split the split
+     * 
+     * @return the node
+     */
+    public Node detachChildren(Tree tree, Node node, List<Integer> split) {
+        assert (split.size() > 1);
+
+        List<Node> detached = new ArrayList<Node>();
+
+        for (int n : split) {
+            detached.add(node.getChild(n));
+        }
+
+        Node saveRoot = tree.getRoot();
+
+        List<Integer> toRemove = new ArrayList<Integer>();
+        for (int i = 0; i < node.getChildCount(); i++) {
+            Node n = node.getChild(i);
+            if (detached.contains(n)) {
+                toRemove.add(0, i);
+            }
+        }
+        for (int i : toRemove) {
+            node.removeChild(i);
+        }
+
+        Node dnode = NodeFactory.createNode(detached.toArray(new Node[0]));
+        node.addChild(dnode);
+
+        tree.setRoot(saveRoot);
+
+        return dnode;
+    }
+
+    /**
+     * Builds the consensus tree over a set of weighted trees.
+     * 
+     * @param supportThreshold the minimum support to consider a split into the consensus tree
+     * 
+     * @return the consensus tree
+     */
+    private Tree buildTree(double supportThreshold, BranchDistances branchDistances) {
+
+        if (trees.isEmpty()) {
+            throw new ProtTestInternalException("There are no trees to consense");
+        }
+
+        if (supportThreshold < 0.5 || supportThreshold > 1.0) {
+            throw new ProtTestInternalException("Invalid threshold value: " + supportThreshold);
+        }
+        
+        double effectiveThreshold = supportThreshold;
+        if (supportThreshold == 0.5) {
+            effectiveThreshold += 1.0/(numTaxa+1);
+        } else if (supportThreshold == 1.0) {
+            effectiveThreshold -= 1.0/(numTaxa+1);
+        }
+
+        // establish support
+        support = new HashMap<FixedBitSet, Support>();
+        int k = 0;
+        for (WeightedTree wTree : trees) {
+            rootedSupport(wTree, wTree.getTree().getRoot(), support);
+
+            ++k;
+
+        }
+
+        Tree cons = new SimpleTree();
+
+        // Contains all internal nodes in the tree so far, ordered so descendants
+        // appear later than ancestors
+        List<Node> internalNodes = new ArrayList<Node>(numTaxa);
+
+        // For each internal node, a bit-set with the complete set of tips for it's clade
+        List<FixedBitSet> internalNodesTips = new ArrayList<FixedBitSet>(numTaxa);
+        assert idGroup.getIdCount() == numTaxa;
+
+        // establish a tree with one root having all tips as descendants
+        internalNodesTips.add(new FixedBitSet(numTaxa));
+        FixedBitSet rooNode = internalNodesTips.get(0);
+        Node[] nodes = new Node[numTaxa];
+        for (int nt = 0; nt < numTaxa; ++nt) {
+            nodes[nt] = NodeFactory.createNode(idGroup.getIdentifier(nt));
+            rooNode.set(nt);
+        }
+
+        Node rootNode = NodeFactory.createNode(nodes);
+        internalNodes.add(rootNode);
+        cons.setRoot(rootNode);
+        // sorts support from largest to smallest
+        final Comparator<Map.Entry<FixedBitSet, Support>> comparator = new Comparator<Map.Entry<FixedBitSet, Support>>() {
+
+            @Override
+            public int compare(Map.Entry<FixedBitSet, Support> o1, Map.Entry<FixedBitSet, Support> o2) {
+                double diff = o2.getValue().treesWeightWithClade - o1.getValue().treesWeightWithClade;
+                if (diff > 0.0) {
+                    return 1;
+                } else if (diff < 0.0) {
+                    return -1;
+                } else {
+                    return 0;
+                }
+            }
+        };
+
+        // add everything to queue
+        PriorityQueue<Map.Entry<FixedBitSet, Support>> queue =
+                new PriorityQueue<Map.Entry<FixedBitSet, Support>>(support.size(), comparator);
+
+        for (Map.Entry<FixedBitSet, Support> se : support.entrySet()) {
+            Support s = se.getValue();
+            FixedBitSet clade = se.getKey();
+            final int cladeSize = clade.cardinality();
+            if (cladeSize == numTaxa) {
+                // root
+                cons.getRoot().setNodeHeight(s.sumBranches / trees.size());
+                cons.getRoot().setBranchLength(branchDistances.build(s.branchLengths));
+                continue;
+            }
+
+            if (Math.abs(s.treesWeightWithClade - this.cumWeight) < 1e-5 && cladeSize == 1) {
+                // leaf/external node
+                final int nt = clade.nextOnBit(FIRST);
+                final Node leaf = cons.getExternalNode(nt);
+                leaf.setNodeHeight(s.sumBranches / trees.size());
+                leaf.setBranchLength(branchDistances.build(s.branchLengths));
+            } else {
+                queue.add(se);
+            }
+        }
+
+        while (queue.peek() != null) {
+            Map.Entry<FixedBitSet, Support> e = queue.poll();
+            final Support s = e.getValue();
+
+            final double psupport = (1.0 * s.treesWeightWithClade) / cumWeight;
+            if (psupport < effectiveThreshold) {
+                break;
+            }
+
+            final FixedBitSet cladeTips = e.getKey();
+
+            boolean found = false;
+
+            /* locate the node containing the clade. going in reverse order 
+            ensures the lowest one is hit first */
+            for (int nsub = internalNodesTips.size() - 1; nsub >= 0; --nsub) {
+
+                FixedBitSet allNodeTips = internalNodesTips.get(nsub);
+
+                // size of intersection between tips & split
+                final int nSplit = allNodeTips.intersectCardinality(cladeTips);
+
+                if (nSplit == cladeTips.cardinality()) {
+                    // node contains all of clade
+
+                    // Locate node descendants containing the split
+                    found = true;
+                    List<Integer> split = new ArrayList<Integer>();
+
+                    Node n = internalNodes.get(nsub);
+                    int l = 0;
+
+                    for (int j = 0; j < n.getChildCount(); j++) {
+                        Node ch = n.getChild(j);
+
+                        if (ch.isLeaf()) {
+                            if (cladeTips.contains(idGroup.whichIdNumber(ch.getIdentifier().getName()))) {
+                                split.add(l);
+                            }
+                        } else {
+                            // internal
+                            final int o = internalNodes.indexOf(ch);
+                            final int i = internalNodesTips.get(o).intersectCardinality(cladeTips);
+                            if (i == internalNodesTips.get(o).cardinality()) {
+                                split.add(l);
+                            } else if (i > 0) {
+                                // Non compatible
+                                found = false;
+                                break;
+                            }
+                        }
+                        ++l;
+                    }
+
+
+                    if (!(found && split.size() < n.getChildCount())) {
+                        found = false;
+                        break;
+                    }
+
+                    if (split.isEmpty()) {
+                        System.err.println("Bug??");
+                        assert (false);
+                    }
+
+                    final Node detached = detachChildren(cons, n, split);
+
+                    final double height = s.sumBranches / s.nTreesWithClade;
+                    detached.setNodeHeight(height);
+                    detached.setBranchLength(branchDistances.build(s.branchLengths));
+
+                    cons.setAttribute(detached, TreeUtils.TREE_CLADE_SUPPORT_ATTRIBUTE, SUPPORT_AS_PERCENT ? 100 * psupport : psupport);
+
+                    // insert just after parent, so before any descendants
+                    internalNodes.add(nsub + 1, detached);
+                    internalNodesTips.add(nsub + 1, new FixedBitSet(cladeTips));
+
+                    break;
+                }
+            }
+        }
+
+        TreeUtils.insureConsistency(cons, cons.getRoot());
+
+        String thresholdAsPercent = String.valueOf(supportThreshold * 100);
+        cons.setAttribute(cons.getRoot(), TreeUtils.TREE_NAME_ATTRIBUTE,
+                "cons_" + thresholdAsPercent + "_majRule");
+
+        Set<FixedBitSet> keySet = getSupport().keySet();
+        FixedBitSet[] keys = keySet.toArray(new FixedBitSet[0]);
+        Arrays.sort(keys);
+
+        for (FixedBitSet fbs : keys) {
+            if (fbs.cardinality() > 1) {
+                double psupport = (1.0 * getSupport().get(fbs).getTreesWeightWithClade()) / cumWeight;
+                if (psupport < effectiveThreshold) {
+                    splitsOutFromConsensus.add(fbs);
+                } else {
+                    splitsInConsensus.add(fbs);
+                }
+            }
+        }
+
+        return cons;
+
+    }
+
+    /**
+     * Enum to calculate the branch lengths
+     */
+    private enum BranchDistances {
+
+        WeightedAverage {
+
+            /**
+             * Calculates the weighted average.
+             * 
+             * @param values the weighted values
+             * @param cumWeight the sum of weights
+             * 
+             * @return the weighted average of the set
+             */
+            @Override
+            public double build(List<WeightLengthPair> values) {
+                double avg = 0.0;
+                double cumWeight = 0.0;
+                for (WeightLengthPair pair : values) {
+                    avg += pair.branchLength * pair.weight;
+                    cumWeight += pair.weight;
+                }
+                avg /= cumWeight;
+                return avg;
+            }
+        },
+        WeightedMedian {
+
+            /**
+             * Calculates the weighted median.
+             * 
+             * @param values the weighted values
+             * @param cumWeight the sum of weights
+             * 
+             * @return the weighted median of the set
+             */
+            @Override
+            public double build(List<WeightLengthPair> values) {
+                Collections.sort(values);
+                double median = -1;
+                double cumWeight = 0.0;
+                for (WeightLengthPair pair : values) {
+                    cumWeight += pair.weight;
+                }
+                double halfWeight = cumWeight / 2.0;
+                double cumValue = 0.0;
+                for (WeightLengthPair pair : values) {
+                    cumValue += pair.weight;
+                    if (cumValue >= halfWeight) {
+                        median = pair.branchLength;
+                        break;
+                    }
+                }
+                return median;
+            }
+        };
+
+        public abstract double build(List<WeightLengthPair> values);
+    }
+
+    /**
+     * One clade support.
+     */
+    static final class Support {
+
+        /** number of trees containing the clade. */
+        private int nTreesWithClade;
+        /** The trees weight with clade. */
+        private double treesWeightWithClade;
+        /** The branch lengths. */
+        private ArrayList<WeightLengthPair> branchLengths;
+        /** Sum of node heights of trees containing the clade. */
+        private double sumBranches;
+
+        public double getTreesWeightWithClade() {
+            return treesWeightWithClade;
+        }
+
+        /**
+         * Instantiates a new support.
+         */
+        Support() {
+            sumBranches = 0.0;
+            treesWeightWithClade = 0.0;
+            nTreesWithClade = 0;
+            branchLengths = new ArrayList<WeightLengthPair>();
+        }
+
+        /**
+         * Adds the branch to the map of branch lengths.
+         * 
+         * @param weight the weight
+         * @param height the height
+         * @param branchLength the branch length
+         */
+        public final void add(double weight, double height, double branchLength) {
+            sumBranches += height;
+            branchLengths.add(new WeightLengthPair(weight, branchLength));
+            treesWeightWithClade += weight;
+            ++nTreesWithClade;
+
+            double testW = 0.0;
+            for (WeightLengthPair wlp : branchLengths) {
+                testW += wlp.weight;
+            }
+        }
+    }
+
+    static class WeightLengthPair implements Comparable<WeightLengthPair> {
+
+        private double weight;
+        private double branchLength;
+
+        WeightLengthPair(double weight, double branchLength) {
+            this.weight = weight;
+            this.branchLength = branchLength;
+        }
+
+        @Override
+        public int compareTo(WeightLengthPair o) {
+            if (branchLength < o.branchLength) {
+                return -1;
+            } else if (branchLength > o.branchLength) {
+                return 1;
+            }
+            return 0;
+        }
+    }
+
+    /**
+     * A extension of Weighted tree but every tree
+     * has the same weight.
+     */
+    static class UnweightedTree extends WeightedTree {
+
+        /**
+         * Instantiates a new unweighted tree.
+         * 
+         * @param tree the tree
+         */
+        UnweightedTree(Tree tree) {
+            super(tree, 1.0);
+        }
+    }
+
+    /**
+     * The main method. This method allows testing of consensus tree
+     * building. It requires at least 2 arguments.
+     * 
+     * @param args Tree set filename (Newick's), threshold, [avg | median]
+     */
+    public static void main(String[] args) {
+
+        PrintWriter out = new PrintWriter(System.out);
+
+        if (args.length < 2 || args[0].contains("help")) {
+            out.println("This class requires at least 2 arguments: Tree set filename, Threshold value" + " and optionally the branch length calculation method [avg (default), median]");
+            out.println("The file format should be:");
+            out.println("    · (Newick's tree)[Weight];");
+            out.println("    · Nexus format tree set");
+            out.flush();
+            System.exit(-1);
+        }
+
+        String filename = args[0];
+        Double threshold = Double.parseDouble(args[1]);
+        File f = new File(filename);
+        try {
+            Consensus consensus;
+            if (args.length >= 3) {
+                if (args[2].equalsIgnoreCase("median")) {
+                    consensus = new Consensus(f, threshold, BRANCH_LENGTHS_MEDIAN);
+                } else if (args[2].equalsIgnoreCase("avg")) {
+                    consensus = new Consensus(f, threshold, BRANCH_LENGTHS_AVERAGE);
+                } else {
+                    consensus = new Consensus(f, threshold);
+                }
+            } else {
+                consensus = new Consensus(f, threshold);
+            }
+            Tree consensusTree = consensus.getConsensusTree();
+            out.println("");
+
+            Set<FixedBitSet> keySet = consensus.getSupport().keySet();
+            FixedBitSet[] keys = keySet.toArray(new FixedBitSet[0]);
+            List<FixedBitSet> splitsInConsensus = new ArrayList<FixedBitSet>();
+            List<FixedBitSet> splitsOutFromConsensus = new ArrayList<FixedBitSet>();
+
+            Arrays.sort(keys);
+
+            for (FixedBitSet fbs : keys) {
+                if (fbs.cardinality() > 1) {
+                    double psupport = (1.0 * consensus.getSupport().get(fbs).getTreesWeightWithClade()) / consensus.cumWeight;
+                    if (psupport < threshold) {
+                        splitsOutFromConsensus.add(fbs);
+                    } else {
+                        splitsInConsensus.add(fbs);
+                    }
+                }
+            }
+
+            out.println("# # # # # # # # # # # # # # # #");
+            out.println(" ");
+            out.println("Species in order:");
+            out.println(" ");
+
+            for (int i = 0; i < consensus.getIdGroup().getIdCount(); i++) {
+                Identifier id = consensus.getIdGroup().getIdentifier(i);
+                out.println("    " + (i + 1) + ". " + id.getName());
+            }
+            out.println(" ");
+            out.println("# # # # # # # # # # # # # # # #");
+            out.println(" ");
+            out.println("Sets included in the consensus tree");
+            out.println(" ");
+            out.print("    ");
+
+            int numTaxa = consensus.getIdGroup().getIdCount();
+            for (int i = 0; i < consensus.getIdGroup().getIdCount(); i++) {
+                out.print(String.valueOf(i + 1).charAt(0));
+            }
+            out.println(" ");
+            if (numTaxa >= 10) {
+                ProtTestFormattedOutput.space(4 + 9, ' ');
+                for (int i = 9; i < consensus.getIdGroup().getIdCount(); i++) {
+                    out.print(String.valueOf(i + 1).charAt(1));
+                }
+            }
+            out.println(" ");
+            for (FixedBitSet fbs : splitsInConsensus) {
+                out.println("    " + fbs.splitRepresentation() + " ( " + Utilities.round(consensus.getSupport().get(fbs).getTreesWeightWithClade(), 3) + " )");
+            }
+            out.println(" ");
+            out.println("Sets NOT included in consensus tree");
+            out.println(" ");
+            out.print("    ");
+            for (int i = 0; i < consensus.getIdGroup().getIdCount(); i++) {
+                out.print(i + 1);
+            }
+            out.println(" ");
+            for (FixedBitSet fbs : splitsOutFromConsensus) {
+                out.println("    " + fbs.splitRepresentation() + " ( " + Utilities.round(consensus.getSupport().get(fbs).getTreesWeightWithClade(), 3) + " )");
+            }
+            out.println(" ");
+            out.println("# # # # # # # # # # # # # # # #");
+
+            TreeUtils.printASCII(consensusTree, out);
+            out.println(" ");
+            TreeUtils.printBranchInfo(consensusTree, out);
+            out.println(" ");
+            TreeUtils.heightInfo(consensusTree, out);
+            out.println(" ");
+            out.println("# # # # # # # # # # # # # # # #");
+            out.println(" ");
+            out.println(TreeUtils.toNewick(consensusTree, true, true, true));
+            out.println(" ");
+            out.println("# # # # # # # # # # # # # # # #");
+            out.println(" ");
+        } catch (FileNotFoundException e) {
+            out.println("File not found: " + filename);
+        } catch (IOException e1) {
+            out.println("IO Error: " + e1.getMessage());
+        }
+        out.flush();
+    }
+
+    public String getTaxaHeader() {
+        StringBuilder taxaHeader = new StringBuilder();
+        for (int i = 0; i < numTaxa; i++) {
+            taxaHeader.append(String.valueOf(i + 1).charAt(0));
+        }
+        if (numTaxa >= 10) {
+            taxaHeader.append('\n');
+            taxaHeader.append(ProtTestFormattedOutput.space(4 + 9, ' '));
+            for (int i = 9; i < numTaxa; i++) {
+                taxaHeader.append(String.valueOf(i + 1).charAt(1));
+            }
+        }
+        if (numTaxa >= 100) {
+            taxaHeader.append('\n');
+            taxaHeader.append(ProtTestFormattedOutput.space(4 + 99, ' '));
+            for (int i = 99; i < numTaxa; i++) {
+                taxaHeader.append(String.valueOf(i + 1).charAt(2));
+            }
+        }
+        if (numTaxa >= 1000) {
+            taxaHeader.append('\n');
+            taxaHeader.append(ProtTestFormattedOutput.space(4 + 999, ' '));
+            for (int i = 999; i < numTaxa; i++) {
+                taxaHeader.append(String.valueOf(i + 1).charAt(3));
+            }
+        }
+
+        return taxaHeader.toString();
+    }
+
+    public String getSetsIncluded() {
+        StringBuilder setsIncluded = new StringBuilder();
+        setsIncluded.append("    ");
+        setsIncluded.append(getTaxaHeader());
+
+        setsIncluded.append('\n');
+        for (FixedBitSet fbs : splitsInConsensus) {
+            setsIncluded.append("    ")
+                    .append(fbs.splitRepresentation())
+                    .append(" ( ")
+                    .append(Utilities.round(getCladeSupport().get(fbs), 5))
+                    .append(" )")
+                    .append('\n');
+        }
+        return setsIncluded.toString();
+    }
+
+    public String getSetsNotIncluded() {
+        StringBuilder setsIncluded = new StringBuilder();
+        setsIncluded.append("    ");
+        setsIncluded.append(getTaxaHeader());
+
+        setsIncluded.append('\n');
+        for (FixedBitSet fbs : splitsOutFromConsensus) {
+            setsIncluded.append("    ")
+                    .append(fbs.splitRepresentation())
+                    .append(" ( ")
+                    .append(Utilities.round(getCladeSupport().get(fbs), 5))
+                    .append(" )")
+                    .append('\n');
+        }
+        return setsIncluded.toString();
+    }
+
+    private BranchDistances getBranchDistances(int value) {
+        BranchDistances bd;
+        switch (value) {
+            case BRANCH_LENGTHS_AVERAGE:
+                bd = BranchDistances.WeightedAverage;
+                break;
+            case BRANCH_LENGTHS_MEDIAN:
+                bd = BranchDistances.WeightedMedian;
+                break;
+            default:
+                // Weighted average
+                bd = DEFAULT_BRANCH_DISTANCES;
+        }
+        return bd;
+    }
+}
+src/main/java/es/uvigo/darwin/prottest/util/printer/ProtTestPrinter.java
+public class ProtTestPrinter {
+
+    private static final String H_RULE =
+            "********************************************************";
+    /** The output print writer. */
+    private PrintWriter out;
+    /** The error print writer. */
+    private PrintWriter err;
+
+    /**
+     * Instantiates a new ProtTestPrinter.
+     * 
+     * @param out the output writer
+     * @param err the error writer
+     */
+    public ProtTestPrinter(PrintWriter out, PrintWriter err) {
+        this.out = out;
+        this.err = err;
+    }
+
+    /**
+     * Prints out the header section of the application.
+     */
+    public static void printHeader() {
+        println("");
+        println(ProtTestFormattedOutput.space(94, '-'));
+        println("ProtTest " + ProtTest.versionNumber
+                + ProtTestFormattedOutput.space(27 - ProtTest.versionNumber.length(), ' ') +
+                                                    "Fast selection of the best-fit models of protein evolution");
+        println("(c) 2009-2016   Diego Darriba (1,2), Guillermo Taboada (2), Ramón Doallo (2), David Posada (1)");
+        println("(1)                               Facultad de Biologia, Universidad de Vigo, 36200 Vigo, Spain");
+        println("(2)                    Facultade de Informática, Universidade da Coruña, 15071 A Coruña, Spain");
+        println(ProtTestFormattedOutput.space(94, '-'));
+        println("Manual:" + 
+        		ProtTestFormattedOutput.space(87 - ProtTest.URL_MANUAL.length(), ' ') +
+        		ProtTest.URL_MANUAL);
+        println("Homepage:" + 
+        		ProtTestFormattedOutput.space(85 - ProtTest.URL_HOMEPAGE.length(), ' ') +
+        		ProtTest.URL_HOMEPAGE);
+        println("Discussion group:" + 
+        		ProtTestFormattedOutput.space(77 - ProtTest.URL_DISCUSSION_GROUP.length(), ' ') +
+        		ProtTest.URL_DISCUSSION_GROUP);
+        println("Contact:                                                  ddarriba@h-its.org, dposada@uvigo.es");
+        println(ProtTestFormattedOutput.space(94, '-'));
+        println("");
+        println("Version:  " + ProtTest.versionNumber + " : " + ProtTest.versionDate);
+        println("Date:     " + (new Date()).toString());
+        println("OS:       " + System.getProperty("os.name") +
+                " (" + System.getProperty("os.version") + ")");
+        println("Arch:     " + System.getProperty("os.arch"));
+        println("Java:     " + System.getProperty("java.version") +
+                " (" + System.getProperty("java.vendor") + ")");
+//        println("VM Mem.(MB)= " +
+//        		  Runtime.getRuntime().totalMemory()/(1024*1024) + " (total) " +
+//        		  Runtime.getRuntime().maxMemory()/(1024*1024) + " (max) " +
+//        		  Runtime.getRuntime().freeMemory()/(1024*1024) + " (free)");
+        println("PhyML:    " + PhyMLv3AminoAcidRunEstimator.phymlBinaryStr);
+        println("");
+        println("Citation: Darriba D, Taboada GL, Doallo R, Posada D. ProtTest 3: fast selection of best-fit ");
+        println("          models of protein evolution. Bioinformatics, 27:1164-1165, 2011");
+        println("");
+    }
+
+    /**
+     * Prints out the header of the pre-analysis section.
+     */
+    public static void printPreAnalysisHeader() {
+        println("");
+        println(H_RULE);
+        println(center("ALIGNMENT ANALYSIS"));
+        println(H_RULE);
+        println("");
+    }
+
+    /**
+     * Prints out the header of the selection section
+     */
+    public static void printSelectionHeader(String criterionName) {
+        println("");
+        println("");
+        println(H_RULE);
+        println(center(criterionName));
+        println(H_RULE);
+    }
+
+    /**
+     * Prints out the header of the tree display
+     */
+    public static void printTreeHeader(String modelName) {
+        println("");
+        println(H_RULE);
+        println(center(modelName));
+        println(H_RULE);
+        println("");
+    }
+
+    public static void printExecutionHeader(ApplicationOptions options) {
+        println("");
+        println(H_RULE);
+        println(center("MODEL OPTIMIZATION"));
+        println(H_RULE);
+        options.reportModelOptimization();
+        println("");
+    }
+
+    /**
+     * Prints file data
+     */
+    public static void printFileData(File f) {
+        println("");
+        println("File: " + f.getAbsolutePath());
+        println("Size: " + f.length());
+        println("");
+    }
+    public static void println(String text) {
+        ProtTestLogger.infoln(text, ProtTestPrinter.class);
+    }
+
+    /**
+     * Prints out the footer section of the application.
+     */
+    public static void printFooter() {
+        println("");
+        println("");
+        println("ProtTest-HPC - " + ProtTest.versionNumber);
+    }
+    private static String center(String text) {
+        return ProtTestFormattedOutput.space((H_RULE.length() - text.length())/2, ' ') + text;
+    }
+
+    /**
+     * Gets the output writer.
+     * 
+     * @return the output writer
+     */
+    public PrintWriter getOutputWriter() {
+        return out;
+    }
+
+    /**
+     * Sets the output writer.
+     * 
+     * @param out the new output writer
+     */
+    public void setOutputWriter(PrintWriter out) {
+        this.out = out;
+    }
+
+    /**
+     * Gets the error writer.
+     * 
+     * @return the error writer
+     */
+    public PrintWriter getErrorWriter() {
+        return err;
+    }
+
+    /**
+     * Sets the error writer.
+     * 
+     * @param err the new error writer
+     */
+    public void setErrorWriter(PrintWriter err) {
+        this.err = err;
+    }
+
+    /**
+     * Flushes output writer.
+     */
+    public void flush() {
+        out.flush();
+    }
+
+    /**
+     * Flushes error writer.
+     */
+    public void flushError() {
+        err.flush();
+    }
+
+    /**
+     * Closes error writer.
+     */
+    public void closeError() {
+        err.close();
+    }
+}
+src/main/java/es/uvigo/darwin/prottest/exe/PhyMLv3AminoAcidRunEstimator.java
+public class PhyMLv3AminoAcidRunEstimator extends AminoAcidRunEstimator {
+	
+    /** The PhyML implemented matrices. */
+    public static String[] IMPLEMENTED_MATRICES = {
+        "JTT",
+        "LG",
+        "DCMut",
+        "MtREV",
+        "MtMam",
+        "MtArt",
+        "Dayhoff",
+        "WAG",
+        "RtREV",
+        "CpREV",
+        "Blosum62",
+        "VT",
+        "HIVb",
+        "HIVw"
+    };
+    /** Suffix for temporary statistic files. */
+    private static final String STATS_FILE_SUFFIX = "_phyml_stats";
+    /** Suffix for temporary tree files. */
+    private static final String TREE_FILE_SUFFIX = "_phyml_tree";
+    /** Alignment filename. */
+    private String workAlignment;
+    /** Custom model substitution matrix file**/
+    private File modelFile;
+
+    public static File phymlBinary;
+	public static String phymlBinaryStr;
+	
+	private File statsFile;
+	private File treeFile;
+	
+	public static boolean checkBinary() {
+		boolean canExecute = false;
+    	if (!PhyMLv3AminoAcidRunEstimator.phymlBinary.exists()) {
+			System.err.println("ERROR: PhyML binary not found: " + 
+					PhyMLv3AminoAcidRunEstimator.phymlBinary.getAbsolutePath() + "\n");
+		} else if (!PhyMLv3AminoAcidRunEstimator.phymlBinary.canExecute()) {
+			System.err.println("ERROR: PhyML binary exists, but it cannot be executed: " + 
+					PhyMLv3AminoAcidRunEstimator.phymlBinary.getAbsolutePath() + "\n");
+		} else {
+			canExecute = true;
+		}
+    	
+		return canExecute;
+	}
+	
+	static {
+		boolean phymlGlobal = APPLICATION_PROPERTIES.getProperty("global-phyml-exe", "false").equalsIgnoreCase("true");
+		
+        File exeFilesDir = new File(APPLICATION_PROPERTIES.getProperty("exe-dir", ApplicationGlobals.PATH));
+        if (!exeFilesDir.isAbsolute()) {
+        	exeFilesDir = new File(ApplicationGlobals.PATH + File.separator + APPLICATION_PROPERTIES.getProperty("exe-dir", "bin"));	
+        }
+        
+        phymlBinary = new File(exeFilesDir.getAbsolutePath() + File.separator + "phyml");
+       	
+        if (phymlGlobal) {
+        	String[] pathList = System.getenv("PATH").split(":");
+        	for (String path : pathList)
+        	{
+	        	phymlBinary = new File(path + "/phyml");
+	        	if (phymlBinary.exists() && phymlBinary.canExecute()) {
+	        		phymlBinaryStr = phymlBinary.getAbsolutePath();
+	        		break;
+	        	}
+        	}
+        } else {
+            if (phymlBinary.exists() && phymlBinary.canExecute()) {
+            	phymlBinaryStr = phymlBinary.getAbsolutePath();
+            } else {
+            	phymlBinaryStr = exeFilesDir.getAbsolutePath() + File.separator + getPhymlVersion();
+            }
+            phymlBinary = new File(phymlBinaryStr);
+        }
+	}
+	
+    /**
+     * Instantiates a new optimizer for amino-acid models
+     * using PhyML.
+     * 
+     * @param options the application options instance
+     * @param model the amino-acid model to optimize
+     */
+    public PhyMLv3AminoAcidRunEstimator(ApplicationOptions options, Model model) {
+        this(options, model, 1);
+    }
+
+    /**
+     * Instantiates a new optimizer for amino-acid models
+     * using PhyML.
+     * 
+     * @param options the application options instance
+     * @param model the amino-acid model to optimize
+     * @param numberOfThreads the number of threads to use in the optimization
+     */
+    public PhyMLv3AminoAcidRunEstimator(ApplicationOptions options, Model model, int numberOfThreads) {
+        super(options, model, numberOfThreads);
+        this.numberOfCategories = options.ncat;
+
+        try {
+            this.model = (AminoAcidModel) model;
+            // check if there is any matrix file
+            modelFile = new File(ApplicationGlobals.PATH + File.separator + "models" + File.separator + model.getMatrix());
+
+        } catch (ClassCastException cce) {
+            throw new ProtTestInternalException("Wrong model type");
+        }
+    }
+
+    /* (non-Javadoc)
+     * @see es.uvigo.darwin.prottest.exe.RunEstimator#optimizeModel(es.uvigo.darwin.prottest.global.options.ApplicationOptions)
+     */
+    @Override
+    public boolean runEstimator()
+            throws ModelOptimizationException {
+        //let's call Phyml with the proper command line
+
+        this.workAlignment = TemporaryFileManager.getInstance().getAlignmentFilename(Thread.currentThread());
+
+        String inv = "0.0";
+        if (model.isInv()) {
+            inv = "e";
+        }
+
+        String rateCathegories = "1";
+
+        String alpha = "";
+        if (model.isGamma()) {
+            rateCathegories = "" + model.getNumberOfTransitionCategories();//options.ncat;
+            alpha = "e";
+        }
+        String tr = "BIONJ";
+
+        String F = "d";
+        if (model.isPlusF()) {
+            F = "e";
+        }
+        String topo = "lr";
+        switch (options.strategyMode) {
+            case OPTIMIZE_BIONJ:
+                tr = "BIONJ";
+                topo = "lr";
+                break;
+            case OPTIMIZE_FIXED_BIONJ:
+                if (TemporaryFileManager.getInstance().getTreeFilename(Thread.currentThread()) != null) {
+                    tr = TemporaryFileManager.getInstance().getTreeFilename(Thread.currentThread());
+                    topo = "lr";
+                } else {
+                    topo = "r";
+                }
+                break;
+            case OPTIMIZE_ML:
+                topo = "tlr";
+                break;
+            case OPTIMIZE_USER:
+                tr = TemporaryFileManager.getInstance().getTreeFilename(Thread.currentThread());
+                topo = "lr";
+        }
+        
+        try {
+            Runtime runtime = Runtime.getRuntime();
+
+            String str[] = new String[31];
+            for (int i = 0; i < str.length; i++) {
+                str[i] = "";
+            }
+
+            boolean phymlGlobal = APPLICATION_PROPERTIES.getProperty("global-phyml-exe", "false").equalsIgnoreCase("true");
+            		
+            File exeFilesDir = new File(APPLICATION_PROPERTIES.getProperty("exe-dir", ApplicationGlobals.PATH));
+            if (!exeFilesDir.isAbsolute()) {
+            	exeFilesDir = new File(ApplicationGlobals.PATH + File.separator + APPLICATION_PROPERTIES.getProperty("exe-dir", "bin"));	
+            }
+            		
+            File phymlBin;
+            
+           	phymlBin = new File(exeFilesDir.getAbsolutePath() + File.separator + "phyml");
+           	
+            String phymlBinName;
+            if (phymlGlobal) {
+            	phymlBinName = "phyml";
+            } else {
+	            if (phymlBin.exists() && phymlBin.canExecute()) {
+	                phymlBinName = phymlBin.getAbsolutePath();
+	            } else {
+	                phymlBinName = exeFilesDir.getAbsolutePath() + File.separator + getPhymlVersion();
+	            }
+            }
+
+            if (phymlBinName != null) {
+
+                //     phyml -i seq_file_name -d aa ¿-q? -f d/e (d para -F y e para +F) -v 0/e (para -I o +I) -a e (para estimar alpha)
+                //         -c 0/4/8 (num rate categories) -u user_tree_file (opcional)
+                //         -o tlr/lr (dependiendo de si optimizamos la topología o no)
+                //         -m WAG (default) | JTT | MtREV | Dayhoff | DCMut | RtREV | CpREV | VT | Blosum62 | MtMam | MtArt | HIVw |  HIVb | custom
+
+                str[0] = phymlBinName;
+
+                // input alignment
+                str[4] = "-i";
+                str[5] = workAlignment;
+
+                // number of rate categories
+                str[6] = "-c";
+                str[7] = rateCathegories;
+
+                // the model
+                str[8] = "-m";
+                if (!Arrays.asList(IMPLEMENTED_MATRICES).contains(model.getMatrix())) {
+                    // check matrix file
+                    if (!modelFile.exists()) {
+                        throw new ModelNotFoundException(model.getMatrix());
+                    }
+                    str[9] = "custom";
+                    str[27] = "--aa_rate_file";
+                    str[28] = modelFile.getAbsolutePath();
+                } else {
+                    str[9] = model.getMatrix();
+                }
+
+                // proportion of invariable sites
+                str[10] = "-v";
+                str[11] = inv;
+
+                // value of the gamma shape parameter (if gamma distribution)
+                if (!alpha.equals("")) {
+                    str[12] = "-a";
+                    str[13] = alpha;
+                }
+
+                // topology optimization
+                str[14] = "-o";
+                str[15] = topo;
+
+                // amino-acid frequencies
+                str[16] = "-f";
+                str[17] = F;
+
+                // starting tree file
+                if (!tr.equals("BIONJ")) {
+                    str[18] = "-u";
+                    str[19] = tr;
+                }
+
+                // data type
+                str[20] = "-d";
+                str[21] = "aa";
+
+                // bootstrapping
+                str[22] = "-b";
+                str[23] = "0";
+
+                if (APPLICATION_PROPERTIES.getProperty("phyml_thread_scheduling", "false").equalsIgnoreCase("true")) {
+                    str[24] = "--num_threads";
+                    str[25] = String.valueOf(numberOfThreads);
+                }
+                if (APPLICATION_PROPERTIES.getProperty("no-memory-check", "no").equalsIgnoreCase("yes")) {
+                    str[26] = "--no_memory_check";
+                }
+                
+                if (options.strategyMode == OPTIMIZE_ML) {
+                	str[29] = "-s";
+                	str[30] = options.getTreeSearchOperation();
+                } else {
+                	str[29] = str[30] = "";
+                }
+                model.setCommandLine(str);
+                proc = runtime.exec(str);
+                proc.getOutputStream().write(modelFile.getPath().getBytes());
+                ExternalExecutionManager.getInstance().addProcess(proc);
+
+            } else {
+                OSNotSupportedException e =
+                        new OSNotSupportedException("PhyML");
+                throw e;
+            }
+            proc.getOutputStream().close();
+
+            StreamGobbler errorGobbler = new PhymlStreamGobbler(new InputStreamReader(proc.getErrorStream()), "Phyml-Error", true, RunEstimator.class);
+            StreamGobbler outputGobbler = new PhymlStreamGobbler(new InputStreamReader(proc.getInputStream()), "Phyml-Output", true, RunEstimator.class);
+            errorGobbler.start();
+            outputGobbler.start();
+            int exitVal = proc.waitFor();
+            ExternalExecutionManager.getInstance().removeProcess(proc);
+
+            pfine("Phyml's command-line: ");
+            for (int i = 0; i < str.length; i++) {
+                pfine(str[i] + " ");
+            }
+            pfineln("");
+
+            if (exitVal != 0) {
+                errorln("Phyml's exit value: " + exitVal + " (there was probably some error)");
+                error("Phyml's command-line: ");
+                for (int i = 0; i < str.length; i++) {
+                    error(str[i] + " ");
+                }
+                errorln("");
+
+                errorln("Please, take a look at the Phyml's log below:");
+                String line;
+                try {
+                    FileReader input = new FileReader(TemporaryFileManager.getInstance().getLogFilename(Thread.currentThread()));
+                    BufferedReader br = new BufferedReader(input);
+                    while ((line = br.readLine()) != null) {
+                        errorln(line);
+                    }
+                } catch (IOException e) {
+                    errorln("Unable to read the log file: " + TemporaryFileManager.getInstance().getLogFilename(Thread.currentThread()));
+                }
+            }
+        } catch (InterruptedException e) {
+            throw new PhyMLExecutionException("Interrupted execution: " + e.getMessage());
+        } catch (IOException e) {
+            throw new PhyMLExecutionException("I/O error: " + e.getMessage());
+        }
+
+        statsFile = new File(workAlignment + STATS_FILE_SUFFIX);
+        if (!(statsFile.exists() && statsFile.canRead()))
+        {
+        	/* try with txt suffix */
+        	statsFile = new File(workAlignment + STATS_FILE_SUFFIX + ".txt");
+        	if (!(statsFile.exists() && statsFile.canRead()))
+        		throw new StatsFileFormatException("PhyML", 
+        				"Stats file does not exist. Please check if PhyML is working.");
+        }
+        statsFile.deleteOnExit();
+        
+        treeFile = new File(workAlignment + TREE_FILE_SUFFIX);
+        if (!(treeFile.exists() && treeFile.canRead()))
+        {
+        	/* try with txt suffix */
+        	treeFile = new File(workAlignment + TREE_FILE_SUFFIX + ".txt");
+        	if (!(treeFile.exists() && treeFile.canRead()))
+        		throw new TreeFormatException(
+        				"Tree file does not exist. Please check if PhyML is working correctly.");
+        }
+        treeFile.deleteOnExit();
+
+        if (!(readStatsFile() && readTreeFile())) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Read the temporary statistics file.
+     * 
+     * @return true, if successful
+     */
+    private boolean readStatsFile()
+            throws ModelOptimizationException {
+
+        String line;
+
+        try {
+            FileReader input = new FileReader(statsFile.getAbsolutePath());
+            BufferedReader br = new BufferedReader(input);
+            while ((line = br.readLine()) != null) {
+                pfinerln("[DEBUG] PHYML: " + line);
+
+                if (line.length() > 0) {
+                    if (line.startsWith(". Model of amino acids substitution")) {
+                        String matrixName = Utilities.lastToken(line);
+                        
+                        //TODO: This line exists due to a bug in the phyml latest versions
+                        //      where the HIVw matrix is shown as HIVb in the stats file
+                        if (!model.getMatrix().equals("HIVw"))
+                        if (!(model.getMatrix().equals(matrixName) || (modelFile.exists() &&
+                                !Arrays.asList(IMPLEMENTED_MATRICES).contains(model.getMatrix())))) {
+                            String errorMsg = "Matrix names doesn't match";
+                            errorln("PHYML: " + line);
+                            errorln("Last token: " + Utilities.lastToken(line));
+                            errorln("It should be: " + model.getMatrix());
+                            errorln(errorMsg);
+                            throw new ModelNotFoundException(model.getMatrix());
+                        }
+                    } else if (line.startsWith(". Log-likelihood")) {
+                        model.setLk(Double.parseDouble(Utilities.lastToken(line)));
+                    } else if (line.startsWith(". Discrete gamma model")) {
+                        if (Utilities.lastToken(line).equals("Yes")) {
+                            line = br.readLine();
+
+                            pfinerln("[DEBUG] PHYML: " + line);
+
+                            if (model.getNumberOfTransitionCategories() != Integer.parseInt(Utilities.lastToken(line))) {
+                                String errorMsg = "There were errors in the number of transition categories: " + model.getNumberOfTransitionCategories() + " vs " + Integer.parseInt(Utilities.lastToken(line));
+                                errorln(errorMsg);
+
+                                throw new StatsFileFormatException("PhyML", errorMsg);
+                            //prottest.setCurrentModel(-2);
+                            }
+                            line = br.readLine();
+
+                            pfinerln("[DEBUG] PHYML: " + line);
+
+                            model.setAlpha(Double.parseDouble(Utilities.lastToken(line)));
+                        }
+                    } else if (line.startsWith(". Proportion of invariant:")) {
+                        model.setInv(Double.parseDouble(Utilities.lastToken(line)));
+                    } else if (line.startsWith(". Time used")) {
+                        time = Utilities.lastToken(line);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            throw new StatsFileFormatException("PhyML", e.getMessage());
+        }
+        return true;
+    }
+
+    /**
+     * Read the temporary tree file.
+     * 
+     * @return true, if successful
+     * 
+     * @throws TreeFormatException the tree format exception
+     */
+    private boolean readTreeFile()
+            throws TreeFormatException {
+        
+        try {
+            model.setTree(new ReadTree(treeFile.getAbsolutePath()));
+        } catch (TreeParseException e) {
+            String errorMsg = "ProtTest: wrong tree format, exiting...";
+            throw new TreeFormatException(errorMsg);
+        } catch (IOException e) {
+            String errorMsg = "Error: File not found (IO error), exiting...";
+            throw new TreeFormatException(errorMsg);
+        }
+        
+        return true;
+    }
+
+    /**
+     * Delete temporary files.
+     * 
+     * @return true, if successful
+     */
+    @Override
+    protected boolean deleteTemporaryFiles() {
+        File f = new File(TemporaryFileManager.getInstance().getLogFilename(Thread.currentThread()));
+        return f.delete();
+    }
+
+    /**
+     * Gets the PhyML executable name for the current Operating System.
+     * 
+     * @return the PhyML executable name
+     */
+    private static String getPhymlVersion() {
+        String os = System.getProperty("os.name");
+        String oa = System.getProperty("os.arch");
+        if (os.startsWith("Mac")) {
+            if (oa.startsWith("ppc")) {
+                return null;
+            } else {
+                return "PhyML_3.0_macOS_i386";
+            }
+        } else if (os.startsWith("Linux")) {
+        	if (oa.contains("md64")) {
+        		return "PhyML_3.0_linux64";
+        	} else {
+        		return "PhyML_3.0_linux32";
+        	}
+        } else if (os.startsWith("Window")) {
+            return "PhyML_3.0_win32.exe";
+        } else {
+            return null;
+        }
+    }
+}
+src/main/java/es/uvigo/darwin/prottest/util/collection/SingleModelCollection.java
+public class SingleModelCollection extends ModelCollection {
+
+	/** The Constant serialVersionUID. */
+	private static final long serialVersionUID = 20090804L;
+
+	/**
+	 * Instantiates a new single model collection.
+	 */
+	public SingleModelCollection(Alignment alignment) {
+		super(alignment);
+	}
+	
+	/**
+	 * Instantiates a new single model collection.
+	 * 
+	 * @param models the models
+	 */
+	public SingleModelCollection(Model[] models, Alignment alignment) {
+		super(models, alignment);
+	}
+
+        /**
+	 * Instantiates a new single model collection.
+	 *
+	 * @param models the models
+	 */
+	public SingleModelCollection(ModelCollection models) {
+		super(models);
+	}
+
+}
+src/main/java/es/uvigo/darwin/prottest/util/factory/ProtTestFactory.java
+public class ProtTestFactory {
+
+    /** The Constant PROTEIC. */
+    public static final int PROTEIC = 1;
+    /** The Constant NUCLEIC. */
+    public static final int NUCLEIC = 2;
+    /** The Constant MAX_SORT. */
+    private static final int MAX_SORT = 2;
+    /** The instance. */
+    private static ProtTestFactory instance;
+    /** The sort. */
+    private int sort;
+    /** Unique log handler. */
+    private Handler logHandler;
+
+    /**
+     * Instantiates a new prot test factory.
+     * 
+     * @param sort the sort
+     * 
+     * @throws IllegalArgumentException the illegal argument exception
+     */
+    private ProtTestFactory(int sort)
+            throws IllegalArgumentException {
+        if (sort <= 0 || sort > MAX_SORT) {
+            throw new IllegalArgumentException(
+                    "Cannot create factory (unexistent sort : " + sort + ")");
+        }
+        this.sort = sort;
+    }
+
+    /**
+     * Initialize.
+     * 
+     * @param args the args
+     * 
+     * @return the string[]
+     */
+    public static String[] initialize(String[] args) {
+        if (instance == null) {
+            int sort;
+            List<String> argList = new ArrayList<String>(Arrays.asList(args));
+            int index = argList.indexOf(ProtTestArgumentParser.ARG_TOKEN + ProtTestArgumentParser.PARAM_DATA_TYPE);
+            if (index < 0) //set default
+            {
+                sort = PROTEIC;
+            } else {
+                String value = argList.get(index + 1);
+                argList.remove(index + 1);
+                argList.remove(index);
+                args = argList.toArray(new String[0]);
+                if (value.equals(ProtTestArgumentParser.DATA_TYPE_AMINOACID)) {
+                    sort = PROTEIC;
+                } else if (value.equals(ProtTestArgumentParser.DATA_TYPE_NUCLEOTIDE)) {
+                    sort = NUCLEIC;
+                } else {
+                    throw new IllegalArgumentException("Invalid data type " + value);
+                }
+            }
+            instance = new ProtTestFactory(sort);
+            return args;
+        } else {
+            throw new ProtTestInternalException("ProtTestFactory was already initialized");
+        }
+    }
+
+    /**
+     * Gets the single instance of ProtTestFactory.
+     * 
+     * @return single instance of ProtTestFactory
+     */
+    public static ProtTestFactory getInstance() {
+        if (instance == null) {
+            initialize(new String[0]);
+        }
+//			throw new ProtTestInternalException("ProtTestFactory should be initialized");
+
+        return instance;
+    }
+
+    /**
+     * Creates a new ProtTest object.
+     * 
+     * @param args the args
+     * @param options the options
+     * 
+     * @return the prot test argument parser
+     */
+    public ProtTestArgumentParser createProtTestArgumentParser(String[] args, ApplicationOptions options) 
+        throws IllegalArgumentException{
+        ProtTestArgumentParser mtap = null;
+        switch (sort) {
+            case PROTEIC:
+                mtap = new AminoAcidArgumentParser(args, options);
+                break;
+            case NUCLEIC:
+                throw new ProtTestInternalException("Unsupported operation: nucleic data");
+        }
+        return mtap;
+    }
+
+    /**
+     * Gets the application globals.
+     * 
+     * @return the application globals
+     */
+    public ApplicationGlobals getApplicationGlobals() {
+        ApplicationGlobals ap = null;
+        String analyzer = APPLICATION_PROPERTIES.getProperty("analyzer");
+        switch (sort) {
+            case PROTEIC:
+                if (analyzer.equals(ANALYZER_RAXML)) {
+                    ap = new RaxmlAminoAcidApplicationGlobals();
+                } else if (analyzer.equals(ANALYZER_PHYML)) {
+                    ap = new AminoAcidApplicationGlobals();
+                } else {
+                    throw new ProtTestInternalException("Analyzer " + analyzer + " not supported by RunEstimator. Check your prottest.properties file");
+                }
+                break;
+            case NUCLEIC:
+                throw new ProtTestInternalException("Unsupported operation: nucleic data");
+        }
+        return ap;
+    }
+
+    /**
+     * Creates a new ProtTest object.
+     * 
+     * @param matrix the matrix
+     * @param distribution the distribution
+     * @param modelProperties the model APPLICATION_PROPERTIES
+     * 
+     * @return the model
+     */
+    public Model createModel(String matrix, int distribution, Properties modelProperties,
+            Alignment alignment, Tree tree, int ncat) {
+        Model model = null;
+        boolean plusF;
+        if (modelProperties != null) {
+            plusF = Boolean.parseBoolean(
+                    modelProperties.getProperty(
+                    AminoAcidModel.PROP_PLUS_F, "false"));
+        } else {
+            plusF = false;
+        }
+        switch (sort) {
+            case PROTEIC:
+                model = new AminoAcidModel(matrix, distribution, plusF,
+                        alignment, tree, ncat);
+                break;
+            case NUCLEIC:
+                throw new ProtTestInternalException("Unsupported operation: nucleic data");
+        }
+        return model;
+    }
+
+    /**
+     * Creates a new ProtTest object.
+     * 
+     * @param options the options
+     * @param model the model
+     * 
+     * @return the run estimator
+     */
+    public RunEstimator createRunEstimator(ApplicationOptions options, Model model) {
+        return createRunEstimator(options, model, 1);
+    }
+
+    /**
+     * Creates a new ProtTest object.
+     * 
+     * @param options the options
+     * @param model the model
+     * 
+     * @return the run estimator
+     */
+    public RunEstimator createRunEstimator(ApplicationOptions options, Model model, int numberOfThreads) {
+        RunEstimator runEstimator = null;
+        String analyzer = APPLICATION_PROPERTIES.getProperty("analyzer");
+        if (analyzer.equals(ANALYZER_PHYML)) {
+            switch (sort) {
+                case PROTEIC:
+                    runEstimator = new PhyMLv3AminoAcidRunEstimator(options, model, numberOfThreads);
+                    break;
+                case NUCLEIC:
+                    throw new ProtTestInternalException("Unsupported operation: nucleic data");
+            }
+        } else if (analyzer.equals(ANALYZER_RAXML)) {
+            switch (sort) {
+                case PROTEIC:
+                    runEstimator = new RaxMLAminoAcidRunEstimator(options, model);
+                    break;
+                case NUCLEIC:
+                    throw new ProtTestInternalException("Unsupported operation: nucleic data");
+            }
+        } else {
+            throw new ProtTestInternalException("Analyzer " + analyzer + " not supported by RunEstimator");
+        }
+        return runEstimator;
+    }
+
+    public Handler createLogHandler() throws IOException {
+        //   Log level is configurable:
+        //   'info'    Only general information messages are logged (default)
+        //   'fine'    General debug information is also logged
+        //   'finer'   More complex debug information is logged
+        //   'finest'  All activity is tracked
+
+        if (logHandler == null) {
+
+            String[] supportedLevels = {"INFO", "FINE", "FINER", "FINEST"};
+
+            String logDirName = APPLICATION_PROPERTIES.getProperty("log_dir");
+            String level = APPLICATION_PROPERTIES.getProperty("log_level", "info").toUpperCase();
+            boolean supported = false;
+            for (String testLevel : supportedLevels) {
+                supported |= testLevel.equals(level);
+            }
+
+            if (logDirName != null && supported) {
+                File logDir = new File(logDirName);
+                if (!logDir.isAbsolute()) {
+                	logDir = new File(ApplicationGlobals.PATH + File.separator + logDir);
+                }
+                if (!logDir.exists()) {
+                    logDir.mkdirs();
+                }
+
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
+                //File logFile = new File(logDir.getAbsolutePath() + File.separator + "prottest3_" +
+		//	sdf.format(Calendar.getInstance().getTime()));
+		File logFile = File.createTempFile("prottest3_"+sdf.format(Calendar.getInstance().getTime())+"_",
+			 ".log", logDir);
+                FileOutputStream fos = new FileOutputStream(logFile);
+                logHandler = new StreamHandler(fos, new ProtTestLogFormatter());
+                logHandler.setLevel(Level.parse(level));
+            }
+
+        }
+        return logHandler;
+
+    }
+
+    /**
+     * Creates a new ProtTest object.
+     *
+     * @return the prints the framework
+     */
+    public PrintFramework createPrintFramework() {
+        PrintFramework pf = null;
+
+        switch (sort) {
+            case PROTEIC:
+                pf = new AminoAcidPrintFramework();
+                break;
+            case NUCLEIC:
+                throw new ProtTestInternalException("Unsupported operation: nucleic data");
+        }
+
+        return pf;
+    }
+}
+src/main/java/es/uvigo/darwin/prottest/facade/TreeFacadeImpl.java
+public class TreeFacadeImpl implements TreeFacade {
+
+    public String toASCII(Tree tree) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        TreeUtils.printASCII(tree, pw);
+        pw.flush();
+        return sw.toString();
+    }
+
+    public String branchInfo(Tree tree) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        TreeUtils.printBranchInfo(tree, pw);
+        pw.flush();
+        return sw.toString();
+    }
+
+    public String heightInfo(Tree tree) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        TreeUtils.heightInfo(tree, pw);
+        pw.flush();
+        return sw.toString();
+    }
+
+    public String toNewick(Tree tree, boolean printLengths,
+            boolean printInternalLabels, boolean printCladeSupport) {
+        return TreeUtils.toNewick(tree, printLengths, printInternalLabels, printCladeSupport);
+    }
+
+    public Tree createConsensusTree(List<WeightedTree> treeColection,
+            double threshold) {
+
+        if (threshold < 0.5 || threshold > 1.0) {
+            throw new ProtTestInternalException("Invalid threshold value: " + threshold);
+        }
+        Consensus consensus = new Consensus(treeColection, threshold, Consensus.BRANCH_LENGTHS_MEDIAN);
+        Tree cons = consensus.getConsensusTree();
+        return cons;
+    }
+
+    public Tree createConsensusTree(InformationCriterion ic, double threshold) {
+        Consensus consensus = createConsensus(ic, threshold);
+        Tree cons = consensus.getConsensusTree();
+        return cons;
+    }
+    
+    public Consensus createConsensus(InformationCriterion ic, double threshold) {
+        if (threshold < 0.5 || threshold > 1.0) {
+            throw new ProtTestInternalException("Invalid threshold value: " + threshold);
+        }
+        Consensus consensus = new Consensus(ic, threshold);
+        return consensus;
+    }
+}
+src/main/java/es/uvigo/darwin/prottest/util/argumentparser/ProtTestArgumentParser.java
+public abstract class ProtTestArgumentParser 
+        implements ProtTestConsoleParameters {
+
+    
+    /** Hashtable to associate parameter tokens within parameter localArguments requirements. */
+    protected static final HashMap<String, Boolean> valuesRequired;
+    /** Hashtable to associate parameter tokens within parameter localArguments range. */
+    protected static final HashMap<String, String[]> argumentValues;
+    /** Hashtable to handle special localArguments like "all-distributions". */
+    protected static final HashMap<String, Map<String, String>> specialArguments;
+    /** The default APPLICATION_PROPERTIES. */
+    private static final Properties defaultProperties;
+    /** The argument  prefix. */
+    public static final String ARG_TOKEN = "-";
+    /** The command line localArguments. */
+    private Properties arguments;
+    
+    static {
+
+        valuesRequired = new HashMap<String, Boolean>();
+        argumentValues = new HashMap<String, String[]>();
+        specialArguments = new HashMap<String, Map<String, String>>();
+        
+        valuesRequired.put(PARAM_HELP, false);
+        valuesRequired.put(PARAM_ALIGNMENT_FILE, true);
+        valuesRequired.put(PARAM_OUTPUT_FILE, true);
+        valuesRequired.put(PARAM_TREE_FILE, true);
+        String[] optimizationStrategies = new String[OPTIMIZE_VALUES.length];
+        for (int index = 0; index < OPTIMIZE_VALUES.length; index++) {
+            optimizationStrategies[index] = String.valueOf(OPTIMIZE_VALUES[index]);
+        }
+        valuesRequired.put(PARAM_OPTIMIZATION_STRATEGY, true);
+        argumentValues.put(PARAM_OPTIMIZATION_STRATEGY, optimizationStrategies);
+        
+        String[] treeSearchOps = {
+        		TREE_SEARCH_NNI,
+        		TREE_SEARCH_SPR,
+        		TREE_SEARCH_BEST
+        };
+        String[] enabling = {
+        		"enabled",
+        		"disabled"
+        };
+        
+        valuesRequired.put(PARAM_TREE_SEARCH_OP, true);
+        argumentValues.put(PARAM_TREE_SEARCH_OP, treeSearchOps);
+
+        valuesRequired.put(PARAM_NUM_THREADS, true);
+        valuesRequired.put(PARAM_ALL_FRAMEWORK_COMPARISON, false);
+        valuesRequired.put(PARAM_DISPLAY_NEWICK_TREE, false);
+        valuesRequired.put(PARAM_DISPLAY_ASCII_TREE, false);
+        valuesRequired.put(PARAM_DISPLAY_CONSENSUS_TREE, true);
+        valuesRequired.put(PARAM_PLUSF, false);
+        valuesRequired.put(PARAM_PLUSI, false);
+        valuesRequired.put(PARAM_PLUSG, false);
+        valuesRequired.put(PARAM_PLUSIG, false);
+        valuesRequired.put(PARAM_NCAT, true);
+        valuesRequired.put(PARAM_ALL_DISTRIBUTIONS, false);
+        valuesRequired.put(PARAM_VERBOSE, false);
+        valuesRequired.put(PARAM_DO_AIC, false);
+        valuesRequired.put(PARAM_DO_BIC, false);
+        valuesRequired.put(PARAM_DO_AICC, false);
+        valuesRequired.put(PARAM_DO_DT, false);
+        valuesRequired.put(PARAM_LOGGING, true);
+        argumentValues.put(PARAM_LOGGING, enabling);
+        Map<String, String> distributionsMap = new HashMap<String, String>(3);
+        distributionsMap.put(PARAM_PLUSG, "T");
+        distributionsMap.put(PARAM_PLUSI, "T");
+        distributionsMap.put(PARAM_PLUSIG, "T");
+        specialArguments.put(PARAM_ALL_DISTRIBUTIONS, distributionsMap);
+
+        defaultProperties = new Properties();
+
+        defaultProperties.setProperty(PARAM_NUM_THREADS, String.valueOf(DEFAULT_THREADS));
+        defaultProperties.setProperty(PARAM_NCAT, String.valueOf(DEFAULT_NCAT));
+        defaultProperties.setProperty(PARAM_OPTIMIZATION_STRATEGY, String.valueOf(DEFAULT_STRATEGY_MODE));
+        defaultProperties.setProperty(PARAM_DATA_TYPE, DATA_TYPE_AMINOACID);
+    }
+
+    /**
+     * Instantiates a new model test argument parser.
+     * 
+     * @param args the command line localArguments
+     * @param options the application options
+     * 
+     * @throws IllegalArgumentException when exists some error in the command line argument
+     */
+    public ProtTestArgumentParser(String[] args, ApplicationOptions options)
+            throws IllegalArgumentException {
+
+        arguments = checkArgs(args);
+        
+        if (!(exists(PARAM_DO_BIC) || exists(PARAM_DO_AIC)
+        		|| exists(PARAM_DO_AICC) || exists(PARAM_DO_DT))) {
+        	putArgument(PARAM_DO_BIC, "T", arguments);
+        }
+       	
+        options.fillIn(this);
+    }
+
+    /**
+     * Check localArguments are grammatically correct and parse them into
+     * the instance.
+     * 
+     * @param args the command line localArguments
+     * 
+     * @return the argument APPLICATION_PROPERTIES
+     * 
+     * @throws IllegalArgumentException when exists some error in the command line argument
+     */
+    protected Properties checkArgs(String[] args)
+            throws IllegalArgumentException {
+
+        Properties localArguments = new Properties(defaultProperties);
+        int i = 0;
+        while (i < args.length) {
+
+            String arg = args[i];
+            if (!arg.startsWith(ARG_TOKEN)) {
+                System.err.print("Command line: ");
+                for (String simpleArg : args) {
+                    System.err.print(simpleArg + " ");
+                }
+                System.err.println(" ");
+                throw new IllegalArgumentException("Arguments must start with \"-\". The ofending argument was: " + arg);
+            }
+
+            arg = arg.substring(ARG_TOKEN.length());
+            if (valuesRequired.containsKey(arg)) {
+                if (valuesRequired.get(arg)) {
+                    if (i + 1 < args.length && !args[i+1].startsWith("-")) {
+                        i++;
+                        String value = args[i];
+                        if (argumentValues.containsKey(arg)) {
+                            String[] values = argumentValues.get(arg);
+                            if (!Arrays.asList(values).contains(value.toLowerCase())) {
+                                throw new IllegalArgumentException("Invalid argument value " + value + " for parameter " + arg);
+                            }
+                        }
+
+                        // special cases
+                        if (specialArguments.containsKey(arg)) {
+                            Map<String, String> mapValues = specialArguments.get(arg);
+                            for (String key : mapValues.keySet()) {
+                                if (mapValues.get(key).equals("?")) {
+                                    mapValues.put(key, value);
+                                }
+                            }
+                            putArgument(mapValues, localArguments);
+                        } else {
+                            putArgument(arg, value, localArguments);
+                        }
+                    } else {
+                        IllegalArgumentException e = new IllegalArgumentException("Parameter " + arg + " requires a value");
+                        throw e;
+                    }
+                } else {
+                    if (specialArguments.containsKey(arg)) {
+                        Map<String, String> mapValues = specialArguments.get(arg);
+                        putArgument(mapValues, localArguments);
+                    } else {
+                        putArgument(arg, "T", localArguments);
+                    }
+                }
+            } else {
+                // Obsolete arguments checking...
+                if (arg.equals("-sort")) {
+                    System.err.println(" WARNING! \"sort\" argument is obsolete since 3.2 version. You should use one or more of the following instead: -AIC -AICC -BIC -DT");
+                }
+                throw new IllegalArgumentException("Invalid argument " + arg);
+            }
+            i++;
+        }
+        
+        return localArguments;
+
+    }
+
+    /**
+     * Checks if a concrete argument exists in the application.
+     * 
+     * @param arg the argument to check
+     * 
+     * @return true, if the argument has a value
+     */
+    public boolean exists(String arg) {
+        return arguments.containsKey(arg);
+    }
+
+    /**
+     * Checks if a boolean argument is set in the application.
+     * The method will return false if the boolean argument
+     * is set to 'false', the argument is not boolean or the
+     * argument does not exist in the argument list.
+     * 
+     * @param arg the argument to check
+     * 
+     * @return true, if the boolean argument is set to 'true'
+     */
+    public boolean isSet(String arg) {
+        boolean isSet;
+        try {
+            isSet = arguments.get(arg).equals("T");
+        } catch (NullPointerException npe) {
+            isSet = false;
+        }
+        return isSet;
+    }
+
+    /**
+     * Gets the value of an argument. If the argument key is not found,
+     * the default localArguments will be checked. If the argument key does
+     * not exist, the method will return null.
+     * 
+     * @param arg the argument to check
+     * 
+     * @return the argument value
+     */
+    public String getValue(String arg) {
+        return arguments.getProperty(arg);
+    }
+
+    /**
+     * Puts an argument into the argument list, with specified key and value.
+     * If the argument was already set to a certain value, the argument will
+     * take the new value, and a warning message will be printed into
+     * standard error output.
+     * 
+     * @param key the argument key
+     * @param value the argument value
+     * @param localArguments the argument list
+     */
+    private void putArgument(String key, String value, Properties arguments) {
+        if (arguments.containsKey(key)) {
+            System.err.println("WARNING! Repeated argument \"" + key + "\". New value is " + value);
+        }
+        arguments.setProperty(key, value);
+    }
+
+    /**
+     * Puts a set of couples argument-value into the argument list.
+     * For each argument that was already set to a certain value, the 
+     * argument will take the new value, and a warning message will be 
+     * printed into standard error output.
+     * 
+     * @param items the new localArguments to put
+     * @param localArguments the argument list
+     */
+    private void putArgument(Map<String, String> items, Properties arguments) {
+        // localArguments.putAll(items);
+        for (String key : items.keySet()) {
+            putArgument(key, items.get(key), arguments);
+        }
+    }
+
+    /**
+     * Gets the matrix name list of all supported matrices.
+     * 
+     * @return the matrix name list
+     */
+    public abstract List<String> getMatrices();
+}
+src/main/java/es/uvigo/darwin/prottest/selection/AICc.java
+public class AICc extends InformationCriterion
+{
+	
+	/**
+	 * Instantiates a new Corrected Akaike Information Criterion.
+	 * 
+	 * @param models the models
+	 * @param confidenceInterval the confidence interval
+	 * @param sampleSize the sample size if different of the default
+	 */
+	public AICc (ModelCollection models, double confidenceInterval, double sampleSize) 
+		{
+		super(models, confidenceInterval, sampleSize);
+		
+		Collections.sort(selectionModels);
+		}
+	
+	/* (non-Javadoc)
+	 * @see es.uvigo.darwin.prottest.selection.InformationCriterion#getSelectionModels(es.uvigo.darwin.prottest.util.collection.ModelIterator)
+	 */
+	protected List<SelectionModel> getSelectionModels(List<Model> models) {
+		List<SelectionModel> list = new ArrayList<SelectionModel>();
+		for (Model model : models) {
+			SelectionModel toAdd = new AICcSelectionModel(
+					model, 
+					sampleSize); 
+			list.add( toAdd );
+			hashModels.put(model, toAdd);
+		}
+		return list;
+	}
+
+	/* (non-Javadoc)
+	 * @see es.uvigo.darwin.prottest.selection.InformationCriterion#getCriterionName()
+	 */
+	public String getCriterionName() {
+		return "AICc";
+	}
+}
+src/main/java/es/uvigo/darwin/prottest/facade/TreeFacade.java
+public interface TreeFacade {
+
+    //	**********************************************************
+    //		  TREE SERVICES
+    //**********************************************************
+
+    /**
+     * Gets ASCII representation of a Tree instance.
+     * 
+     * @param tree the tree
+     */
+    public String toASCII(Tree tree);
+
+    /**
+     * Gets branch information of a Tree instance.
+     * 
+     * @param tree the tree
+     */
+    public String branchInfo(Tree tree);
+
+    /**
+     * Gets height information of a Tree instance.
+     * 
+     * @param tree the tree
+     */
+    public String heightInfo(Tree tree);
+
+    /**
+     * Gets newick representation of a Tree instance.
+     * 
+     * @param tree the tree
+     * @param printLengths if branch lengths should be included
+     * @param printInternalLabels if internal labels should be included
+     * @param printCladeSupport if clade support should be included
+     */
+    public String toNewick(Tree tree, boolean printLengths,
+            boolean printInternalLabels, boolean printCladeSupport);
+
+    /**
+     * Create a consensus tree from a list of trees.
+     * 
+     * @param treeCollection the trees and its weights to build consensus
+     * @param threshold the minimum clade support
+     */
+    public Tree createConsensusTree(List<WeightedTree> treeCollection, double threshold);
+
+    /**
+     * Create a weighted consensus tree from an information criterion.
+     * 
+     * @param ic the weighted models with the trees to build consensus
+     * @param threshold the minimum clade support
+     */
+    public Tree createConsensusTree(InformationCriterion ic, double threshold);
+    
+    /**
+     * Create a weighted consensus instance from an information criterion.
+     * 
+     * @param ic the weighted models with the trees to build consensus
+     * @param threshold the minimum clade support
+     */
+    public Consensus createConsensus(InformationCriterion ic, double threshold);
+    
+}
+src/main/java/es/uvigo/darwin/prottest/util/logging/ProtTestLogger.java
+@SuppressWarnings("rawtypes")
+public class ProtTestLogger {
+
+	public static final String DEFAULT_LOGGER_NAME = "default";
+	public static final Level DEFAULT_LEVEL = Level.INFO;
+
+	private static HashMap<String, ProtTestLogger> loggers;
+
+	static {
+
+		loggers = new HashMap<String, ProtTestLogger>();
+		ProtTestLogger defaultLogger = new ProtTestLogger(DEFAULT_LOGGER_NAME);
+		loggers.put(DEFAULT_LOGGER_NAME, defaultLogger);
+
+	}
+
+	private String loggerName;
+	private Level loggerLevel;
+	private List<Handler> handlers;
+	private Handler stdHandler;
+	private Handler lowLevelHandler = null;
+
+	public static ProtTestLogger getLogger(String loggerName, boolean force) {
+		if (!loggers.containsKey(loggerName)) {
+			if (force)
+				loggers.put(loggerName, new ProtTestLogger(loggerName));
+			else
+				return null;
+		}
+		return loggers.get(loggerName);
+	}
+
+	public static boolean exists(Class classLogger) {
+		return getLogger(classLogger.getName(), false) != null;
+	}
+
+	public ProtTestLogger(String loggerName) {
+		this.loggerName = loggerName;
+		if (loggers.containsKey(loggerName))
+			throw new ProtTestInternalException("ProtTestLogger with name "
+					+ loggerName + " already exists. "
+					+ " Use getLogger() instead");
+		this.loggerLevel = Level.ALL;
+
+		// Add standard output handler
+		this.handlers = new ArrayList<Handler>();
+		stdHandler = new StreamHandler(System.out, new ProtTestLogFormatter());
+		stdHandler.setLevel(Level.OFF);
+		handlers.add(stdHandler);
+	}
+
+	public static ProtTestLogger getDefaultLogger() {
+		return getLogger(DEFAULT_LOGGER_NAME, true);
+	}
+
+	/**
+	 * Check if a message of the given level would actually be logged by this
+	 * logger. This check is based on the Loggers effective level, which may be
+	 * inherited from its parent.
+	 * 
+	 * @param level
+	 *            a message logging level
+	 * @return true if the given message level is currently being logged.
+	 */
+	public boolean isLoggable(Level level) {
+		if (level.intValue() < loggerLevel.intValue()
+				|| loggerLevel.intValue() == Level.OFF.intValue()) {
+			return false;
+		}
+		return true;
+	}
+
+	public void addHandler(Handler handler) {
+		if (handler == null) {
+			throw new NullPointerException();
+		}
+		this.handlers.add(handler);
+	}
+
+	public void addHandler(Handler[] newHandlers) {
+		for (Handler handler : newHandlers) {
+			if (handler == null) {
+				throw new NullPointerException();
+			}
+			if (!handlers.contains(handler))
+				this.handlers.add(handler);
+		}
+	}
+
+	public Handler addHandler(OutputStream out) {
+		return addHandler(out, DEFAULT_LEVEL);
+	}
+
+	public Handler addHandler(OutputStream out, Level level) {
+		if (out == null) {
+			throw new NullPointerException();
+		}
+		Handler handler = new StreamHandler(out, new ProtTestLogFormatter());
+		handler.setLevel(level);
+		this.handlers.add(handler);
+		return handler;
+	}
+
+	public Handler addHandler(Writer out) {
+		return addHandler(out, DEFAULT_LEVEL);
+	}
+
+	public Handler addHandler(final Writer out, Level level) {
+		if (out == null) {
+			throw new NullPointerException();
+		}
+		Handler handler = new StreamHandler(
+		  new OutputStream()
+		  {
+			protected Writer _writer = out;
+		    protected String _encoding;
+		    private byte[] _buf=new byte[1];
+		    
+			@Override
+		    public void close()
+		        throws IOException
+		    {
+		        _writer.close();
+		        _writer=null;
+		        _encoding=null;
+		    }
+		    
+		    @Override
+		    public void flush()
+		        throws IOException
+		    {
+		        _writer.flush();
+		    }
+		    
+		    @Override
+		    public void write(byte[] b) 
+		        throws IOException
+		    {
+		        if (_encoding==null)
+		            _writer.write(new String(b));
+		        else
+		            _writer.write(new String(b,_encoding));
+		    }
+		    
+		    @Override
+		    public void write(byte[] b, int off, int len)
+		        throws IOException
+		    {
+		        if (_encoding==null)
+		            _writer.write(new String(b,off,len));
+		        else
+		            _writer.write(new String(b,off,len,_encoding));
+		    }
+		    
+		    public synchronized void write(int b)
+		        throws IOException
+		    {
+		        _buf[0]=(byte)b;
+		        write(_buf);
+		    }
+		},
+				new ProtTestLogFormatter());
+		handler.setLevel(level);
+		this.handlers.add(handler);
+		return handler;
+	}
+
+	public Handler addLowLevelHandler(final Writer out) {
+		if (out == null) {
+			throw new NullPointerException();
+		}
+		Handler handler = new StreamHandler(new OutputStream()
+		  {
+			protected Writer _writer = out;
+		    protected String _encoding;
+		    private byte[] _buf=new byte[1];
+		    
+			@Override
+		    public void close()
+		        throws IOException
+		    {
+		        _writer.close();
+		        _writer=null;
+		        _encoding=null;
+		    }
+		    
+		    @Override
+		    public void flush()
+		        throws IOException
+		    {
+		        _writer.flush();
+		    }
+		    
+		    @Override
+		    public void write(byte[] b) 
+		        throws IOException
+		    {
+		        if (_encoding==null)
+		            _writer.write(new String(b));
+		        else
+		            _writer.write(new String(b,_encoding));
+		    }
+		    
+		    @Override
+		    public void write(byte[] b, int off, int len)
+		        throws IOException
+		    {
+		        if (_encoding==null)
+		            _writer.write(new String(b,off,len));
+		        else
+		            _writer.write(new String(b,off,len,_encoding));
+		    }
+		    
+		    public synchronized void write(int b)
+		        throws IOException
+		    {
+		        _buf[0]=(byte)b;
+		        write(_buf);
+		    }
+		},
+				new ProtTestLogFormatter());
+		handler.setLevel(Level.ALL);
+		lowLevelHandler = handler;
+		return handler;
+	}
+
+	public Handler getLowLevelHandler() {
+		return lowLevelHandler;
+	}
+
+	public boolean removeHandler(Handler handler) {
+		return this.handlers.remove(handler);
+	}
+
+	public Handler[] getHandlers() {
+		return handlers.toArray(new Handler[0]);
+	}
+
+	public void setStdHandlerLevel(Level newLevel) {
+		if (newLevel == null) {
+			throw new NullPointerException();
+		}
+		stdHandler.setLevel(newLevel);
+	}
+
+	public Level getStdHandlerLevel() {
+		return stdHandler.getLevel();
+	}
+
+	public void setLevel(Level newLevel) {
+		if (newLevel == null) {
+			throw new NullPointerException();
+		}
+		loggerLevel = newLevel;
+	}
+
+	public Level getLevel() {
+		return loggerLevel;
+	}
+
+	public void info(String text) {
+		log(Level.INFO, text);
+	}
+
+	public void warning(String text) {
+		log(Level.WARNING, text);
+	}
+
+	public void config(String text) {
+		log(Level.CONFIG, text);
+	}
+
+	public void severe(String text) {
+		log(Level.SEVERE, text);
+	}
+
+	public void fine(String text) {
+		log(Level.FINE, text);
+	}
+
+	public void finer(String text) {
+		log(Level.FINER, text);
+	}
+
+	public void finest(String text) {
+		log(Level.FINEST, text);
+	}
+
+	public void infoln(String text) {
+		log(Level.INFO, text + "\n");
+		flush();
+	}
+
+	public void warningln(String text) {
+		log(Level.WARNING, text + "\n");
+		flush();
+	}
+
+	public void configln(String text) {
+		log(Level.CONFIG, text + "\n");
+		flush();
+	}
+
+	public void severeln(String text) {
+		log(Level.SEVERE, text + "\n");
+		flush();
+	}
+
+	public void fineln(String text) {
+		log(Level.FINE, text + "\n");
+		flush();
+	}
+
+	public void finerln(String text) {
+		log(Level.FINER, text + "\n");
+		flush();
+	}
+
+	public void finestln(String text) {
+		log(Level.FINEST, text + "\n");
+		flush();
+	}
+
+	public static void info(String text, Class loggingClass) {
+		log(Level.INFO, text, loggingClass);
+	}
+
+	public static void warning(String text, Class loggingClass) {
+		log(Level.WARNING, text, loggingClass);
+	}
+
+	public static void config(String text, Class loggingClass) {
+		log(Level.CONFIG, text, loggingClass);
+	}
+
+	public static void severe(String text, Class loggingClass) {
+		log(Level.SEVERE, text, loggingClass);
+	}
+
+	public static void fine(String text, Class loggingClass) {
+		log(Level.FINE, text, loggingClass);
+	}
+
+	public static void finer(String text, Class loggingClass) {
+		log(Level.FINER, text, loggingClass);
+	}
+
+	public static void finest(String text, Class loggingClass) {
+		log(Level.FINEST, text, loggingClass);
+	}
+
+	public static void infoln(String text, Class loggingClass) {
+		log(Level.INFO, text + "\n", loggingClass);
+		flush(loggingClass);
+	}
+
+	public static void warningln(String text, Class loggingClass) {
+		log(Level.WARNING, text + "\n", loggingClass);
+		flush(loggingClass);
+	}
+
+	public static void configln(String text, Class loggingClass) {
+		log(Level.CONFIG, text + "\n", loggingClass);
+		flush(loggingClass);
+	}
+
+	public static void severeln(String text, Class loggingClass) {
+		log(Level.SEVERE, text + "\n", loggingClass);
+		flush(loggingClass);
+	}
+
+	public static void fineln(String text, Class loggingClass) {
+		log(Level.FINE, text + "\n", loggingClass);
+		flush(loggingClass);
+	}
+
+	public static void finerln(String text, Class loggingClass) {
+		log(Level.FINER, text + "\n", loggingClass);
+		flush(loggingClass);
+	}
+
+	public static void finestln(String text, Class loggingClass) {
+		log(Level.FINEST, text + "\n", loggingClass);
+		flush(loggingClass);
+	}
+
+	public static void log(Level level, String text, Class loggingClass) {
+		// default logging + class logging
+		getDefaultLogger().log(level, text);
+		if (exists(loggingClass))
+			getLogger(loggingClass.getName(), false).log(level, text);
+	}
+
+	public void log(Level level, String text) {
+		log(new LogRecord(level, text));
+	}
+
+	public void log(LogRecord lr) {
+
+		if (lr.getLevel().intValue() > loggerLevel.intValue()
+				&& loggerLevel.intValue() != Level.OFF.intValue()) {
+
+			for (Handler handler : handlers)
+				handler.publish(lr);
+
+		}
+
+	}
+
+	public static void lowLevelLog(String text) {
+		if (getDefaultLogger().lowLevelHandler != null) {
+			LogRecord lr = new LogRecord(Level.INFO, text + "\n");
+			getDefaultLogger().lowLevelHandler.publish(lr);
+			getDefaultLogger().lowLevelHandler.flush();
+		}
+	}
+
+	public void flush() {
+		for (Handler handler : handlers)
+			handler.flush();
+	}
+
+	public static void flush(Class loggingClass) {
+		getDefaultLogger().flush();
+		if (exists(loggingClass))
+			getLogger(loggingClass.getName(), false).flush();
+	}
+}

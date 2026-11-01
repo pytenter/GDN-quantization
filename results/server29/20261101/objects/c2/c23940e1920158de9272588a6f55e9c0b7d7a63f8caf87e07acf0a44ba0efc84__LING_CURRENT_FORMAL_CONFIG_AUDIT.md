@@ -1,0 +1,40 @@
+# Ling current 81,920 formal configuration audit
+
+- `MODEL_PATH = /data01/user2/models/Ling-3.0-tiny`
+- `MODEL_REVISION = e3a47d5b986e7141b6efd62597d598ebb392060d`
+- `TOKENIZER = checkpoint-local AutoTokenizer + checkpoint chat_template.jinja`
+- `SGLANG_VERSION = 0.5.19` (`0bcd822377da7b5718e674eaf9c870d349424dd1`)
+- `TRANSFORMERS_VERSION = 5.12.1`
+- `TORCH_VERSION = 2.9.1+cu128`
+- `CUDA_VERSION = torch CUDA 12.8; old driver 535.113.01`
+- `TRITON_VERSION = 3.5.1`
+- `FLA_VERSION = 0.5.2`
+- `CURRENT_MAX_NEW_TOKENS = 81920`
+- `TEMPERATURE = 1.0`
+- `TOP_P = 0.95`
+- `TOP_K = 20`
+- `DO_SAMPLE = true`
+- `ENABLE_DETERMINISTIC_INFERENCE = true`
+- `DISABLE_RADIX_CACHE = true`
+- `USES_MAMBA_RADIX_CACHE = false`
+- `EOS_TOKEN_ID = 156895`
+- `PAD_TOKEN_ID = 156892`
+- `MODEL_NATIVE_CONTEXT_LENGTH = 131072`
+- `CURRENT_RUNTIME_CONTEXT_LENGTH = 131072` (server inferred from checkpoint)
+- `ROPE_SCALING = null`
+- `YARN_ENABLED = false`
+- `YARN_FACTOR = N/A`
+- `ORIGINAL_MAX_POSITION_EMBEDDINGS = 131072`
+- `FP_STATE_STORAGE_DTYPE = torch.float32` (actual kernel/cache/decode capture)
+- `MODEL_DTYPE = bfloat16`
+- `INT8_R128_GROUP_AXIS = canonical Value dimension; physical SGLang axis -2`
+- `INT8_R128_GROUP_SIZE = 128`
+- `INT8_SCALE_RULE = amax / 127 per canonical [B,H,K,1] group`
+- `INT8_ROUND_RULE = torch.round (ties-to-even)`
+- `INT8_CLAMP = [-127,127]`
+- `VALUE_H_IMPLEMENTATION = dense normalized Sylvester H128, FP32 matmul, cast back; corrected prefill-endpoint V2`
+- `VALUE_H_IMPLEMENTATION_SHA256 = 4ca42b2aef5de75dfe0d8459a7dbfdb59ddb8a56e9740c31fdd031e500781bdd`
+- `SCORER_VERSION = Frozen AIME26 Strict V4 candidate`
+- `SCORER_HASH = fa5dd904c7d1887df4b8c23613f37b8d438ea494cb72607b89be8e07d55a343b`
+
+The current 81,920 formal did **not** use 256K YaRN. Therefore comparison of the old 4090 formal directly against a new 256K YaRN run is confounded. The new server must provide its own 81,920 matched baseline under the same YaRN, TP=2, GPU, driver, and environment.

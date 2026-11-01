@@ -1,0 +1,45 @@
+{
+  "experiment": "LING_KDA_SHORT_HORIZON_SURROGATE_VALIDATION_V1",
+  "freeze_version": "v1",
+  "max_gpu_hours": 4.0,
+  "documents": ["pg19-test-37702", "pg19-test-5396"],
+  "document_gpu_map": {
+    "pg19-test-37702": 6,
+    "pg19-test-5396": 3
+  },
+  "gpu_uuids": {
+    "3": "GPU-759526ed-efb2-e7f6-881c-ab098e0b05ae",
+    "6": "GPU-de53f243-b271-521c-d875-d96611ed8574"
+  },
+  "conditions": [
+    "DA_fromH", "DA_fromL6", "H", "H_to_L6_a25", "H_to_L6_a50",
+    "H_to_L7R_a25", "H_to_L7R_a50", "H_to_L7_a25", "H_to_L7_a50",
+    "H_to_L8_a25", "H_to_L8_a50", "IDENTITY", "L6", "L7", "L7R", "L8"
+  ],
+  "windows": [256, 1024],
+  "history": 128,
+  "horizons": [32, 128],
+  "layers": [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16, 17, 18, 20, 21, 22],
+  "primary_layer_aggregation": "equal mean over all 18 KDA layers, 16 heads, and value dimensions",
+  "auxiliary_layer": 20,
+  "window_aggregation": "arithmetic mean over starts 256 and 1024",
+  "time_alignment": "post-update post-QDQ state E_t with FP q_t; output KL at token t is pre-current-QDQ and reflects persistent QDQ through t-1",
+  "metric_definitions": {
+    "B0": "post-QDQ state MSE at the window start",
+    "P1": "mean squared true K3 readout E_t @ normalized(q_FP,t)/sqrt(128) at the window start",
+    "P2_W128": "E_t contracted with the second moment of normalized FP queries from [t-128,t)",
+    "P3_H32": "mean P1-form readout energy over 32-token persistent-QDQ branch rollout",
+    "P3_H128": "mean P1-form readout energy over 128-token persistent-QDQ branch rollout",
+    "B1_H32": "mean post-QDQ state MSE over 32-token rollout",
+    "B1_H128": "mean post-QDQ state MSE over 128-token rollout",
+    "B2_H32": "mean teacher-forced KL(FP logits || branch logits) over 32 tokens",
+    "B2_H128": "mean teacher-forced KL(FP logits || branch logits) over 128 tokens"
+  },
+  "acceptance_rules": {
+    "stable_natural_ranking": "positive Spearman rho in all four document-anchor panels",
+    "incremental_over_baseline": "candidate exceeds each named cheaper baseline in both rho and pairwise concordance in at least three of four panels, and positive residual rank association after JPROP in at least three panels",
+    "cheaper_proxy_preferred": "P2 matches or exceeds P3 in rho and concordance in at least three of four panels and is materially cheaper",
+    "no_posthoc_tuning": true
+  },
+  "cross_runtime_status": "EXPLORATORY_ASSOCIATION_ONLY"
+}

@@ -1,0 +1,50 @@
+# ling-observability-gpu3-expansion-v1
+
+原始相对目录：`worktrees/ling-observability-gpu3-expansion-v1`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__H__endpoint32K.json`](../../objects/03/032cc5dde9124bd0b8bb342a944f22149b8c3ba013caf63594e9607d6b458522__pg19-test-5396__H__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-26493__H__endpoint32K.json`](../../objects/92/924e8a4adbf788fc2909199b8a4e96016482a0a801aaf413950cd51143022478__pg19-test-26493__H__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__L6__endpoint32K.json`](../../objects/a7/a702471b7e02983ca1cda705dd697503335cd95b3d96b8d56c4c273279560547__pg19-test-5396__L6__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__L7__endpoint32K.json`](../../objects/fc/fc28df4d856a4f9531ded019e5a5b23df811afe13c55b453e29420086afa4cd0__pg19-test-5396__L7__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__L8__endpoint32K.json`](../../objects/c3/c362f63365fe5b38b7cbb5b1e1b4ba5a1e817c9b72f6ac8c1671c5ecbcfd8163__pg19-test-5396__L8__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-28988__H__endpoint32K.json`](../../objects/df/df4eff5aea7b009b414c121ff9f5ae9b022b100bb1c4a3b2d92fcae9458cd251__pg19-test-28988__H__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__L7R__endpoint32K.json`](../../objects/7f/7f108dc6331290af10044910e2f7b20cd3706fa69b96b3babd9352e6120af727__pg19-test-5396__L7R__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-28988__L6__endpoint32K.json`](../../objects/a0/a013795ad8be83d405d849f118d7a0197affc1fb9e9129482225f59a0c7a7848__pg19-test-28988__L6__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-28988__L7__endpoint32K.json`](../../objects/5a/5a5f2b7c2edc46b9f5f363652c50c69c692c31d6faed01abdb1eb3573b707774__pg19-test-28988__L7__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-28988__L8__endpoint32K.json`](../../objects/9d/9d57cfaa7692c5d58dbb94ced4da22206654e2a187487fb30299b1421671e1bc__pg19-test-28988__L8__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-28988__L7R__endpoint32K.json`](../../objects/1c/1c53c04596841aa73cf16978481fbde033bc33de5af8bebc4c23157d30ec605b__pg19-test-28988__L7R__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__DA_fromH__endpoint32K.json`](../../objects/17/1700e3add4a28181020772c8a77e8aa9389c120cc2f747d6bec88bd46dbe277a__pg19-test-5396__DA_fromH__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__IDENTITY__endpoint32K.json`](../../objects/cb/cb55da5b6f4a7eaf82e2e5db8018a86f0952d21150b8c09be2c0db5adff07bef__pg19-test-5396__IDENTITY__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__DA_fromL6__endpoint32K.json`](../../objects/c9/c9b7c2a9f53e093584b479ca91a6dfdb546644343812563e33ba925715dae870__pg19-test-5396__DA_fromL6__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-28988__DA_fromH__endpoint32K.json`](../../objects/19/197fc6600dbc8ceee1efb0e1f81fceb4d86f64fb10778299e3aa708973747c02__pg19-test-28988__DA_fromH__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__DA_fromH__endpoint32K.json`](../../objects/73/7346e6d95000b3486226e12949073810e6bd532e0467ed7da1f04ec4c65eb4a0__pg19-test-37702__DA_fromH__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__IDENTITY__endpoint32K.json`](../../objects/6a/6af56975c33d4733b3d54655778492a13fba3047708e83836256b6ab22dcf8ff__pg19-test-37702__IDENTITY__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__DA_fromL6__endpoint32K.json`](../../objects/eb/eb731538b0d4d6e844c6c35d4b42ef251dc7de2a4811cb128c3329a83c67b633__pg19-test-37702__DA_fromL6__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__H_to_L6_a25__endpoint32K.json`](../../objects/89/89e0826bd024c75cf1a806d8e1d217e112591d792280bf0b6c12ddddd89744a2__pg19-test-5396__H_to_L6_a25__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__H_to_L6_a50__endpoint32K.json`](../../objects/c7/c7d74e9ac8d5cdd7e83208b5b01d4ebb73c87984684c838f2fb81d49594e6318__pg19-test-5396__H_to_L6_a50__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__H_to_L7_a25__endpoint32K.json`](../../objects/29/29c340d6d2530811ebaf895f0d95b302bd994f9b7d5cbb3f1c4aca8fa9a28121__pg19-test-5396__H_to_L7_a25__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__H_to_L7_a50__endpoint32K.json`](../../objects/d8/d8037b4fd353fe335a2bed51699e5a6a5ca65edebcbbb79de150547fe6c22751__pg19-test-5396__H_to_L7_a50__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__H_to_L8_a25__endpoint32K.json`](../../objects/1a/1a9ee76f7614fc7863308c26a41c64ba4fdff539a56c4d507d73a83463e6c82f__pg19-test-5396__H_to_L8_a25__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__H_to_L8_a50__endpoint32K.json`](../../objects/23/231e3dc626ceacd3c92d2115e955a34eef4bc9ee0998faf88da8bb2580aa7d32__pg19-test-5396__H_to_L8_a50__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__H_to_L7R_a25__endpoint32K.json`](../../objects/87/876bb3ddeb77c367697186d1f691ba481b98dcbb01e4e53dca61060edf78480d__pg19-test-5396__H_to_L7R_a25__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/discovery/summaries/pg19-test-5396__H_to_L7R_a50__endpoint32K.json`](../../objects/69/69c3596b20fa2e2078e52302a2e042cf032e63c9100eab97b20cdd3061396c53__pg19-test-5396__H_to_L7R_a50__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__H_to_L6_a25__endpoint32K.json`](../../objects/ad/ad676e65c85011769f5a79420898769b8659df1f5ce656b4770570ed4e92e313__pg19-test-37702__H_to_L6_a25__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__H_to_L6_a50__endpoint32K.json`](../../objects/de/de854a0c6269077d276378d638f11f751899918acfc7c62ad87d80dfd1d3222a__pg19-test-37702__H_to_L6_a50__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__H_to_L7_a25__endpoint32K.json`](../../objects/ea/eae6517d997c20517f17e23f3c6c8bcbf497df08ef6b9e6e3983ed1b4df338ce__pg19-test-37702__H_to_L7_a25__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__H_to_L7_a50__endpoint32K.json`](../../objects/ef/ef28ddc54ed1bef5e7707b92dd0e9337ba817a6aa223e734387c7dbbb6eff005__pg19-test-37702__H_to_L7_a50__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__H_to_L8_a25__endpoint32K.json`](../../objects/8d/8dc6e59cd358966439cdc8a2494f34085a86bbb108255628c9e287ea0e66b3b2__pg19-test-37702__H_to_L8_a25__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__H_to_L8_a50__endpoint32K.json`](../../objects/f3/f3517e0d8104602c122595afbe6c24fddfad44f17752c15c9888e328baff1b0c__pg19-test-37702__H_to_L8_a50__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__H_to_L7R_a25__endpoint32K.json`](../../objects/1a/1ae9448b77df320c6bededd801e68ceacf1b55891d125d013c430b6539e99483__pg19-test-37702__H_to_L7R_a25__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/discovery/summaries/pg19-test-37702__H_to_L7R_a50__endpoint32K.json`](../../objects/84/8449445a9abf99af9ad7e640fdb229a5df88a66511a51e855d06ffb67bf6cab2__pg19-test-37702__H_to_L7R_a50__endpoint32K.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu3/preregistration.json`](../../objects/0e/0e74aa581fe582beab67f219ba17bd690dd0b46a1313d6cad28631c522d1eed2__preregistration.json)
+- [`hardware_expansion_gpu3_v1/discovery_shards/gpu6/preregistration.json`](../../objects/0e/0e74aa581fe582beab67f219ba17bd690dd0b46a1313d6cad28631c522d1eed2__preregistration.json)
+- [`hardware_expansion_gpu3_v1/postcommit_parallel/gpu3/preregistration.json`](../../objects/0e/0e74aa581fe582beab67f219ba17bd690dd0b46a1313d6cad28631c522d1eed2__preregistration.json)
+- [`hardware_expansion_gpu3_v1/postcommit_parallel/gpu6/preregistration.json`](../../objects/0e/0e74aa581fe582beab67f219ba17bd690dd0b46a1313d6cad28631c522d1eed2__preregistration.json)
+- [`hardware_expansion_gpu3_v1/qualification/reference_off/preregistration.json`](../../objects/0e/0e74aa581fe582beab67f219ba17bd690dd0b46a1313d6cad28631c522d1eed2__preregistration.json)
+- [`hardware_expansion_gpu3_v1/qualification/fresh_process_01/preregistration.json`](../../objects/0e/0e74aa581fe582beab67f219ba17bd690dd0b46a1313d6cad28631c522d1eed2__preregistration.json)

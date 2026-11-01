@@ -1,0 +1,1 @@
+lambda _cls, missing_keys, unexpected_keys: _tuple_new(_cls, (missing_keys, unexpected_keys))

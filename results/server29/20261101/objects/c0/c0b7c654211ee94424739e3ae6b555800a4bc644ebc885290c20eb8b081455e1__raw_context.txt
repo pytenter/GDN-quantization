@@ -1,0 +1,2658 @@
+src/main/java/com/cornerpirate/reportcompiler/Utils/VulnTitleDocumentListener.java
+public class VulnTitleDocumentListener implements DocumentListener {
+
+    JTextField titleTextField;
+    JTree vulnTree;
+    PersonalVulnsWindow mainframe;
+
+    public VulnTitleDocumentListener(JTextField title, JTree tree, PersonalVulnsWindow mf) {
+        super();
+        this.titleTextField = title;
+        this.vulnTree = tree;
+        this.mainframe = mf;
+    }
+
+    public VulnTitleDocumentListener(JTextField title, JTree tree) {
+        super();
+        this.titleTextField = title;
+        this.vulnTree = tree;
+        this.mainframe = null;
+    }
+
+    public void changedUpdate(DocumentEvent e) {
+        saveTitle();
+    }
+
+    public void removeUpdate(DocumentEvent e) {
+        saveTitle();
+    }
+
+    public void insertUpdate(DocumentEvent e) {
+        saveTitle();
+    }
+
+    public void saveTitle() {
+        // Get the modified text
+        String new_title = "" + titleTextField.getText();
+        // Get the selected vuln node
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode) vulnTree.getLastSelectedPathComponent();
+        if (node != null) {
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                
+                Vulnerability vuln = (Vulnerability) obj;
+                vuln.setTitle(new_title);
+                System.out.println("Vuln Import Tool: " + vuln.getImport_tool()) ;
+                
+                if(vuln.getImport_tool().equalsIgnoreCase("ReportCompiler")) {
+                    vuln.changeReportCompilerID() ;
+                }
+                
+                ((DefaultTreeModel) vulnTree.getModel()).nodeChanged(node);
+                if (this.mainframe != null) {
+                    mainframe.dirty = true;
+                }
+            }
+        }
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Models/Reference.java
+public class Reference {
+
+    protected String description;
+    protected String url;
+
+    public Reference(String desc, String url) {
+        this.setDescription(desc);
+        this.setUrl(url);
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
+    public String toString() {
+        return this.description + " " + this.url;
+    }
+
+    /**
+     * Checks if this reference is a CVE. It does so using a regular expression.
+     * This regex takes into account the new CVE ID format which includes arbitrary 
+     * length numbers after the year. 
+     * @return boolean
+     */
+    public boolean isCVE() {
+
+        String pattern = "CVE-\\d{4}-\\d+";
+        // Create a Pattern object
+        Pattern r = Pattern.compile(pattern);
+        Matcher m = r.matcher(this.getUrl());
+        return m.find();
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Models/ImportFile.java
+public class ImportFile extends java.io.File {
+
+    public ImportFile(String pathname) {
+        super(pathname);
+    }
+    
+    public String toString() {
+        return this.getName() ;
+    }
+    
+}
+src/main/java/com/cornerpirate/reportcompiler/Utils/TreeUtils.java
+public class TreeUtils {
+
+    public void searchTree(DefaultMutableTreeNode root, String search_term) {
+        Enumeration enums = root.children();
+        while (enums.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) enums.nextElement();
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                if (vuln.containsText(search_term)) {
+                    vuln.setHighlighted(true);
+                } else {
+                    vuln.setHighlighted(false);
+                }
+            }
+        }
+    }
+
+    public void expandAll(JTree tree) {
+        for (int i = 0; i < tree.getRowCount(); i++) {
+            tree.expandRow(i);
+        }
+    }
+
+    /**
+     * Takes a root node with vulns inside it and then sorts it according to
+     * risk.
+     *
+     * @param root
+     * @return
+     */
+    public DefaultMutableTreeNode sortVulns(DefaultMutableTreeNode root) {
+
+        Vector highlighted_vulns = new Vector();
+        Vector vulns = new Vector();
+        Enumeration enums = root.children();
+        while (enums.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) enums.nextElement();
+            Vulnerability vuln = (Vulnerability) node.getUserObject();
+            if (vuln.isHighlighted() == true) {
+                highlighted_vulns.add(vuln);
+            } else {
+                vulns.add(vuln);
+            }
+        }
+
+        // sort the vulns vector
+        Comparator reversedComparator = Collections.reverseOrder();
+        Collections.sort(vulns, reversedComparator);
+        Collections.sort(highlighted_vulns, reversedComparator);
+
+        // now that it is sorted create a new Tree
+        DefaultMutableTreeNode new_root = new DefaultMutableTreeNode(root.toString());
+        Enumeration enums2 = highlighted_vulns.elements();
+        while (enums2.hasMoreElements()) {
+            new_root.add(new DefaultMutableTreeNode((Vulnerability) enums2.nextElement()));
+        }
+
+        Enumeration enums3 = vulns.elements();
+        while (enums3.hasMoreElements()) {
+            new_root.add(new DefaultMutableTreeNode((Vulnerability) enums3.nextElement()));
+        }
+
+        // return that new tree
+        return new_root;
+    }
+
+    public HashMap getTreeAsHashMap(DefaultMutableTreeNode root) {
+        HashMap answer = new HashMap();
+        Enumeration new_root_enums = root.children();
+
+        while (new_root_enums.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) new_root_enums.nextElement();
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                answer.put(vuln.getAnIdentifier(), vuln);
+            }
+        }
+        return answer;
+    }
+
+    public DefaultMutableTreeNode getMergeTreeDataStructure(DefaultMutableTreeNode root) {
+        DefaultMutableTreeNode answer = new DefaultMutableTreeNode("RootNode");
+        Enumeration enums = root.children();
+        while (enums.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) enums.nextElement();
+            Vulnerability vuln = (Vulnerability) node.getUserObject();
+            Iterator it = vuln.getIdentifiers().keySet().iterator();
+            while (it.hasNext()) {
+                String hash = (String) it.next();
+                String tool = (String) vuln.getIdentifiers().get(hash);
+                node.add(new DefaultMutableTreeNode(hash + ":" + tool));
+            }
+            answer.add(node);
+        }
+        return answer;
+    }
+
+    public Vector getTreeAsVector(DefaultMutableTreeNode root) {
+        Vector answer = new Vector();
+        Enumeration enums = root.children();
+        while (enums.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) enums.nextElement();
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                answer.add(vuln);
+            }
+        }
+        return answer;
+    }
+
+    public DefaultMutableTreeNode mergeTrees(DefaultMutableTreeNode existing_root, DefaultMutableTreeNode new_root) {
+        System.out.println("==TreeUtils=mergeTrees 2.0, allowing multiple identifiers");
+        DefaultMutableTreeNode answer = new DefaultMutableTreeNode("vulns");
+        Vector existing_vulns = getTreeAsVector(existing_root);
+        Vector new_vulns = getTreeAsVector(new_root);
+
+        // for each item in the new_root, check if a vuln with the same ID exists in the existing_root
+        // If not then add to the existing_root
+        // If so then merge the vulns
+        Enumeration enums = new_vulns.elements();
+        while (enums.hasMoreElements()) {
+            Vulnerability newvuln = (Vulnerability) enums.nextElement();
+            Enumeration enums2 = existing_vulns.elements();
+            boolean addvuln = true;
+            while (enums2.hasMoreElements() && addvuln == true) {
+                Vulnerability oldvuln = (Vulnerability) enums2.nextElement();
+                if (oldvuln.containsIdentifier(newvuln.getIdentifiers()) == true) {
+                    // merge affected hosts
+                    oldvuln.addAffectedHosts(newvuln.getAffectedHosts());
+                    System.out.println("Added hosts: " + oldvuln);
+                    addvuln = false;
+
+                }
+            }
+            // if you get here and addvuln==true, then we add it
+            if (addvuln == true) {
+                // add to answer
+                answer.add(new DefaultMutableTreeNode(newvuln));
+                System.out.println("Added newvuln to answer: " + newvuln);
+            }
+        }
+
+        // put the existing vulns back into the answer
+        enums = existing_vulns.elements();
+        while (enums.hasMoreElements()) {
+            Vulnerability vuln = (Vulnerability) enums.nextElement();
+            answer.add(new DefaultMutableTreeNode(vuln));
+            System.out.println("Added back existing vuln: " + vuln);
+        }
+        // sort by risk and return them
+        return this.sortVulns(answer);
+    }
+
+    /**
+     * A routine to clash users current tree against their personal vuln
+     * database. When hashes are matched the version from users db will replace
+     * the tool import.
+     *
+     * @param existing_root
+     * @param personal_vulns_root
+     * @return DefaultMutableTreeNode = root node of new version of the tree
+     */
+    public DefaultMutableTreeNode autoMergePersonalVulns(DefaultMutableTreeNode existing_root, DefaultMutableTreeNode personal_vulns_root) {
+        System.out.println("==TreeUtils=autoMergePersonalVulns");
+
+        DefaultMutableTreeNode answer = new DefaultMutableTreeNode("vulns");
+        Vector existing_vulns = getTreeAsVector(existing_root);
+        Vector new_vulns = getTreeAsVector(personal_vulns_root);
+        Vector to_delete = new Vector();
+
+        // ID = personal vuln id, value = Vector of vulns to merge
+        HashMap vulns_to_merge = new HashMap();
+
+        //DefaultMutableTreeNode newdatastructure = this.getMergeTreeDataStructure(existing_root) ;
+        // for each item in the new_root, check if a vuln with the same ID exists in the existing_root
+        // If not then add to the existing_root
+        // If so then merge the vulns
+        Enumeration enums = new_vulns.elements();
+        while (enums.hasMoreElements()) {
+            Vulnerability personalvuln = (Vulnerability) enums.nextElement();
+            Enumeration enums2 = existing_vulns.elements();
+
+            while (enums2.hasMoreElements()) {
+                Vulnerability oldvuln = (Vulnerability) enums2.nextElement();
+
+                if (oldvuln.containsIdentifier(personalvuln.getIdentifiers()) == true) {
+                    //System.out.println("personalvuln:" + personalvuln);
+                    //System.out.println("\toldvuln:" + oldvuln);
+                    to_delete.add(oldvuln);
+
+                    if (vulns_to_merge.containsKey(personalvuln.getTitle())) {
+                        // We need to add this oldvuln to the vector
+                        Vector vulns = (Vector) vulns_to_merge.get(personalvuln.getTitle());
+                        vulns.add(oldvuln);
+                        System.out.println("Merged by adding: " + vulns);
+
+                    } else {
+                        // we need to create the vector
+                        Vector vulns = new Vector();
+                        vulns.add(personalvuln);
+                        vulns.add(oldvuln);
+                        vulns_to_merge.put(personalvuln.getTitle(), vulns);
+                        System.out.println("Merged by inserting: " + vulns);
+                    }
+
+                    //existing_vulns.remove(oldvuln);
+                }
+            }
+        }
+
+        // Merge the ones that need merging
+        Iterator it = vulns_to_merge.keySet().iterator();
+        //int count = 1 ;
+        while (it.hasNext()) {
+            String key = (String) it.next();
+
+            Vector vulns = (Vector) vulns_to_merge.get(key);
+            System.out.println("\tKey: " + key);
+            System.out.println("\t" + vulns);
+            Vulnerability personal = (Vulnerability) vulns.get(0);
+            // For all other vulns in this merge operation we need to get the affected hosts
+            for (int i = 1; i <= vulns.size() - 1; i++) {
+                Vulnerability avuln = (Vulnerability) vulns.get(i);
+                personal.addAffectedHosts(avuln.getAffectedHosts()); // Merge the hosts
+            }
+            // Having merged the affected hosts we need to put personal into the answer tree
+            answer.add(new DefaultMutableTreeNode(personal));
+            System.out.println("Merged: " + personal);
+        }
+
+        // Remove to_delete from existing_vulns
+        existing_vulns.removeAll(to_delete);
+
+        // put the existing vulns back into the answer
+        enums = existing_vulns.elements();
+        while (enums.hasMoreElements()) {
+            Vulnerability vuln = (Vulnerability) enums.nextElement();
+            answer.add(new DefaultMutableTreeNode(vuln));
+            //System.out.println("Added back existing vuln: " + vuln);
+        }
+        // sort by risk and return them
+        return this.sortVulns(answer);
+    }
+
+    public DefaultMutableTreeNode convertHashMapToTree(HashMap map) {
+        DefaultMutableTreeNode root = new DefaultMutableTreeNode("vulns");
+        Iterator it = map.keySet().iterator();
+        while (it.hasNext()) {
+            Object key = it.next();
+            Vulnerability vuln = (Vulnerability) map.get(key);
+            root.add(new DefaultMutableTreeNode(vuln));
+        }
+        return root;
+    }
+
+    /**
+     * Removes the red highlighting from every node in the tree. Highlighting is
+     * added when a node matches a search done using the tree grep feature. To
+     * call this routine the user has to remove the filter completely.
+     *
+     * @param root
+     */
+    public void clearHighlighting(DefaultMutableTreeNode root) {
+        Enumeration enums = root.children();
+        while (enums.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) enums.nextElement();
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                vuln.setHighlighted(false);
+            }
+        }
+    }
+
+    /**
+     * Loops through the children in the tree and modifies all instances of the
+     * hostname.
+     *
+     * @param root - tree to search
+     * @param previous - hostname before change
+     * @param modified - version to change to
+     */
+    public void modifyHostname(DefaultMutableTreeNode root, Host previous, Host modified) {
+        Enumeration enums = root.children();
+        while (enums.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) enums.nextElement();
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                vuln.modifyAffectedHost(previous, modified);
+            }
+
+        }
+    }
+
+    /**
+     * Clashes the vulnerability IDs stored within vulnerability one and two. If
+     * any ids match this returns true.
+     *
+     * @param one
+     * @param two
+     * @return
+     */
+    public boolean vulnerabilityContainsAnyIds(Vulnerability one, Vulnerability two) {
+        HashMap hm1 = one.getIdentifiers();
+        HashMap hm2 = two.getIdentifiers();
+        Iterator it1 = hm1.keySet().iterator();
+        while (it1.hasNext()) {
+            String key1 = (String) it1.next();
+            if (hm2.containsKey(key1)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * This checks if it is OK to add a vulnerability to the personal vulns
+     * file. Specifically it is checking if a vuln in your database exists
+     * already with a vulnerability identifier. They need to be unique in your
+     * personal vulns.
+     *
+     * @param personal_vulns_root
+     * @param vuln
+     * @return true = Safe to go on, false = nope, nope, nope!
+     */
+    public boolean OkToaddToPersonalVulns(DefaultMutableTreeNode personal_vulns_root, Vulnerability vuln) {
+
+        Enumeration enums = personal_vulns_root.children();
+        while (enums.hasMoreElements()) {
+            Object obj = enums.nextElement();
+            if (obj instanceof Vulnerability) {
+                Vulnerability current = (Vulnerability) obj;
+                // Check if the current vuln has the same title as vuln or if it includes any of the same references
+                if (current.getTitle().equalsIgnoreCase(vuln.getTitle())) {
+                    System.out.println("A vuln with the same title already existed");
+                    return false;
+                } else if (vulnerabilityContainsAnyIds(current, vuln)) {
+                    System.out.println("A vuln with one of the IDs");
+                    return false;
+                }
+
+            }
+        }
+
+        // If you get to the end then it was ok to just add to the tree
+        return true;
+    }
+
+    /**
+     * This creates a copy of the vulnerability tree to display issues by host
+     * instead. It returns a a DefaultMutableTreeNode which is the root node of
+     * the host view tree.
+     *
+     * @param vulnRoot
+     * @return DefaultMutableTreeNode - root node for hosts view
+     */
+    public DefaultMutableTreeNode convertVulnViewToHostView(DefaultMutableTreeNode vulnRoot) {
+        DefaultMutableTreeNode hostRoot = new DefaultMutableTreeNode("hosts");
+
+        Set<Vulnerability> vulns = new HashSet<>();
+        Set<String> hosts = new HashSet<>();
+
+        // Vector subnets
+        Set<String> subnets = new TreeSet<>();
+
+        // Loop through vulnerabilities tree and compile a list of subnets.
+        Enumeration enums = vulnRoot.children();
+        while (enums.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) enums.nextElement();
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                Vector affected_hosts = vuln.getAffectedHosts();
+                Enumeration hosts_enum = affected_hosts.elements();
+                while (hosts_enum.hasMoreElements()) {
+                    Host host = (Host) hosts_enum.nextElement();
+                    subnets.add(host.getSubnet());
+                    // Add IP address to list of hosts.
+                    hosts.add(host.getIp_address());
+                }
+            }
+        }
+
+        // Create a HashMap of Hosts
+        Iterator it = subnets.iterator();
+        while (it.hasNext()) {
+            String snet = (String) it.next();
+            DefaultMutableTreeNode subnet_node = new DefaultMutableTreeNode(snet);
+
+            // loop through vulns and their affected hosts.
+            // If affected host is in subnet add it and then all its vulnerabilities.
+            Iterator it2 = hosts.iterator();
+            while (it2.hasNext()) {
+                String ip = (String) it2.next();
+                Host tmp = new Host();
+                tmp.setIp_address(ip);
+                // Check to see if this IP was in this subnet
+                if (tmp.getSubnet().equals(snet)) {
+                    DefaultMutableTreeNode host_node = new DefaultMutableTreeNode(tmp);
+
+                    Vector vulns_for_host = getVulnsForIP(ip, vulnRoot);
+                    System.out.println("vulns_for_host: " + vulns_for_host.size());
+                    Enumeration vulns_enum = vulns_for_host.elements();
+                    while (vulns_enum.hasMoreElements()) {
+                        Vulnerability vuln = (Vulnerability) vulns_enum.nextElement();
+                        DefaultMutableTreeNode vuln_node = new DefaultMutableTreeNode(vuln);
+                        host_node.add(vuln_node);
+                    }
+                    // Get all vulnerabilities for this host
+                    // Add host_node to subnet_node
+                    subnet_node.add(host_node);
+                }
+
+            }
+
+            // Add to hosts tree
+            hostRoot.add(subnet_node);
+        }
+
+        return hostRoot;
+    }
+
+    /**
+     * Take a vuln tree and an IP and find Vulnerabilities affecting that host
+     *
+     * @param ip
+     * @param vulnTreeRoot
+     * @return
+     */
+    public Vector getVulnsForIP(String ip, DefaultMutableTreeNode vulnRoot) {
+        Vector answers = new Vector();
+
+        // Loop through vulnerabilities tree and compile a list of subnets.
+        Enumeration enums = vulnRoot.children();
+        while (enums.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) enums.nextElement();
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                Vector affected_hosts = vuln.getAffectedHosts();
+                Enumeration hosts_enum = affected_hosts.elements();
+                while (hosts_enum.hasMoreElements()) {
+                    Host host = (Host) hosts_enum.nextElement();
+                    // Check if this affected host is in the list
+                    if (ip.equalsIgnoreCase(host.getIp_address())) {
+                        //System.out.println(ip + ":" + vuln.toString());
+                        answers.add(vuln);
+                    }
+                }
+            }
+        }
+
+        return answers;
+    }
+
+    public HashMap getAllAffectedHosts(DefaultMutableTreeNode vulnTreeRoot) {
+
+        // key=port:protocol, value=vector(hosts)
+        HashMap hosts = new HashMap();
+        Enumeration enums = vulnTreeRoot.children();
+        while (enums.hasMoreElements()) {
+            Object obj = enums.nextElement();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                Enumeration hosts_enum = vuln.getAffectedHosts().elements();
+                while (hosts_enum.hasMoreElements()) {
+                    Object obj2 = hosts_enum.nextElement();
+                    if (obj2 instanceof Host) {
+                        Host host = (Host) obj2;
+                        String service = host.getPortnumber() + "/" + host.getProtocol();
+                        if (hosts.containsKey(service)) {
+                            // Already exists, remove the vector
+                            Vector vec = (Vector) hosts.remove(service);
+                            vec.add(host);
+                            hosts.put(service, vec);
+                        } else {
+                            // Doesn't exist, just fire away matey.
+                            hosts.put(service, new Vector().add(host));
+                        }
+
+                    }
+                }
+            }
+        }
+        return hosts;
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Utils/Helper.java
+public class Helper {
+
+    /**
+     * A grep within a file to check for the search term.
+     *
+     * @param file
+     * @param searchTerm
+     * @return
+     * @throws FileNotFoundException
+     */
+    public boolean fileContainsString(File file, String searchTerm) throws FileNotFoundException {
+
+        boolean result = false;
+        Scanner in = null;
+        try {
+            in = new Scanner(new FileReader(file));
+            while (in.hasNextLine() && !result) {
+                result = in.nextLine().indexOf(searchTerm) >= 0;
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+
+        } finally {
+            try {
+                in.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        return result;
+
+    }
+
+    public long getFileSizeInMB(File file) {
+        // Get length of file in bytes
+        long fileSizeInBytes = file.length();
+        // Convert the bytes to Kilobytes (1 KB = 1024 Bytes)
+        long fileSizeInKB = fileSizeInBytes / 1024;
+        // Convert the KB to MegaBytes (1 MB = 1024 KBytes)
+        long fileSizeInMB = fileSizeInKB / 1024;
+
+        return fileSizeInMB;
+    }
+
+    public String MD5(String original) {
+        StringBuffer sb = new StringBuffer();
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("MD5");
+            md.update(original.getBytes());
+            byte[] digest = md.digest();
+
+            for (byte b : digest) {
+                sb.append(Integer.toHexString((int) (b & 0xff)));
+            }
+        } catch (NoSuchAlgorithmException ex) {
+            Logger.getLogger(Helper.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return sb.toString();
+    }
+
+    public static void openWebpage(URI uri) {
+        Desktop desktop = Desktop.isDesktopSupported() ? Desktop.getDesktop() : null;
+        if (desktop != null && desktop.isSupported(Desktop.Action.BROWSE)) {
+            try {
+                desktop.browse(uri);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public static void openWebpage(URL url) {
+        try {
+            openWebpage(url.toURI());
+        } catch (URISyntaxException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private int getFontSize() {
+
+        Properties properties = new Properties();
+        File properties_file = new File(new File((getClass().getProtectionDomain().getCodeSource().getLocation()).getFile()).getParent() + File.separator + "UserPreferences.properties");
+
+        try {
+
+            InputStream in = new FileInputStream(properties_file);
+            properties.load(in);
+
+            if (properties.containsKey("Font_Size")) {
+                // Lets set the font size
+                String users_font_size = properties.getProperty("Font_Size");
+                try {
+                    int fs = Integer.parseInt(users_font_size) ;
+                    return fs ;
+                } catch (Exception ex) {
+                    ex.printStackTrace(); // if we get here somebody tampered with their preferences file
+                }
+            }
+
+        } catch (java.io.FileNotFoundException fnfex) {
+            System.out.println("User does not have any preferences file yet");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+                
+        return 12;
+    }
+
+    public void setFontSize(Font currentfont, JRootPane rootPane) {
+        // Set the newsize into the GUI.
+        //Font currentfont = this.VulnTitleTextField.getFont();
+        int newsize = this.getFontSize() ;
+
+        List components = this.getAllComponents(rootPane);
+        Iterator it = components.iterator();
+        while (it.hasNext()) {
+            Object obj = it.next();
+            if (obj instanceof javax.swing.JComponent) {
+                javax.swing.JComponent comp = (javax.swing.JComponent) obj;
+                comp.setFont(currentfont.deriveFont((float) newsize));
+            } else if(obj instanceof javax.swing.JTree) {
+                javax.swing.JTree tree = (javax.swing.JTree)obj ;
+                tree.setFont(currentfont.deriveFont((float) newsize));
+            } else if(obj instanceof javax.swing.JTable) {
+                javax.swing.JTable table = (javax.swing.JTable)obj ;
+                table.setFont(currentfont.deriveFont((float) newsize));
+            }
+        }
+    }
+
+    public static List<Component> getAllComponents(final Container c) {
+        Component[] comps = c.getComponents();
+        List<Component> compList = new ArrayList<Component>();
+        for (Component comp : comps) {
+            compList.add(comp);
+            if (comp instanceof Container) {
+                compList.addAll(getAllComponents((Container) comp));
+            }
+        }
+        return compList;
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Utils/CVEUtils.java
+public class CVEUtils {
+
+    private final File csvfile = new File("." + File.separator + "cves" + File.separator + "cve-summary.csv");
+
+    //new File(new File((getClass().getProtectionDomain().getCodeSource().getLocation()).getFile())+ File.separator + "cves" + File.separator + "cve-summary.csv"); 
+    /**
+     * Find the CVE in the CSV file and return the relevant parts
+     *
+     * @param cveid
+     * @return String[] with format { cveid, cvss_risk, summary } - If no cve
+     * exits then this returns null
+     */
+    public String[] getCVE(String cveid) {
+        String[] cve = new String[3];
+
+        // get the id from the cveid
+        CSVFormat format = CSVFormat.DEFAULT.withDelimiter(',');
+        try {
+            CSVParser parser = new CSVParser(new FileReader(csvfile), format);
+            for (CSVRecord record : parser) {
+
+                String thiscve = record.get(0);
+                if (thiscve.equalsIgnoreCase(cveid)) {
+                    // we have found our cve, get all the details and return
+                    cve[0] = record.get(0);
+                    cve[1] = record.get(1);
+                    cve[2] = record.get(2);
+                    return cve;
+                }
+            }
+
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+
+        // If we get here then there was no vuln with that ID, return null.
+        return null;
+    }
+
+    /**
+     * Lookup a load of CVEs at once.
+     *
+     * @param cves
+     * @return a vector of String[] with format { cveid, cvss_risk, summary }
+     */
+    public Vector getCVEs(HashSet cves) {
+        Vector answer = new Vector();
+        ArrayList al = new ArrayList();
+
+        Iterator it = cves.iterator();
+        while (it.hasNext()) {
+            String cve = (String) it.next();
+            String[] cve_details = getCVE(cve);
+            // If it is null then that vuln didn't exist.
+            if (cve_details != null) {
+                answer.add(cve_details);
+
+                CVE c = new CVE();
+                c.setCveId(cve_details[0]);
+                c.setRiskScore(cve_details[1]);
+                c.setSummary(cve_details[2]);
+
+                al.add(c);
+
+            } else {
+                System.out.println("==CVEUtils=getCVEs: No local vuln for " + cve + ", consider updating");
+            }
+        }
+
+        Collections.sort(al, Collections.reverseOrder());
+
+        Vector actual_answer = new Vector();
+        actual_answer.addAll(al);
+
+        return actual_answer;
+    }
+}
+src/main/java/com/cornerpirate/reportcompiler/Models/CVE.java
+public class CVE implements Comparable {
+    private String cveId;
+    private String riskScore;
+    private String summary;
+
+    public String getCveId() {
+        return cveId;
+    }
+
+    public void setCveId(String cveId) {
+        this.cveId = cveId;
+    }
+
+    public String getRiskScore() {
+        return riskScore;
+    }
+
+    public void setRiskScore(String riskScore) {
+        this.riskScore = riskScore;
+    }
+
+    public String getSummary() {
+        return summary;
+    }
+
+    public void setSummary(String summary) {
+        this.summary = summary;
+    }
+
+    /**
+     * A useful string representation of the CVE for quick debugging.
+     * Is not used in anger by the system but you might see it hitting
+     * your STDOUT as that is where I log things.
+     * @return String - format; cveId + "," + riskScore + "," + summary
+     */
+    @Override
+    public String toString() {
+        return cveId + "," + riskScore + "," + summary ;
+    }
+    
+    /**
+     * Reformats this CVE as a String array called when writing to a CSV file
+     * @return String[] formatted; 0=CVE-ID, 1=RiskScore, 2=Summary
+     */
+    public String[] toStringArray() {
+        String[] answer = { this.getCveId(), this.getRiskScore(), this.getSummary() } ;
+        return answer ;
+    }
+
+    /**
+     * This is called when sorting a list of CVEs. It orders by the Risk Score only.
+     * If you want to then order by the CVE-ID because of your OCD you can do that in excel
+     * @param o
+     * @return 
+     */
+    @Override
+    public int compareTo(Object o) {
+        CVE other = (CVE)o;
+        
+        if(other.getRiskScore().equalsIgnoreCase("UNKNOWN") || this.getRiskScore().equalsIgnoreCase("UNKNOWN")) {
+            return -1;
+        } else {
+            if (Double.parseDouble(this.getRiskScore()) < Double.parseDouble(other.getRiskScore())) return -1 ;
+            if (Double.parseDouble(this.getRiskScore()) > Double.parseDouble(other.getRiskScore())) return 1 ;
+        }
+        
+        return 0;    }
+    
+}
+src/main/java/com/cornerpirate/reportcompiler/Importers/UniversalFileImporter.java
+public class UniversalFileImporter {
+
+    final NessusV2XMLImporter nv2xml = new NessusV2XMLImporter();
+    final ExcelImporter excelim = new ExcelImporter();
+    final ImportReportCompiler importrc = new ImportReportCompiler();
+    final BurpImporter burpim = new BurpImporter();
+    final SurecheckImporter surecheckim = new SurecheckImporter();
+    final NipperCSVImporter nipperCSVim = new NipperCSVImporter();
+
+    public String file_type = null;
+
+    /**
+     * Called before importing to check for the file type. This is where it is
+     * determined as importable or not
+     *
+     * @param importingFile
+     * @return String - representing the tool name or "Unknown"
+     */
+    public String getFileType(File importingFile) {
+
+        String fileType = "Unknown";
+
+        if (nv2xml.isValid(importingFile)) {
+            System.out.println("Is a NESSUS file");
+            file_type = "NessusV2XML";
+            return file_type;
+        } else if (excelim.isValid(importingFile)) {
+            System.out.println("Is an xls file");
+            file_type = "ExcelXLS";
+            return file_type;
+        } else if (importrc.isValid(importingFile)) {
+            System.out.println("Is a ReportCompiler save file");
+            file_type = "ReportCompiler";
+            return file_type;
+        } else if (burpim.isValid(importingFile)) {
+            System.out.println("Is a Burp Report XML file");
+            file_type = "Burp";
+            return file_type;
+        } else if (surecheckim.isValid(importingFile)) {
+            System.out.println("Is a Surecheck XML file");
+            file_type = "Surecheck";
+            return file_type;
+        } else if (nipperCSVim.isValid(importingFile)) {
+            System.out.println("Is a Nipper CSV file");
+            file_type = "NipperCSV";
+            return file_type;
+        }
+
+        String message = "Did not understand that file type, cannot import that.";
+        String title = "Cannot Import File";
+        // go through all the importers we have and see if we can cater for it
+
+        JOptionPane.showMessageDialog(null, message, title, JOptionPane.ERROR_MESSAGE);
+
+        System.out.println("==getFileType():" + title);
+        return fileType;
+    }
+
+    /**
+     * This is responsible for calling the correct readFile method.
+     *
+     * @param importingFile
+     * @return DefaultMutableTreeNode - representing the tree of vulns in the
+     * file
+     */
+    public DefaultMutableTreeNode readFile(File importingFile) {
+
+        DefaultMutableTreeNode root = null;
+
+        String ftype = this.getFileType(importingFile);
+        if (ftype.equalsIgnoreCase("NessusV2XML")) {
+            // Read the nessus file
+            root = nv2xml.readFile(importingFile);
+        } else if (ftype.equalsIgnoreCase("ExcelXLS")) {
+            // Read the XLS file
+            root = excelim.readFile(importingFile);
+        } else if (ftype.equalsIgnoreCase("ReportCompiler")) {
+            root = importrc.readFile(importingFile);
+        } else if (ftype.equalsIgnoreCase("Burp")) {
+            root = burpim.readFile(importingFile);
+        } else if (ftype.equalsIgnoreCase("Surecheck")) {
+            root = surecheckim.readFile(importingFile);
+        } else if (ftype.equalsIgnoreCase("NipperCSV")) {
+            root = nipperCSVim.readFile(importingFile);
+        }
+
+        // Optionally we need to check for existing items in the VulnTree 
+        // and merge them in here but for now one file at a time.
+        // sort the tree and return it
+        if (root != null) {
+            return new TreeUtils().sortVulns(root);
+        }
+        return new DefaultMutableTreeNode("vulns");
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Utils/VulnDescriptionDocumentListener.java
+public class VulnDescriptionDocumentListener implements DocumentListener {
+
+    JTextPane descriptionTextField;
+    JTree vulnTree;
+    PersonalVulnsWindow mainframe;
+
+    public VulnDescriptionDocumentListener(JTextPane title, JTree tree, PersonalVulnsWindow mf) {
+        super();
+        this.descriptionTextField = title;
+        this.vulnTree = tree;
+        this.mainframe = mf;
+    }
+
+    public VulnDescriptionDocumentListener(JTextPane title, JTree tree) {
+        super();
+        this.descriptionTextField = title;
+        this.vulnTree = tree;
+        this.mainframe = null;
+    }
+
+    public void changedUpdate(DocumentEvent e) {
+        saveDescription();
+    }
+
+    public void removeUpdate(DocumentEvent e) {
+        saveDescription();
+    }
+
+    public void insertUpdate(DocumentEvent e) {
+        saveDescription();
+    }
+
+    public void saveDescription() {
+        // Get the modified text
+        String new_description = "" + descriptionTextField.getText();
+        // Get the selected vuln node
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode) vulnTree.getLastSelectedPathComponent();
+        if (node != null) {
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                vuln.setDescription(new_description);
+                ((DefaultTreeModel) vulnTree.getModel()).nodeChanged(node);
+                
+                if (this.mainframe != null) {
+                    mainframe.dirty = true;
+                }
+            }
+        }
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Utils/VulnRecommendationDocumentListener.java
+public class VulnRecommendationDocumentListener implements DocumentListener {
+
+    JTextPane recommendationTextField;
+    JTree vulnTree;
+    PersonalVulnsWindow mainframe;
+
+    public VulnRecommendationDocumentListener(JTextPane title, JTree tree, PersonalVulnsWindow mf) {
+        super();
+        this.recommendationTextField = title;
+        this.vulnTree = tree;
+        this.mainframe = mf;
+    }
+
+    public VulnRecommendationDocumentListener(JTextPane title, JTree tree) {
+        super();
+        this.recommendationTextField = title;
+        this.vulnTree = tree;
+        this.mainframe = null;
+    }
+
+    public void changedUpdate(DocumentEvent e) {
+        saveDescription();
+    }
+
+    public void removeUpdate(DocumentEvent e) {
+        saveDescription();
+    }
+
+    public void insertUpdate(DocumentEvent e) {
+        saveDescription();
+    }
+
+    public void saveDescription() {
+        // Get the modified text
+        String new_recommendation = "" + recommendationTextField.getText();
+        // Get the selected vuln node
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode) vulnTree.getLastSelectedPathComponent();
+        if (node != null) {
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                vuln.setRecommendation(new_recommendation);
+                ((DefaultTreeModel) vulnTree.getModel()).nodeChanged(node);
+                if (this.mainframe != null) {
+                    mainframe.dirty = true;
+                }
+            }
+        }
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Importers/ImportReportCompiler.java
+public class ImportReportCompiler implements ImporterInterface {
+
+    @Override
+    public boolean isValid(File file) {
+
+        try {
+            String valid_string = "<reportCompiler";
+            boolean valid = new Helper().fileContainsString(file, valid_string);
+            return valid;
+        } catch (FileNotFoundException ex) {
+            Logger.getLogger(NessusV2XMLImporter.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return false;
+    }
+
+    @Override
+    public DefaultMutableTreeNode readFile(File importFile) {
+        System.out.println("==ImportReportCompiler=readFile");
+        DefaultMutableTreeNode root = new DefaultMutableTreeNode("vulns");
+        try {
+
+            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            Document doc = dBuilder.parse(importFile);
+            doc.normalize();
+
+            NodeList vulns_list = doc.getElementsByTagName("vuln");
+            for (int i = 0; i < vulns_list.getLength(); i++) {
+                Node vuln_node = vulns_list.item(i);
+                Vulnerability vuln = getVuln(vuln_node);
+                root.add(new DefaultMutableTreeNode(vuln));
+            }
+
+        } catch (ParserConfigurationException ex) {
+            Logger.getLogger(NessusV2XMLImporter.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (SAXException ex) {
+            Logger.getLogger(NessusV2XMLImporter.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (IOException ex) {
+            Logger.getLogger(NessusV2XMLImporter.class.getName()).log(Level.SEVERE, null, ex);
+        }
+
+        return root;
+    }
+
+    private Vulnerability getVuln(Node vuln_node) {
+        Base64 b64 = new Base64();
+        Vulnerability vuln = new Vulnerability();
+
+        String custom = "false";
+        String category = "";
+        String cvss_string = "";
+
+        try {
+            custom = vuln_node.getAttributes().getNamedItem("custom-risk").getTextContent();
+        } catch (NullPointerException e) {;
+        }
+        try {
+            category = vuln_node.getAttributes().getNamedItem("category").getTextContent();
+        } catch (NullPointerException e) {;
+        }
+        try {
+            cvss_string = vuln_node.getAttributes().getNamedItem("cvss").getTextContent();
+        } catch (NullPointerException e) {;
+        }
+
+        // TODO read identifiers
+        //vuln.setIdentifier(vuln_node.getAttributes().getNamedItem("id").getTextContent());
+        vuln.setIs_custom_risk(custom.equalsIgnoreCase("true"));
+        vuln.setRisk_category(category);
+        vuln.setCvss_vector_string(cvss_string);
+
+        NodeList children = vuln_node.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node node = children.item(i);
+            if (node.getNodeType() == Node.ELEMENT_NODE) {
+                String name = node.getNodeName();
+                String value = node.getTextContent();
+                //System.out.println(name + ":" + value);
+
+                if (name.equalsIgnoreCase("title")) {
+                    vuln.setTitle(new String(b64.decode(value)));
+                } else if (name.equalsIgnoreCase("identifiers")) {
+                    NodeList identifiers = node.getChildNodes();
+                    for (int ii = 0; ii < identifiers.getLength(); ii++) {
+                        Node idNode = identifiers.item(ii);
+                        if (idNode.getNodeType() == Node.ELEMENT_NODE) {
+                            String hash = idNode.getAttributes().getNamedItem("hash").getTextContent();
+                            String import_tool = idNode.getAttributes().getNamedItem("import_tool").getTextContent();
+                            vuln.setImport_tool(import_tool);
+                            // this hash is a legacy broken from the before time
+                            if (hash.equalsIgnoreCase("24d459a81449d721c8f9a86c2913034")) {
+                                vuln.setIdentifier(); // this replaces the hash with the current MD5(vuln.getTitle());
+                            } else {
+                                vuln.setIdentifierFromSaveFile(hash, import_tool); // this trusts the source tool and hash.
+                            }
+                        }
+                    }
+
+                } else if (name.equalsIgnoreCase("description")) {
+                    vuln.setDescription(new String(b64.decode(value)));
+                } else if (name.equalsIgnoreCase("recommendation")) {
+                    vuln.setRecommendation(new String(b64.decode(value)));
+                } else if (name.equalsIgnoreCase("affected-hosts")) {
+                    Vector affected_hosts = getHosts(node);
+                    vuln.addAffectedHosts(affected_hosts);
+                } else if (name.equalsIgnoreCase("references")) {
+
+                    NodeList references = node.getChildNodes();
+                    for (int n = 0; n < references.getLength(); n++) {
+                        Node refNode = references.item(n);
+                        if (refNode.getNodeType() == Node.ELEMENT_NODE) {
+                            String description = refNode.getAttributes().getNamedItem("description").getTextContent();
+                            String url = refNode.getTextContent();
+                            Reference ref = new Reference(description, url);
+                            vuln.addReference(ref);
+                        }
+
+                    }
+
+                }
+
+            }
+        }
+
+        // for original users with saved personal vulns saved without import tools
+        if (vuln.getImport_tool() == "NULL") {
+            vuln.setImport_tool("ReportCompiler");
+            vuln.setIdentifier();
+            System.out.println(vuln.getTitle() + ": hash: " + vuln.getIDsAsString());
+        }
+
+        return vuln;
+    }
+
+    private Vector getHosts(Node node) {
+        Vector hosts = new Vector();
+        NodeList children = node.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node n = children.item(i);
+            if (n.getNodeType() == Node.ELEMENT_NODE) {
+                String name = n.getNodeName();
+                String value = n.getTextContent();
+                if (name.equalsIgnoreCase("host")) {
+                    Host host = getHost(n);
+                    hosts.addElement(host);
+                }
+            }
+        }
+        return hosts;
+    }
+
+    private Host getHost(Node n) {
+        Host host = new Host();
+        NodeList children = n.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node node = children.item(i);
+            if (node.getNodeType() == Node.ELEMENT_NODE) {
+                String name = node.getNodeName();
+                String value = node.getTextContent();
+
+                if (name.equalsIgnoreCase("ip-address")) {
+                    host.setIp_address(value);
+                } else if (name.equalsIgnoreCase("hostname")) {
+                    host.setHostname(value);
+                } else if (name.equalsIgnoreCase("netbios-name")) {
+                    host.setNetbios_name(value);
+                } else if (name.equalsIgnoreCase("operating-system")) {
+                    host.setOperating_system(value);
+                } else if (name.equalsIgnoreCase("mac-address")) {
+                    host.setMac_address(value);
+                } else if (name.equalsIgnoreCase("portnumber")) {
+                    host.setPortnumber(value);
+                } else if (name.equalsIgnoreCase("protocol")) {
+                    host.setProtocol(value);
+                } else if (name.equalsIgnoreCase("note")) {
+                    Note note = new Note(new String(new Base64().decode(value)));
+                    host.setNotes(note);
+                }
+            }
+        }
+        return host;
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Exporters/SaveFileExporter.java
+public class SaveFileExporter {
+
+    public String getNow() {
+        DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
+        //get current date time with Date()
+        Date date = new Date();
+
+        return dateFormat.format(date);
+    }
+
+    public Element getVulnAsElement(Vulnerability vuln, Document doc) {
+
+        Base64 b64 = new Base64();
+
+        Element vulnElement = doc.createElement("vuln");
+        if (vuln.isIs_custom_risk()==false) {
+            vulnElement.setAttribute("custom-risk", "false");
+            vulnElement.setAttribute("cvss", vuln.getCvss_vector_string());
+        } else {
+            vulnElement.setAttribute("custom-risk", "true");
+        }
+        vulnElement.setAttribute("category", vuln.getRisk_category());
+        vulnElement.setAttribute("risk-score", "" + vuln.getRiskScore());
+
+        Element vulnTitle = doc.createElement("title");
+        vulnTitle.appendChild(doc.createTextNode(b64.encodeAsString(vuln.getTitle().getBytes())));
+        
+        Element identifiersElement = doc.createElement("identifiers") ;
+        HashMap identifiersMap = vuln.getIdentifiers() ;
+        Iterator it = identifiersMap.keySet().iterator() ;
+        while(it.hasNext()) {
+            String hashed_title = (String)it.next();
+            String import_tool = (String)identifiersMap.get(hashed_title) ;
+            // add a tag mofo!
+            Element identifier = doc.createElement("identifier") ;
+            identifier.setAttribute("hash", hashed_title);
+            identifier.setAttribute("import_tool", import_tool);
+            identifiersElement.appendChild(identifier) ;
+        }
+
+        Element vulnDescription = doc.createElement("description");
+        vulnDescription.appendChild(doc.createTextNode(b64.encodeAsString(vuln.getDescription().getBytes())));
+
+        Element vulnRecommendation = doc.createElement("recommendation");
+        vulnRecommendation.appendChild(doc.createTextNode(b64.encodeAsString(vuln.getRecommendation().getBytes())));
+
+        //TODO Fill out <References> tag
+        Element vulnReferences = doc.createElement("references") ;
+        Enumeration refs_enums = vuln.getReferences().elements() ;
+        while(refs_enums.hasMoreElements()) {
+            Reference ref = (Reference)refs_enums.nextElement() ;
+            Element vulnReference = doc.createElement("reference") ;
+            vulnReference.setAttribute("description", ref.getDescription()); 
+            vulnReference.appendChild(doc.createTextNode(ref.getUrl())) ;
+            vulnReferences.appendChild(vulnReference);
+        }
+        
+        Element affectedHosts = doc.createElement("affected-hosts");
+        Enumeration enums = vuln.getAffectedHosts().elements();
+        while (enums.hasMoreElements()) {
+            Host host = (Host) enums.nextElement();
+
+            // Create all the lovely element nodes
+            Element affectedHost = doc.createElement("host");
+            Element ipAddress = doc.createElement("ip-address");
+            if (host.getIp_address() != null) {
+                ipAddress.appendChild(doc.createTextNode(host.getIp_address()));
+            }
+            Element hostname = doc.createElement("hostname");
+            if (host.getHostname() != null) {
+                hostname.appendChild(doc.createTextNode(host.getHostname()));
+            }
+            Element netbios = doc.createElement("netbios-name");
+            if (host.getNetbios_name() != null) {
+                netbios.appendChild(doc.createTextNode(host.getNetbios_name()));
+            }
+            Element os = doc.createElement("operating-system");
+            if (host.getOperating_system() != null) {
+                os.appendChild(doc.createTextNode(host.getOperating_system()));
+            }
+            Element macAddress = doc.createElement("mac-address");
+            if (host.getMac_address() != null) {
+                macAddress.appendChild(doc.createTextNode(host.getMac_address()));
+            }
+            Element portnumber = doc.createElement("portnumber");
+            if (host.getPortnumber() != null) {
+                portnumber.appendChild(doc.createTextNode(host.getPortnumber()));
+            }
+            Element protocol = doc.createElement("protocol");
+            if (host.getProtocol() != null) {
+                protocol.appendChild(doc.createTextNode(host.getProtocol()));
+            }
+
+            Element note = doc.createElement("note");
+            if (host.getNotes() != null) {
+                Note n = host.getNotes();
+                note.appendChild(doc.createTextNode(b64.encodeAsString(n.getNote_text().getBytes())));
+            }
+
+            // Append them to the affected Host node
+            affectedHost.appendChild(ipAddress);
+            affectedHost.appendChild(hostname);
+            affectedHost.appendChild(netbios);
+            affectedHost.appendChild(os);
+            affectedHost.appendChild(macAddress);
+            affectedHost.appendChild(portnumber);
+            affectedHost.appendChild(protocol);
+            affectedHost.appendChild(note);
+
+            // Add that host to the affected hosts node
+            affectedHosts.appendChild(affectedHost);
+        }
+
+        vulnElement.appendChild(vulnTitle);
+        vulnElement.appendChild(identifiersElement) ;
+        vulnElement.appendChild(vulnDescription);
+        vulnElement.appendChild(vulnRecommendation);
+        vulnElement.appendChild(vulnReferences);
+        vulnElement.appendChild(affectedHosts);
+        return vulnElement;
+    }
+
+    public void save(File outfile, DefaultMutableTreeNode root) throws Exception {
+        System.out.println("===SaveFileExporter==save:" + outfile.getAbsolutePath());
+
+        // Create new XML document
+        DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
+
+        // Create the root element
+        Document doc = docBuilder.newDocument();
+        Element rootElement = doc.createElement("reportCompiler");
+        rootElement.setAttribute("date", getNow()); // Debugging to say when saved
+        // TODO - figure out a universal means to get the current version of the generating tool
+        // Initial thoughts would be to create a convenience class in Utils package with some
+        // final variables that can be updated when issuing a release.
+        doc.appendChild(rootElement);
+
+        Element vulnerabilitiesElement = doc.createElement("vulnerabilities");
+
+        Enumeration enums = root.children();
+        while (enums.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) enums.nextElement();
+            Object obj = node.getUserObject();
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                Element vulnElement = getVulnAsElement(vuln, doc);
+                if (vulnElement != null) {
+                    vulnerabilitiesElement.appendChild(vulnElement);
+                }
+            }
+        }
+
+        rootElement.appendChild(vulnerabilitiesElement);
+
+        // now write the XML file
+        // write the content into xml file
+        TransformerFactory transformerFactory = TransformerFactory.newInstance();
+        Transformer transformer = transformerFactory.newTransformer();
+
+        transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+        transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "4");
+
+        DOMSource source = new DOMSource(doc);
+        StreamResult result = new StreamResult(outfile);
+
+        // Output to console for testing
+        //StreamResult result = new StreamResult(System.out);
+        transformer.transform(source, result);
+
+        System.out.println("File saved!");
+
+    }
+}
+src/main/java/com/cornerpirate/reportcompiler/Models/Host.java
+public class Host implements Comparator {
+
+    protected String identifier;
+    protected String hostname;
+    protected String netbios_name;
+    protected String ip_address;
+    protected String operating_system;
+    protected String mac_address;
+    protected Note note = new Note("");
+    // A slight fudge in that a "Host" is really a "Service" that has an issue.
+    protected String portnumber;
+    protected String protocol;
+    protected Vector vulnerabilities;
+
+    
+    public void addVulnerability(Vulnerability vuln) {
+        this.vulnerabilities.add(vuln) ;
+    }
+    public Vector getVulnerabilities() {
+        return vulnerabilities;
+    }
+
+    public void setVulnerabilities(Vector vulnerabilities) {
+        this.vulnerabilities = vulnerabilities;
+    }
+
+    public Note getNotes() {
+        return note;
+    }
+
+    /**
+     * Get a String representing the first three octets with "XXX" as the final.
+     * Not the most advanced subnetting but neat and predictable enough.
+     * @return String - i.e. 192.168.1.XXX
+     */
+    public String getSubnet() {
+        String i = this.getIp_address();
+        i = i.substring(0, i.lastIndexOf(".")+1) + "XXX";
+        return i;
+    }
+
+    public void setNotes(Note notes) {
+        this.note = notes;
+    }
+
+    public String getPortnumber() {
+        return portnumber;
+    }
+
+    public void setPortnumber(String portnumber) {
+        this.portnumber = portnumber;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
+    }
+
+    public Vector getAsVector() {
+        Vector row_data = new Vector();
+        row_data.add(this.clone());
+        row_data.add(this.getHostname());
+        row_data.add(this.getPortnumber());
+        row_data.add(this.getProtocol());
+        return row_data;
+    }
+
+    /**
+     * The identifier is; IP+Hostname+Portnumber+Protocol. Basically the service
+     * endpoint
+     *
+     * @return
+     */
+    public String getIdentifier() {
+        return this.getIp_address() + this.getHostname() + this.getPortnumber() + this.getProtocol();
+    }
+
+    public void setIdentifier(String identifier) {
+        this.identifier = identifier;
+    }
+
+    public String getHostname() {
+        if (this.hostname == null && this.netbios_name == null) {
+            return "Unknown";
+        } else if (this.hostname == null && this.netbios_name != null) {
+            return this.getNetbios_name();
+        }
+        return hostname;
+    }
+
+    public void setHostname(String hostname) {
+        this.hostname = hostname;
+    }
+
+    public String getNetbios_name() {
+        return netbios_name;
+    }
+
+    public void setNetbios_name(String netbios_name) {
+        this.netbios_name = netbios_name;
+    }
+
+    public String getIp_address() {
+        return ip_address;
+    }
+
+    public void setIp_address(String ip_address) {
+        this.ip_address = ip_address;
+    }
+
+    public String getOperating_system() {
+        return operating_system;
+    }
+
+    public void setOperating_system(String operating_system) {
+        this.operating_system = operating_system;
+    }
+
+    public String getMac_address() {
+        return mac_address;
+    }
+
+    public void setMac_address(String mac_address) {
+        this.mac_address = mac_address;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof Host == false) {
+            // Someone called equals on an object of a different type.. Not equal, not equal at all!
+            return false;
+        } else if (obj instanceof Host == true) {
+
+            Host compareTo = (Host) obj;
+            // IP + Hostname + Portnumber + Protocol
+            return this.getIdentifier().equals(compareTo.getIdentifier());
+
+        }
+        // Default to false
+        return false;
+    }
+
+    @Override
+    public String toString() {
+        //return "Host{" + "hostname=" + this.getHostname()+ ", ip_address=" + this.getIp_address() + '}';
+        return this.getIp_address();
+    }
+
+    @Override
+    public Host clone() {
+        Host new_host = new Host();
+        //new_host.setIdentifier(this.getIdentifier()); // Not needed it is derived from other values set below
+        new_host.setHostname(this.getHostname());
+        new_host.setIp_address(this.getIp_address());
+        new_host.setMac_address(this.getMac_address());
+        new_host.setNetbios_name(this.getNetbios_name());
+        new_host.setOperating_system(this.getOperating_system());
+        new_host.setPortnumber(this.getPortnumber());
+        new_host.setProtocol(this.getProtocol());
+        new_host.setNotes(this.getNotes());
+
+        return new_host;
+    }
+
+    private int unsignedByteToInt(byte b) {
+        return (int) b & 0xFF;
+    }
+
+    private int[] getIPAsByteArray(String ip) {
+        int[] ipv4 = new int[4];
+        String[] stringarray = ip.split(".");
+        for (int i = 0; i < stringarray.length; i++) {
+            int b = Integer.parseInt(stringarray[i]);
+        }
+        return ipv4;
+    }
+
+    @Override
+    public int compare(Object o1, Object o2) {
+        System.out.println(o1.getClass() + ":" + o2.getClass());
+        Host h1 = (Host) o1;
+        Host h2 = (Host) o2;
+        String ip1 = h1.getIp_address();
+        String ip2 = h2.getIp_address();
+        int[] ba1 = getIPAsByteArray(ip1);//ip1.getBytes();
+        int[] ba2 = getIPAsByteArray(ip2);//ip2.getBytes();
+
+        // general ordering: ipv4 before ipv6
+        if (ba1.length < ba2.length) {
+            return -1;
+        }
+        if (ba1.length > ba2.length) {
+            return 1;
+        }
+
+        // we have 2 ips of the same type, so we have to compare each byte
+        for (int i = 0; i < ba1.length; i++) {
+            int b1 = ba1[i];
+            int b2 = ba2[i];
+            if (b1 == b2) {
+                continue;
+            }
+            if (b1 < b2) {
+                return -1;
+            } else {
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    public String getHostForExcel() {
+        return this.ip_address + " - " + this.getHostname() + " - " + this.getPortnumber() + "/" + this.getProtocol();
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Utils/AffectedHostsTableModel.java
+public class AffectedHostsTableModel extends DefaultTableModel {
+
+    Class[] types = new Class[]{
+        Host.class, java.lang.String.class, java.lang.Integer.class, java.lang.String.class
+    };
+
+    public AffectedHostsTableModel() {
+        super(new Object[][]{}, new String[]{"IP Address", "Hostname", "Portnumber", "Protocol"});
+    }
+
+    @Override
+    public boolean isCellEditable(int row, int column) {
+        return false;
+    }
+}
+src/main/java/com/cornerpirate/reportcompiler/Exporters/ExportToExcel.java
+public class ExportToExcel {
+
+    public void writeExcel(File outfile, DefaultMutableTreeNode root) {
+
+        //javax.swing.JOptionPane.showMessageDialog(null, "Not implemented, replacing the export dependency library");
+        // open a new workbook
+        XSSFWorkbook workbook = new XSSFWorkbook();
+
+        // create a sheet (a 'tab')
+        XSSFSheet sheet = workbook.createSheet("Vulnerability List");
+
+        // set default widths for the columns
+        sheet.setColumnWidth(0, 10 * 256); // index
+        sheet.setColumnWidth(1, 30 * 256); // title (default value)
+        sheet.setColumnWidth(2, 10 * 256);  // Risk Score
+        sheet.setColumnWidth(3, 35 * 256); // CVSS Vector
+        sheet.setColumnWidth(4, 100 * 256); // description
+        sheet.setColumnWidth(5, 100 * 256); // recommendations
+        sheet.setColumnWidth(6, 40 * 256); // affected hosts
+
+        // Create format data for header row
+        XSSFFont headerFont = workbook.createFont();
+        headerFont.setColor(IndexedColors.WHITE.getIndex());
+        headerFont.setBold(true);
+
+        XSSFCellStyle header_row_style = workbook.createCellStyle();
+        header_row_style.setFont(headerFont);
+        header_row_style.setFillForegroundColor(IndexedColors.BLUE.getIndex());
+        header_row_style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        short rowid = 0;
+
+        // add heading row
+        XSSFRow header_row = sheet.createRow(rowid++);
+        String[] header_strings = {"Index", "Vuln Title", "Risk Score", "CVSS Vector", "Description", "Recommendations", "Affected Hosts"};
+        int columnCount = 0;
+        for (String header : header_strings) {
+            XSSFCell cell = header_row.createCell(columnCount++);
+            cell.setCellValue((String) header);
+            cell.setCellStyle(header_row_style);
+        }
+
+        // Format data for large text cells
+        XSSFCellStyle large_text_style = workbook.createCellStyle();
+        large_text_style.setWrapText(true);
+        large_text_style.setAlignment(HorizontalAlignment.JUSTIFY);
+        large_text_style.setVerticalAlignment(VerticalAlignment.TOP);
+
+        // Format for hyperlinks
+        XSSFFont hyperlink_font = workbook.createFont();
+        hyperlink_font.setColor(IndexedColors.BLUE.getIndex());
+        hyperlink_font.setBold(true);
+        hyperlink_font.setUnderline(FontUnderline.SINGLE);
+
+        XSSFCellStyle hyperlink_style = workbook.createCellStyle();
+        hyperlink_style.setAlignment(HorizontalAlignment.LEFT);
+        hyperlink_style.setVerticalAlignment(VerticalAlignment.TOP);
+        hyperlink_style.setFont(hyperlink_font);
+
+        // Format data for Critical Risk
+        XSSFCellStyle critical_style = workbook.createCellStyle();
+        critical_style.setVerticalAlignment(VerticalAlignment.TOP);
+        critical_style.setAlignment(HorizontalAlignment.CENTER);
+        critical_style.setFillForegroundColor(IndexedColors.INDIGO.getIndex());
+        critical_style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        // Format data for High Risk
+        XSSFCellStyle high_style = workbook.createCellStyle();
+        high_style.setVerticalAlignment(VerticalAlignment.TOP);
+        high_style.setAlignment(HorizontalAlignment.CENTER);
+        high_style.setFillForegroundColor(IndexedColors.RED.getIndex());
+        high_style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        // Format data for Medium Risk
+        XSSFCellStyle medium_style = workbook.createCellStyle();
+        medium_style.setVerticalAlignment(VerticalAlignment.TOP);
+        medium_style.setAlignment(HorizontalAlignment.CENTER);
+        medium_style.setFillForegroundColor(IndexedColors.ORANGE.getIndex());
+        medium_style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        // Format data for Low Risk
+        XSSFCellStyle low_style = workbook.createCellStyle();
+        low_style.setVerticalAlignment(VerticalAlignment.TOP);
+        low_style.setAlignment(HorizontalAlignment.CENTER);
+        low_style.setFillForegroundColor(IndexedColors.YELLOW.getIndex());
+        low_style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        // Format data for Info
+        XSSFCellStyle info_style = workbook.createCellStyle();
+        info_style.setVerticalAlignment(VerticalAlignment.TOP);
+        info_style.setAlignment(HorizontalAlignment.CENTER);
+        info_style.setFillForegroundColor(IndexedColors.AQUA.getIndex());
+        info_style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        // Format data for Good Practices.
+        XSSFCellStyle good_style = workbook.createCellStyle();
+        good_style.setVerticalAlignment(VerticalAlignment.TOP);
+        good_style.setAlignment(HorizontalAlignment.CENTER);
+        good_style.setFillForegroundColor(IndexedColors.GREEN.getIndex());
+        good_style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        // Aligned to top.
+        XSSFCellStyle top_aligned_style = workbook.createCellStyle();
+        top_aligned_style.setVerticalAlignment(VerticalAlignment.TOP);
+
+        // Write vulns
+        Enumeration enums = root.children();
+
+        int index = 1;
+        short row_index = 0;
+        int longest_title = 30;
+
+        while (enums.hasMoreElements()) {
+
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) enums.nextElement();
+            Object obj = node.getUserObject();
+
+            if (obj instanceof Vulnerability) {
+                Vulnerability vuln = (Vulnerability) obj;
+                System.out.println(vuln);
+                System.out.println("rowid(b4):" + rowid);
+
+                XSSFRow row = sheet.createRow(rowid++);
+                System.out.println("rowid(at):" + rowid);
+
+                XSSFCell id_cell = row.createCell(0);
+                id_cell.setCellValue((String) "" + (rowid - 1));
+                id_cell.setCellStyle(top_aligned_style);
+
+                XSSFCell title_cell = row.createCell(1);
+                title_cell.setCellValue((String) vuln.getTitle());
+                title_cell.setCellStyle(top_aligned_style);
+
+                XSSFCell score_cell = row.createCell(2);
+                score_cell.setCellValue((double) vuln.getRiskScore());
+
+                double cvss = (vuln.getRiskScore());
+                if (cvss >= Double.parseDouble("9.0")) {
+                    score_cell.setCellStyle(critical_style);
+                } else if (cvss >= Double.parseDouble("7.0") && cvss <= Double.parseDouble("8.9")) {
+                    score_cell.setCellStyle(high_style);
+                } else if (cvss >= Double.parseDouble("4.0") && cvss <= Double.parseDouble("6.9")) {
+                    score_cell.setCellStyle(medium_style);
+                } else if (cvss >= Double.parseDouble("1.0") && cvss <= Double.parseDouble("3.9")) {
+                    score_cell.setCellStyle(low_style);
+                } else if (cvss >= Double.parseDouble("0") && cvss <= Double.parseDouble("0.9")) {
+                    score_cell.setCellStyle(info_style);
+                }
+
+                XSSFCell vector_cell = row.createCell(3);
+                vector_cell.setCellValue((String) vuln.getCvss_vector_string());
+                vector_cell.setCellStyle(top_aligned_style);
+
+                XSSFCell description_cell = row.createCell(4);
+                description_cell.setCellValue((String) vuln.getDescription());
+                description_cell.setCellStyle(large_text_style);
+
+                XSSFCell recommendations_cell = row.createCell(5);
+                recommendations_cell.setCellValue((String) vuln.getRecommendation());
+                recommendations_cell.setCellStyle(large_text_style);
+
+                // Deal with affected hosts
+                XSSFSheet hosts_sheet = workbook.createSheet(index + "");
+                XSSFRow hosts_header_row = hosts_sheet.createRow(0);
+                XSSFCell hosts_title_cell = hosts_header_row.createCell(0);
+                hosts_title_cell.setCellStyle(header_row_style);
+                hosts_title_cell.setCellValue((String) vuln.getTitle());
+                hosts_sheet.setColumnWidth(0, 120 * 256);
+
+                // Write each affected host one per cell
+                int host_row_index = 1;
+                Enumeration hosts = vuln.getAffectedHosts().elements();
+                while (hosts.hasMoreElements()) {
+                    Host h = (Host) hosts.nextElement();
+                    XSSFRow host_row = hosts_sheet.createRow(host_row_index++);
+                    XSSFCell host_cell = host_row.createCell(0);
+                    host_cell.setCellValue((String) h.getHostForExcel());
+                }
+
+                // now cross link from sheet 1 to the sheet we just made
+                XSSFCell affected_hosts_cell = row.createCell(6);
+                XSSFCreationHelper helper = (XSSFCreationHelper) workbook.getCreationHelper();
+
+                XSSFHyperlink link2 = helper.createHyperlink(HyperlinkType.DOCUMENT);
+                link2.setAddress("'" + index++ + "'!A1");
+                affected_hosts_cell.setCellValue((String) "Link to Affected Hosts");
+                affected_hosts_cell.setHyperlink(link2);
+                affected_hosts_cell.setCellStyle(hyperlink_style);
+
+                // dynamically fix the width of the title column
+                if (longest_title <= vuln.getTitle().length()) {
+                    longest_title = vuln.getTitle().length() + 2;
+                }
+            }
+        }
+
+        // if longest_title has changed update the column width
+        if (longest_title > 30) {
+            sheet.setColumnWidth(1, longest_title * 256); // title (default value)
+        }
+
+        // write the file
+        try (FileOutputStream outputStream = new FileOutputStream(outfile)) {
+            workbook.write(outputStream);
+        } catch (FileNotFoundException ex) {
+            Logger.getLogger(ExportToExcel.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (IOException ex) {
+            Logger.getLogger(ExportToExcel.class.getName()).log(Level.SEVERE, null, ex);
+        }
+
+        // Give feedback that the file was created.
+        JOptionPane.showMessageDialog(null, "Export to XLS successful", "Saved your file ok.", JOptionPane.INFORMATION_MESSAGE);
+
+        try {
+            // try to open the file if we can.
+            Desktop.getDesktop().open(outfile);
+        } catch (Exception ex) {
+            System.err.println("Some problem opening the XLS file.");
+            ex.printStackTrace();
+            // if we get here it is likely that the user is not on Windows or doesn't have a default XLS viewer
+        }
+
+    }
+}
+src/main/java/com/cornerpirate/reportcompiler/WorkerThreads/ImportScanTask.java
+public class ImportScanTask extends SwingWorker<DefaultMutableTreeNode, String> {
+
+    private final JProgressBar ProgressBar;
+    private final ImportFile imFile;
+    private final JDialog window;
+    private final UniversalFileImporter universal_file_importer = new UniversalFileImporter();
+
+    public ImportScanTask(JProgressBar pb, ImportFile im, JDialog w) {
+        this.ProgressBar = pb;
+        this.imFile = im;
+        this.window = w;
+    }
+
+    @Override
+    protected DefaultMutableTreeNode doInBackground() throws Exception {
+        setProgress(1);
+        return universal_file_importer.readFile(imFile);
+    }
+
+    @Override
+    protected void done() {
+        window.dispose();
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Views/VulnerabilityViewTreeCellRenderer.java
+public class VulnerabilityViewTreeCellRenderer extends DefaultTreeCellRenderer {
+
+    protected Icon no_risk_icon;
+    protected Icon info_risk_icon;
+    protected Icon low_risk_icon;
+    protected Icon medium_risk_icon;
+    protected Icon high_risk_icon;
+    protected Icon critical_risk_icon;
+    protected Icon computer_icon;
+
+    protected boolean show_highlights;
+
+    public VulnerabilityViewTreeCellRenderer(boolean showHighlights) {
+        super();
+
+        try {
+            this.critical_risk_icon = new ImageIcon(getClass().getResource("/critical-icon.png"));
+            this.high_risk_icon = new ImageIcon(getClass().getResource("/high-icon.png"));
+            this.medium_risk_icon = new ImageIcon(getClass().getResource("/medium-icon.png"));
+            this.low_risk_icon = new ImageIcon(getClass().getResource("/low-icon.png"));
+            this.info_risk_icon = new ImageIcon(getClass().getResource("/info-icon.png"));
+            this.no_risk_icon = new ImageIcon(getClass().getResource("/none-icon.png"));
+            this.computer_icon = new ImageIcon(getClass().getResource("/computer-icon.png"));
+            this.show_highlights = showHighlights;
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    @Override
+    public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected, boolean expanded, boolean leaf, int row, boolean hasFocus) {
+
+        Component c = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
+
+        //if (leaf) {
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
+        Object obj = node.getUserObject();
+        if (obj instanceof Vulnerability) {
+
+            Vulnerability vuln = (Vulnerability) obj;
+            setToolTipText("<html>" + vuln.getIDsAsString().replaceAll("\n", "<br>") + "</html>");
+            //System.out.println(vuln.getIDsAsString()) ;
+            String category = vuln.getRisk_category();
+
+            if (category.equalsIgnoreCase("critical")) {
+                setIcon(this.critical_risk_icon);
+            } else if (category.equalsIgnoreCase("high")) {
+                setIcon(this.high_risk_icon);
+            } else if (category.equalsIgnoreCase("medium")) {
+                setIcon(this.medium_risk_icon);
+            } else if (category.equalsIgnoreCase("low")) {
+                setIcon(this.low_risk_icon);
+            } else if (category.equalsIgnoreCase("info")) {
+                setIcon(this.info_risk_icon);
+            } else if (category.equalsIgnoreCase("none")) {
+                setIcon(this.no_risk_icon);
+            }
+
+            if (vuln.isHighlighted() && this.show_highlights == true) {
+                this.setBorder(BorderFactory.createMatteBorder(-1, 12, -1, -1, Color.RED));
+            } else {
+                this.setBorder(null);
+            }
+
+        } else if (obj instanceof Host) {
+            Host host = (Host) obj;
+            this.setText(host.getIp_address() + " - " + host.getHostname() + " - " + host.getPortnumber() + "/" + host.getProtocol());
+            setIcon(this.computer_icon);
+        }
+
+        //}
+        return c;
+    }
+
+}
+src/main/java/com/cornerpirate/reportcompiler/Models/Vulnerability.java
+public class Vulnerability implements Comparable {
+
+    protected String identifier;
+    protected String import_tool;
+    protected String import_tool_id; // where it has such a convenience
+    protected String title;
+    protected String description;
+    protected String recommendation;
+    protected String notes;
+    protected String portnumber;
+    protected String protocol;
+    protected String risk_category; // "high", "medium", "low" style
+    protected CVSSVector cvss_vector; // object encapsulating CVSSv2 string
+    protected String cvss_vector_string; // full cvss v2 vector string
+    protected Vector references = new Vector();
+    protected Vector affected_hosts = new Vector();
+    protected HashMap vulnIdentifiers = new HashMap(); // key=md5(vuln_title),value=import_tool_name
+    protected boolean is_custom_risk;
+    protected boolean highlighted = false;
+    protected boolean is_nessus_compliance_finding = false;
+    protected String nessus_compliance_result;
+    protected String notes_collection_script;
+
+    public String getNotes_collection_script() {
+        return notes_collection_script;
+    }
+
+    public void setNotes_collection_script(String notes_collection_script) {
+        this.notes_collection_script = notes_collection_script;
+    }
+
+    public String getNessus_compliance_result() {
+        return nessus_compliance_result;
+    }
+
+    public void setNessus_compliance_result(String nessus_compliance_result) {
+        this.nessus_compliance_result = nessus_compliance_result;
+    }
+
+    public boolean isIs_nessus_compliance_finding() {
+        return is_nessus_compliance_finding;
+    }
+
+    public void setIs_nessus_compliance_finding(boolean is_nessus_compliance_finding) {
+        this.is_nessus_compliance_finding = is_nessus_compliance_finding;
+    }
+
+    public boolean containsText(String search_term) {
+        String all_text = this.getTitle() + this.getDescription() + this.getRecommendation();
+        Pattern r = Pattern.compile(search_term, Pattern.CASE_INSENSITIVE);
+        Matcher m = r.matcher(all_text);
+        return m.find();
+    }
+
+    public boolean isHighlighted() {
+        return highlighted;
+    }
+
+    public void setHighlighted(boolean highlighted) {
+        this.highlighted = highlighted;
+    }
+
+    public boolean isIs_custom_risk() {
+        return is_custom_risk;
+    }
+
+    public void setIs_custom_risk(boolean is_custom_risk) {
+        this.is_custom_risk = is_custom_risk;
+    }
+
+    public void addAffectedHost(Host host) {
+        if (affected_hosts.contains(host) == false) {
+            affected_hosts.add(host);
+        } else {
+            // Host already existed so we should mege the notes
+            Host existing = (Host) affected_hosts.get(affected_hosts.indexOf(host));
+            Note combined = existing.getNotes();
+            combined.setNote_text(combined.getNote_text() + "\n====================\n" + host.getNotes().getNote_text());
+            existing.setNotes(combined);
+        }
+    }
+
+    public void addAffectedHosts(Vector hosts) {
+        Enumeration enums = hosts.elements();
+        while (enums.hasMoreElements()) {
+            Host host = (Host) enums.nextElement();
+            this.addAffectedHost(host);
+        }
+    }
+
+    public Vector getAffectedHosts() {
+        return this.affected_hosts;
+    }
+
+    public String getImport_tool_id() {
+        if (this.import_tool_id == null) {
+            return "NULL";
+        }
+        return import_tool_id;
+    }
+
+    public void setImport_tool_id(String import_tool_id) {
+        this.import_tool_id = import_tool_id;
+    }
+
+    /**
+     * We use this to get a number for the risk which is either a fixed score
+     * for High, Medium etc or CVSSv2
+     *
+     * The following shows the score categories. When a category is used then we
+     * assign a risk from the middle of the ranges.
+     *
+     * Critical - 9.0 - 10 - 9.5 High - 7.0 – 8.9 - 8.0 Medium - 4.0 – 6.9 - 6.0
+     * Low - 1.0 – 3.9 - 2.0 Info - 0.1 – 0.9 - 0.5 got category Good Practice -
+     * 0.0 or N/A
+     *
+     * @return
+     */
+    public double getRiskScore() {
+
+        if (this.is_custom_risk) {
+            // In this case this vuln should be a custom risk and so return a number
+            if (this.getRisk_category().equalsIgnoreCase("critical")) {
+                return 9.5;
+            } else if (this.getRisk_category().equalsIgnoreCase("high")) {
+                return 8.0;
+            } else if (this.getRisk_category().equalsIgnoreCase("medium")) {
+                return 6.0;
+            } else if (this.getRisk_category().equalsIgnoreCase("low")) {
+                return 2.0;
+            } else if (this.getRisk_category().equalsIgnoreCase("info")) {
+                return 0.5;
+            } else if (this.getRisk_category().equalsIgnoreCase("none")) {
+                return 0.0;
+            }
+
+        } else {
+            // This is a CVSS risk so do magic to get that risk
+            return new CVSSVector(this.getCvss_vector_string()).getRiskScore();
+        }
+
+        System.out.println("[CRITICAL PROBLEM]; That Vulnerability had neither a risk category set or a CVSS vector set");
+        System.out.println(this.toString());
+        return -1;
+    }
+
+    /**
+     * We use this to get a number for the risk which is either a fixed score
+     * for High, Medium etc or CVSSv2
+     *
+     * The following shows the score categories. When a category is used then we
+     * assign a risk from the middle of the ranges. Critical - 9.0 - 10 - 9.5
+     * High - 7.0 – 8.9 - 8.0 Medium - 4.0 – 6.9 - 6.0 Low - 1.0 – 3.9 - 2.0
+     * Info - 0.1 – 0.9 - 0.5 Good Practice - 0.0 or N/A
+     *
+     * @return
+     */
+    public String getRisk_category() {
+
+        if (this.isIs_custom_risk() == false) {
+            if (this.getRiskScore() == 0.0) {
+                return "None";
+            } else if (this.getRiskScore() >= 0.1 && this.getRiskScore() <= 0.9) {
+                return "Info";
+            } else if (this.getRiskScore() >= 1.0 && this.getRiskScore() <= 3.9) {
+                return "Low";
+            } else if (this.getRiskScore() >= 4.0 && this.getRiskScore() <= 6.9) {
+                return "Medium";
+            } else if (this.getRiskScore() >= 7.0 && this.getRiskScore() <= 8.9) {
+                return "High";
+            } else if (this.getRiskScore() >= 9.0 && this.getRiskScore() <= 10.0) {
+                return "Critical";
+            }
+        }
+        // else it has a defined category already
+        return this.risk_category;
+    }
+
+    public void setRisk_category(String risk_category) {
+        this.risk_category = risk_category;
+    }
+
+    public CVSSVector getCvss_vector() {
+        return this.cvss_vector;
+    }
+
+    public String getCvss_vector_string() {
+        if (this.is_custom_risk == false) {
+            return this.cvss_vector.getCVSSVector();
+        } else {
+            return "No CVSS Vector";
+        }
+    }
+
+    public void setCvss_vector_string(String cvss_vector_string) {
+        this.cvss_vector = new CVSSVector(cvss_vector_string);
+        if (this.cvss_vector == null) {
+            this.cvss_vector = new CVSSVector();
+        }
+    }
+
+    public String getIDsAsString() {
+        StringBuilder sb = new StringBuilder();
+        HashMap idsMap = this.getIdentifiers();
+        Iterator it = idsMap.keySet().iterator();
+        while (it.hasNext()) {
+            String hash = (String) it.next();
+            String tool = (String) idsMap.get(hash);
+            sb.append(hash + ":" + tool + "\n");
+        }
+        //System.out.println(sb.toString());
+        return sb.toString();
+    }
+
+    public boolean containsIdentifier(HashMap foreign_ids) {
+
+        Iterator it = foreign_ids.keySet().iterator();
+        while (it.hasNext()) {
+            String this_hash = (String) it.next();
+            String this_toolname = (String) foreign_ids.get(this_hash);
+            if (containsIdentifier(this_hash, this_toolname)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean containsIdentifier(String hash, String toolname) {
+        //System.out.println("checking hash: " + hash+toolname) ;
+        Iterator it = this.vulnIdentifiers.keySet().iterator();
+        while (it.hasNext()) {
+            String this_hash = (String) it.next();
+            String this_toolname = (String) this.vulnIdentifiers.get(this_hash);
+            //System.out.println("candidate: " + this_hash + this_toolname) ;
+
+            if ((hash + toolname).equals(this_hash + this_toolname)) {
+                //System.out.println("Hash match found");
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public String getAnIdentifier() {
+        // this was not from a tool at any point in its history. It should not have a hash
+        if (this.getImport_tool() == null) {
+            return this.getTitle(); // this was not from a tool at any point in its history. 
+        }
+        return identifier;
+    }
+
+    /**
+     * The identifier should be; <importtool>:<vulnname>
+     * It will b MD5 hashed and permanent from the point of importing. This way
+     * we can merge multiple scans after modifying the first instance and then
+     * marry them up.
+     *
+     * @param identifier
+     *
+     * public void setIdentifier(String identifier) { this.identifier = new
+     * Helper().MD5(identifier); }
+     *
+     */
+    /**
+     * Add an identifier to the hashmap. Most likely done when you are merging a
+     * vulnerability.
+     *
+     * @param tool_name - Nessus, ReportCompiler, that sort of thing
+     * @param vuln_title - will be MD5ed and stored in the HashMap
+     */
+    public void addIdentifier(String tool_name, String vuln_title) {
+        if (this.vulnIdentifiers.containsKey(new Helper().MD5(vuln_title)) == false) {
+            this.vulnIdentifiers.put(new Helper().MD5(vuln_title), tool_name);
+        }
+    }
+
+    public void changeReportCompilerID() {
+        //System.out.println("==changeReportCompilerID") ;
+        if (this.vulnIdentifiers.containsValue("ReportCompiler")) {
+            // find the key for the one ReportCompiler issue
+            String key = getHashKey("ReportCompiler");
+
+            if (key == null) {
+                System.out.println("Somehow this vuln is marked as being a reportcompiler one without the ID map having an entry? Brokened. Should not be possible");
+            } else {
+                // We have the key. So replace it.
+                this.vulnIdentifiers.remove(key);
+                this.vulnIdentifiers.put(new Helper().MD5(this.getTitle()), "ReportCompiler");
+            }
+        }
+    }
+
+    public String getHashKey(String it) {
+
+        Iterator itty_bitty_thingy = this.vulnIdentifiers.keySet().iterator();
+        while (itty_bitty_thingy.hasNext()) {
+            String key = (String) itty_bitty_thingy.next();
+            String value = (String) this.vulnIdentifiers.get(key);
+            if (value.equals(it)) {
+                return key;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Add an identifier to the hashmap. Most likely done when you are merging a
+     * vulnerability.
+     *
+     * @param hash - Nessus, ReportCompiler, that sort of thing
+     * @param import_tool - will be MD5ed and stored in the HashMap
+     */
+    public void addIdentifierHash(String hash, String import_tool) {
+        if (this.vulnIdentifiers.containsKey(hash) == false) {
+            this.vulnIdentifiers.put(hash, import_tool);
+        }
+    }
+
+    public HashMap getIdentifiers() {
+        return this.vulnIdentifiers;
+    }
+
+    /**
+     * Setup the vuln with its default value.
+     */
+    public void setIdentifier() {
+        this.vulnIdentifiers.put(new Helper().MD5(this.getTitle()), this.getImport_tool());
+    }
+
+    public void setIdentifierFromSaveFile(String hash, String import_tool) {
+        this.vulnIdentifiers.put(hash, import_tool);
+    }
+
+    public String getPortnumber() {
+        if (this.portnumber == null) {
+            return "NULL";
+        }
+        return portnumber;
+    }
+
+    public void setPortnumber(String portnumber) {
+        this.portnumber = portnumber;
+    }
+
+    public String getProtocol() {
+        if (this.protocol == null) {
+            return "NULL";
+        }
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
+    }
+
+    public String getImport_tool() {
+        if (this.import_tool == null) {
+            return "NULL";
+        }
+        return import_tool;
+    }
+
+    public void setImport_tool(String import_tool) {
+        this.import_tool = import_tool;
+    }
+
+    public String getTitle() {
+        if (this.title == null) {
+            return "NULL";
+        }
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getDescription() {
+        if (this.description == null) {
+            return "NULL";
+        }
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getRecommendation() {
+        if (this.recommendation == null) {
+            return "NULL";
+        }
+        return recommendation;
+    }
+
+    public void setRecommendation(String recommendation) {
+        this.recommendation = recommendation;
+    }
+
+    public String getNotes() {
+        if (this.notes == null) {
+            return "NULL";
+        }
+        return notes;
+    }
+
+    public void setNotes(String notes) {
+        this.notes = notes;
+    }
+
+    /**
+     * Add reference to vulnerability if it doesn't already exist
+     *
+     * @param ref - A Reference Object
+     */
+    public void addReference(Reference ref) {
+        if (this.references.contains(ref) == false) {
+            this.references.add(ref);
+        }
+    }
+
+    public void modifyReference(Reference oldref, Reference newref) {
+        if (this.references.contains(oldref) == true) {
+            this.references.remove(oldref);
+            this.references.add(newref);
+        }
+    }
+
+    public Vector getReferences() {
+        if (this.references == null) {
+            return new Vector();
+        } else {
+            return this.references;
+        }
+    }
+
+    /**
+     * Delete provided reference from list if it exists
+     *
+     * @param ref - A Reference Object
+     */
+    public void deleteReference(Reference ref) {
+        if (this.references.contains(ref) == true) {
+            this.references.remove(ref);
+        }
+    }
+
+    public Vulnerability mergeVulnerabilities(Vector vulns) {
+        Vulnerability merged_vuln = new Vulnerability();
+        merged_vuln.setImport_tool("None");
+        merged_vuln.setIs_custom_risk(true);
+        merged_vuln.setTitle("Merged Vuln");
+        merged_vuln.setDescription("This vulnerability was produced by merging the following issues:\n\n");
+
+        double highest_risk = -1;
+        String highest_cvss = "";
+
+        Enumeration enums = vulns.elements();
+        while (enums.hasMoreElements()) {
+            Vulnerability vuln = (Vulnerability) enums.nextElement();
+            merged_vuln.setDescription(merged_vuln.getDescription() + vuln.getTitle() + " - " + vuln.getRiskScore() + "\n");
+            merged_vuln.addAffectedHosts(vuln.getAffectedHosts());
+            // Merge the references
+            Enumeration refs = vuln.getReferences().elements();
+            while (refs.hasMoreElements()) {
+                Reference ref = (Reference) refs.nextElement();
+                merged_vuln.addReference(ref);
+            }
+
+            // TODO merge identifiers here
+            HashMap idsMap = vuln.getIdentifiers();
+            Iterator it = idsMap.keySet().iterator();
+            while (it.hasNext()) {
+                String hash = (String) it.next();
+                String tool = (String) idsMap.get(hash);
+                merged_vuln.addIdentifierHash(hash, tool);
+            }
+
+            if (vuln.getRiskScore() > highest_risk) {
+                highest_risk = vuln.getRiskScore();
+                highest_cvss = vuln.getCvss_vector_string();
+                merged_vuln.setIs_custom_risk(vuln.isIs_custom_risk());
+                merged_vuln.setRisk_category(vuln.getRisk_category());
+                if (merged_vuln.is_custom_risk == false) {
+                    merged_vuln.setCvss_vector_string(highest_cvss);
+                }
+            }
+        }
+
+        return merged_vuln;
+    }
+
+    @Override
+    public String toString() {
+        //return "Vulnerability{" + "title=" + this.getTitle() + ", portnumber=" + this.getPortnumber() + ", protocol=" + this.getProtocol() + ", risk_category=" + this.risk_category + '}';
+        String ending = ((this.is_custom_risk == true) ? "CATEGORY" : "CVSS");
+        return this.getTitle() + " - " + this.risk_category + " - " + this.getRiskScore() + " - " + ((this.is_custom_risk == true) ? "CATEGORY" : "CVSS");
+    }
+
+    @Override
+    public int compareTo(Object obj) {
+        Vulnerability other = (Vulnerability) obj;
+        return Double.compare(this.getRiskScore(), other.getRiskScore());
+    }
+
+    public String getAffectedHostsForExcel() {
+        String answer = "\"";
+        Enumeration enums = this.getAffectedHosts().elements();
+        while (enums.hasMoreElements()) {
+            Host host = (Host) enums.nextElement();
+            answer = answer + host.getHostForExcel() + "\n";
+        }
+        answer = answer + "\"";
+        if (answer.length() >= 32767) {
+            System.out.println("== getAffectedHostsForExcel: " + answer.length());
+        }
+        return answer;
+    }
+
+    public void deleteAffectedHost(Host host) {
+        this.affected_hosts.remove(host);
+    }
+
+    public void modifyAffectedHost(Host previous, Host modified) {
+        for (int i = 0; i < this.affected_hosts.size(); i++) {
+            Host h = (Host) this.affected_hosts.get(i);
+            if (h.getIp_address().equalsIgnoreCase(previous.getIp_address())) {
+                h.setHostname(modified.getHostname());
+            }
+        }
+    }
+
+    /**
+     * Clone the input vulns risk to the current one. Used by CVSS calculator
+     *
+     * @param in
+     */
+    public void cloneRisk(Vulnerability in) {
+        if (in.isIs_custom_risk() == true) {
+            // Custom Risk
+            this.setIs_custom_risk(true);
+            this.setRisk_category(in.getRisk_category());
+        } else {
+            // CVSS Risk
+            this.setIs_custom_risk(false);
+            this.setCvss_vector_string(in.getCvss_vector_string());
+            this.setRisk_category(in.getRisk_category());
+        }
+
+    }
+
+    /**
+     * Clone the input vulns references to the current one.
+     *
+     * @param in
+     */
+    public void cloneReferences(Vulnerability in) {
+        this.references = in.getReferences();
+    }
+
+    /**
+     * Clone the input vulns identifiers to the current one.
+     *
+     * @param in
+     */
+    public void cloneIdentifiers(Vulnerability in) {
+        this.vulnIdentifiers = in.vulnIdentifiers;
+        this.import_tool = in.import_tool;
+        this.import_tool_id = in.import_tool_id;
+    }
+
+    public void replaceNotes(Host thishost) {
+        String this_id = thishost.getIp_address() + thishost.getPortnumber() + thishost.getProtocol();
+        Enumeration enums = this.affected_hosts.elements();
+        while (enums.hasMoreElements()) {
+            Host hst = (Host) enums.nextElement();
+            String hst_id = hst.getIp_address() + hst.getPortnumber() + hst.getProtocol();
+            if (hst_id.equalsIgnoreCase(this_id)) {
+                System.out.println("Replacing notes");
+                hst.note = thishost.getNotes();
+            }
+        }
+
+    }
+
+    ;
+
+    public void deleteAllIds() {
+        this.vulnIdentifiers = new HashMap();
+    }
+
+    /**
+     * This looks for any CVE IDs that exist in the following locations 1) Any
+     * reference URLs 2) The title 3) The description. It makes a unique list of
+     * them and then returns that as a HashSet
+     *
+     * @return HashSet - Containing all CVEs within current vulnerability text
+     */
+    public HashSet getCVEReferences() {
+        HashSet cves = new HashSet();
+
+        // Loop through the references looking for CVE's in there
+        Enumeration enums = this.getReferences().elements();
+        while (enums.hasMoreElements()) {
+            Reference ref = (Reference) enums.nextElement();
+            if (ref.isCVE()) {
+                // This is a cve reference
+                String pattern = "CVE-\\d{4}-\\d+";
+                // Create a Pattern object
+                Pattern r = Pattern.compile(pattern);
+                Matcher m = r.matcher(ref.getUrl());
+                m.find();
+                String cve = m.group();
+                cves.add(cve);
+            }
+        }
+
+        // Look through a text combination of title, and description looking for others
+        String grepme = this.getTitle() + "\n" + this.getDescription();
+        String pattern = "CVE-\\d{4}-\\d+";
+        // Create a Pattern object
+        Pattern r = Pattern.compile(pattern);
+        Matcher m = r.matcher(grepme);
+        while (m.find()) {
+            String cve = m.group();
+            cves.add(cve);
+        }
+
+        return cves;
+    }
+
+}

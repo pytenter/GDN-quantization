@@ -1,0 +1,47 @@
+{
+  "status": "PASS_LOCAL_INTEGRATION_REVIEW_NO_GPU_CREDIT",
+  "utc": "2026-10-25T05:35:10.843494+00:00",
+  "scope": "Independent buffer/runtime native-helper interface and protocol review; no remote/model/GPU/compiler action",
+  "findings": [
+    {
+      "issue": "Mathgate callback expected source_sha256 attribute but runtime initially exposed source_identity only",
+      "resolution": "Added source_sha256 alias before qualification; nativehelper SHA90d929... unchanged",
+      "status": "FIXED"
+    },
+    {
+      "issue": "Need integration proof for prompttail257 then dP8/1 writeback/tail",
+      "resolution": "Added CPU32head nativecache binding test for257prompt+9decode; sameprefill andfirstdecodecurrent output, writebacks2+floor(9/dP), tail9%dP",
+      "status": "TESTED"
+    }
+  ],
+  "interfaces": {
+    "buffer": "set_prompt_length, step(rawBF16q/k/v/beta,FP32g), finalize(preserve), resident_tensors, storage_report",
+    "runtime": "run_math_device_gates, run_calibration, run_gate(gate_d), run_formal",
+    "controller_progress": [
+      "NATIVE_REFERENCE_READY",
+      "LOAD_MODEL",
+      "MODEL_LOADED"
+    ]
+  },
+  "reviewed_semantics": [
+    "Native32head qnormonce inBF16 thenFP32scale",
+    "Unique16keys retained rawBF16 duringprefill; decodeAsym4G32 stored then recoveredBF16/repeated32/normonce",
+    "Packedbaseonly+denseFP32scratchpercall; tiny2elementnativecache marker; conv/KV native",
+    "Prefill256+lastpartial once; decodereset; currentoutputbeforeQ; terminalpreservetail; p+n-1 forwards",
+    "Calibration64nativeFPstate samples/head and16384native exp(g) decay observations/head, aggregate beforee/(1-a^16), stabletop8once",
+    "Frozen sampler/constants/chat/thinking/EOS/cap/hash reused; generated-output-onlypresence mask"
+  ],
+  "dependency_recommendation": {
+    "interpreter": "/data/ydai/miniconda3/envs/bitdecode/bin/python",
+    "python_resolution": "Use root actual default import evidence: ~/.local + /data/zypan/transformers-qwen35/src; do not inherit GROUP64 PYTHONPATH/privateuser_site",
+    "required": "Pinned Torch2.5.1+cu121, nativeTransformers Qwenmodel/cache/generation/loader and transitive Pythonmodules, accelerate, tokenizers, safetensors, huggingface_hub, model17assets, nativeTorch/CUDA/CUBLAS/CUDNN/NVRTC/driverclosure",
+    "new_native_builds": "None; newPACEcodec/buffer ordinaryTorch only; no newTriton/compiler dependency",
+    "model_copy": "None; existing local modelpath only"
+  },
+  "CPU_math_gate_reports": "operations/INDEPENDENT_CPU_INTEGRATION_GATES",
+  "limitations": [
+    "LocalCPU nativefunctions AST-extracted fromverifiedsource, not actualtargetCUDAqualification",
+    "Targetnativehelper imports andmappedlibraries mustfreshverifybeforetinyGPU/realmodelforward",
+    "No actualcalibration/headmask/formal trajectories produced bythisaudit"
+  ]
+}

@@ -1,0 +1,5 @@
+# Static output/view/in-place audit
+
+The real Qwen GDN path uses a `conv1d.weight.squeeze(1)` view and the causal convolution helper unsqueezes that weight again. The fallback single-token convolution mutates its **conv cache** with `copy_`, and internal attention routines contain indexed assignments. The GDN's ordinary output is produced by `out_proj`; the decoder block returns a residual/MLP `hidden_states` tensor built with out-of-place `+` expressions. This static inspection found no demonstrated in-place mutation of a *wrapped decoder returned output view*.
+
+The [PyTorch FSDP2 output-view issue](https://github.com/pytorch/pytorch/issues/181832) documents a related mechanism in which an in-place mutation can drop a pre-backward hook. Its reproducer is not this Qwen/GDN graph, and its existence does **not** identify the parent `[8192,1,1,4]` failed tensor. `OUTPUT_VIEW_INPLACE_SIGNAL=NOT_ESTABLISHED`; `FAILED_STORAGE_OWNER=UNKNOWN`. No production operator, cache, QDQ, or rotation path was changed.

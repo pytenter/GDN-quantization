@@ -1,0 +1,1 @@
+lambda _cls, node, output_nr: _tuple_new(_cls, (node, output_nr))

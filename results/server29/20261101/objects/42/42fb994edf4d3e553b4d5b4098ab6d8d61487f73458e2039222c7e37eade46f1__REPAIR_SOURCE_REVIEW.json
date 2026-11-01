@@ -1,0 +1,65 @@
+{
+  "status": "PASS",
+  "scope": "INDEPENDENT_STATIC_SOURCE_REPAIR_REVIEW_ONLY",
+  "TASK_ID": "QWEN_GDN_AIME26_STEPQUANT6_VS_H_DUALM_2SEED_V1",
+  "timestamp_unix": 1792228880.249263,
+  "old_adapter": {
+    "path": "/Users/pytenter/Documents/临时项目1/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/source/stepquant_calibration_adapter.py",
+    "sha256": "09175da5111f7e9527987209ee9171804e4c77fcf050dc52ec41489f93b304c2"
+  },
+  "repair_adapter": {
+    "path": "/Users/pytenter/Documents/临时项目1/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/repair_20261017_v1/source/stepquant_calibration_adapter.py",
+    "sha256": "9c2e24f76621cc00849c32d4010c89f41cccdc146dca446db0b9c0d02a3177aa"
+  },
+  "exact_reversion_to_old_bytes": "PASS: reverting only one control-kwargs block gives full original file bytes",
+  "source_changes": [
+    "Whitelist use_cache alongside cu_seqlens",
+    "If present use_cache must be the boolean True",
+    "Reject non-None packed cu_seqlens explicitly"
+  ],
+  "unchanged": [
+    "Native kernel call positional/keyword arguments",
+    "Native return tuple/object",
+    "Native l2norm input-dtype semantics",
+    "Shadow RecurrentKernel normalization=False and original single key-dimension scale",
+    "Initial state clone and read-only observer",
+    "LayerStatistics sampling/reservoir/math",
+    "Model cache writes remain native only"
+  ],
+  "native_call_AST_sha256": "cd4cb60a1ae70590a045101c7c38e6ffa2565850f4b53c401321b6960099c924",
+  "actual_90d_call_chain": {
+    "source_sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a",
+    "TextModel_lines": "1209-1211: forwards use_cache explicitly",
+    "Decoder_lines": "771-773: kwargs forwarded to GDN",
+    "GDN_lines": "527-530: kwargs forwarded to native chunk; cu_seq_lens_q popped into cu_seqlens"
+  },
+  "next_concrete_interfaces": [
+    {
+      "name": "Native cache/recurrent state",
+      "review": "SOURCE_COMPATIBLE",
+      "evidence": "90d line505 reads cache.layers[layer_idx].recurrent_states[0],535 calls update_recurrent_state. Existing calibration getter selects [0] for dict/list/tuple and asserts [1,32,128,128],FP32,finite. Actual cache_utils1072-1086 initializes then copies into recurrent_states[state_idx];Cache1405-1425 dispatches by layer_idx.",
+      "cache_utils_path": "/data/zypan/transformers-qwen35/src/transformers/cache_utils.py",
+      "cache_utils_sha256": "b63732985b520a62aa4b06fc2af8ca6e506912679e0f0479b706534d041fb1bd",
+      "remaining": "control agent actual model-chain CPU test should exercise cache container; this static review does not claim9B forward PASS"
+    },
+    {
+      "name": "logits_to_keep",
+      "review": "SOURCE_COMPATIBLE",
+      "evidence": "90d actual CausalLM.forward has explicit logits_to_keep parameter (1604) before forwarding kwargs; calibration uses logits_to_keep=1, preventing full-prefill vocab retention."
+    },
+    {
+      "name": "Official CPU fit/codec dependencies",
+      "review": "SOURCE_COMPATIBLE",
+      "evidence": "calibrate requires actual exported tokens65536/snapshots[64,32,128,128]; applies original official CPU fit. Actual format_version2/plans/settings keys align with worker. Module-name mapping comes from named_modules. Whole-head bits and32 global FP16 pivot heads/4352 integer budget are asserted; Plan/Fit codec tolerances1e-6 fixed from official tests. No SGLang runtime or greedy invocation in fit."
+    }
+  ],
+  "unresolved_static_blockers": [],
+  "old_STOP_history": "NOT_MODIFIED",
+  "files_modified_by_this_review": [
+    "/Users/pytenter/Documents/临时项目1/qwen_gdn_aime26_stepquant6_vs_h_dualm_2seed_v1/repair_20261017_v1/repair_review/REPAIR_SOURCE_REVIEW.json"
+  ],
+  "GPU_execution": "NOT_RUN",
+  "forward_execution": "NOT_RUN",
+  "full_9B_numeric_or_Plan_qualification": "NOT_CLAIMED",
+  "required_followup": "Root-owned real model-chain CPU qualification, freeze repair source manifest, then only authorized bounded GPU dispatch; no automatic retry"
+}

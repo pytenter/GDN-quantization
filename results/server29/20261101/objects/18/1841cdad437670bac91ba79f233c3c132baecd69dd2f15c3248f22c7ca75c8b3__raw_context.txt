@@ -1,0 +1,3311 @@
+src/com/wanikani/wklib/Connection.java
+public interface Meter {
+		
+	public void count (int data);
+		
+	public void sync ();
+		
+}
+src/com/wanikani/androidnotifier/MainActivity.java
+public class MainActivity extends FragmentActivity implements Runnable {
+	
+	/**
+	 * The pager model. It also broadcasts requests to all the
+	 * tabs throught the @link Tab interface.
+	 */
+	public class PagerAdapter extends FragmentPagerAdapter {
+        
+		/// The tabs
+		List<Tab> tabs;
+		
+		/**
+		 * Constructor.
+		 * @param fm the fragment manager
+		 * @param tabs the list of tabs
+		 */
+		public PagerAdapter (FragmentManager fm, List<Tab> tabs) 
+		{
+			super (fm);
+			
+			this.tabs = tabs;
+	    }
+
+		 @Override
+	     public int getCount () 
+		 {
+			 return tabs.size ();
+	     }
+
+		 @Override
+	     public Fragment getItem (int position) 
+		 {
+	         return (Fragment) tabs.get (position);
+	     }
+		 
+		 @Override
+		 public CharSequence getPageTitle (int position) 
+		 {
+			Resources res;
+				
+			res = getResources ();
+				
+			return res.getString (tabs.get (position).getName ());
+		 }
+		 
+		 public void replace (Tab tab)
+		 {
+			 int i;
+			 
+			 for (i = 0; i < tabs.size (); i++)
+				 if (tabs.get (i).getClass ().equals (tab))
+					 tabs.set (i, tab);
+		 }
+		 
+		 /**
+		  * Broadcasts the spin event, which is sent when data refresh
+		  * is started or completed
+		  * @see Tab#spin(boolean)
+		  * @param enable if <code>true</code>, refresh is started
+		  */
+		 public void spin (boolean enable)
+		 {
+			 for (Tab tab : tabs)
+				 tab.spin (enable);
+		 }
+		 
+		 /**
+		  * Broadcasts the refresh-complete event, which is sent to the
+		  * tabs, providing fresh dashboard data
+		  * @see Tab#refreshComplete(DashboardData)
+		  * @param dd dashboard data
+		  */
+		 public void refreshComplete (DashboardData dd)
+		 {
+			 for (Tab tab : tabs)
+				 tab.refreshComplete (dd);
+		 }
+		 
+		 public void flushDatabase ()
+		 {
+			 for (Tab tab : tabs)
+				 tab.flushDatabase ();
+		 }
+		 
+		 /**
+		  * Broadcasts the flush request, to clear all the tabs' caches 
+		  * @see Tab#flush()
+		  * @param rtype the type of refresh
+		  * @param idx the tab currently in foreground
+		  */
+		 public void flush (Tab.RefreshType rtype, int idx)
+		 {
+			 Tab fgtab;
+			 
+			 if (conn != null) {
+				 switch (rtype) {
+				 case FULL_EXPLICIT:				 
+				 case FULL_IMPLICIT:				 
+					 conn.flush ();
+					 /* fall through */
+				 
+				 case MEDIUM:				 				 
+				 case LIGHT:
+				 }
+			 }
+			 
+			 fgtab = idx < 0 || idx >= tabs.size () ? null : tabs.get (idx);
+
+			 for (Tab tab : tabs)
+				 tab.flush (rtype, fgtab == tab);			 
+		 }
+		 
+		 /**
+		  * Returns the index of a tab.
+		  * @param c its contents
+		  */
+		 public int getTabIndex (Tab.Contents c)
+		 {
+			 int i;
+			 
+			 for (i = 0; i < tabs.size (); i++)
+				 if (tabs.get (i).contains (c))
+					 return i;
+			 
+			 return -1;
+		 }
+		 
+		 public boolean backButton ()
+		 {
+			 int idx;
+			 
+			 idx = pager.getCurrentItem ();
+			 return idx >= 0 && idx < tabs.size () ?
+					 tabs.get (idx).backButton () : false;
+		 }
+    }
+
+	/**
+	 * A receiver that gets notifications on several occasions:
+	 * <ul>
+	 * 	<li>@link {@link SettingsActivity#ACT_CREDENTIALS}: We need this
+	 * 			both to update the credentials used to fill the stats
+	 * 			screen, and to enable notifications if the user chose so.
+	 * 	<li>@link {@link SettingsActivity#ACT_NOTIFY}: Enable the notification
+	 * 			flag
+	 * 	<li>@link {@link #ACTION_REFRESH}: force a refresh onto the dashboard.
+	 *  <li>@link {@link #ACTION_CLEAR}: force a complete refresh (including stats)
+	 * </ul>
+	 * All the events that cause a refresh of dashboard data, will also
+	 * trigger a cache flush.
+	 */
+	private class Receiver extends BroadcastReceiver {
+		
+		/**
+		 * Handles credentials change notifications
+		 * 	@param ctxt local context
+		 * 	@param i the intent		
+		 */
+		@Override
+		public void onReceive (Context ctxt, Intent i)
+		{
+			Tab.RefreshType rtype;
+			UserLogin ul;
+			String action;
+			
+			/* This check is meant to avoid a somehow strange race condition: 
+			 * if a WebReviewActivity is started by tapping on the notification (i.e. the app is
+			 * NOT active), and is closed right before starting the MainActivity, the ACTION_REFRESH
+			 * is delivered by the wrong (dying) thread. This causes a ViewRoot$CalledFromWrongThreadException 
+			 * It looks like an Android bug... but I'm not so sure. At any rate this check
+			 * does no harm
+			 */
+			if (!Looper.getMainLooper ().equals (Looper.myLooper ()))
+				return;
+			
+			action = i.getAction ();
+			if (action.equals (SettingsActivity.ACT_CREDENTIALS)) {
+				ul = new UserLogin (i.getStringExtra (SettingsActivity.E_USERKEY));
+			
+				updateCredentials ();				
+				enableNotifications (i.getBooleanExtra (SettingsActivity.E_ENABLED, true));
+			} else if (action.equals (SettingsActivity.ACT_NOTIFY))
+				enableNotifications (i.getBooleanExtra (SettingsActivity.E_ENABLED, true));			
+			else if (action.equals (ACTION_REFRESH)) {
+				rtype = i.getBooleanExtra (E_FLUSH_CACHES, true) ? 
+						Tab.RefreshType.FULL_IMPLICIT : Tab.RefreshType.MEDIUM;
+				refresh (rtype);
+			} else if (action.equals (ACTION_CLEAR))
+				flushDatabase ();
+		}
+		
+	}
+	
+	/**
+	 * A task that gets called whenever stats need to be refreshed.
+	 * In order to keep the GUI responsive, we do this through an AsyncTask
+	 */
+	private class RefreshTask extends AsyncTask<Connection, Void, DashboardData > {
+		
+		/// The default "turtle" avatar
+		Bitmap defAvatar;
+		
+		/**
+		 * Called before starting the task, inside the activity thread.
+		 */
+		@Override
+		protected void onPreExecute ()
+		{
+			Drawable d;
+			
+			startRefresh ();
+
+			d = getResources ().getDrawable (R.drawable.default_avatar);
+			defAvatar = ((BitmapDrawable) d).getBitmap ();
+		}
+		
+		/**
+		 * Performs the real job, by using the provided
+		 * connection to obtain the study queue.
+		 * 	@param conn a connection to the WaniKani API site
+		 */
+		@Override
+		protected DashboardData doInBackground (Connection... conn)
+		{
+			Connection.Meter meter;
+			DashboardData dd;
+			UserInformation ui;
+			StudyQueue sq;
+			int size;
+
+			size = getResources ().getDimensionPixelSize (R.dimen.m_avatar_size);
+			meter = MeterSpec.T.DASHBOARD_REFRESH.get (MainActivity.this);
+			try {
+				sq = conn [0].getStudyQueue (meter);
+				/* getUserInformation should be called after at least one
+				 * of the other calls, so we give Connection a chance
+				 * to cache its contents */
+				ui = conn [0].getUserInformation (meter);
+				conn [0].resolve (meter, ui, size, defAvatar);
+
+				dd = new DashboardData (ui, sq);
+				if (dd.gravatar != null)
+					saveAvatar (dd);
+				else
+					restoreAvatar (dd);
+			} catch (IOException e) {
+				dd = new DashboardData (e);
+			}
+			
+			return dd;
+		}	
+						
+		/**
+		 * Called at completion of the job, inside the Activity thread.
+		 * Updates the stats and the status page.
+		 * 	@param dd the results encoded by 
+		 *		{@link #doInBackground(Connection...)}
+		 */
+		@Override
+		protected void onPostExecute (DashboardData dd)
+		{
+			try {
+				dd.wail ();
+				
+				refreshComplete (dd, true);
+				
+				new RefreshTaskPartII ().execute (conn);
+			} catch (AuthenticationException e) {
+				error (R.string.status_msg_unauthorized);
+			} catch (IOException e) {
+				error (R.string.status_msg_error);
+			}
+		}
+	}
+	
+	/**
+	 * A task that gets called whenever the stats need to be refreshed, part II.
+	 * This task retrieves all the data that is not needed to display the dashboard,
+	 * so it can be run after the splash screen disappears (and the startup is faster). 
+	 */
+	private class RefreshTaskPartII extends AsyncTask<Connection, Void, DashboardData.OptionalData> {
+
+		/**
+		 * Called before starting the task, inside the activity thread.
+		 */
+		@Override
+		protected void onPreExecute ()
+		{
+			/* empty */
+		}
+		
+		/**
+		 * Performs the real job, by using the provided
+		 * connection to obtain the SRS distribution and the LevelProgression.
+		 * If any operation goes wrong, the data is simply not retrieved (this
+		 * is meant to be data of lesser importance), so it should be ok anyway.
+		 * 	@param conn a connection to the WaniKani API site
+		 */
+		@Override
+		protected DashboardData.OptionalData doInBackground (Connection... conn)
+		{
+			DashboardData.OptionalDataStatus srsStatus, lpStatus, ciStatus;
+			SRSDistribution srs;
+			ExtendedLevelProgression elp;
+			ItemLibrary<Item> critical;
+			int cis;
+			
+			try {
+				srs = conn [0].getSRSDistribution(MeterSpec.T.DASHBOARD_REFRESH.get (MainActivity.this));
+				srsStatus = DashboardData.OptionalDataStatus.RETRIEVED;
+			} catch (IOException e) {
+				srs = null;
+				srsStatus = DashboardData.OptionalDataStatus.FAILED;
+			}
+
+			try {
+				elp = conn [0].getExtendedLevelProgression (MeterSpec.T.DASHBOARD_REFRESH.get (MainActivity.this));
+				lpStatus = DashboardData.OptionalDataStatus.RETRIEVED;
+			} catch (IOException e) {
+				elp = null;
+				lpStatus = DashboardData.OptionalDataStatus.FAILED;
+			}
+
+			try {
+				critical = conn [0].getCriticalItems (MeterSpec.T.DASHBOARD_REFRESH.get (MainActivity.this));
+				ciStatus = DashboardData.OptionalDataStatus.RETRIEVED;
+				cis = critical.list.size ();
+			} catch (IOException e) {
+				ciStatus = DashboardData.OptionalDataStatus.FAILED;
+				cis = 0;
+			}
+						
+			return new DashboardData.OptionalData (srs, srsStatus, elp, lpStatus, cis, ciStatus);
+		}	
+						
+		/**
+		 * Called at completion of the job, inside the Activity thread.
+		 * Updates the stats and the status page.
+		 * 	@param dd the results encoded by 
+		 *		{@link #doInBackground(Connection...)}
+		 */
+		@Override
+		protected void onPostExecute (DashboardData.OptionalData od)
+		{
+			/* Data may disappear when we get an unauthorized code */
+			if (dd != null) {
+				dd.setOptionalData (od);
+			
+				refreshComplete (dd, false);
+			}
+		}
+	}
+	
+	/**
+	 * The listener of menu-related events. We intercept the refresh request
+	 * and deliver the event to the main class
+	 */
+	private class MenuListener extends MenuHandler.Listener {
+		
+		public MenuListener ()
+		{
+			super (MainActivity.this);
+		}
+		
+		@Override
+		public void refresh ()
+		{
+			MainActivity.this.refresh (Tab.RefreshType.FULL_EXPLICIT);
+		}
+		
+		@Override
+		public void settingsChanged ()
+		{			
+			if (dd != null)
+				refreshComplete (dd, false);
+		}		
+
+		@Override
+		public void importFile ()
+		{
+			Intent intent;
+			
+			intent = new Intent (MainActivity.this, ImportActivity.class);
+			intent.setAction (Intent.ACTION_DEFAULT);
+			startActivity (intent);
+		}
+	}
+	
+	private class DBFixupListener implements DatabaseFixup.Listener {
+		
+		@Override
+		public void done (boolean ok)
+		{
+			setDBFixup (ok ? FixupState.DONE : FixupState.FAILED);
+		}
+		
+	}
+
+	enum FixupState {
+		
+		NOT_RUNNING,
+		
+		RUNNING,
+		
+		DONE,
+		
+		FAILED
+		
+	}
+	
+	/** The prefix */
+	private static final String PREFIX = MainActivity.class + ".";
+	
+	/*** The avatar bitmap filename */
+	private static final String AVATAR_FILENAME = "avatar.png";
+		
+	/** The key checked by {@link #onCreate} to make 
+	 *  sure that the statistics contained in the bundle are valid
+	 * @see #onCreate
+	 * @see #onSaveInstanceState */
+	private static final String BUNDLE_VALID = PREFIX + "bundle_valid";
+	
+	/**
+	 * The key stored into the bundle to keep the items cache
+	 */
+	private static final String ITEMS_CACHE = PREFIX + "ITEMS_CACHE";
+	
+	/**
+	 * The key stored into the bundle to keep track of the current tab
+	 */
+	private static final String CURRENT_TAB = PREFIX + "current_tab";
+	
+	/**
+	 * The key stored into the bundle to keep track of refresh operations
+	 */
+	private static final String REFRESHING = PREFIX + "refreshing";
+	
+	/**
+	 * The key stored into the bundle to keep track of db fixup operations
+	 */
+	private static final String FIXUP_STATE = PREFIX + "fixup_state";
+	
+
+	/** The broadcast receiver that handles all the actions */
+	private Receiver receiver;
+
+	/** The object that implements the WaniKani API client */
+	private Connection conn;
+	
+	/** The information displayed on the dashboard. It is built
+	 * from the objects returned by the WaniKani API*/
+	private DashboardData dd;
+	
+	/** The asynchronous task that performs the actual queries */
+	RefreshTask rtask;
+	
+	/** The object that notifies us when the refresh timeout expires */
+	Alarm alarm;
+	
+	/** The pager */
+	LowPriorityViewPager pager;
+	
+	/** Pager adapter instance */
+	PagerAdapter pad;
+		
+	/** The dashboard height, in dip */
+	private int DASHBOARD_HEIGHT = 430;
+	
+	/** The dashboard-stats combo fragment */
+	DashboardStatsFragment dsf; 
+	
+	/** The dashboard fragment */
+	DashboardFragment dashboardf;
+	
+	/** The items fragment */
+	ItemsFragment itemsf;
+	
+	/** The stats fragment */
+	StatsFragment statsf;
+	
+	/** The menu handler */
+	MenuHandler mh;
+
+	/** Is this activity visible? */
+	boolean visible;
+	
+	/** Current layout */
+	SettingsActivity.Layout layout;
+	
+	/** Was the last instance of this activity refreshing before being destroyed? */
+	boolean resumeRefresh;
+	
+	/** Are we fixing the db up? */
+	FixupState dbfixup;
+	
+	/** An action that should be invoked to force refresh. This is used typically
+	 *  when reviews complete
+	 */
+	public static final String ACTION_REFRESH = PREFIX + "REFRESH";
+	
+	/** An action that should be invoked when the history DB is changed
+	 */
+	public static final String ACTION_CLEAR = PREFIX + "CLEAR";
+
+	/**
+	 * Extra parameter to {@link #ACTION_REFRESH}, to tell if caches should be flushed 
+	 * or not.
+	 */
+	public static final String E_FLUSH_CACHES = PREFIX + "flushCaches";
+	
+	/** 
+	 * Called when the activity is first created.  We register the
+	 * listeners and create the 
+	 * {@link com.wanikani.wklib.Connection} object that will perform the
+	 * queries for us.  In some cases (e.g. a change in the
+	 * orientation of the display), the activity is destroyed and
+	 * immediately recreated: to avoid querying the website, we
+	 * use the bundle to retains the stats. To make sure that the
+	 * bundle is actually valid (e.g. the previous instance of the
+	 * activity actually succeeded in retrieving the data), we
+	 * look for the {@link #BUNDLE_VALID} key.
+	 * 	@see #onSaveInstanceState()
+	 *  @param bundle the bundle, or <code>null</code>
+	 */
+	@Override
+	public void onCreate (Bundle bundle) 
+	{	
+	    super.onCreate (bundle);
+
+	    receiver = new Receiver ();
+	    alarm = new Alarm ();
+	    mh = new MenuHandler (this, new MenuListener ());
+	    dbfixup = FixupState.NOT_RUNNING;
+
+	    /* Must be placed first, because fragments need this early */
+	    conn = SettingsActivity.newConnection (this);
+		conn.cache = new ItemsDatabase (this).getCache ();
+
+	    if (dsf == null)
+	    	dsf = new DashboardStatsFragment ();
+	    if (dashboardf == null)
+	    	dashboardf = new DashboardFragment ();
+	    if (itemsf == null)
+	    	itemsf = new ItemsFragment ();
+	    if (statsf == null)
+	    	statsf = new StatsFragment ();
+	    
+		setContentView (R.layout.main);
+		switchTo (R.id.f_splash);
+
+		pager = (LowPriorityViewPager) findViewById (R.id.pager);
+        pager.setMain (this);
+	    setLayout ();
+	    		
+        registerIntents ();
+	    
+	    if (!SettingsActivity.credentialsAreValid (this))
+	    	mh.settings ();
+
+	    if (bundle != null && bundle.containsKey (BUNDLE_VALID)) {
+	    	dd = new DashboardData (bundle);
+			pager.setCurrentItem (bundle.getInt (CURRENT_TAB));
+			/* -- I'm temporarily keeping this code just in case we decide to make disk caching optional -- */
+			/*
+			try {
+				conn.cache = (ItemsCache) bundle.getSerializable (ITEMS_CACHE);
+			} catch (Throwable t) {
+				
+			}
+			*/
+			resumeRefresh = bundle.getBoolean (REFRESHING);
+			
+			dbfixup = (FixupState) bundle.getSerializable (FIXUP_STATE);
+	    } else
+	    	pager.setCurrentItem (pad.getTabIndex (Tab.Contents.DASHBOARD), false);
+	}
+	
+	/**
+	 * Wraps {@link SettingsActivity#getLayout(Context)} making sure
+	 * that {@link SettingsActivity.Layout#AUTO} is never returned.
+	 * It is translated into one of the concrete enums by looking at the size
+	 * of the device.
+	 * @return the layout
+	 */
+	protected SettingsActivity.Layout getLayout ()
+	{
+		SettingsActivity.Layout ans;
+		DisplayMetrics dm;
+		float hdip;
+
+		ans = SettingsActivity.getLayout (this);
+		if (ans != SettingsActivity.Layout.AUTO)
+			return ans;
+					
+		dm = new DisplayMetrics ();
+		getWindowManager ().getDefaultDisplay ().getMetrics (dm);
+		hdip = (Math.max (dm.heightPixels, dm.widthPixels)) / dm.density;
+			
+		return hdip >= DASHBOARD_HEIGHT * 1.5 ? 
+				SettingsActivity.Layout.LARGE : SettingsActivity.Layout.SMALL;
+	}
+
+	/**
+	 * Populates the adapter and enforces the layout, using the preferences.
+	 */
+	void setLayout ()
+	{
+		List<Tab> tabs;
+		
+	    tabs = new Vector<Tab> ();
+
+	    layout = getLayout ();
+	    
+	    switch (layout) {
+	    case AUTO:
+	    case SMALL:
+	    	tabs.add (statsf);
+	    	tabs.add (dashboardf);
+	    	tabs.add (itemsf);
+	    	break;
+	    	
+	    case LARGE:
+	    	tabs.add (dsf);
+	    	tabs.add (itemsf);
+	    }		
+        pad = new PagerAdapter (getSupportFragmentManager (), tabs);
+        pager.setAdapter (pad);
+	}
+	
+	/**
+	 * Called by each tab to register itself to the activity and get called
+	 * when something interesting happens
+	 * @param tab the tab
+	 */
+	void register (Tab tab)
+	{
+		if (pad != null)			
+			pad.replace (tab);
+		
+		if (tab instanceof DashboardStatsFragment)
+			dsf = (DashboardStatsFragment) tab;
+		else if (tab instanceof DashboardFragment)
+			dashboardf = (DashboardFragment) tab;
+		else if (tab instanceof ItemsFragment)
+			itemsf = (ItemsFragment) tab;
+		else if (tab instanceof StatsFragment)
+			statsf = (StatsFragment) tab;
+	}
+	
+	@Override
+	public void onStart ()
+	{
+	    super.onStart ();
+	    
+	    DashboardData ldd;
+	    
+	    /* A refresh task may be going on, if the review activity
+	     * has sent a refresh request before disappearing
+	     */
+	    if (rtask == null) {
+	    	ldd = dd;
+	    	dd = null;
+	    	if (ldd != null) {
+	    		refreshComplete (ldd, false);
+	    		if (resumeRefresh)
+	    			refresh (Tab.RefreshType.LIGHT);
+	    		else if (ldd.isIncomplete ())
+	    			refreshOptional ();
+	    	} else {
+	    		ldd = DashboardData.fromPreferences (this, DashboardData.Source.MAIN_ACTIVITY);
+	    		if (ldd == null || ldd.nextReviewDate == null || ldd.nextReviewDate.before (new Date ()))
+	    			ldd = DashboardData.fromPreferences (this, DashboardData.Source.NOTIFICATION_SERVICE);
+	    		if (ldd == null || ldd.nextReviewDate == null || ldd.nextReviewDate.before (new Date ()))
+	    			;	    		
+	    		else
+	    			refreshComplete (ldd, false);
+	    		
+	    		refresh (Tab.RefreshType.FULL_IMPLICIT);
+	    	}
+	    }
+	    
+	    resumeRefresh = false;
+	}
+	
+	/**
+	 * The OS calls this method when destroying the view.
+	 * This implementation stores the stats into the bundle, if they
+	 * have been successfully retrieved.
+	 * 	@see #onCreate(Bundle)
+	 *  @param bundle the bundle where to store the stats
+	 */
+	@Override
+	public void onSaveInstanceState (Bundle bundle)
+	{
+		super.onSaveInstanceState (bundle);
+		
+		if (dd != null) {
+			dd.serialize (bundle);
+			bundle.putBoolean (BUNDLE_VALID, true);
+			/* -- Needed only if we decide to provide memory cache too
+			if (conn != null)
+				bundle.putSerializable (ITEMS_CACHE, conn.cache);
+			*/
+			bundle.putInt (CURRENT_TAB, pager.getCurrentItem ());
+			bundle.putBoolean (REFRESHING, rtask != null);
+			bundle.putSerializable (FIXUP_STATE, dbfixup);
+		}
+	}
+	
+	/**
+	 * Called when the application resumes.
+	 * We notify this the alarm to adjust its timers in case
+	 * they were tainted by a deep sleep mode transition.
+	 */
+	@Override
+	public void onResume ()
+	{
+		super.onResume ();
+				
+		alarm.screenOn ();
+		visible = true;
+
+		if (layout != getLayout ())
+			reboot ();
+	}
+		
+	/**
+	 * Restarts the activity 
+	 */
+	private void reboot ()
+	{
+		Intent i;
+		
+		i = new Intent (this, getClass ());
+		i.setAction (Intent.ACTION_MAIN);
+		
+		startActivity (i);
+		finish ();
+	}
+	
+	/**
+	 * Called when the application pauses.
+	 * Update the @link #visible flag.
+	 */
+	@Override
+	public void onPause ()
+	{
+		super.onPause ();
+				
+		visible = false;
+	}
+
+	/**
+	 * Called on dashboard destruction. 
+	 * Destroys the listeners of the changes in the settings, and the 
+	 * refresher thread.
+	 */
+	@Override
+	public void onDestroy ()
+	{	
+		super.onDestroy ();
+		
+		unregisterIntents ();		
+		alarm.stopAlarm ();
+		mh.unregister (this);
+	}
+
+	/**
+	 * Registers the intent listeners.
+	 * Currently the intents we listen to are:
+	 * <ul>
+	 * 	<li>{@link SettingsActivity#ACT_CREDENTIALS}, when the credentials are changed
+	 *  <li>{@link SettingsActivity#ACT_NOTIFY}, when notifications are enabled or disabled
+	 *  <li>{@link #ACTION_REFRESH}, when the dashboard should refreshed
+	 * </ul>
+	 * Both intents are triggered by {@link SettingsActivity}
+	 */
+	private void registerIntents ()
+	{
+		IntentFilter filter;
+		LocalBroadcastManager lbm;
+				
+		lbm = LocalBroadcastManager.getInstance (this);
+		
+		filter = new IntentFilter (SettingsActivity.ACT_CREDENTIALS);
+		filter.addAction (SettingsActivity.ACT_NOTIFY);
+		filter.addAction (ACTION_REFRESH);
+		filter.addAction (ACTION_CLEAR);
+		lbm.registerReceiver (receiver, filter);
+		
+		filter = new IntentFilter (ACTION_REFRESH);
+		registerReceiver (receiver, filter);
+	}
+	
+	/**
+	 * Unregister the intent listeners that were registered by {@link #registerIntent}. 
+	 */
+	private void unregisterIntents ()
+	{
+		LocalBroadcastManager lbm;
+		
+		lbm = LocalBroadcastManager.getInstance (this);
+		
+		lbm.unregisterReceiver (receiver);
+		unregisterReceiver (receiver);
+	}
+	
+	/**
+	 * Associates the menu description to the menu key (or action bar).
+	 * The XML description is <code>main.xml</code>
+	 */
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) 
+	{
+		getMenuInflater().inflate (R.menu.main, menu);
+		
+		return true;
+	}
+	
+	/**
+	 * Menu handler. Relays the call to the common {@link MenuHandler}.
+	 * 	@param item the selected menu item
+	 */
+	@Override
+	public boolean onOptionsItemSelected (MenuItem item)
+	{
+		return mh.onOptionsItemSelected (item) || super.onOptionsItemSelected (item);
+	}
+
+	/**
+	 * Called to update the credentials. It also triggers a refresh of 
+	 * the GUI.
+	 * @param login the new credentials
+	 */
+	private void updateCredentials ()
+	{
+		conn = SettingsActivity.newConnection (this);
+		conn.cache = new ItemsDatabase (this).getCache ();
+		
+		refresh (Tab.RefreshType.FULL_IMPLICIT);
+	}
+
+	/**
+	 * Called when the refresh timeout expires.
+	 * We call {@link #refresh()}, but we keep caches.
+	 */
+	public void run ()
+	{
+		refresh (Tab.RefreshType.LIGHT);
+	}
+
+	/**
+	 * Called when the GUI needs to be refreshed. 
+	 * It starts an asynchrous task that actually performs the job and
+	 * optionally clears the cache any fragment may hold.
+	 * 	@param rtype the type of refresh 
+	 */
+	private void refresh (Tab.RefreshType rtype)
+	{		
+			if (rtask != null)
+				rtask.cancel (false);
+			
+			pad.flush (rtype, pager.getCurrentItem ());
+			
+			rtask = new RefreshTask ();
+			rtask.execute (conn);			
+	}
+	
+	/**
+	 * Called when optional data needs to be refreshed. This happens in
+	 * some strange situations, e.g. when the application is stopped before
+	 * optional data, and then is resumed from a bundle. I'm not even
+	 * sure it can happen, however...
+	 */
+	private void refreshOptional ()
+	{
+			new RefreshTaskPartII ().execute (conn);			
+	}
+
+	/**
+	 * Stores the avatar locally. Needed to avoid storing it into the
+	 * bundle. Useful also to have a fallback when we can't reach the
+	 * server.
+	 * @param dd the data, containing a valid avatar bitmap. If null, this
+	 * 	method does nothing
+	 */
+	protected void saveAvatar (DashboardData dd)
+	{
+		OutputStream os;
+		
+		if (dd == null || dd.gravatar == null)
+			return;
+		
+		os = null;
+		try {
+			os = openFileOutput (AVATAR_FILENAME, Context.MODE_PRIVATE);
+			dd.gravatar.compress(Bitmap.CompressFormat.PNG, 90, os);
+		} catch (IOException e) {
+			/* Life goes on... */
+		} finally {
+			try {
+				if (os != null)
+					os.close ();
+			} catch (IOException e) {
+				/* Probably next decode will go wrong */
+			}
+		}
+	}
+	
+	/**
+	 * Restores the avatar from local storage.
+	 * @param dd the data, that will be filled with the bitmap, if everything
+	 * 	goes fine
+	 */
+	protected void restoreAvatar (DashboardData dd)
+	{
+		InputStream is;
+		
+		if (dd == null)
+			return;
+		
+		is= null;
+		try {
+			is = openFileInput (AVATAR_FILENAME);
+			dd.gravatar = BitmapFactory.decodeStream (is);
+		} catch (IOException e) {
+			/* Life goes on... */
+		} finally {
+			try {
+				if (is != null)
+					is.close ();
+			} catch (IOException e) {
+				/* At least we tried */
+			}
+		}
+	}
+	
+	/**
+	 * Schedules a new refresh. Should be called right after
+	 * a refresh operation completes
+	 */
+	protected void reschedule ()
+	{
+		long delay, refresh;
+
+		/* Should not happen, because rescheduling makes sense only
+		 * when at least one successful retrieval completes. However...*/
+		if (dd == null)
+			return;
+		
+		refresh = SettingsActivity.getRefreshTimeout (this) * 60 * 1000; 
+		if (dd.nextReviewDate != null)
+			delay = dd.nextReviewDate.getTime () - System.currentTimeMillis ();
+		else
+			delay = refresh;
+		
+		if (delay > refresh || dd.reviewsAvailable > 0)
+			delay = refresh;
+		
+		/* May happen if local clock is not perfectly synchronized with WK clock */
+		if (delay < 1000)
+			delay = 10000;
+		
+		alarm.schedule (this, delay);		
+	}
+
+	/**
+	 * Called by {@link RefreshTask} when asynchronous data 
+	 * retrieval is completed.
+	 * @param dd the retrieved data
+	 * @param intermediate if this is an updated, and more will come
+	 */
+	private void refreshComplete (DashboardData dd, boolean intermediate)
+	{
+		if (this.dd == null)
+			switchTo (R.id.f_main);
+		else
+			dd.merge (this.dd);
+
+		if (!intermediate) {
+			dd.serialize (this, DashboardData.Source.MAIN_ACTIVITY);
+			pad.spin (false);
+		}
+
+		this.dd = dd;
+		
+		shareData (dd);
+		
+		rtask = null;
+
+		if (dd.gravatar == null)
+			restoreAvatar (dd);
+		
+		pad.refreshComplete (dd);
+
+		reschedule ();
+	}
+
+	/**
+	 * Called when notifications are enabled or disabled.
+	 * It actually starts or terminates the {@link NotificationService}. 
+	 * @param enable <code>true</code> if should be started; <code>false</code>
+	 * if should be stopped
+	 */
+	private void enableNotifications (boolean enable)
+	{
+		Intent intent;
+		
+		if (enable) {
+			intent = new Intent (this, NotificationService.class);
+			intent.setAction (NotificationService.ACTION_BOOT_COMPLETED);
+			startService (intent);
+		}
+	}
+
+	/**
+	 * Sends fresh dashboard data to the notification service.
+	 * @param dd the data
+	 */
+	private void shareData (DashboardData dd)
+	{
+		Intent intent;
+		Bundle b;
+		
+		/* If the current activity is not visible, leave the notification service
+		 * decide whether to update data or not (there's some code in it to avoid
+		 * displaying the icon while reviews are going on, and this call would
+		 * break it) */
+		if (visible && dd != null) {
+			intent = new Intent (this, NotificationService.class);
+			intent.setAction (NotificationService.ACTION_NEW_DATA);
+			b = new Bundle ();
+			dd.serialize (b);
+			intent.putExtra (NotificationService.KEY_DD, b);
+			
+			startService (intent);
+		}		
+	}
+
+	/**
+	 * Called when retrieveing data from WaniKani. Updates the 
+	 * status message or switches to the splash screen, depending
+	 * on the current state  
+	 */
+	private void startRefresh ()
+	{
+		if (dd == null)
+			switchTo (R.id.f_splash);
+		else
+			pad.spin (true);
+	}
+
+	/**
+	 * Displays an error message, choosing the best way to do that.
+	 * If we did not gather any stats, the only thing we can do is to display
+	 * the error page and hope for the best
+	 * @param id resource string ID
+	 */
+	private void error (int id)
+	{
+		Resources res;
+		String s;
+		TextView tw;
+
+		/* If the API code is invalid, switch to error screen even if we have
+		 * already opened the dashboard */
+		if (id == R.string.status_msg_unauthorized)
+			dd = null;
+		
+		if (dd == null)
+			switchTo (R.id.f_error);
+		else {
+			pad.spin (false);
+			/* Publish old version. Stats fragment needs this to make graphs "slide" */
+			pad.refreshComplete (dd);
+			reschedule ();
+		}
+		
+		res = getResources ();
+		if (id == R.string.status_msg_unauthorized)
+			s = SettingsActivity.diagnose (this, res);
+		else
+			s = res.getString (id);
+	
+		tw = (TextView) findViewById (R.id.tv_alert);
+		if (tw != null)
+			tw.setText (s);
+	}
+
+	/**
+	 * Called when the "Review" button is clicked. According
+	 * to user preferences, it sill start either an integrated WebView
+	 * or an external browser.
+	 */
+	public void review ()
+	{
+		Intent intent;
+		
+		intent = new Intent (MainActivity.this, NotificationService.class);			
+		intent.setAction (NotificationService.ACTION_HIDE_NOTIFICATION);			
+		startService (intent);
+		
+		open (SettingsActivity.getURL (this));
+	}
+	
+	/**
+	 * Called when the "Unlock" button is clicked. According
+	 * to user preferences, it sill start either an integrated WebView
+	 * or an external browser. 
+	 */
+	public void lessons ()
+	{
+		open (SettingsActivity.getLessonURL (this));
+	}
+	
+	/**
+	 * Called to open an item page.
+	 * @param url the url page
+	 */
+	public void item (String url)
+	{
+		open (url);
+	}
+	
+	/**
+	 * Called to open the forum page.
+	 */
+	public void chat ()
+	{
+		open (SettingsActivity.getChatURL (this));
+	}
+
+	/**
+	 * Called to open the review summary page.
+	 */
+	public void reviewSummary ()
+	{
+		open (SettingsActivity.getReviewSummaryURL (this));
+	}
+
+	/**
+	 * Open an URL. Depending on the integrated browser key, it chooses
+	 * whether to use the internal or the external browser.
+	 * 	@param url the URL to open
+	 */
+	protected void open (String url)
+	{
+		Intent intent;
+			
+		if (SettingsActivity.getUseIntegratedBrowser (this)) {
+			intent = SettingsActivity.getWebViewIntent (MainActivity.this);
+			intent.setAction (WebReviewActivity.OPEN_ACTION);
+		} else
+			intent = new Intent (Intent.ACTION_VIEW);
+		
+		intent.setData (Uri.parse (url));
+		startActivity (intent);		
+	}
+	
+	/**
+	 * Shows the items tab, and applies a filter to displays only the apprentice items
+	 * of a given kind. Needed by the dashboard to implement the "remaining items"
+	 * feature
+	 * @param type the type to display. Theorically it could be null, but
+	 * 	do we really want to?
+	 */
+	public void showRemaining (Item.Type type)
+	{
+		pager.setCurrentItem (pad.getTabIndex (Tab.Contents.ITEMS), true);
+		itemsf.setLevelFilter (dd.level);
+		itemsf.showSearchDialog (true, SRSLevel.APPRENTICE, type);
+	}
+
+	/**
+	 * Shows the items tab, and applies a filter to displays only the items of a specific type.
+	 * Needed by the dashboard to implement the "total items" feature
+	 * @param type the type to display. Theorically it could be null, but
+	 * 	do we really want to?
+	 */
+	public void showTotal (Item.Type type)
+	{
+		pager.setCurrentItem (pad.getTabIndex (Tab.Contents.ITEMS), true);
+		itemsf.setLevelFilter (dd.level);
+		itemsf.showSearchDialog (true, null, type, false, false);		
+	}
+
+	/**
+	 * Shows the items tab, and applies a filter to displays only the critical items.
+	 * Needed by the dashboard to implement the "critical items" feature
+	 */
+	public void showCritical ()
+	{
+		pager.setCurrentItem (pad.getTabIndex (Tab.Contents.ITEMS), true);
+		itemsf.setFilter (ItemsFragment.FilterType.CRITICAL);
+		itemsf.hideSearchDialog ();
+	}
+
+	public void showThisLevel (Item.Type type, SRSLevel srs, boolean invert)
+	{
+		pager.setCurrentItem (pad.getTabIndex (Tab.Contents.ITEMS), true);
+		itemsf.setLevelFilter (dd.level);
+		itemsf.showSearchDialog (true, srs, type, true, invert);		
+	}
+	
+	/**
+	 * Shows the items tab, and shows the search dialog
+	 */
+	public void showSearch ()
+	{
+		int idx;
+		
+		idx = pad.getTabIndex (Tab.Contents.ITEMS);
+		if (pager.getCurrentItem () != idx) {
+			pager.setCurrentItem (pad.getTabIndex (Tab.Contents.ITEMS), true);
+			itemsf.showSearchDialog (true, null, null);
+		} else
+			itemsf.showSearchDialog (false, null, null);
+	}
+
+	/**
+	 * Returns the latest version of the dashboard data. Used by tabs.
+	 * @return the dashboard data 
+	 */
+	public DashboardData getDashboardData ()
+	{
+		return dd;
+	}
+	
+	/**
+	 * Returns the WKLib connection
+	 * @return the connection 
+	 */
+	public Connection getConnection ()
+	{
+		return conn;
+	}
+
+	/**
+	 * Tells whether if a given tab is intercepting scroll events
+	 * @return true if it does
+	 */
+	public boolean scrollLock (int item)
+	{
+		return pad.tabs.get (item).scrollLock (); 
+	}
+	
+	/**
+	 * Updates the splash screen with the version ID
+	 * 	@param view the view
+	 */
+	private void setVersion (View view)
+	{
+		PackageManager pmgr;
+		PackageInfo pinfo;
+		Resources res;
+		TextView tv;
+		
+		pmgr = getPackageManager ();
+		res = getResources ();
+		try {
+			pinfo = pmgr.getPackageInfo (getPackageName (), 0);
+			tv = (TextView) view.findViewById (R.id.splash_version);
+			tv.setText (res.getString (R.string.tag_version, pinfo.versionName));
+		} catch (NameNotFoundException e) {
+			/* leave it as it is */
+		}				
+	}
+	
+	/**
+	 * Switches to one of the three screeens (main, dashboard or error)
+	 * @param id the id to switch to
+	 */
+	public void switchTo (int id)
+	{
+		View view;
+		
+		view = findViewById (R.id.f_main);
+		view.setVisibility (id == R.id.f_main ? View.VISIBLE : View.INVISIBLE);
+
+		view = findViewById (R.id.f_splash);
+		setVersion (view);
+		view.setVisibility (id == R.id.f_splash ? View.VISIBLE : View.INVISIBLE);
+
+		view = findViewById (R.id.f_error);
+		view.setVisibility (id == R.id.f_error ? View.VISIBLE : View.INVISIBLE);
+	}
+	
+	@Override
+	public boolean onSearchRequested ()
+	{
+		showSearch ();
+		
+		return true;
+	}
+	
+	@Override
+	public void onBackPressed ()
+	{
+		if (!pad.backButton())
+			super.onBackPressed ();
+	}
+	
+	public void dbFixup ()
+	{
+		setDBFixup (FixupState.RUNNING);
+		
+		new DatabaseFixup (this, conn).asyncRun(new DBFixupListener ());
+	}
+	
+	private void setDBFixup (FixupState dbfixup)
+	{
+		this.dbfixup = dbfixup;
+		
+		if (statsf != null && statsf.isResumed ())
+			statsf.setFixup (dbfixup);
+	}
+	
+	private void flushDatabase ()
+	{
+		pad.flushDatabase ();
+	}
+}
+src/com/wanikani/wklib/Vocabulary.java
+public class Vocabulary extends Item {
+
+	private static class Factory implements Item.Factory<Vocabulary> {
+
+		public Vocabulary deserialize (JSONObject obj)
+			throws JSONException
+		{
+			return new Vocabulary (obj);
+		}
+	}
+
+	private static class ItemFactory implements Item.Factory<Item> {
+
+		public Vocabulary deserialize (JSONObject obj)
+			throws JSONException
+		{
+			return new Vocabulary (obj);
+		}
+	}
+
+	public static final long serialVersionUID = 1L;	
+
+	public final static Item.Factory<Vocabulary> FACTORY = new Factory ();
+	
+	public final static Item.Factory<Item> ITEM_FACTORY = new ItemFactory ();
+
+	public String kana;
+	
+	public Vocabulary (JSONObject obj)
+		throws JSONException
+	{
+		super (obj, Item.Type.VOCABULARY);
+		
+		kana = Util.getString (obj, "kana");
+	}
+	
+	public Vocabulary ()
+	{
+		super (Item.Type.VOCABULARY);
+	}
+				
+	protected String getClassURLComponent ()
+	{
+		return "vocabulary";
+	}
+	
+	public boolean matches (String s)
+	{
+		return super.matches (s) ||
+				kana.contains (s);
+	}
+}
+src/com/wanikani/wklib/Kanji.java
+public class Kanji extends Item {
+	
+	static class Factory implements Item.Factory<Kanji> {
+
+		public Kanji deserialize (JSONObject obj)
+			throws JSONException
+		{
+			return new Kanji (obj);
+		}
+	}
+	
+	static class ItemFactory implements Item.Factory<Item> {
+
+		public Item deserialize (JSONObject obj)
+			throws JSONException
+		{
+			return new Kanji (obj);
+		}
+	}
+
+	public static final Item.Factory<Kanji> FACTORY = new Factory ();
+
+	public static final Item.Factory<Item> ITEM_FACTORY = new ItemFactory ();
+
+	public static enum Reading {
+		
+		ONYOMI, 
+		
+		KUNYOMI,
+		
+		NANORI; 
+		
+		public static Reading fromString (String s)
+		{
+			if (s.equals ("onyomi"))
+				return ONYOMI;
+			else if (s.equals ("kunyomi"))
+				return KUNYOMI;
+			else if (s.equals ("nanori"))
+				return NANORI;
+			else
+				return null;
+		}
+	};
+	
+	public static final long serialVersionUID = 1L;
+
+	public String onyomi;
+	
+	public String kunyomi;
+	
+	public String nanori;
+	
+	public Reading importantReading;
+		
+	public Kanji (JSONObject obj)
+		throws JSONException
+	{
+		super (obj, Item.Type.KANJI);
+
+		String s;
+		
+		onyomi = Util.getString (obj, "onyomi");
+		kunyomi = Util.getString (obj, "kunyomi");
+		nanori = Util.getString (obj, "nanori");
+		s = Util.getString (obj, "important_reading");
+		importantReading = Reading.fromString (s);
+		if (importantReading == null)
+			importantReading = Reading.ONYOMI;
+	}
+	
+	public Kanji ()
+	{
+		super (Item.Type.KANJI);
+	}
+		
+	public Item deserialize (JSONObject obj)
+		throws JSONException
+	{
+		return new Kanji (obj);
+	}
+
+	@Override
+	protected String getClassURLComponent ()
+	{
+		return "kanji";
+	}
+	
+	public boolean matches (String s)
+	{
+		return super.matches (s) ||
+				(onyomi != null && onyomi.contains (s)) ||
+				(kunyomi != null && kunyomi.contains (s));
+	}
+	
+}
+src/com/wanikani/androidnotifier/graph/ProgressChart.java
+public class ProgressChart extends IconizableChart {
+	
+	public class SubPlot implements View.OnClickListener {
+
+		TableRow row;
+		
+		TableRow legendRow;
+		
+		ProgressPlot plot;
+		
+		LinearLayout legend;
+		
+		public SubPlot (String title, View ddview)
+		{
+			SpannableString spans;
+			TextView tview;
+			ViewGroup template;
+
+			template = (ViewGroup) inflater.inflate (R.layout.progresschart_template, null);
+			row = (TableRow) template.getChildAt (0);
+			legendRow = (TableRow) template.getChildAt (1);
+			template.removeAllViews ();
+			removeView (template);
+			contents.addView (row);
+			contents.addView (legendRow);
+						
+			tview = (TextView) row.findViewById (R.id.pp_title);
+			if (title != null) {
+				spans = new SpannableString (title);
+				spans.setSpan (new UnderlineSpan (), 0, title.length (), 0);
+				spans.setSpan (new ForegroundColorSpan (Color.BLUE), 0, title.length (), 0);
+				tview.setText (spans);
+				tview.setClickable (true);
+				tview.setOnClickListener (this);
+			} else {
+				tview.setVisibility (View.GONE);
+				ddview.setVisibility (View.VISIBLE);
+				ddview.setOnClickListener (this);
+			}
+			
+			plot = (ProgressPlot) row.findViewById (R.id.pp_plot);
+			plot.merge (attrs);
+			plot.setLayoutParams (new TableRow.LayoutParams (0, LayoutParams.WRAP_CONTENT, 1));
+
+			legend = (LinearLayout) legendRow.findViewById (R.id.pp_legend);
+			
+			legendRow.setVisibility (View.GONE);
+		}
+		
+		public void onClick (View view)
+		{
+			int visibility;
+			
+			visibility = legendRow.getVisibility () == View.VISIBLE ? View.GONE : View.VISIBLE;
+			if (view instanceof ImageButton)
+				((ImageButton) view).setImageBitmap (visibility == View.VISIBLE ? closeBmp : openBmp);
+				
+			
+			legendRow.setVisibility (visibility);
+		}
+	
+		/**
+		 * Updates the plot with fresh data. Stops the spinner, if shown.
+		 * @param dsets the data
+		 */
+		public void setData (List<DataSet> dsets)
+		{
+			setData (dsets, dsets, null);
+		}
+		
+		/**
+		 * Updates the plot with fresh data. Stops the spinner, if shown.
+		 * @param ddsets the data to be displayed
+		 * @param ldsets the data to be placed in the legend
+		 * @param markers the markers (or <tt>null</tt>)
+		 */
+		public void setData (List<DataSet> ddsets, List<DataSet> ldsets, List<Marker> markers)
+		{
+			
+			LinearLayout item;		
+			
+			plot.setData (ddsets, markers);
+			
+			legend.removeAllViews ();
+			for (DataSet ds : ldsets) {
+				if ((ds.showAlways || ds.value > 0) && ds.description != null) {
+					item = (LinearLayout) inflater.inflate (R.layout.legend, null); 
+					customizeItem (item, ds);
+					legend.addView (item);
+				}
+			}
+			
+			dataAvailable ();
+		}	
+		
+	}
+
+	TableLayout contents;
+	
+	Attributes attrs;
+	
+	/**
+	 * Constructor.
+	 * @param ctxt context
+	 * @param attrs attributes
+	 */
+	public ProgressChart (Context ctxt, AttributeSet attrs)
+	{
+		super (ctxt, attrs, R.layout.progresschart);
+				
+		this.attrs = new Attributes (ctxt, attrs);
+		
+		contents = (TableLayout) findViewById (R.id.gt_contents);
+			
+	}
+		
+	public SubPlot addData (String title)
+	{
+		return new SubPlot (title, null);
+	}
+		
+	public SubPlot addData (View ddview)
+	{
+		return new SubPlot (null, ddview);
+	}
+
+	/**
+	 * Fills a new legend item.
+	 * @param item the item to fill
+	 * @param ds the dataset the item shall describe
+	 */
+	@SuppressWarnings ("deprecation")
+	protected void customizeItem (LinearLayout item, DataSet ds)
+	{
+		TextView description;
+		Drawable tag;
+		View sample;		
+		
+		sample = item.findViewById (R.id.leg_color);
+		if (!ds.legendOnly) {
+			tag = new ColorDrawable (ds.color);
+			sample.setBackgroundDrawable (tag);
+		} else
+			sample.setVisibility (View.INVISIBLE);
+		
+		if (ds.description != null) {
+			description = (TextView) item.findViewById (R.id.leg_description);
+			if (ds.listener != null) {
+					description.setText (Html.fromHtml (String.format ("<font color=\"blue\"><u>%s</u></font>", 
+																	   ds.description)));
+					description.setClickable (true);
+					description.setOnClickListener (ds.listener);
+			} else
+			        description.setText (ds.description);
+		}
+		((TextView) item.findViewById (R.id.leg_value)).
+			setText (Integer.toString (Math.round (ds.value)));		
+	}	
+}
+src/com/wanikani/wklib/Item.java
+public abstract class Item implements Serializable {
+	
+	public static final long serialVersionUID = 1L;
+	
+	public static class SortByToxicity implements Comparator<Item> {
+		
+		boolean ascending;
+		
+		Comparator<Item> secondKey;
+
+		public final static SortByToxicity INSTANCE = new SortByToxicity (false);
+
+		public final static SortByToxicity INSTANCE_ASCENDING = new SortByToxicity (true);
+
+		private SortByToxicity (boolean ascending)
+		{
+			this.ascending = ascending;
+			
+			secondKey = ascending ? SortByMaxStreaks.INSTANCE : SortByTime.INSTANCE_ASCENDING;
+		}
+		
+		public SortByToxicity (boolean ascending, Comparator<Item> secondKey)
+		{
+			this.ascending = ascending;
+			this.secondKey = secondKey;
+		}
+		
+		public int compare (Item a, Item b)
+		{
+			int ans, am, bm;
+			
+			/* Klooge to make sure that when percentage is unknown,
+			 * items go at the end of the list */
+			am = a.stats != null && !a.stats.burned ? 
+					(a.stats.reading != null ? a.stats.reading.incorrect : 0) + 
+					(a.stats.meaning != null ? a.stats.meaning.incorrect : 0)  : -1; 
+										
+			bm = b.stats != null && !b.stats.burned ? 
+					(b.stats.reading != null ? b.stats.reading.incorrect : 0) + 
+					(b.stats.meaning != null ? b.stats.meaning.incorrect : 0)  : -1;
+					
+			if (am < 0 && ascending)
+				am = -1;
+			if (bm < 0 && ascending)
+				bm = -1;
+			
+			ans = am - bm;
+	
+			ans = ascending ? ans : -ans;
+
+			return ans == 0 ? secondKey.compare (a, b) : ans;
+		}
+	}
+	
+	public static class SortByMaxStreaks implements Comparator<Item> {
+		
+		boolean ascending;
+		
+		Comparator<Item> secondKey;
+
+		public final static SortByMaxStreaks INSTANCE = new SortByMaxStreaks (false);
+
+		public final static SortByMaxStreaks INSTANCE_ASCENDING = new SortByMaxStreaks (true);
+
+		private SortByMaxStreaks (boolean ascending)
+		{
+			this.ascending = ascending;
+			
+			secondKey = ascending ? SortByErrors.INSTANCE : SortByErrors.INSTANCE_ASCENDING;
+		}
+		
+		public SortByMaxStreaks (boolean ascending, Comparator<Item> secondKey)
+		{
+			this.ascending = ascending;
+			this.secondKey = secondKey;
+		}
+		
+		public int compare (Item a, Item b)
+		{
+			int ans, am, bm;
+			
+			/* Klooge to make sure that when percentage is unknown,
+			 * items go at the end of the list */
+			am = a.stats != null ? 
+					(a.stats.reading != null ? a.stats.reading.maxStreak : 0) + 
+					(a.stats.meaning != null ? a.stats.meaning.maxStreak : 0)  : -1; 
+										
+			bm = b.stats != null ? 
+					(b.stats.reading != null ? b.stats.reading.maxStreak : 0) + 
+					(b.stats.meaning != null ? b.stats.meaning.maxStreak : 0)  : -1; 
+
+			if (am < 0 && ascending)
+				am = -1;
+			if (bm < 0 && ascending)
+				bm = -1;
+			
+			ans = am - bm;
+	
+			ans = ascending ? ans : -ans;
+
+			return ans == 0 ? secondKey.compare (a, b) : ans;
+		}
+	}
+
+	public static class SortByErrors implements Comparator<Item> {
+		
+		boolean ascending;
+		
+		Comparator<Item> secondKey;
+
+		public final static SortByErrors INSTANCE = new SortByErrors (false);
+
+		public final static SortByErrors INSTANCE_ASCENDING = new SortByErrors (true);
+
+		private SortByErrors (boolean ascending)
+		{
+			this.ascending = ascending;
+			
+			secondKey = ascending ? SortByTime.INSTANCE_ASCENDING : SortByTime.INSTANCE;
+		}
+		
+		public SortByErrors (boolean ascending, Comparator<Item> secondKey)
+		{
+			this.ascending = ascending;
+			this.secondKey = secondKey;
+		}
+		
+		public int compare (Item a, Item b)
+		{
+			int ans, ap, bp;
+			
+			/* Klooge to make sure that when percentage is unknown,
+			 * items go at the end of the list */
+			ap = a.percentage;
+			if (ap < 0 && !ascending)
+				ap = 101;
+			bp = b.percentage;
+			if (bp < 0 && !ascending)
+				bp = 101;
+			
+			ans = bp - ap;
+	
+			ans = ascending ? ans : -ans;
+
+			return ans == 0 ? secondKey.compare (a, b) : ans;
+		}
+	}
+	
+
+	public static class SortByTime implements Comparator<Item> {
+		
+		boolean ascending;
+
+		public final static SortByTime INSTANCE = new SortByTime (false);
+
+		public final static SortByTime INSTANCE_ASCENDING = new SortByTime (true);
+		
+		private SortByTime (boolean ascending)
+		{
+			this.ascending = ascending;
+		}
+		
+		public int compare (Item a, Item b)
+		{
+			Date ula, ulb;
+			int ans;
+
+			ula = a.getUnlockedDate ();
+			ulb = b.getUnlockedDate ();
+
+			/* Non-unlocked items should always appear last */
+			if (ula != null) {
+				if (ulb != null)
+					ans = ula.compareTo (ulb);
+				else
+					return -1;
+			} else {
+				if (ulb != null)
+					return 1;
+				else
+					return 0;
+			}
+			
+			return ascending ? ans : -ans;
+		}
+	}
+	
+	public static class SortByAvailable implements Comparator<Item> {
+		
+		boolean ascending;
+
+		public final static SortByAvailable INSTANCE = new SortByAvailable (false);
+
+		public final static SortByAvailable INSTANCE_ASCENDING = new SortByAvailable (true);
+		
+		private SortByAvailable (boolean ascending)
+		{
+			this.ascending = ascending;
+		}
+		
+		public int compare (Item a, Item b)
+		{
+			Date ala, alb;
+			boolean ba, bb;
+			int ans;
+
+			ba = a.stats != null && a.stats.burned;
+			bb = b.stats != null && b.stats.burned;
+			
+			/* Burned items go last */
+			if (ba && !bb)
+				return 1;
+			if (!ba && bb)
+				return -1;
+			
+			ala = a.getAvailableDate ();
+			alb = b.getAvailableDate ();
+			
+			/* Non-unlocked items should always appear last */
+			if (ala != null) {
+				if (alb != null)
+					ans = -ala.compareTo (alb);
+				else
+					return -1;
+			} else {
+				if (alb != null)
+					return 1;
+				else
+					return 0;
+			}
+			
+			return ascending ? ans : -ans;
+		}
+	}
+	
+	public static class SortByLevel implements Comparator<Item> {
+		
+		boolean ascending;
+		
+		Comparator<Item> secondKey;
+		
+		public final static SortByLevel INSTANCE = new SortByLevel (false);
+
+		public final static SortByLevel INSTANCE_ASCENDING = new SortByLevel (true);
+
+		private SortByLevel (boolean ascending)
+		{
+			this.ascending = ascending;
+			secondKey = ascending ? SortBySRS.INSTANCE_ASCENDING : SortBySRS.INSTANCE;
+		}
+		
+		public SortByLevel (boolean ascending, Comparator<Item> secondKey)
+		{
+			this.ascending = ascending;
+			this.secondKey = secondKey;
+		}
+
+		public int compare (Item a, Item b)
+		{
+			int ans;
+			
+			ans = a.level - b.level;
+			
+			ans = ascending ? ans : -ans;
+
+			return ans == 0 ? secondKey.compare (a, b) : ans;
+		}
+	}
+
+	public static class SortBySRS implements Comparator<Item> {
+		
+		boolean ascending;
+		
+		Comparator<Item> secondKey;
+		
+		public final static SortBySRS INSTANCE = new SortBySRS (false);
+
+		public final static SortBySRS INSTANCE_ASCENDING = new SortBySRS (true);
+
+		private SortBySRS (boolean ascending)
+		{
+			this.ascending = ascending;
+			secondKey = ascending ? SortByAvailable.INSTANCE_ASCENDING : 
+					SortByAvailable.INSTANCE;
+		}
+		
+		public SortBySRS (boolean ascending, Comparator<Item> secondKey)
+		{
+			this.ascending = ascending;
+			this.secondKey = secondKey;
+		}
+
+		public int compare (Item a, Item b)
+		{
+			int ans;
+			
+			if (a.stats != null && b.stats != null)
+				ans = a.stats.srs.compareTo (b.stats.srs);
+			else if (a.stats != null)
+				ans = 1;
+			else if (b.stats != null)
+				ans = -1;
+			else
+				ans = 0;
+			
+			ans = ascending ? ans : -ans;
+
+			return ans == 0 ? secondKey.compare (a, b) : ans;
+		}
+	}
+
+	public static class SortByType implements Comparator<Item> {
+		
+		Comparator<Item> secondKey;
+		
+		public final static SortByType INSTANCE = new SortByType (false);
+
+		public final static SortByType INSTANCE_ASCENDING = new SortByType (true);
+
+		private SortByType (boolean ascending)
+		{
+			secondKey = ascending ? SortByLevel.INSTANCE_ASCENDING : SortByLevel.INSTANCE;
+		}
+		
+		public SortByType (boolean ascending, Comparator<Item> secondKey)
+		{
+			this.secondKey = secondKey;
+		}
+
+		public int compare (Item a, Item b)
+		{
+			int ans;
+			
+			ans = a.type.compareTo (b.type);
+			
+			return ans == 0 ? secondKey.compare (a, b) : ans;
+		}
+	}
+
+	public interface Factory<T extends Item> {
+		
+		public T deserialize (JSONObject obj)
+			throws JSONException;
+		
+	};
+		
+	public static enum Type {
+		
+		RADICAL	{
+			public Factory<Item> getFactory ()
+			{
+				return Radical.ITEM_FACTORY;
+			}
+		},
+		KANJI {
+			public Factory<Item> getFactory ()
+			{
+				return Kanji.ITEM_FACTORY;
+			}
+		},
+		VOCABULARY {
+			public Factory<Item> getFactory ()
+			{
+				return Vocabulary.ITEM_FACTORY;
+			}
+		};
+		
+		public static Type fromString (String s)
+		{
+			if (s.equals ("radical"))
+				return RADICAL;
+			else if (s.equals ("kanji"))
+				return KANJI;
+			else if (s.equals ("vocabulary"))
+				return VOCABULARY;
+			
+			return null;
+		}
+		
+		public abstract Factory<Item> getFactory ();
+
+	}
+	
+	public static class Performance implements Serializable {
+				
+		public static final long serialVersionUID = 1L;
+		
+		public int correct;
+		
+		public int incorrect;
+		
+		public int maxStreak;
+		
+		public int currentStreak;
+		
+		Performance (JSONObject obj, String prefix)
+			throws JSONException
+		{
+			correct = Util.getInt (obj, prefix + "_correct");
+			incorrect = Util.getInt (obj, prefix + "_incorrect");
+			maxStreak = Util.getInt (obj, prefix + "_max_streak");
+			currentStreak = Util.getInt (obj, prefix + "_current_streak");
+		}
+		
+		public Performance ()
+		{
+			/* empty */
+		}
+		
+	};
+	
+	public static class Stats implements Serializable {
+		
+		public static final long serialVersionUID = 1L;
+
+		public SRSLevel srs;
+		
+		private Date unlockedDate;
+		
+		public Date availableDate;
+		
+		public Date burnedDate;
+		
+		public boolean burned;
+				
+		public Item.Performance reading;
+		
+		public Item.Performance meaning;		
+
+		public String readingNote;
+		
+		public String meaningNote;
+		
+		public String userSynonyms [];
+		
+		Stats (JSONObject obj, boolean hasReading)
+			throws JSONException
+		{
+			JSONArray synonyms;
+			String s;
+			int i;
+			
+			s = obj.getString ("srs");
+			srs = SRSLevel.fromString (s);
+			if (srs == null)
+				throw new JSONException ("Bad SRS: " + s);
+			
+			unlockedDate = Util.getDate (obj, "unlocked_date");
+			availableDate = Util.getDate (obj, "available_date"); 
+			burnedDate = Util.getDate (obj, "burned_date");
+			burned = Util.getBoolean (obj, "burned");
+			
+			if (hasReading)
+				reading = new Item.Performance (obj, "reading");			
+			meaning = new Item.Performance (obj, "meaning");
+			
+			meaningNote = Util.getString (obj, "meaning_note");
+			if (obj.has ("reading_note"))
+				readingNote = Util.getString (obj, "reading_note");
+			if (!obj.isNull ("user_synonyms")) {
+				synonyms = obj.getJSONArray ("user_synonyms");
+				userSynonyms = new String [synonyms.length ()];
+				for (i = 0; i < userSynonyms.length; i++)
+					userSynonyms [i] = synonyms.getString (i);
+			}
+		}
+		
+		public Stats ()
+		{
+			/* empty */
+		}
+	};
+	
+	private static class DynamicFactory implements Item.Factory<Item> {
+
+		public Item deserialize (JSONObject obj)
+			throws JSONException
+		{
+			Type type;
+			String s;
+			
+			s = obj.getString ("type");
+			type = Type.fromString (s);
+			if (type == null)
+				throw new JSONException ("Unexpected type: " + s);
+
+			return type.getFactory ().deserialize (obj);
+		}
+	}
+	
+	public static final Factory<Item> FACTORY = new DynamicFactory ();
+
+	public Type type;
+	
+	public String character;
+	
+	public String meaning;
+	
+	public int level;
+	
+	public Stats stats;
+	
+	public int percentage;
+	
+	private Date unlockedDate;
+		
+	public Date instanceCreationDate;
+	
+	protected Item (JSONObject obj, Type type)
+		throws JSONException
+	{
+		this.type = type;
+		
+		instanceCreationDate = new Date ();
+		character = Util.getString (obj, "character");
+		meaning = Util.getString (obj, "meaning");
+		level = Util.getInt (obj, "level");
+		
+		if (!obj.isNull ("user_specific"))
+			stats = new Stats (obj.getJSONObject ("user_specific"), hasReading ());
+		
+		/* Only for critical items */
+		if (!obj.isNull ("percentage"))
+			percentage = obj.optInt ("percentage");
+		else if (stats != null)
+			setStats (stats);
+		else
+			percentage = -1;	/* No info */
+			
+		
+		/* Only for recent unlocks */
+		unlockedDate = Util.getDate (obj, "unlocked_date");
+	}
+	
+	protected Item (Type type)
+	{
+		this.type = type;
+		
+		percentage = -1;
+	}
+	
+	public void setStats (Stats stats)
+	{
+		int num, den;
+
+		this.stats = stats;
+		
+		num = stats.meaning.correct;
+		den = stats.meaning.correct + stats.meaning.incorrect;
+		if (stats.reading != null) {
+			num += stats.reading.correct;
+			den += stats.reading.correct + stats.reading.incorrect;
+		}
+		percentage = den != 0 ? num * 100 / den : 100; 		
+	}
+	
+	public Date getUnlockedDate ()
+	{
+		return 	unlockedDate != null ? unlockedDate :
+					stats == null ? null : stats.unlockedDate;
+	}
+	
+	public void setUnlockedDate (Date date)
+	{
+		unlockedDate = date;
+		if (stats != null)
+			stats.unlockedDate = date;
+	}
+	
+	public Date getAvailableDate ()
+	{
+		return stats == null ? null : stats.availableDate;
+	}
+
+	protected boolean hasReading ()
+	{
+		return true;
+	}
+	
+	public String getItemURLComponent ()
+	{
+		return character;
+	}
+	
+	protected abstract String getClassURLComponent ();
+	
+	public String getURL (boolean tls)
+	{
+		String scheme;
+		
+		scheme = tls ? "https" : "http";
+		
+		return scheme + "://www.wanikani.com/" + 
+				getClassURLComponent () + "/" + getItemURLComponent ();
+	}
+	
+	public boolean matches (String s)
+	{
+		return meaning.contains (s) ||
+				(character != null && character.contains (s));
+	}
+	
+	public void fixup ()
+	{
+		/* empty */
+	}
+}
+src/com/wanikani/androidnotifier/graph/ProgressPlot.java
+public class ProgressPlot extends View {
+
+	/**
+	 * One item to be displayed. This class contains both public fields
+	 * (filled by users of this widget) and private fields that are used
+	 * internally for rendering purposes.   
+	 */
+	public static class DataSet {
+		
+		/// The legend description
+		public String description;
+		
+		/// The color
+		public int color;
+		
+		/// The value
+		public float value;
+		
+		/// Show even if value is zero
+		public boolean showAlways;
+
+		/// A click listener that is to receive events
+		public View.OnClickListener listener;
+
+		/// Path of the side
+		Path fpath;
+
+		/// Path of the section 
+		Path spath;
+		
+		/// Color context for the side
+		Paint fpaint;
+		
+		/// Color context for the section
+		Paint spaint;
+		
+		/// Is this a legend only item
+		boolean legendOnly;
+		
+		
+		/**
+		 * Constructor.
+		 * @param description the legend description
+		 * @param color the color
+		 * @param value the value
+		 */
+		public DataSet (String description, int color, float value)
+		{
+			this.description = description;
+			this.color = color;
+			this.value = value;
+		}
+				
+		/**
+		 * Constructor for legend-only items.
+		 * @param description the legend description
+		 * @param value the value
+		 */
+		public DataSet (String description, float value)
+		{
+			this.description = description;
+			this.value = value;
+			
+			legendOnly = true;
+		}
+
+		/**
+		 * Constructor.
+		 * @param value the value
+		 */
+		public DataSet (float value)
+		{
+			this.value = value;
+		}
+		
+		/**
+		 * Updates its internal fields
+		 * @param description the legend description
+		 * @param color the color
+		 */
+		public void set (String description, int color)
+		{
+			this.description = description;
+			this.color = color;
+		}		
+		
+		public static void setDifferential (List<DataSet> dsets)
+		{
+			float pos;
+			
+			pos = 0;
+			for (DataSet ds : dsets) {
+				ds.value -= pos;
+				if (ds.value > 0)
+					pos += ds.value;
+				else
+					ds.value = 0;
+			}				
+		}
+	}
+	
+	public static class Attributes {
+		
+		float ratio;
+		
+		int border;
+		
+		float markerFontSize;
+		
+		float height;
+		
+		float markerSpace;
+		
+		boolean dratio;
+		
+		boolean dborder;
+		
+		public Attributes (Context ctxt, AttributeSet attrs)
+		{
+			DisplayMetrics dm;
+			TypedArray a;
+			
+			dm = ctxt.getResources ().getDisplayMetrics ();
+			
+			a = ctxt.obtainStyledAttributes (attrs, R.styleable.PiePlot);
+			dratio = a.hasValue (R.styleable.PiePlot_ratio);
+			dborder = a.hasValue (R.styleable.PiePlot_border);
+			
+			ratio = a.getFloat (R.styleable.PiePlot_ratio, DEFAULT_RATIO);
+			border = a.getInteger (R.styleable.PiePlot_border, -1);
+			
+			a.recycle ();
+			
+			markerFontSize = TypedValue.applyDimension (TypedValue.COMPLEX_UNIT_SP, DEFAULT_MARKER_FONT_SIZE_SP, dm);
+			height = TypedValue.applyDimension (TypedValue.COMPLEX_UNIT_DIP, DEFAULT_HEIGHT_DP, dm);
+			markerSpace = TypedValue.applyDimension (TypedValue.COMPLEX_UNIT_DIP, DEFAULT_MARKER_SPACE_DP, dm);
+		}
+		
+		public void merge (Attributes attrs)
+		{
+			if (attrs.dratio)
+				ratio = attrs.ratio;
+			if (attrs.dborder)
+				border = attrs.border;
+		}
+	}
+	
+	public static class Marker {
+		
+		/// The legend description
+		public String description;
+		
+		/// The color
+		public int color;
+		
+		/// The value
+		public float value;
+
+		/// Color context
+		Paint paint;
+		
+		/// Separator context
+		Paint spaint;
+		
+		/// Is there a bar separator too?
+		boolean separator;
+		
+		/// The separator path
+		Path path;
+		
+		float left, anchor, right, baseline;
+		
+		boolean hidden;
+		
+		public Marker (String description, int color, float value)
+		{
+			this (description, color, value, false);
+		}
+		
+		public Marker (String description, int color, float value, boolean separator)
+		{
+			this.description = description;
+			this.color = color;
+			this.value = value;
+			this.separator = separator;
+		}
+		
+		private boolean in (Marker m)
+		{
+			return 	(left >= m.left && left <= m.right) ||
+					(right >= m.left && right <= m.right);
+		}
+	}
+	
+	/// The current displayed datasets
+	private List<DataSet> dsets;
+	
+	/// The markers
+	private List<Marker> markers;
+
+	/// The enclosing rect
+	private RectF rect;
+	
+	/// Default width/height ratio of the ellipse
+	private static final float DEFAULT_RATIO = 0.5f;
+	
+	/// Default height. Set to the android rythm
+	private static final int DEFAULT_HEIGHT_DP = 48;
+	
+	/// Default marker font size
+	public static float DEFAULT_MARKER_FONT_SIZE_SP = 12;
+	
+	/// Default space between marker and plot
+	public static int DEFAULT_MARKER_SPACE_DP = 10;
+	
+	/// Border path (if any)
+	private Path bpath;
+	
+	/// Border paint (if any)
+	private Paint bpaint;
+	
+	/// Is the view ready to display
+	private boolean readyToDraw;
+	
+	/// The attributes
+	private Attributes attrs;
+	
+	/**
+	 * Constructor.
+	 * @param ctxt context
+	 * @param attrs attribute set
+	 */
+	public ProgressPlot (Context ctxt, AttributeSet attrs)
+	{		
+		super (ctxt, attrs);
+
+		this.attrs = new Attributes (ctxt, attrs);
+		
+		dsets = new Vector<DataSet> (0);		
+	}
+	
+	public void merge (Attributes attrs)
+	{
+		this.attrs.merge (attrs);
+	}
+	
+	@Override
+	public void onMeasure (int widthSpec, int heightSpec)
+	{
+		int width, height;
+		int wMode, hMode;
+		int defaultHeight;
+		
+		width = MeasureSpec.getSize (widthSpec);
+		height = MeasureSpec.getSize (heightSpec);
+		
+		wMode = MeasureSpec.getMode (widthSpec);
+		hMode = MeasureSpec.getMode (heightSpec);
+		
+		if (wMode == MeasureSpec.UNSPECIFIED)
+			width = 100;
+		
+		defaultHeight = (int) Math.max (attrs.height, 2 * attrs.markerFontSize + attrs.markerSpace);
+		
+		switch (hMode) {
+		case MeasureSpec.AT_MOST:
+			height = Math.min (width, defaultHeight);
+			break;
+			
+		case MeasureSpec.EXACTLY:
+			break;
+			
+		case MeasureSpec.UNSPECIFIED:
+			height = defaultHeight;
+		}
+		
+		setMeasuredDimension (width, height);	
+	}
+	
+	@Override
+	protected void onDraw (Canvas canvas)
+	{
+		DataSet nzds;
+		
+		if (!readyToDraw)
+			return;
+		
+		nzds = null;
+		for (DataSet ds : dsets) {
+			canvas.drawPath (ds.fpath, ds.fpaint);
+			if (ds.value > 0)
+				nzds = ds;
+		}
+		if (nzds != null && attrs.ratio > 0) {
+			canvas.drawPath (nzds.fpath, nzds.fpaint);
+			canvas.drawPath (nzds.spath, nzds.spaint);
+		}
+		
+		if (bpath != null)
+			canvas.drawPath(bpath, bpaint);
+		
+		if (markers != null) {
+			for (Marker m : markers) {
+				if (!m.hidden)
+					canvas.drawText (m.description, m.anchor, m.baseline, m.paint);
+				if (m.separator)
+					canvas.drawPath (m.path, m.spaint);
+			}
+		}
+	}
+	
+	@Override
+	protected void onSizeChanged (int width, int height, int ow, int oh)
+	{
+		rect = new RectF (0, 0, width, height);
+
+		rect.left += getPaddingLeft ();
+		rect.right -= getPaddingRight ();
+		rect.top += getPaddingTop ();
+		rect.bottom -= getPaddingBottom ();
+		
+		recalc ();
+	}
+	
+	/**
+	 * Creates the path describing the side of a bar.
+	 * @param ds the dataset to be filled
+	 * @param rect the enclosing rect
+	 * @param orect the oval rect (which is moved right of an amount equal to the rect width)
+	 */
+	protected void fillSidePath (DataSet ds, RectF rect, RectF orect)
+	{
+		Path path;
+		
+		path = new Path ();
+		if (orect.width () > 0) {
+			path.moveTo (rect.left, rect.bottom);
+			path.arcTo (orect, 90, 180);
+			path.lineTo (rect.right, rect.top);
+			orect.offset (rect.width (), 0);
+			path.arcTo (orect, 270, -180);
+			path.close ();
+		} else
+			path.addRect (rect, Direction.CW);
+		
+		ds.fpath = path;
+	}
+
+	/**
+	 * Creates the path describing the section of a bar.
+	 * @param ds the dataset to be filled
+	 * @param orect the oval rect
+	 */
+	protected void fillSectionPath (DataSet ds, RectF orect)
+	{
+		Path path;
+		
+		path = new Path ();
+		path.addOval (orect, Path.Direction.CW);
+		path.close ();
+		
+		ds.spath = path;
+	}
+	
+	protected void prepareMarkers (RectF rect, float unit)
+	{
+		float height, hwidth, space, pos, baseline;
+		Marker m1, m2;
+		FontMetrics fm;
+		Paint paint;
+		int i, j;
+		
+		if (markers == null)
+			return;
+		
+		fm = null;
+		height = 0;
+		baseline = 0;
+		for (Marker ds : markers) {
+			
+			paint = new Paint ();
+			paint.setStyle (Style.FILL_AND_STROKE);
+			paint.setStrokeWidth (1);
+			paint.setColor (ds.color);
+			paint.setTextSize ((int) attrs.markerFontSize);
+			paint.setAntiAlias (true);
+			
+			pos = unit * ds.value;
+			hwidth = paint.measureText (ds.description) / 2;
+			space = paint.measureText (" ") / 2;
+			if (pos < hwidth) {
+				ds.anchor = 0;
+				ds.left = 0;
+				ds.right = 2 * hwidth + space;
+				paint.setTextAlign (Paint.Align.LEFT);
+			} else if (pos + hwidth > rect.width ()) {
+				ds.anchor = rect.width ();
+				ds.right = rect.width ();
+				ds.left = ds.right - 2 * hwidth - space;
+				paint.setTextAlign (Paint.Align.RIGHT);				
+			} else {
+				ds.anchor = pos;
+				ds.left = ds.anchor - hwidth - space;
+				ds.right = ds.anchor + hwidth + space;
+				paint.setTextAlign (Paint.Align.CENTER);
+			}
+			
+			if (fm == null) {
+				fm = paint.getFontMetrics ();
+				height = fm.bottom - fm.ascent;
+				baseline = rect.top - fm.ascent;
+				rect.top = height + attrs.markerFontSize;
+			}				
+			ds.anchor += rect.left;
+			ds.baseline = baseline;			
+			ds.paint = paint;					
+			
+			if (ds.separator) {
+				paint = new Paint ();
+				paint.setStyle (Style.STROKE);
+				paint.setStrokeWidth (1);
+				paint.setColor (Color.BLACK);
+				paint.setPathEffect (new DashPathEffect (new float [] { 1, 1 }, 0));
+				paint.setAntiAlias (true);
+
+				ds.path = new Path ();				
+				ds.path.moveTo (rect.left + pos, rect.top);
+				ds.path.lineTo (rect.left + pos, rect.bottom);
+				ds.spaint = paint;
+			}				
+		}
+		
+		for (i = 0; i < markers.size (); i++) {
+			m1 = markers.get (i);
+			m1.hidden = false;
+			for (j = 0; j < i; j++) {
+				m2 = markers.get (j);
+				if (m1.in (m2) || m2.in (m1)) { 
+					m1.hidden = true;
+					break;
+				}
+			}
+		}
+		
+	}
+	
+	/**
+	 * Recreates all the private fields of a dataset, to make the redraw operation
+	 * as quick as possible.
+	 */
+	protected void recalc ()
+	{
+		RectF rect, orect;
+		float total, unit;
+		
+		readyToDraw = false;
+		
+		if (dsets.isEmpty () || this.rect == null)
+			return;
+			
+		total = 0;
+		for (DataSet ds : dsets)
+			total += ds.value;
+		
+		if (total == 0)
+			return;
+		
+		rect = new RectF (this.rect);
+		prepareMarkers (rect, rect.width () / total);				
+		orect = new RectF (rect);
+		
+		if (attrs.border >= 0) {
+			bpath = new Path ();
+			bpath.addRect (orect, Path.Direction.CW);
+			
+			bpaint = new Paint ();
+			bpaint.setStyle (Style.STROKE);
+			bpaint.setStrokeWidth (attrs.border);
+			bpaint.setColor (Color.BLACK);
+		}
+		
+		orect.right = orect.left + orect.height () * attrs.ratio;
+		if (rect.width () <= orect.width ())
+			return;
+		
+		rect.left += orect.width () / 2;
+		rect.right -= orect.width () / 2;
+					
+		unit = rect.width () / total;
+		
+		for (DataSet ds : dsets) {
+			
+			rect.right = rect.left + unit * ds.value;  
+			
+			fillSidePath (ds, rect, orect);
+			fillSectionPath (ds, orect);
+			
+			ds.fpaint = new Paint ();
+			ds.fpaint.setStyle (Style.FILL_AND_STROKE);
+			ds.fpaint.setColor (ds.color);
+			ds.fpaint.setAntiAlias (true);
+			
+			ds.spaint = new Paint ();
+			ds.spaint.setStyle (Style.FILL_AND_STROKE);
+			ds.spaint.setColor (shadow (ds.color));
+			ds.spaint.setAntiAlias (true);			
+						
+			rect.left = rect.right;
+		}
+		
+		readyToDraw = true;
+	}
+	
+	/**
+	 * Makes a color a little bit darker, to give a shadow effect
+	 * @param color a color
+	 * @return a darker nuance
+	 */
+	protected int shadow (int color)
+	{
+		float hsv [];
+
+		hsv = new float [3];
+		Color.colorToHSV (color, hsv);
+		hsv [2] /= 2;
+		
+		return Color.HSVToColor (hsv);
+	}
+
+	/**
+	 * Updates the datasets and the markers
+	 * @param dsets a data set
+	 * @param markers the markers
+	 */
+	public void setData (List<DataSet> dsets, List<Marker> markers)
+	{
+		this.dsets = dsets;
+		this.markers = markers;
+		recalc ();
+		invalidate ();
+	}
+}
+src/com/wanikani/androidnotifier/MeterSpec.java
+public class MeterSpec implements Connection.Meter {
+
+	public enum T {
+		
+		DASHBOARD_REFRESH,
+			
+		ITEMS,
+
+		RECONSTRUCT_DIALOG,
+
+		NOTIFY_TIMEOUT,
+
+		NOTIFY_CHANGE_CONNECTIVITY,
+
+		NOTIFY_DAILY_JOBS,
+
+		OTHER_STATS,
+		
+		MORE_STATS,		
+		
+		OTHER_STATS_TOTAL {
+			public T [] getComponents ()
+			{
+				return new T [] { 
+					OTHER_STATS,
+					MORE_STATS
+				};
+			}			
+		},
+
+
+		APPLICATION {
+			public T [] getComponents ()
+			{
+				return new T [] { 
+					DASHBOARD_REFRESH,
+					ITEMS,
+					RECONSTRUCT_DIALOG,
+					OTHER_STATS,
+					MORE_STATS
+				};
+			}
+		},
+		
+		SERVICE {
+			public T [] getComponents ()
+			{
+				return new T [] { 
+					NOTIFY_TIMEOUT,
+					NOTIFY_CHANGE_CONNECTIVITY,
+					NOTIFY_DAILY_JOBS
+				};
+			}
+		},
+		
+		OVERALL {			
+			public T [] getComponents ()
+			{
+				return new T [] { 
+					APPLICATION,
+					SERVICE
+				};
+			}			
+		};
+		
+		public Meter get (Context ctxt)
+		{
+			return instantiate (ctxt);
+		}
+		
+		public Counter getCounter (Context ctxt, AmountType at)
+		{
+			return instantiate (ctxt).getCounter (at);
+		}
+		
+		protected MeterSpec instantiate (Context ctxt)
+		{
+			return new MeterSpec (ctxt, this);
+		}
+		
+		public T [] getComponents () 
+		{
+			return null;
+		}
+	}
+	
+	public enum AmountType {
+		
+		SINCE_LAST_RESET {			
+			public float getRatio (long elapsed)
+			{
+				return 1;
+			}
+		},
+		
+		AVG_DAY {
+			public float getRatio (long elapsed)
+			{
+				return 24f * 60f * 60f / (1 + elapsed / 1000);
+			}
+		},
+		
+		AVG_MONTH {
+			public float getRatio (long elapsed)
+			{
+				return AVG_DAY.getRatio (elapsed) * 30;
+			}
+		};
+		
+		public abstract float getRatio (long elapsed);
+		
+		public String getUnit () 
+		{
+			return "Bytes";
+		}
+	}
+	
+	public static class Counter {
+		
+		public AmountType at;
+		
+		public long mobile;
+		
+		public long wifi;
+
+		public long unknown;
+		
+		public Counter (AmountType at, long mobile, long wifi, long unknown)
+		{
+			this.at = at;
+			this.mobile = mobile;
+			this.wifi = wifi;
+			this.unknown = unknown;
+		}
+		
+		public long total ()
+		{
+			return mobile + wifi + unknown;
+		}
+	}
+		
+	private static final String PREFIX = MeterSpec.class.toString ();
+	
+	private static final String START_TIME = PREFIX + "START_TIME";
+	
+	private ConnectivityManager cmgr;
+	
+	private SharedPreferences prefs;
+	
+	private T type;
+	
+	private int count;
+	
+	private static final String CTAG_UNKNOWN = "u."; 
+
+	private static final String CTAG_MOBILE = "m.";
+	
+	private static final String CTAG_WIFI = "w.";
+	
+	private static final String PREFERENCES_FILE = "meters.xml";
+	
+	private static Object mutex = new Object ();
+
+	private MeterSpec (Context ctxt, T type)
+	{
+		this.type = type;
+		
+		prefs = prefs (ctxt);
+		cmgr = (ConnectivityManager) ctxt.getSystemService (Context.CONNECTIVITY_SERVICE);
+	}
+	
+	static SharedPreferences prefs (Context ctxt)
+	{
+		int flags;
+		
+		flags = Context.MODE_PRIVATE;
+		if (Build.VERSION.SDK_INT >= 11)
+			flags |= Context.MODE_MULTI_PROCESS;
+		return ctxt.getSharedPreferences (PREFERENCES_FILE, flags);		
+	}
+	
+	public void count (int bytes)
+	{
+		count += bytes;
+	}
+	
+	public static Date getLastReset (SharedPreferences prefs)
+	{
+		synchronized (mutex) {
+			if (!prefs.contains (START_TIME)) 
+				prefs.edit ().putLong (START_TIME, System.currentTimeMillis ()).commit ();			
+		}
+		
+		return new Date (prefs.getLong (START_TIME, System.currentTimeMillis ()));
+	}
+	
+	public void sync ()
+	{
+		String key;
+		Editor e;
+		
+		key = getKey (type, connectivity ());
+		
+		synchronized (mutex) {
+			e = prefs.edit ();
+			if (!prefs.contains (START_TIME))
+				e.putLong (START_TIME, System.currentTimeMillis ());
+			
+			e.putLong (key, prefs.getLong (key, 0) + count);
+			e.commit ();
+		}
+		count = 0;
+	}
+	
+	private static String getKey (T type, String connectivity)
+	{
+		return PREFIX + type.name () + "." + connectivity;
+	}
+	
+	private String connectivity ()
+	{
+		NetworkInfo info;
+		
+		if (cmgr == null)
+			return CTAG_UNKNOWN;
+		
+		info = cmgr.getActiveNetworkInfo ();
+		if (info == null)
+			return CTAG_UNKNOWN; 		
+		else if (info.getType () == ConnectivityManager.TYPE_MOBILE)
+			return CTAG_MOBILE;
+		else
+			return CTAG_WIFI;
+	}
+
+	private static void addValue (SharedPreferences prefs, T t, Counter counter)
+	{
+		T components [];
+		int i;
+		
+		components = t.getComponents ();
+		if (components != null) {
+			for (i = 0; i < components.length; i++)
+				addValue (prefs, components [i], counter);			
+		} else {
+			counter.mobile += prefs.getLong (getKey (t, CTAG_MOBILE), 0);
+			counter.wifi += prefs.getLong (getKey (t, CTAG_WIFI), 0);
+			counter.unknown += prefs.getLong (getKey (t, CTAG_UNKNOWN), 0);
+		}
+	}
+		
+	private Counter getCounter (AmountType at)
+	{
+		Counter ans;
+		Date date;
+		float ratio;
+		
+		ans = new Counter (at, 0, 0, 0);
+		synchronized (mutex) {
+			addValue (prefs, type, ans);
+			date = getLastReset (prefs); 
+		}
+		ratio = at.getRatio (System.currentTimeMillis () - date.getTime ());
+		ans.mobile *= ratio;
+		ans.wifi *= ratio;
+		ans.unknown *= ratio;
+		
+		return ans;
+	}
+	
+	public static void reset (Context ctxt)
+	{
+		Editor e;
+		
+		synchronized (mutex) {
+			e = prefs (ctxt).edit ();
+			e.putLong (START_TIME, System.currentTimeMillis ());
+			for (T type : T.values ()) {
+				e.putLong (getKey (type, CTAG_MOBILE), 0);
+				e.putLong (getKey (type, CTAG_WIFI), 0);
+				e.putLong (getKey (type, CTAG_UNKNOWN), 0);
+			}
+			e.commit ();
+		}
+	}	
+}
+src/com/wanikani/wklib/ItemLibrary.java
+public class ItemLibrary<T extends Item> implements Serializable {
+
+	public static final long serialVersionUID = 1L;
+	
+	public List<T> list;
+	
+	public ItemLibrary (Item.Factory<T> f, JSONArray array)
+		throws JSONException
+	{
+		int i;
+		
+		list = new Vector<T> (array.length ());
+		for (i = 0; i < array.length (); i++)
+			list.add (f.deserialize (array.getJSONObject (i)));
+	}
+	
+	public ItemLibrary (ItemLibrary<? extends T> lib)
+	{
+		list = new Vector<T> ();
+		
+		add (lib);
+	}
+
+	public ItemLibrary (T item)
+	{
+		list = new Vector<T> ();
+		
+		add (item);
+	}
+	
+	public ItemLibrary ()
+	{
+		list = new Vector<T> ();
+	}
+	
+	public ItemLibrary<T> add (ItemLibrary<? extends T> lib)
+	{
+		list.addAll (lib.list);
+		
+		return this;
+	}
+
+	public ItemLibrary<T> add (T item)
+	{
+		list.add (item);
+		
+		return this;
+	}
+}
+src/com/wanikani/wklib/Radical.java
+public class Radical extends Item {
+
+	private static class Factory implements Item.Factory<Radical> {
+
+		public Radical deserialize (JSONObject obj)
+			throws JSONException
+		{
+			return new Radical (obj);
+		}
+	}
+
+	private static class ItemFactory implements Item.Factory<Item> {
+
+		public Radical deserialize (JSONObject obj)
+			throws JSONException
+		{
+			return new Radical (obj);
+		}
+	}
+
+	public static final long serialVersionUID = 1L;
+	
+	public static final Item.Factory<Radical> FACTORY = new Factory ();
+
+	public static final Item.Factory<Item> ITEM_FACTORY = new ItemFactory ();
+	
+	public String image;
+	
+	private String hyphenatedMeaning;
+	
+	public Radical (JSONObject obj)
+		throws JSONException
+	{
+		super (obj, Item.Type.RADICAL);
+		
+		image = Util.getString (obj, "image");
+		
+		fixup ();
+	}	
+	
+	public Radical ()
+	{
+		super (Item.Type.RADICAL);
+	}
+	
+	@Override
+	protected boolean hasReading ()
+	{
+		return false;
+	}
+
+	public String getItemURLComponent ()
+	{
+		return hyphenatedMeaning;
+	}
+
+	protected String getClassURLComponent ()
+	{
+		return "radicals";
+	}
+	
+	@Override
+	public void fixup ()
+	{
+		hyphenatedMeaning = meaning;
+		meaning = meaning.replace ('-', ' ');
+	}
+}
+src/com/wanikani/wklib/UserInformation.java
+public class UserInformation {
+
+	public String username;
+	
+	public String gravatar;
+	
+	public Bitmap gravatarBitmap;
+	
+	public int level;
+	
+	public String title;
+	
+	public String about;
+	
+	public String website;
+	
+	public String twitter;
+	
+	public int topicsCount;
+	
+	public int postsCount;
+	
+	public Date creationDate;
+	
+	public Date vacationDate;
+	
+	private static final long ONE_DAY = 24 * 60 * 60 * 1000;
+	
+	UserInformation (JSONObject obj)
+		throws JSONException
+	{
+		username = Util.getString (obj, "username");
+		gravatar = Util.getString (obj, "gravatar");
+		level = Util.getInt (obj, "level");
+		title = Util.getString (obj, "title");
+		about = Util.getString (obj, "about");
+		website = Util.getString (obj, "website");
+		twitter = Util.getString (obj, "twitter");
+		topicsCount = Util.getInt (obj, "topics_count");
+		postsCount = Util.getInt (obj, "posts_count");
+		creationDate = Util.getDate (obj, "creation_date");
+		vacationDate = Util.getDate (obj, "vacation_date");
+	}
+	
+	private static Calendar getNormalizedCalendar (Date date)
+	{
+		Calendar ans;
+		
+		ans = Calendar.getInstance ();
+		ans.setTime (date);
+		ans.set (Calendar.HOUR, 1);
+		ans.set (Calendar.MINUTE, 2);
+		ans.set (Calendar.SECOND, 3);
+		ans.set (Calendar.MILLISECOND, 4);
+		
+		return ans;
+	}
+	
+	public int getDay ()
+	{
+		return getDay (new Date ());
+	}
+	
+	public int getDay (Date d)
+	{
+		return getDay (creationDate, d);
+	}
+	
+	public static int getDay (Date origin, Date d)
+	{
+		Calendar cal1, cal2;
+		
+		cal1 = getNormalizedCalendar (origin);
+		cal2 = getNormalizedCalendar (d);
+		return (int) ((cal2.getTimeInMillis () - cal1.getTimeInMillis ()) / ONE_DAY);
+	}
+}
+src/com/wanikani/wklib/SRSLevel.java
+public enum SRSLevel {
+
+	APPRENTICE, GURU, MASTER, ENLIGHTEN, BURNED;
+	
+	static Map<Integer, SRSLevel> omap;
+	
+	static {
+		omap = new Hashtable<Integer, SRSLevel> ();
+		
+		for (SRSLevel srs : EnumSet.allOf (SRSLevel.class))
+			omap.put (srs.ordinal (), srs);
+	}
+	
+	public static SRSLevel fromString (String s)
+	{
+		if (s.equals ("apprentice"))
+			return APPRENTICE;
+		else if (s.equals ("guru"))
+			return GURU;
+		else if (s.equals ("master"))
+			return MASTER;
+		else if (s.equals ("enlighten"))
+			return ENLIGHTEN;
+		else if (s.equals ("burned"))
+			return BURNED;
+		
+		return null;
+	}
+	
+	public static SRSLevel fromOrdinal (int ordinal)
+	{
+		return omap.get (ordinal);
+	}
+}

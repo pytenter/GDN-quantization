@@ -1,0 +1,1 @@
+lambda _cls, sparse_min_rows, sparse_min_cols, dense_min_rows, dense_min_cols: _tuple_new(_cls, (sparse_min_rows, sparse_min_cols, dense_min_rows, dense_min_cols))

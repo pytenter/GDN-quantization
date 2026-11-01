@@ -1,0 +1,1 @@
+lambda _cls, ip, port: _tuple_new(_cls, (ip, port))

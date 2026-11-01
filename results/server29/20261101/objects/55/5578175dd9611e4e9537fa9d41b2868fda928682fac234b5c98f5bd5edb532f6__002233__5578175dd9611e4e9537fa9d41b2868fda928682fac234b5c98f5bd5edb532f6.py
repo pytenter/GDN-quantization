@@ -1,0 +1,1 @@
+lambda _cls, context,: _tuple_new(_cls, (context,))

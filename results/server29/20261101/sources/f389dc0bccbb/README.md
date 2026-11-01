@@ -1,0 +1,50 @@
+# qwen_gdn_pace48_aime26_seed1_60_v1_scale_exponent_repair_20261025
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/qwen_gdn_pace48_aime26_seed1_60_v1_scale_exponent_repair_20261025`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`README.md`](../../objects/cb/cbe633298ae69bdef80c7c455f85da43e84df220a28fbfba804e35d09b329a04__README.md)
+- [`final_verdict.json`](../../objects/5b/5bc0d1a291edf770e0ec1a5444995c5f543c5327ad051c653dc126b20d21e3b9__final_verdict.json)
+- [`scripts/finalize_cpu.py`](../../objects/c6/c6d812bd62caa9de600c65afd46b96ff516a38d407c9763cdbfaad7afd7795b6__finalize_cpu.py)
+- [`vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`calibration/head_scores.csv`](../../objects/31/31f07da9517d3d4bebf77189f64a77e7df1cc3623ea15aa7a98857b0b9a2b63d__head_scores.csv)
+- [`protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`FINAL_IDENTITY_RELEASE_VERIFICATION.json`](../../objects/b9/b9d8cc6faa3c5c82b9cd9435204bab6b81cf238dc4d2bf37e5b0b9a6eb47e5f0__FINAL_IDENTITY_RELEASE_VERIFICATION.json)
+- [`operations/run_scale_repair_final_cpu.py`](../../objects/49/490a4468ed4e4e1da814cdd98b3ce5f2c725c0d0d3d47277bd71b9d182742103__run_scale_repair_final_cpu.py)
+- [`provenance/PRIOR_PACE_TRUE_STOP/README.md`](../../objects/4f/4fddbff831fae9273f50cf577ef8de4d7666806d8aa9d2b8669688e174a7d834__README.md)
+- [`operations/FINAL_CPU_ADMISSION_CLOSURE.json`](../../objects/da/da5d1847005fa1081cf1f0fb798e28f2e302bf3ae8de114a8f243d2865c81acc__FINAL_CPU_ADMISSION_CLOSURE.json)
+- [`operations/run_exponent_repair_final_cpu.py`](../../objects/48/48ac884f57a20a58d9d0b0fc27881b2ce7ee6ea0b7acba41087df6d6c904c787__run_exponent_repair_final_cpu.py)
+- [`operations/SCALE_REPAIR_FINAL_CPU_ADMISSION.json`](../../objects/3e/3e65380bac60d352c44704b6d15eb23cf241a28b53803aac5dc2c1a081ca6033__SCALE_REPAIR_FINAL_CPU_ADMISSION.json)
+- [`operations/FINAL_CPU_METADATA_READONLY_FETCH.json`](../../objects/31/31ad91726871d0a2c6dffb2739c0c2588a8330b4ad8d907e4f187eb133dee695__FINAL_CPU_METADATA_READONLY_FETCH.json)
+- [`provenance/PRIOR_PACE_TRUE_STOP/final_verdict.json`](../../objects/76/76a8dce78a3169ac743b4e996d6ddd2fe97fd0965cce22d12677af5bfc13af57__final_verdict.json)
+- [`operations/EXPONENT_REPAIR_FINAL_CPU_ADMISSION.json`](../../objects/db/db1245033373dd2415e207d910ff8d1c8cf0a04b027b63e2dfd2b979db9f66e1__EXPONENT_REPAIR_FINAL_CPU_ADMISSION.json)
+- [`protocol/INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json`](../../objects/45/458041afe7011c5055d92bed1f97bc95b21f081a480a31092495c33e7e521094__INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json)
+- [`operations/GROUP64_FINAL_INDEPENDENT_STOP_CLOSURE.json`](../../objects/36/36843d01b03513950fbaf646153d8b62b622f0bce84c622fefdf7654f46af261__GROUP64_FINAL_INDEPENDENT_STOP_CLOSURE.json)
+- [`operations/TARGET_TWO_FRESH_FINAL_CPU_INTEGRATION.json`](../../objects/b9/b993ad76ea3695003ad5efac96326b538017ef3a92d21719407401b0a59cad9c__TARGET_TWO_FRESH_FINAL_CPU_INTEGRATION.json)
+- [`operations/EXPONENT_FINAL_CPU_NAMESPACE_FIX_REVIEW.json`](../../objects/b5/b5455607f11e94b09f1f5875d555f0c8d97a5dd6229353aef0c8b1a42e0b1683__EXPONENT_FINAL_CPU_NAMESPACE_FIX_REVIEW.json)
+- [`provenance/PRIOR_PACE_TRUE_STOP/scripts/finalize_cpu.py`](../../objects/93/939a7e3c39f29b5eafe81367ad9e89dbe83cb1359277b3615128d7f78723afd4__finalize_cpu.py)
+- [`operations/ACTUAL_TARGET_FINAL_TWO_FRESH_CPU_CONTROL.json`](../../objects/1a/1a3e2de526d5daedea690dd951da86a100d61fe550dc884cefe521143af78a82__ACTUAL_TARGET_FINAL_TWO_FRESH_CPU_CONTROL.json)
+- [`provenance/ORIGINAL_TRUE_STOP/calibration/head_scores.csv`](../../objects/31/31f07da9517d3d4bebf77189f64a77e7df1cc3623ea15aa7a98857b0b9a2b63d__head_scores.csv)
+- [`provenance/PRIOR_PACE_TRUE_STOP/vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`provenance/PRIOR_PACE_TRUE_STOP/calibration/head_scores.csv`](../../objects/31/31f07da9517d3d4bebf77189f64a77e7df1cc3623ea15aa7a98857b0b9a2b63d__head_scores.csv)
+- [`provenance/PRIOR_PACE_TRUE_STOP/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`operations/TARGET_TWO_FRESH_FINAL_EXPONENT_CPU_INTEGRATION.json`](../../objects/4b/4bb7b94a311c3ec57ca118ed97f3e50c2a169f9aac36ecaed24a048c3b4ee500__TARGET_TWO_FRESH_FINAL_EXPONENT_CPU_INTEGRATION.json)
+- [`provenance/PREFREEZE_DUPLICATE_CALIBRATION_COPY/head_scores.csv`](../../objects/31/31f07da9517d3d4bebf77189f64a77e7df1cc3623ea15aa7a98857b0b9a2b63d__head_scores.csv)
+- [`operations/EXPONENT_FINAL_CPU_GENERATED_ARGUMENTS_FIX_REVIEW.json`](../../objects/6d/6d25610b3ca6fab4bcfcffa651379504fe4e4e600d28d26ceda864d086fc5828__EXPONENT_FINAL_CPU_GENERATED_ARGUMENTS_FIX_REVIEW.json)
+- [`operations/FINAL_CPU_METADATA_TRANSPORT_PARSE_ATTEMPT_FAILURE.json`](../../objects/83/8361f222aef11419f5c0ae69d7693e868c9018867b0a2b648cbd120d4c2f22ae__FINAL_CPU_METADATA_TRANSPORT_PARSE_ATTEMPT_FAILURE.json)
+- [`provenance/PRIOR_SCALE_REPAIR_TRUE_STOP_METADATA/final_verdict.json`](../../objects/a8/a8fa000b239a64a32ae95dd4e2cbb26dc20309c97439b66115ac472c8a903d2a__final_verdict.json)
+- [`operations/FIRST_CHUNK_COMPATIBILITY_REPAIR/FINAL_LOCAL_CPU_REVIEW.json`](../../objects/59/5930e61a9a01f2dd1fc56a1230f5dc8c5843c27b5cffb19b46ed2f375b9b0d0a__FINAL_LOCAL_CPU_REVIEW.json)
+- [`operations/FIRST_CHUNK_COMPATIBILITY_REPAIR/CPU_ADAPTER_FINAL_PASS1.json`](../../objects/55/5505b10be3c39bc2c2847aee2da9111fc27fa6effe929a6ddd250be02f525d9c__CPU_ADAPTER_FINAL_PASS1.json)
+- [`operations/FIRST_CHUNK_COMPATIBILITY_REPAIR/CPU_ADAPTER_FINAL_PASS2.json`](../../objects/b9/b9f3968778763c2ded328c84942e330ee29f8a7d142478b97eadc09720775e72__CPU_ADAPTER_FINAL_PASS2.json)
+- [`provenance/PRIOR_PACE_TRUE_STOP/FINAL_IDENTITY_RELEASE_VERIFICATION.json`](../../objects/b1/b1656d400914aa7b266a2ae0f0c1bda97d92fb9db564664f6ddc72e9bce69d80__FINAL_IDENTITY_RELEASE_VERIFICATION.json)
+- [`operations/FIRST_CHUNK_COMPATIBILITY_REPAIR/CPU_ADAPTER_FINAL_V2_PASS1.json`](../../objects/55/55c1f9b9102cb49c9d254fcbbad0e7a8d0a17ab6049eec8e0a142d041f90ae21__CPU_ADAPTER_FINAL_V2_PASS1.json)
+- [`operations/FIRST_CHUNK_COMPATIBILITY_REPAIR/CPU_ADAPTER_FINAL_V2_PASS2.json`](../../objects/62/626711cc8213409db2c2b1a3188ce5f32c35f688b35b718cc9262b2e27d53a28__CPU_ADAPTER_FINAL_V2_PASS2.json)
+- [`provenance/PRIOR_PACE_TRUE_STOP/operations/FINAL_CPU_ADMISSION_CLOSURE.json`](../../objects/da/da5d1847005fa1081cf1f0fb798e28f2e302bf3ae8de114a8f243d2865c81acc__FINAL_CPU_ADMISSION_CLOSURE.json)
+- [`provenance/PRIOR_PACE_TRUE_STOP/operations/TARGET_CPU_fresh1/MATH_SUMMARY.json`](../../objects/35/356d6e5ad0639f343f3bc7a203197e92d7ac81b74a8c4debb4b81fff314af49c__MATH_SUMMARY.json)
+- [`provenance/PRIOR_PACE_TRUE_STOP/operations/TARGET_CPU_fresh2/MATH_SUMMARY.json`](../../objects/1a/1a537803e2b13c63a794604b0980a916d2cf60dd4dbc0ec1177fc9571173e961__MATH_SUMMARY.json)
+- [`provenance/PRIOR_PACE_TRUE_STOP/operations/TARGET_CPU_fresh3/MATH_SUMMARY.json`](../../objects/55/5505c2576b14ceefc26b0d50db5b43bff2e67404d7684dce3588dca460c60c9c__MATH_SUMMARY.json)

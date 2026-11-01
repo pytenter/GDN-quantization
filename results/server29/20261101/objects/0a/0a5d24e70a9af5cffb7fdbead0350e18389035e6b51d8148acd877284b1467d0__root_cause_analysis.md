@@ -1,0 +1,4 @@
+# LING_MANUAL_RECURRENT_DECODE_TOKEN_PARITY_AUDIT_V1
+
+ROOT_CAUSE_CLASS = PREFILL_TO_DECODE_TRANSITION_MISMATCH
+RUNTIME_ROOT_CAUSE = No severe per-token runtime pathology in 128-step cached teacher-forced profile.

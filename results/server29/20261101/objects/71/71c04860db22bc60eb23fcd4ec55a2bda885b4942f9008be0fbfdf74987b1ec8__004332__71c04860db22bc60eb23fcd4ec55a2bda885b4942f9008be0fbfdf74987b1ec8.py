@@ -1,0 +1,1 @@
+lambda _cls, family, address, netmask, broadcast, ptp: _tuple_new(_cls, (family, address, netmask, broadcast, ptp))

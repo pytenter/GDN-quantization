@@ -1,0 +1,551 @@
+src/main/java/com/kryptnostic/api/v1/client/KryptnosticRestAdapter.java
+public final class KryptnosticRestAdapter {
+    private KryptnosticRestAdapter() {}
+
+    private static final Logger logger = LoggerFactory.getLogger( KryptnosticRestAdapter.class );
+
+    public static RestAdapter create( Client client, KryptnosticConnection connection ) {
+        return builder( connection, new KryptnosticConverter() ).setClient( client )
+                .build();
+    }
+
+    public static RestAdapter create( KryptnosticConnection connection ) {
+        return createWithDefaultClient( connection );
+    }
+
+    public static RestAdapter createWithDefaultClient( KryptnosticConnection connection ) {
+        return builder( connection, new KryptnosticConverter() ).build();
+    }
+
+    public static RestAdapter createWithDefaultJacksonConverter( KryptnosticConnection connection ) {
+        return builder( connection, new KryptnosticConverter() ).build();
+    }
+
+    public static RestAdapter createWithDefaultJacksonConverter( String url, UUID user, String userCredential ) {
+        return builder( url, user, userCredential, new KryptnosticConverter() ).build();
+    }
+
+    public static RestAdapter createWithByteArrayJacksonConverter(
+            String url,
+            UUID user,
+            String userCredential,
+            Client client ) {
+        return builder( url, user, userCredential, new ByteArrayConverter() ).setClient( client ).build();
+    }
+
+    public static RestAdapter createWithDefaultJacksonConverter(
+            String url,
+            UUID user,
+            String userCredential,
+            Client client ) {
+        return builder( url, user, userCredential, new KryptnosticConverter() ).setClient( client ).build();
+    }
+
+    public static RestAdapter createWithNoAuthAndDefaultJacksonConverter( String url, Client client ) {
+        return new RestAdapter.Builder().setConverter( new KryptnosticConverter() ).setEndpoint( url )
+                .setErrorHandler( new DefaultErrorHandler() ).setLogLevel( LogLevel.FULL ).setClient( client )
+                .setLog( new RestAdapter.Log() {
+                    @Override
+                    public void log( String msg ) {
+                        logger.debug( msg.replaceAll( "%", "[percent]" ) );
+                    }
+                } ).build();
+    }
+
+    public static RestAdapter.Builder builder( KryptnosticConnection connection, Converter converter ) {
+        return builder( connection.getUrl(), connection.getUserId(), connection.getUserCredential(), converter );
+    }
+
+    public static RestAdapter.Builder builder( String url, UUID user, String userCredential, Converter converter ) {
+        return new RestAdapter.Builder().setConverter( converter ).setEndpoint( url )
+                .setRequestInterceptor( new PreauthenticationRequestInterceptor( user, userCredential ) )
+                .setErrorHandler( new DefaultErrorHandler() ).setLogLevel( LogLevel.FULL )
+                .setLog( new RestAdapter.Log() {
+                    @Override
+                    public void log( String msg ) {
+                        logger.debug( msg.replaceAll( "%", "[percent]" ) );
+                    }
+                } );
+    }
+}
+src/main/java/com/kryptnostic/api/v1/security/loaders/rsa/LocalRsaKeyLoader.java
+public final class LocalRsaKeyLoader extends RsaKeyLoader {
+    private final ObjectMapper  mapper = KodexObjectMapperFactory.getObjectMapper();
+    private final CryptoService crypto;
+    private final DataStore     dataStore;
+    private final KeyStorageApi keyClient;
+    // private final DirectoryApi directoryClient;
+
+    public LocalRsaKeyLoader( CryptoService crypto, KeyStorageApi keyClient, DataStore dataStore )
+            throws KodexException {
+        if ( crypto == null || dataStore == null || keyClient == null ) {
+            throw new KodexException(
+                    "Crypto service, key network client, and data store are required to load from disk" );
+        }
+        this.keyClient = keyClient;
+        this.crypto = crypto;
+        this.dataStore = dataStore;
+    }
+
+    @Override
+    protected KeyPair tryLoading() throws KodexException {
+        try {
+            byte[] encryptedPrivateKeyBytes = Preconditions.checkNotNull(
+                    dataStore.get( PrivateKey.class.getCanonicalName() ),
+                    "Couldn't load private key from data store." );
+            BlockCiphertext privateKeyCiphertext = mapper.readValue( encryptedPrivateKeyBytes, BlockCiphertext.class );
+
+            // need to check if local privateKey is synced with the server and user is authenticated
+
+            BlockCiphertext networkPrivateKey = null;
+            networkPrivateKey = keyClient.getRSAPrivateKey();
+            if ( networkPrivateKey == null ) {
+                throw new KodexException( "User not recognized" );
+            }
+
+            byte[] decryptedPrivateKeyBytes = crypto.decryptBytes( privateKeyCiphertext );
+
+            byte[] decryptedPublicKeyBytes = Preconditions.checkNotNull(
+                    dataStore.get( PublicKey.class.getCanonicalName() ),
+                    "Couldn't load public key from data store." );
+
+            PrivateKey rsaPrivateKey = Keys.privateKeyFromBytes( PublicKeyAlgorithm.RSA, decryptedPrivateKeyBytes );
+            PublicKey rsaPublicKey = Keys.publicKeyFromBytes( PublicKeyAlgorithm.RSA, decryptedPublicKeyBytes );
+
+            return new KeyPair( rsaPublicKey, rsaPrivateKey );
+        } catch (
+                InvalidKeySpecException
+                | NoSuchAlgorithmException
+                | SecurityConfigurationException
+                | IOException
+                | NullPointerException e ) {
+            throw new KodexException( e );
+        }
+
+    }
+}
+src/main/java/com/kryptnostic/v2/crypto/KryptnosticCryptoServiceLoader.java
+public class KryptnosticCryptoServiceLoader implements CryptoServiceLoader {
+    private static final Logger                                   logger = LoggerFactory
+                                                                                 .getLogger( KryptnosticCryptoServiceLoader.class );
+
+    private final LoadingCache<VersionedObjectKey, CryptoService> keyCache;
+    private KeyStorageApi                                         keyStorageApi;
+    private ObjectStorageApi                                      objectStorageApi;
+    private KryptnosticConnection                                 connection;
+    private Cypher                                                cypher;
+
+    public KryptnosticCryptoServiceLoader(
+            final KryptnosticConnection connection,
+            final KeyStorageApi keyApi,
+            ObjectStorageApi objectStorageApi,
+            Cypher cypher ) {
+        this.keyStorageApi = keyApi;
+        this.objectStorageApi = objectStorageApi;
+        this.connection = connection;
+        this.cypher = cypher;
+        keyCache = CacheBuilder.newBuilder().maximumSize( 1000 ).expireAfterWrite( 10, TimeUnit.MINUTES )
+                // TODO: make this a separate class
+                .build( new CacheLoader<VersionedObjectKey, CryptoService>() {
+                    @Override
+                    public Map<VersionedObjectKey, CryptoService> loadAll( Iterable<? extends VersionedObjectKey> keys )
+                            throws IOException,
+                            SecurityConfigurationException {
+                        VersionedObjectKeySet ids = new VersionedObjectKeySet();
+
+                        for ( VersionedObjectKey key : keys ) {
+                            ids.add( key );
+                        }
+
+                        Map<VersionedObjectKey, BlockCiphertext> data = keyApi.getAesEncryptedCryptoServices( ids );
+                        if ( data.size() != ids.size() ) {
+                            throw new InvalidCacheLoadException( "Unable to retrieve all keys." );
+                        }
+                        Map<VersionedObjectKey, CryptoService> processedData = Maps.newHashMap();
+
+                        for ( Entry<VersionedObjectKey, BlockCiphertext> entry : data.entrySet() ) {
+                            BlockCiphertext crypto = entry.getValue();
+                            if ( crypto != null ) {
+                                CryptoService service = connection.newCryptoManager().getRsaCryptoService().decrypt(
+                                        crypto.getContents(), // TODO: is this chrrect????
+                                        AesCryptoService.class );
+                                processedData.put( entry.getKey(), service );
+                            }
+                        }
+                        return processedData;
+                    }
+
+                    @Override
+                    public CryptoService load( VersionedObjectKey key ) throws IOException,
+                            SecurityConfigurationException {
+                        BlockCiphertext crypto = keyApi.getAesEncryptedObjectCryptoService( key.getObjectId(),
+                                key.getVersion() );
+                        if ( crypto == null ) {
+                            try {
+                                CryptoService cs = new AesCryptoService( KryptnosticCryptoServiceLoader.this.cypher );
+                                put( key, cs );
+                                return cs;
+                            } catch (
+                                    NoSuchAlgorithmException
+                                    | InvalidAlgorithmParameterException
+                                    | ExecutionException e ) {
+                                logger.error( "Failed while trying to create new crypto service for object id: {} ",
+                                        key, e );
+                            }
+                        }
+                        return connection
+                                .newCryptoManager()
+                                .getRsaCryptoService()
+                                .decrypt( crypto.getContents(), AesCryptoService.class );// TODO isthis correct???
+                    }
+                } );
+    }
+
+    @Override
+    public Optional<CryptoService> get( VersionedObjectKey id ) throws ExecutionException {
+        if ( id == null ) {
+            return Optional.absent();
+        }
+        return Optional.fromNullable( keyCache.get( id ) );
+    }
+
+    @Override
+    public void put( VersionedObjectKey id, CryptoService service ) throws ExecutionException {
+        keyCache.put( id, service );
+        try {
+            byte[] cs = connection.newCryptoManager().getRsaCryptoService().encrypt( service );
+            keyStorageApi.setObjectCryptoService( id.getObjectId(), cs ); // TODO: is this correct???
+        } catch ( SecurityConfigurationException | IOException e ) {
+            throw new ExecutionException( e );
+        }
+    }
+
+    @Override
+    public Map<VersionedObjectKey, CryptoService> getAll( Set<VersionedObjectKey> ids ) throws ExecutionException {
+        return keyCache.getAllPresent( ids );
+    }
+
+    @Override
+    public void clear() {
+        keyCache.invalidateAll();
+        keyCache.cleanUp();
+    }
+
+    @Override
+    public Cypher getCypher() {
+        return cypher;
+    }
+
+    @Override
+    public Optional<CryptoService> getLatest( UUID id ) throws ExecutionException {
+        return get( VersionedObjectKey.fromObjectMetadata( objectStorageApi.getObjectMetadata( id ) ) );
+    }
+}
+src/main/java/com/kryptnostic/api/v1/security/loaders/rsa/NetworkRsaKeyLoader.java
+public final class NetworkRsaKeyLoader extends RsaKeyLoader {
+    private static final Logger         logger = LoggerFactory.getLogger( NetworkRsaKeyLoader.class );
+    private final PasswordCryptoService crypto;
+    private final KeyStorageApi         keyApi;
+    private final UUID                  userKey;
+
+    public NetworkRsaKeyLoader( PasswordCryptoService crypto, KeyStorageApi keyApi, UUID userKey ) throws KodexException {
+        if ( crypto == null || keyApi == null || userKey == null ) {
+            throw new KodexException( "null values" );
+        }
+        this.crypto = crypto;
+        this.keyApi = keyApi;
+        this.userKey = userKey;
+    }
+
+    @Override
+    protected KeyPair tryLoading() throws KodexException {
+        BlockCiphertext rsaPrivateKeyCiphertext = null;
+        byte[] pubKey = null;
+        rsaPrivateKeyCiphertext = keyApi.getRSAPrivateKey();
+        pubKey = keyApi.getRSAPublicKey( userKey );
+        if ( rsaPrivateKeyCiphertext == null || pubKey == null ) {
+            throw new KodexException( "Encryption keys could not be retrieved from the network" );
+        }
+
+        try {
+            byte[] decryptedPrivateKeyBytes = crypto.decryptBytes( rsaPrivateKeyCiphertext );
+            byte[] publicKeyBytes = pubKey;
+
+            PrivateKey rsaPrivateKey = Keys.privateKeyFromBytes( PublicKeyAlgorithm.RSA, decryptedPrivateKeyBytes );
+            PublicKey rsaPublicKey = Keys.publicKeyFromBytes( PublicKeyAlgorithm.RSA, publicKeyBytes );
+
+            return new KeyPair( rsaPublicKey, rsaPrivateKey );
+
+        } catch ( SecurityConfigurationException | InvalidKeySpecException | NoSuchAlgorithmException e ) {
+            throw new KodexException( e );
+        }
+    }
+}
+src/main/java/com/kryptnostic/api/v1/client/DefaultKryptnosticClient.java
+public class DefaultKryptnosticClient implements KryptnosticClient {
+    private final SearchClient    searchClient;
+    private final StorageClient   storageClient;
+    private final SharingClient   sharingClient;
+    private final DirectoryClient directoryClient;
+
+    public DefaultKryptnosticClient( KryptnosticConnection connection ) throws IrisException,
+            ResourceNotFoundException, ClassNotFoundException, IOException, ExecutionException, SecurityConfigurationException {
+        this(
+                new DefaultSearchClient( connection ),
+                new KryptnosticStorageClient( connection ),
+                new SharingManager( connection ),
+                new DefaultDirectoryClient( connection ) );
+    }
+
+    public DefaultKryptnosticClient(
+            SearchClient searchClient,
+            StorageClient storageClient,
+            SharingClient sharingClient,
+            DirectoryClient directoryClient ) {
+        this.searchClient = searchClient;
+        this.storageClient = storageClient;
+        this.sharingClient = sharingClient;
+        this.directoryClient = directoryClient;
+    }
+
+    @Override
+    public SharingClient getSharingClient() {
+        return sharingClient;
+    }
+
+    @Override
+    public DirectoryClient getDirectoryClient() {
+        return this.directoryClient;
+    }
+
+    @Override
+    public SearchClient getSearchClient() {
+        return this.searchClient;
+    }
+
+    @Override
+    public StorageClient getStorageClient() {
+        return this.storageClient;
+    }
+}
+src/main/java/com/kryptnostic/api/v1/security/loaders/rsa/FreshRsaKeyLoader.java
+public final class FreshRsaKeyLoader extends RsaKeyLoader {
+    @Override
+    protected KeyPair tryLoading() throws KodexException {
+        KeyPair keyPair;
+        try {
+            keyPair = Keys.generateRsaKeyPair( KEY_SIZE );
+
+            return keyPair;
+        } catch ( NoSuchAlgorithmException e ) {
+            throw new KodexException( e );
+        }
+    }
+}
+src/main/java/com/kryptnostic/api/v1/KryptnosticConnection.java
+public interface KryptnosticConnection {
+    //TODO: Move this somewhere else.
+    String MASTER_CRYPTO_SERVICE = "master-crypto-service";
+    /**
+     * Retrieves the security principal for this connection.
+     *
+     * @return The UUID of the security principal for this connection.
+     */
+    UUID getUserId();
+
+    /**
+     * Retrieves the authenticator for this connection.
+     *
+     * @return A string representation of the authenticator for this connection.
+     */
+    // TODO: Is this base64 or Hex?
+    String getUserCredential();
+
+    PrivateKey getPrivateKey();
+
+    PublicKey getPublicKey();
+    
+    CryptoService getMasterCryptoService();
+
+    KryptnosticEngine getKryptnosticEngine();
+
+    byte[] getClientHashFunction();
+
+    String getUrl();
+
+    CryptoServiceLoader getCryptoServiceLoader();
+
+    KeyStorageApi getCryptoKeyStorageApi();
+
+    ObjectStorageApi getObjectStorageApi();
+
+    ObjectListingApi getObjectListingApi();
+
+    SearchApi getSearchApi();
+
+    SharingApi getSharingApi();
+
+    UserDirectoryApi getDirectoryApi();
+
+    KeyStorageApi getKeyStorageApi();
+    
+    TypesApi getTypesApi();
+
+    DataStore getLocalDataStore();
+
+    /**
+     * Retrieves the higher level client API.
+     *
+     * @return An instance of {@link KryptnosticClient}
+     * @throws ResourceNotFoundException
+     * @throws IrisException
+     * @throws ClassNotFoundException
+     * @throws SecurityConfigurationException 
+     * @throws ExecutionException 
+     * @throws IOException 
+     */
+    KryptnosticClient newClient() throws ClassNotFoundException, IrisException, ResourceNotFoundException, IOException, ExecutionException, SecurityConfigurationException;
+
+    KryptnosticCryptoManager newCryptoManager();
+
+}
+src/main/java/com/kryptnostic/api/v1/client/DefaultKryptnosticCryptoManager.java
+public class DefaultKryptnosticCryptoManager implements KryptnosticCryptoManager {
+    private final SharingApi            sharingApi;
+    private final KeyStorageApi         keyStorageApi;
+    private final SearchApi             searchApi;
+    private final KryptnosticConnection connection;
+    private final Mac                   hmac;
+
+    private static final Logger         logger = LoggerFactory
+                                                       .getLogger( DefaultKryptnosticCryptoManager.class );
+
+    public DefaultKryptnosticCryptoManager(
+            KryptnosticConnection connection ) {
+        this.sharingApi = connection.getSharingApi();
+        this.keyStorageApi = connection.getKeyStorageApi();
+        this.searchApi = connection.getSearchApi();
+        this.connection = connection;
+        hmac = HmacUtils.getHmacSha256( connection.getMasterCryptoService().getSecretKey() );
+    }
+
+    @Override
+    public void registerObjectSearchPair( VersionedObjectKey objectId, ObjectSearchPair indexPair ) {
+        sharingApi.addSearchPairs( ImmutableSet.of( new VersionedObjectSearchPair( objectId, indexPair ) ) );
+    }
+
+    @Override
+    public void registerObjectSearchPairs( Set<VersionedObjectSearchPair> indexPairs ) {
+        sharingApi.addSearchPairs( indexPairs );
+    }
+
+    @Override
+    public byte[] generateIndexForToken( String token, byte[] objectIndexPair ) {
+        byte[] searchHash = getHashedToken( token );
+        byte[] indexForTerm = connection.getKryptnosticEngine().clientGetMetadatumAddress( objectIndexPair,
+                searchHash );
+        return indexForTerm;
+    }
+
+    public static byte[] getHashedToken( String token ) {
+        return foldByteArray( Hashing.sha256().hashBytes( token.getBytes( Charsets.UTF_16 ) ).asBytes() );
+    }
+
+    public static byte[] foldByteArray( byte[] input ) {
+        Preconditions.checkState( ( input.length & 1 ) == 0, "Length of input must be divisible by 2." );
+        byte[] folded = new byte[ input.length >>> 1 ];
+        for ( int i = 0; i < folded.length; ++i ) {
+            folded[ i ] = (byte) ( input[ i ] ^ input[ i + folded.length ] );
+        }
+        if ( folded.length != 16 ) {
+            logger.warn( "Unexpected hash lenght: {}", folded.length );
+        }
+        return folded;
+    }
+
+    @Override
+    public byte[] prepareSearchToken( String term ) {
+        return connection.getKryptnosticEngine().getEncryptedSearchToken( getHashedToken( term ) );
+    }
+
+    @Override
+    public byte[] rsaDecrypt( byte[] ciphertext ) throws SecurityConfigurationException {
+        return Cyphers.decrypt( RsaKeyLoader.CIPHER, connection.getPrivateKey(), ciphertext );
+    }
+
+    @Override
+    public byte[] rsaEncrypt( byte[] plaintext ) throws SecurityConfigurationException {
+        return Cyphers.encrypt( RsaKeyLoader.CIPHER, connection.getPublicKey(), plaintext );
+    }
+
+    @Override
+    public Map<UUID, RsaCompressingEncryptionService> getEncryptionServiceForUsers( Set<UUID> users ) {
+        return Maps.asMap( users, new Function<UUID, RsaCompressingEncryptionService>() {
+
+            @Override
+            public RsaCompressingEncryptionService apply( UUID input ) {
+                try {
+                    return new RsaCompressingEncryptionService( RsaKeyLoader.CIPHER, new PublicKeyEnvelope(
+                            keyStorageApi.getRSAPublicKey(
+                                    input ) ).asRsaPublicKey() );
+                } catch (
+                        InvalidKeySpecException
+                        | NoSuchAlgorithmException
+                        | SecurityConfigurationException e ) {
+                    return null;
+                }
+            }
+        } );
+    }
+
+    @Override
+    public RsaCompressingCryptoService getRsaCryptoService() throws SecurityConfigurationException {
+        return new RsaCompressingCryptoService(
+                RsaKeyLoader.CIPHER,
+                connection.getPrivateKey(),
+                connection.getPublicKey() );
+    }
+
+    @Override
+    public byte[] computeSearchToken( String term ) {
+        return hmac.doFinal( StringUtils.getBytesUtf16( term ) );
+    }
+
+    @Override
+    public int getIndexBucketSize( VersionedObjectKey objectKey ) {
+        return 0;
+    }
+}
+src/main/java/com/kryptnostic/kodex/v1/client/KryptnosticClient.java
+public interface KryptnosticClient {
+    DirectoryClient getDirectoryClient();
+
+    SharingClient getSharingClient();
+
+    SearchClient getSearchClient();
+
+    StorageClient getStorageClient();
+}
+src/main/java/com/kryptnostic/api/v1/KryptnosticCryptoManager.java
+public interface KryptnosticCryptoManager {
+
+    byte[] rsaDecrypt( byte[] ciphertext ) throws SecurityConfigurationException;
+
+    byte[] rsaEncrypt( byte[] plaintext ) throws SecurityConfigurationException;
+
+    void registerObjectSearchPair( VersionedObjectKey objectKey, ObjectSearchPair objectSearchPair );
+
+    byte[] prepareSearchToken( String token );
+
+    Map<UUID, RsaCompressingEncryptionService> getEncryptionServiceForUsers( Set<UUID> users );
+
+    RsaCompressingCryptoService getRsaCryptoService() throws SecurityConfigurationException;
+
+    byte[] generateIndexForToken( String token, byte[] objectIndexPair );
+
+    void registerObjectSearchPairs( Set<VersionedObjectSearchPair> indexPairs );
+
+    byte[] computeSearchToken( String token );
+    
+    int getIndexBucketSize( VersionedObjectKey objectKey );
+}

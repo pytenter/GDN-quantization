@@ -1,0 +1,24 @@
+{
+  "status": "INITIAL_STATIC_REVIEW_ACTIONABLE_GAPS_REPORTED_BEFORE_GPU",
+  "scope": "Observed initial worker text from a read-only tool call, before parent fixes. Exact initial raw worker SHA was not captured and is NOT_RETAINED; no retroactive SHA invented.",
+  "GPU_dispatches": 0,
+  "GPU_queries": 0,
+  "findings": [
+    {"id": "W1", "severity": "P1", "issue": "Initial arrays() omitted dict-valued recurrent_states/conv_states, so fresh traces did not bind all actual GDN/conv cache tensors.", "required_resolution": "Recursive dict/list/tuple/tensor traversal plus cache metadata and reference topology; actual GPU proof remains NOT_RUN."},
+    {"id": "W2", "severity": "P1", "issue": "Initial FP64 recurrence restarted each helper from actual initial_state, providing conditional one-step fidelity rather than an independent carried prefix-state oracle.", "required_resolution": "Carry separate per-layer FP64 oracle from token0 and label dependence on actual model activations. It remains a 32-token prefix check, not an independent full-model/32K/81K proof."},
+    {"id": "W3", "severity": "P1", "issue": "Initial math_checks were saved only after full success. First math failure would lose token/layer/error/bound metrics while generic traceback survived.", "required_resolution": "Persist first mathematical failure metrics and raw comparison before raising; preserve failures without retry."},
+    {"id": "W4", "severity": "P2", "issue": "Native normalization outputs were observed and fed to FP64 recurrence; this alone is not independent normalization validation.", "required_resolution": "Either accurately limit qualification to post-normalization recurrence, or independently bound native normalization against frozen FP64 normalization without changing GPU math."},
+    {"id": "W5", "severity": "P1", "issue": "Distinct data_ptr values alone do not prove absence of overlapping persistent state views sharing a storage.", "required_resolution": "Check actual byte-range non-overlap for all persistent GDN states or explicitly define/prove legal view layout; finite values are not a universal uninitialized-read proof."},
+    {"id": "W6", "severity": "P2", "issue": "Two32-token full recurrent-state traces require3GiB raw solely for GDN state, exceeding the informal2GB estimate.", "required_resolution": "Freeze disk/raw quotas with attention/conv/logits and failure headroom, no large Mac download."},
+    {"id": "W7", "severity": "P2", "issue": "Initial fresh mismatch receipt recorded earliest token and metadata/hash lists, but not a decoded earliest tensor/element or numerical magnitude.", "required_resolution": "Pure CPU comparison of retained raw bytes and dtype, first difference, max absolute/relative errors, including metadata-only differences."}
+  ],
+  "confirmed_static_positives": [
+    "Actual pinned Qwen GDN forward passes g/beta/initial_state as keyword args and q/k/v as positional args, matching helper adapter assumptions.",
+    "Historical benchmark matched_worker source copy remains rawSHA08b62839e88fa6bb49f10388a19e152e04beb0ab36b347ffcfdf2d9259e2ff8c; path and pre/post-library shim is outside timed window.",
+    "Native l2norm observation changes Python binding to a call-through wrapper; GPU normalization arithmetic source is not replaced by an FP64 path.",
+    "32-token correctness and fresh gates must not be described as256-window, long-horizon or INT8 qualification."
+  ],
+  "preparation_tool_history": [
+    {"kind": "LOCAL_FAKE_FIXTURE_INCOMPLETE", "error": "AttributeError: type object FakeTorch has no attribute dtype", "explanation": "Parent had already replaced arrays() with generic metadata traversal during the review. The simple fake lacked dtype/device classes. This is an auditor fixture error, not a tested GPU/runtime failure; no GPU-capable module was imported."}
+  ]
+}

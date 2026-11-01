@@ -1,0 +1,21 @@
+{
+  "task": "QWEN_PERSISTENT_FUNCTIONAL_SURROGATE_V1",
+  "amendment_version": 3,
+  "amended_at": "2026-09-24",
+  "timing": "Before any formal comparison; replay parity v2 failed and no formal shard was launched.",
+  "preserved_failure_record": "source_audit/replay_parity.json",
+  "preserved_implementation": "replay_persistent_functional_v2.py",
+  "new_implementation": "replay_persistent_functional_v3.py",
+  "observed_failure": {
+    "token_ids_exact": true,
+    "repeat_anchor_determinism": "PASS",
+    "prior_fp_margin_max_abs_error": 0.375,
+    "prior_delta_z_max_abs_error_max": 0.625,
+    "prior_top1_changed_exact": false,
+    "REPLAY_PARITY_GATE": "FAIL"
+  },
+  "reason_and_change": "The frozen mechanism capture used 64-token forward chunks with the observation hook enabled. v2 used 16-token chunks without that hook. Transformer attention execution can depend on forward chunk shape. v3 restores the original 64-token chunk size and observation-only hook, then reruns the original strict scalar and top1 parity tolerances. It does not alter the model, quantizer, GDN recurrence, rotation or scoring.",
+  "parity_output": "replay_parity/parity_results.json",
+  "formal_replay_rule": "No formal shard can run unless both v3 replay parity and FP output-space parity pass.",
+  "all_metric_definitions_anchor_rules_and_statistical_gates": "Unchanged from preregistration.json and execution_amendment_v2.json."
+}

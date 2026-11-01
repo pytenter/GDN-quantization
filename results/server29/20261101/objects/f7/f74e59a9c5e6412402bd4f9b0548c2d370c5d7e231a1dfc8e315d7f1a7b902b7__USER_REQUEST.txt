@@ -1,0 +1,865 @@
+# Codex 科研执行任务：Qwen/GDN C6R × Dual-M 32K 交互探索
+
+你现在是我的 Qwen/GDN recurrent-state INT8 quantization 科研执行 Agent。
+
+本次任务的目标是研究 **learned orthogonal rotation C6R 与 STEPQuant-inspired Dual-Axis INT8 quantization 的关系**。
+
+请优先追求可证伪的科学结果，而不是不断修复工程问题。
+
+**工作纪律：先核验已有证据，先规划再执行；复用已合格的数学核心；严格控制GPU预算；任何核心数值、身份或资源资格失败都必须有界停止。**
+
+---
+
+## 0. 任务身份与授权
+
+```text
+TASK_ID = QWEN_GDN_C6R_DUAL_M_INTERACTION_REUSE_5DOC_V1
+
+MODEL = Qwen3.5-9B
+ARCHITECTURE = GDN
+
+GPU_EXECUTION_AUTHORIZED = YES
+GPU_COUNT = 1
+GPU_TYPE = RTX3090_24GB
+MAX_NEW_GPU_HOURS = 20.0
+
+DOCUMENTS = 5
+SEQUENCE_LENGTH = 32768
+SCORE_POSITIONS_PER_DOC = 384
+
+NEW_CONDITIONS:
+  C6R_C128
+  C6R_DUAL_M
+
+NEW_FORMAL_TRAJECTORIES = 10
+
+NO_NEW_TRAINING = YES
+NO_AIME = YES
+NO_SGLANG = YES
+NO_DUAL_W = YES
+NO_NEW_SCALE_INTERVENTION = YES
+NO_AUTOMATIC_NEXT_EXPERIMENT = YES
+```
+
+将本提示词明确提交给Codex，即授权本任务在全部预冻结门禁通过后使用单张GPU执行，累计新增GPU占用上限为20 GPUh。
+
+不得将这一授权解释为可以调用4张GPU、增加预算、训练C8或修改历史任务。
+
+本任务必须使用新的worktree和独立输出目录。
+
+任何历史实验数据、模型权重、checkpoint、manifest、SHA、STOP和seal均不可覆盖。
+
+---
+
+## 1. 恢复并核验科研基线
+
+### 1.1 历史C6R基线
+
+使用已经冻结的C6R learned rotation。
+
+历史Qwen AIME26 Canonical60：
+
+| Method | Accuracy |
+|---|---:|
+| FP | 52/60 |
+| Hadamard | 41/60 |
+| C6R | 40/60 |
+| C7 | 33/60 |
+| Native INT8 | 18/60 |
+
+C6R是已评测learned rotation中表现最好的方法，但仍未超过Hadamard。
+
+C6R原训练目标为局部GDN Functional relative-MSE加0.1倍State relative-MSE。
+
+本任务不重新训练、插值、筛选或更新C6R矩阵。
+
+必须从原冻结export、manifest和SHA恢复确切C6R身份，不得使用名称相似但来源不同的旧C6或C5R。
+
+### 1.2 历史Dual-M Pilot
+
+任务：
+
+`QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1`
+
+已有2篇32K结果，2/2支持Dual-M。
+
+分类：`POSITIVE_EXPLORATORY`。
+
+该任务仅作为历史科学背景，不参与本任务正式五文档交互计算。
+
+### 1.3 最新五文档复制实验
+
+任务：
+
+`QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1`
+
+历史报告：
+
+```text
+/data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/FINAL_SCIENTIFIC_REPORT.md
+```
+
+必须先检查路径是否实际存在，并由manifest核验内容身份。
+
+历史五篇结果：
+
+| Doc | H_C128 KL | H_DUAL_M KL | Delta |
+|---|---:|---:|---:|
+| 1 | 0.188823300332 | 0.0268175924031 | 0.162005707929 |
+| 2 | 0.0577226708363 | 0.0430081817555 | 0.0147144890809 |
+| 3 | 0.017497884506 | 0.0144777823958 | 0.00302010211024 |
+| 4 | 0.0563721289161 | 0.0329475585204 | 0.0234245703957 |
+| 5 | 0.0459320906794 | 0.0296230121109 | 0.0163090785685 |
+
+5/5支持Dual-M。
+
+本次不得修改上述历史数值。
+
+历史结果具有如下限制：
+
+1. 项目级独立性UNKNOWN。
+2. 历史五篇分别在GPU0、GPU1、GPU2、GPU3、GPU0执行。
+3. 历史128-token跨GPU canary exact PASS，不等于32K full-model跨GPU数值等价。
+4. Doc1的绝对Delta显著大于其他文档。
+5. 历史FP_NATIVE/FP_H token1 relative-L2超出原冻结门禁，该失败永久保留。
+6. 历史physical packed INT8未验证。
+
+这些限制必须进入本任务的科学报告。
+
+---
+
+## 2. 冻结本次科学问题
+
+本次主要问题：
+
+**在冻结C6R learned rotation不变的条件下，仅将Canonical C128量化器替换为Dual-M，是否能够降低32K full-model Future-KL？**
+
+次要问题：
+
+**Dual-M对C6R的收益，是否不同于对Hadamard的收益？C6R+Dual-M是否优于Hadamard+Dual-M？**
+
+原有Hadamard结果与新增C6R结果组成如下对照：
+
+| Rotation | Canonical C128 | Dual-M |
+|---|---|---|
+| Hadamard | Historical H_C128 | Historical H_DUAL_M |
+| C6R | New C6R_C128 | New C6R_DUAL_M |
+
+共同评分参考为原五文档的FP_NATIVE。
+
+科学对比必须区分：
+
+- 同一GPU上新增的C6R两种codec对比。
+- 新C6R与历史Hadamard之间可能存在跨GPU差异的对比。
+
+不得将两个证据层级混为一谈。
+
+### Primary
+
+定义：
+
+```text
+K_C = KL(FP_NATIVE || C6R_C128)
+K_D = KL(FP_NATIVE || C6R_DUAL_M)
+
+Delta_C6R = K_C - K_D
+```
+
+`Delta_C6R > 0`表示Dual-M改善了冻结C6R系统的Future-KL。
+
+这是本次唯一Primary。
+
+### Key Secondary
+
+历史Hadamard收益：
+
+```text
+Delta_H = K_H_C128 - K_H_DUAL_M
+```
+
+新旧旋转下的codec交互：
+
+```text
+Interaction = Delta_C6R - Delta_H
+```
+
+以及：
+
+```text
+LearnedGain_C128 =
+  K_H_C128 - K_C6R_C128
+
+LearnedGain_DualM =
+  K_H_DUAL_M - K_C6R_DUAL_M
+```
+
+解释：
+
+- Delta_C6R > 0：Dual-M对C6R有增量收益。
+- LearnedGain_DualM > 0：C6R+Dual-M优于H+Dual-M。
+- Interaction > 0：Dual-M在C6R下的绝对KL收益大于在H下的收益。
+
+三者是不同的科学命题。
+
+尤其不得把Delta_C6R正值直接解释为learned rotation与Dual-M已经具有正向交互。
+
+---
+
+## 3. Phase 0A：CPU-only历史资产审计
+
+在任何新GPU forward之前完成。
+
+先核验上一五文档实验中的：
+
+- `preregistration.json`
+- `frozen_documents.json`
+- `source_manifest.json`
+- `science_results.json`
+- `window_results.csv`
+- GPU qualification和resource ledger
+- score artifact verification
+- 原始FP_NATIVE评分资产
+- 原始Hadamard评分资产
+- 最终SHA256 seal
+
+### 3.1 验证共同FP参考是否可以直接复用
+
+对每篇文档，确认存在与原评分绑定的完整FP_NATIVE参考logits或等价、足以精确执行原Full-vocab KL的已验证数据。
+
+必须核验：
+
+- 文档原始SHA
+- canonical token SHA
+- 模型权重SHA
+- tokenizer身份
+- 384个评分位置
+- 完整248320词表
+- logits dtype及其原保存格式
+- 原KL计算函数身份
+- 原score文件SHA
+
+使用CPU重算原H_C128和H_DUAL_M的KL，确认与历史正式结果在原合同要求的精度内一致。
+
+**只有已有KL汇总值、没有可以评分新C6R的完整FP参考资产，不算可复用。**
+
+如果五篇有任何一篇缺乏合法FP参考，或者无法复现原评分：
+
+```text
+FP_REFERENCE_REUSE_GATE = FAIL
+FINAL_STATUS = FAIL_CLOSED_STOP
+```
+
+不得悄悄重新生成FP_NATIVE并声称复用了原实验，也不得自行缩小正式五文档样本量。
+
+### 3.2 审查历史多GPU协议偏差
+
+原五文档GPU分配为：
+
+```text
+Doc1 -> GPU0
+Doc2 -> GPU1
+Doc3 -> GPU2
+Doc4 -> GPU3
+Doc5 -> GPU0
+```
+
+从原pre-registration、执行manifest、授权记录和资源账本核查：
+
+- 单GPU要求是否被修改。
+- 是否存在后续明确授权。
+- 实际设备UUID和runtime身份。
+- 每文档FP/H的设备身份。
+- 是否有跨GPU数值资格。
+- 哪些跨设备比较只能作为探索性证据。
+
+将结论写入：
+
+`HISTORICAL_PROTOCOL_DEVIATION_AUDIT.md`
+
+不得追溯性改写历史授权、重新分类原任务或覆盖seal。
+
+### 3.3 冻结样本与历史对照
+
+本任务固定使用原五文档复制实验的完整五篇。
+
+不得根据已有Delta、Doc1异常大幅改善或新C6R结果删除、更换、重排或增加科学样本。
+
+这些文档已经有被观察过的Hadamard结果，因此本次交互分析属于：
+
+`POSTHOC_ON_HISTORICALLY_OBSERVED_DOCUMENTS`
+
+即使现在冻结新增C6R评分协议，也不能冒充全新未见样本的独立交互确认。
+
+---
+
+## 4. Phase 0B：C6R数学与runtime身份
+
+优先复用原已资格的Qwen/GDN模型及persistent QDQ科学核心。
+
+检查：
+
+1. C6R冻结矩阵来源和SHA。
+2. C6R在GDN Key-side坐标中的作用。
+3. Hadamard与C6R输入输出布局。
+4. 原C128 state量化粒度。
+5. GDN gate、readout及state update路径。
+6. state量化发生的时刻。
+7. 量化结果是否真实写回。
+8. 下一个token是否只消费量化后的state。
+9. 现有确定性数值路径及CUDA kernel身份。
+
+特别注意C6R和Hadamard不能因为矩阵不同而隐式改变codec所作用的State矩阵轴定义。
+
+确认C6R在不更改正式模型语义的情况下能够运行于当前已经合格的GDN deterministic runtime。
+
+不得静默把旧C6R路径换成与原冻结实现不一致的新模型路径。
+
+不重新实现GDN kernel。
+
+若必须大规模修改GDN递归算子或更换数值路线才能使用C6R，应直接停止。
+
+---
+
+## 5. Phase 0C：Dual-M接入C6R
+
+使用上一Qwen已通过资格的Dual-M codec：
+
+```text
+STATE_CODES = signed INT8
+
+ROW_SCALE_DTYPE = FP16
+COLUMN_SCALE_DTYPE = FP16
+
+BITWIDTH = 8
+IMPORTANCE_WEIGHT = 1
+FP16_PIVOTS = 0
+
+COLUMN_LS = original qualified algorithm
+FINAL_REENCODE = original qualified algorithm
+```
+
+公式：
+
+```text
+S_hat[i,j] = row_scale[i] *
+             column_scale[j] *
+             int8_code[i,j]
+```
+
+必须复用上一实验Dual-M codec核心。
+
+不更改scale floor、clipping规则、LS更新方式或re-encode策略。
+
+不引入readout-aware Dual-W。
+
+不引入混合INT2/4/6/8。
+
+不得将STEPQuant其他模块混入本次科学比较。
+
+C6R+C128和C6R+Dual-M除了codec以外，必须保持：
+
+- 相同冻结C6R。
+- 相同模型。
+- 相同输入。
+- 相同dtype。
+- 相同forward路径。
+- 相同确定性配置。
+- 相同评分。
+- 相同state QDQ时序。
+
+每token都必须真实执行：
+
+```text
+state
+ -> quantize to INT8 codes
+ -> dequantize
+ -> writeback
+ -> next token consumes QDQ state
+```
+
+若实际运行以FP32 tensor承载已经QDQ的状态，仍只能声明：
+
+```text
+PERSISTENT_INT8_QDQ = QUALIFIED
+PHYSICAL_PACKED_INT8 = NOT_QUALIFIED
+```
+
+禁止跨token高精度persistent state、延迟requantization、FP16 pivot和补偿缓冲。
+
+---
+
+## 6. Phase 1：最短GPU资格
+
+只使用一张真实可用的RTX3090 24GB。
+
+固定实际GPU UUID。
+
+如果原GPU0可用且满足资源资格，优先考虑GPU0，因为历史Doc1和Doc5在该设备上运行。
+
+但不得为了匹配历史GPU而自行切换到多GPU、使用不属于授权范围的设备或等待外部进程释放资源后无限重试。
+
+使用不属于五篇正式样本的原合格canary。
+
+### 必须通过的门禁
+
+1. `MODEL_IDENTITY`
+2. `C6R_ROTATION_IDENTITY`
+3. `C6R_COORDINATE_CORRECTNESS`
+4. `C6R_C128_CANONICAL_PARITY`
+5. `C6R_DUAL_M_CODEC_PARITY`
+6. `PERSISTENT_QDQ_WRITEBACK`
+7. `NEXT_KERNEL_CONSUMPTION`
+8. `FRESH_PROCESS_NUMERICAL_QUALIFICATION`
+9. `SCALE_AND_CLIPPING_SAFETY`
+10. `GPU_RESOURCE_ADMISSION`
+11. `FP_REFERENCE_SCORE_REUSE`
+12. `RUNTIME_BUDGET_FEASIBILITY`
+
+最小GPU资格优先使用128-token canary，必要时执行一次预冻结的稍长资源和数值探测。
+
+不要为了资格重新运行原五篇的FP或Hadamard轨迹。
+
+对于C6R+C128，必须验证与原冻结Canonical C128量化器行为一致。
+
+对于C6R+Dual-M，必须验证GPU encode/decode与已资格reference parity。
+
+C6R可能出现scale inflation、state动态范围扩大或其他长程数值问题。
+
+因此需要保留真实scale、overflow、clamp和finite检查。
+
+出现原codec定义之外的数值异常时，禁止通过更换scale floor、动态扩大量化范围或加入clean-FP oracle来修复结果。
+
+不得使用NoScaleInflation干预，因为本次需要观察原生persistent QDQ系统的真实表现。
+
+### 资源预测
+
+根据上一五文档的完整轨迹成本，新10条C6R轨迹的初步计算成本可能在14–16 GPUh附近，但这仅用于规划。
+
+正式启动前必须根据真实C6R canary吞吐、初始化、checkpoint、评分IO和波动余量计算保守预算。
+
+```text
+MAX_NEW_GPU_HOURS = 20.0
+PROTECTIVE_STOP = 19.5 GPUh
+```
+
+如果无法合理预期完成全部10条轨迹，则在正式运行前STOP。
+
+不得降低token长度、减少样本、增加GPU数量或超出预算。
+
+使用原Qwen任务相容的实际GPU显存安全判据，不要误将Ling历史任务的2GiB规则直接套用为Qwen原科学协议。
+
+---
+
+## 7. Phase 2：正式32K实验
+
+所有资格PASS后，按照冻结顺序执行五篇。
+
+每篇新增：
+
+```text
+C6R_C128:
+  32768 consumed tokens
+
+C6R_DUAL_M:
+  32768 consumed tokens
+```
+
+共10条独立轨迹。
+
+每条student必须从token0建立自己的persistent QDQ历史。
+
+禁止：
+
+- 使用历史H的INT8 state作为C6R前缀。
+- 使用FP state替代C6R量化历史。
+- 跨codec共享未核验checkpoint。
+- 跳过QDQ。
+- 从8192直接加载clean FP state。
+- 使用历史其他旋转的缓存。
+- 在运行中修改codec参数。
+- 因观察到前几篇结果而提前作科学性停止。
+
+可以使用经过完整身份验证的同条件checkpoint恢复，但不得跨设备、跨文档、跨旋转或跨codec推定exact parity。
+
+每篇评分位置：
+
+```text
+t = 8192 + 64*k
+k = 0,...,383
+```
+
+消费`ids[t]`后预测`ids[t+1]`。
+
+每文档384个完整词表FP32 KL评分点。
+
+采用与历史五文档实验相同的KL定义和reducer：
+
+```text
+KL(FP_NATIVE || C6R_student)
+
+Reducer = original math.fsum / 384
+```
+
+不得改用top-k KL、目标token NLL、Hidden MSE或State MSE替代Primary。
+
+每篇输出：
+
+```text
+K_C6R_C128
+K_C6R_DUAL_M
+Delta_C6R
+RelativeGain_C6R
+ArithmeticResolution
+Winner
+```
+
+同一文档两种C6R条件必须使用相同的新GPU、相同运行环境和同一个历史FP_NATIVE评分参考。
+
+若某条轨迹因数值或资源停止，必须保留真实部分进展，不能伪造完整KL。
+
+离线托管必须保证SSH断开不会直接终止科学worker。
+
+但异常退出不自动授权重新执行、修改kernel或覆盖失败历史。
+
+---
+
+## 8. Phase 3：科学评分与交互分析
+
+正式结果完成后，用CPU执行独立评分复核。
+
+### 8.1 Primary分析
+
+每篇：
+
+```text
+Delta_C6R =
+  K(C6R,C128) - K(C6R,DualM)
+```
+
+计算：
+
+- 五篇完整Delta。
+- 可分辨正向篇数。
+- 可分辨负向篇数。
+- 数值未分辨篇数。
+- 缺失篇数。
+- mean Delta。
+- median Delta。
+- mean per-document RelativeGain。
+- mean KL的相对改善。
+- 每篇合法算术分辨范围。
+
+算术分辨应根据本次实际保存logits、FP32评分和独立FP64参考计算。
+
+不能直接复制历史某个固定阈值。
+
+在算术分辨范围内的差异必须标记为`NUMERICALLY_UNRESOLVED`。
+
+原128-token fresh资格不能被描述为完整32K forward数值误差上界。
+
+### 8.2 2×2交互分析
+
+对每篇同时输出：
+
+```text
+K_H_C128
+K_H_DualM
+K_C6R_C128
+K_C6R_DualM
+
+Delta_H
+Delta_C6R
+Interaction
+LearnedGain_C128
+LearnedGain_DualM
+```
+
+**必须额外输出设备可比性分层。**
+
+分为：
+
+A. 历史H/FP与新C6R在同一物理GPU UUID，并且数学、软件和runtime身份资格匹配的文档。
+
+B. 历史H/FP与新C6R处于不同GPU UUID的文档。
+
+C. 身份不完整、无法合法配对的文档。
+
+A可以提供同设备的探索性交互证据，但仍不能自动声称全32K数值精确重复或确认性因果交互。
+
+B只能报告跨设备条件下的描述性交互，明确其长程数值可比性没有完整误差上界。
+
+C不进入完整交互分析。
+
+**禁止将A和B不加区别地合并为“严格同环境确认性2×2实验”。**
+
+如果没有足够的同设备配对，就明确声明本次主要验证了C6R条件下的codec增量收益，严格交互效应仍待独立验证。
+
+### 8.3 预注册描述性敏感性分析
+
+由于历史Doc1改善异常大，事前要求：
+
+- 报告全部五篇。
+- 报告median。
+- 报告leave-one-out mean。
+- 单独报告去掉历史Doc1后的描述性结果。
+- 报告Interaction正负方向的逐文档一致性。
+
+这些均为敏感性分析，不允许根据结果事后把某篇从Primary中剔除。
+
+历史样本已被观察，项目独立性UNKNOWN。
+
+不得将本次5-doc方向计数包装成新的独立确认性显著性，也不得将384×5位置视为独立样本。
+
+---
+
+## 9. Phase 4：机制与系统诊断
+
+只进行成本可控的Secondary分析。
+
+记录：
+
+1. C6R+C128和C6R+Dual-M的local-QDQ relative-MSE。
+2. Dual-M row/column scale范围。
+3. Canonical C128 scale分布。
+4. scale inflation相关统计。
+5. FP16 scale下溢与上溢。
+6. unrounded越界和rounded clamp。
+7. 每层/每head有限性与严重数值风险。
+8. Early/Middle/Late Future-KL。
+9. post-warmup token吞吐。
+10. 整轨迹wall时间。
+11. CUDA allocated/reserved峰值。
+12. 实际GPUh和元数据存储开销。
+
+特别注意：
+
+不同student的local-QDQ MSE来自不同历史状态，不能直接当作同一个输入状态上的codec因果效应。
+
+如原有代码可直接在不影响student递归的前提下进行matched-state codec分析，可以将其作为Secondary。
+
+但不为机制诊断额外引入持续高精度状态缓冲、大规模hook、昂贵的多轮counterfactual rollout。
+
+没有实际因果干预，就不能声称已识别row scale、clipping、scale feedback或query-readout的唯一中介。
+
+---
+
+## 10. 实验完成后的科学决策
+
+根据结果明确分类。
+
+### Case A：Dual-M改善C6R，且C6R+Dual-M优于H+Dual-M
+
+这是最值得继续研究的组合结果。
+
+说明在本次受测条件下，冻结learned rotation与Dual-M能够取得比Hadamard+Dual-M更好的绝对功能表现。
+
+如果交互指标也稳定为正，值得另行开展独立同GPU、全新文档2×2确认。
+
+### Case B：Dual-M改善C6R，但C6R+Dual-M仍不如H+Dual-M
+
+说明Dual-M对learned rotation有增量价值，但不能证明learned方案已经成为最佳条件。
+
+应进一步判断Interaction方向，以及C6R是否存在与Dual-M不匹配的旋转结构。
+
+不立即训练C8。
+
+### Case C：Dual-M改善C6R，但Interaction为负
+
+说明codec收益可能在Hadamard条件下更大。
+
+这并不表示Dual-M无效。
+
+可能提示codec改善与learned rotation存在部分冗余，但机制尚需验证。
+
+### Case D：Dual-M无法改善C6R
+
+说明已有C6R不能直接从Dual-M中获益。
+
+需判断是否是局部重建指标与长期功能表现脱节，或者现有旋转主要针对C128训练。
+
+不得据此断言所有learned rotation与Dual-Axis均不互补。
+
+### Case E：部分正向、部分负向
+
+报告完整MIXED结果。
+
+不得挑选有利文档进行宣称，也不自动增加样本或追加训练。
+
+### Case F：GPU/数值/身份失败
+
+如无法获得完整可比的科学证据，保留FAIL_CLOSED_STOP。
+
+不能把工程失败解释为方法无效。
+
+---
+
+## 11. 后续新Rotation Loss研究：仅作为规划
+
+本任务不训练C8。
+
+只有当前实验显示出可解释的增量收益，才讨论将Dual-M直接纳入可学习旋转训练目标。
+
+候选未来方向：
+
+```text
+Loss(R) =
+    FunctionalLoss(R, DualM)
+    + lambda * StateLoss(R, DualM)
+```
+
+但这只是候选Loss，不是已验证的方法。
+
+未来必须独立研究：
+
+- Dual-M下Functional Loss是否可优化。
+- Learned rotation改善是否来自局部重建。
+- 是否需要考虑长程scale feedback。
+- 新训练目标能否预测32K Future-KL。
+- 是否能进一步改善AIME26。
+
+本次禁止根据结果自动开展上述任务。
+
+---
+
+## 12. 严格工程止损纪律
+
+必须执行以下规则：
+
+1. 优先复用历史已资格数学核心。
+2. 不重写GDN kernel。
+3. 不重新训练C6R。
+4. 不修改已有Hadamard/C128/Dual-M历史结果。
+5. 不改score reducer。
+6. 不改变FP参考。
+7. 不引入新的scale intervention。
+8. 不自动使用多GPU。
+9. 不更换模型权重或dtype。
+10. 不修改其他任务的checkpoint及seal。
+11. 不进行无限first-divergence修补。
+12. 不因GPU资源不足放宽核心安全要求。
+13. 不自动增加实验样本或预算。
+14. 不运行AIME、C8训练或其他实验。
+15. 不自动git push。
+
+允许对新任务控制层作最小必要修改，但所有代码差异和科学影响必须审计。
+
+如果数学路径、FP资产或GPU资源不能经济满足本次实验，停止并生成报告，而不是继续修复到下一个版本。
+
+---
+
+## 13. 最终交付
+
+至少生成：
+
+```text
+PREREGISTRATION.json
+HISTORICAL_ASSET_AUDIT.json
+HISTORICAL_PROTOCOL_DEVIATION_AUDIT.md
+FROZEN_DOCUMENT_REUSE_MANIFEST.json
+
+C6R_ROTATION_IDENTITY.json
+C6R_MATH_RUNTIME_AUDIT.md
+GPU_QUALIFICATION.json
+GPU_RESOURCE_LEDGER.json
+
+SCIENCE_RESULTS.csv
+SCIENCE_RESULTS.json
+INTERACTION_RESULTS.csv
+INTERACTION_DEVICE_STRATA.csv
+WINDOW_RESULTS.csv
+RUNTIME_COST.json
+
+SCORE_ARTIFACT_VERIFICATION.json
+GATE_STATUS_FINAL.json
+FIRST_FAILURE.json (if applicable)
+
+SOURCE_MANIFEST.json
+SHA256_MANIFEST.json
+FINAL_SCIENTIFIC_REPORT.md
+```
+
+如果某项科学实验未完成，该项结果保持`NOT_RUN`，不能填0或伪造完整报告。
+
+最终科学报告必须回答：
+
+1. Dual-M是否改善C6R的32K Future-KL？
+2. 五篇中多少篇支持、多少篇反对？
+3. 平均绝对与相对改善是多少？
+4. C6R+Dual-M是否优于H+Dual-M？
+5. Interaction方向和逐文档稳定性如何？
+6. 跨GPU历史比较对交互推断有什么影响？
+7. 排除Doc1后的描述性结论是否仍成立？
+8. Dual-M是否改善局部MSE，是否对应长期KL改善？
+9. Early/Middle/Late窗口有何差异？
+10. 实际系统开销、scale和clipping风险怎样？
+11. 当前证据是否足以支持独立2×2确认？
+12. 是否有必要进一步开发codec-aware learned rotation Loss？
+13. 哪些问题仍然没有得到科学验证？
+
+最终必须提供：
+
+```text
+TASK_ID
+GPU_AUTHORIZATION
+HISTORICAL_REUSE_GATE
+C6R_NUMERICAL_QUALIFICATION
+PERSISTENT_QDQ_QUALIFICATION
+
+FP_NATIVE_REUSED
+H_C128_REUSED
+H_DUAL_M_REUSED
+
+C6R_C128_32K_COMPLETED
+C6R_DUAL_M_32K_COMPLETED
+VALID_PRIMARY_PAIRED_DOCS
+
+PRIMARY_RESULT
+INTERACTION_RESULT
+CROSS_GPU_COMPARABILITY
+
+GPU_HOURS_USED
+MAX_GPU_HOURS
+PHYSICAL_PACKED_INT8
+
+FINAL_SCIENTIFIC_CLASSIFICATION
+FINAL_EXECUTION_STATUS
+ABSOLUTE_REPORT_PATH
+```
+
+执行完成后立即STOP，释放GPU并核验退出。
+
+不运行任何后续训练、AIME、独立确认实验或额外GPU任务。
+
+---
+
+## 14. 实际执行顺序
+
+按照以下顺序：
+
+**Phase 0 — CPU-only**
+
+核验历史五文档资产、FP参考、C6R矩阵和源码身份，明确跨GPU协议边界，并冻结本任务科学分析。
+
+**Phase 1 — GPU资格**
+
+仅验证新增C6R+C128和C6R+Dual-M路径，以及真实数值、安全、性能和预算。
+
+**Phase 2 — 正式科学执行**
+
+满足前置条件后，单GPU完成五篇×两个新增条件的32K轨迹。
+
+**Phase 3 — CPU科学分析**
+
+计算Primary、交互、窗口、敏感性与系统指标。
+
+**Phase 4 — 封存**
+
+核验SHA、历史资产不变、GPU释放和最终科学状态。
+
+不要在阶段之间启动未经授权的新实验。
+
+本任务最终要回答的核心问题只有一个：
+
+**在Qwen/GDN的严格persistent INT8 recurrent-state量化中，已经训练好的C6R正交旋转能否从Dual-Axis codec中获得真实长期功能收益？**
+
+只有这个问题得到合法证据后，才决定是否值得继续研究learned rotation与Dual-Axis之间的交互机制及新的训练目标。

@@ -1,0 +1,50 @@
+# ling-long-horizon-observability-bridge-v3
+
+原始相对目录：`worktrees/ling-long-horizon-observability-bridge-v3`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`experiments/LING_LONG_HORIZON_OBSERVABILITY_BRIDGE_V1/discovery/summaries/pg19-test-37702__H__endpoint32K.json`](../../objects/93/938cd63ce6336f8a6e818726c64e0edf860efb95f7cfe00213ed3bb943c0faee__pg19-test-37702__H__endpoint32K.json)
+- [`experiments/LING_LONG_HORIZON_OBSERVABILITY_BRIDGE_V1/discovery/summaries/pg19-test-37702__L6__endpoint32K.json`](../../objects/aa/aa31d3799f88c8dc5c51a8a82f5abdd6c2f7f8aaa675ac3fd3747cd761fc79f1__pg19-test-37702__L6__endpoint32K.json)
+- [`experiments/LING_LONG_HORIZON_OBSERVABILITY_BRIDGE_V1/discovery/summaries/pg19-test-37702__L7__endpoint32K.json`](../../objects/5a/5ab7408056e60b8edd47358bb45a4c34da974888219d24132147ee45a88788b9__pg19-test-37702__L7__endpoint32K.json)
+- [`experiments/LING_LONG_HORIZON_OBSERVABILITY_BRIDGE_V1/discovery/summaries/pg19-test-37702__L8__endpoint32K.json`](../../objects/2d/2d0ad0a7bc95a73e258612af36ae4bc6c509048b7527cf1cdd55a20482da984b__pg19-test-37702__L8__endpoint32K.json)
+- [`experiments/LING_LONG_HORIZON_OBSERVABILITY_BRIDGE_V1/discovery/summaries/pg19-test-37702__L7R__endpoint32K.json`](../../objects/80/803f4689dc757878fba5770560cfdcaa55155f3b667a176fe543d5276be33999__pg19-test-37702__L7R__endpoint32K.json)
+- [`provenance_capsule_v3/ARCHITECTURE.md`](../../objects/e8/e800e15b7c4f8bd4fec0c3d8e2e20728dcdce32bf8572090bf1b2e590b3e2ab1__ARCHITECTURE.md)
+- [`provenance_capsule_v3/FINAL_V3_QUALIFICATION_REPORT.md`](../../objects/2c/2c37492aef9958b5b6d64c28e3783420d92b1ff3b03fb9f66df78bb0667a5b9b__FINAL_V3_QUALIFICATION_REPORT.md)
+- [`provenance_capsule_v3/frozen_protocol/preregistration.md`](../../objects/9f/9f7274593e27490d2cf8272b63a02415ac8c7e533892ce9152ad3cf164ba5fc6__preregistration.md)
+- [`provenance_capsule_v3/frozen_protocol/pulse_definition.md`](../../objects/0d/0d748a2a86444606a9025c0dd5766af88862c5635c0eb3181f5a7a6762b48409__pulse_definition.md)
+- [`provenance_capsule_v3/frozen_protocol/preregistration.json`](../../objects/0e/0e74aa581fe582beab67f219ba17bd690dd0b46a1313d6cad28631c522d1eed2__preregistration.json)
+- [`provenance_capsule_v3/frozen_protocol/basis_semantics_audit.md`](../../objects/48/4894b246f278ef88501441442271dd65c219be2d7af704b757d438b6314d66cd__basis_semantics_audit.md)
+- [`experiments/LING_LONG_HORIZON_OBSERVABILITY_BRIDGE_V1/preregistration.md`](../../objects/9f/9f7274593e27490d2cf8272b63a02415ac8c7e533892ce9152ad3cf164ba5fc6__preregistration.md)
+- [`experiments/LING_LONG_HORIZON_OBSERVABILITY_BRIDGE_V1/pulse_definition.md`](../../objects/0d/0d748a2a86444606a9025c0dd5766af88862c5635c0eb3181f5a7a6762b48409__pulse_definition.md)
+- [`provenance_capsule_v3/attempt_06_generated_code/FINAL_ATTEMPT06_REPORT.md`](../../objects/fa/fae652a9231d17c09d9e9e1bd471053d1bfbcf5aae9a036f9b0b04814af59687__FINAL_ATTEMPT06_REPORT.md)
+- [`experiments/LING_LONG_HORIZON_OBSERVABILITY_BRIDGE_V1/preregistration.json`](../../objects/0e/0e74aa581fe582beab67f219ba17bd690dd0b46a1313d6cad28631c522d1eed2__preregistration.json)
+- [`provenance_capsule_v3/attempt_08_fixture_closure/FINAL_ATTEMPT08_REPORT.md`](../../objects/ed/edd770934e9ded494ef6cd413501d7d70b75fe2cbb0e47abe80de293135437dc__FINAL_ATTEMPT08_REPORT.md)
+- [`provenance_capsule_v3/attempt_09_output_directory/FINAL_ATTEMPT09_REPORT.md`](../../objects/a3/a3b56a88782ac01c58f4c5887db14f5aa53ca02ebf7915085272499602d73b36__FINAL_ATTEMPT09_REPORT.md)
+- [`provenance_capsule_v3/attempts/file_runtime_attempt04/PREPARATION_REPORT.md`](../../objects/ed/ed1ac06c3f962bf0d23227ed859b47830e0392f037832746c9d71dd7ad52f9a8__PREPARATION_REPORT.md)
+- [`provenance_capsule_v3/attempt_07_generated_identity/FINAL_ATTEMPT07_REPORT.md`](../../objects/1e/1e301652514bff51b239d9460e067a7488f2c1eb5d62c5e2febe08d6abae91f1__FINAL_ATTEMPT07_REPORT.md)
+- [`provenance_capsule_v3/attempts/hash_correction_attempt02/CORRECTION_REPORT.md`](../../objects/27/2778ddc6262c35229c9fd9d18a7aedd8d8c0a8588214ca8fbbee812a30a030ae__CORRECTION_REPORT.md)
+- [`experiments/LING_LONG_HORIZON_OBSERVABILITY_BRIDGE_V1/basis_semantics_audit.md`](../../objects/48/4894b246f278ef88501441442271dd65c219be2d7af704b757d438b6314d66cd__basis_semantics_audit.md)
+- [`provenance_capsule_v3/attempt_10_ast_audit_association/FINAL_ATTEMPT10_REPORT.md`](../../objects/da/da985fc694ff00abbcd0a88eabd60dda27829e831416f4cc497cad154815cf6e__FINAL_ATTEMPT10_REPORT.md)
+- [`provenance_capsule_v3/attempts/gpu6_file_recovery_attempt05/PREPARATION_REPORT.md`](../../objects/29/29ec6f0e7c0557ae9be8177b4d9fabd39b2661f8645fd6cb515921aef2dfe680__PREPARATION_REPORT.md)
+- [`provenance_capsule_v3/attempt_11_static_ast_qualification/FINAL_ATTEMPT11_REPORT.md`](../../objects/3a/3a77f8ef293234bddb1e07b93de3b38931aef48ed3432bb79e877498e7389089__FINAL_ATTEMPT11_REPORT.md)
+- [`experiments/LING_LONG_HORIZON_OBSERVABILITY_BRIDGE_V1/postcommit/preregistration.json`](../../objects/0e/0e74aa581fe582beab67f219ba17bd690dd0b46a1313d6cad28631c522d1eed2__preregistration.json)
+- [`provenance_capsule_v3/attempt_12_alias_namespace_relocation/FINAL_ATTEMPT12_REPORT.md`](../../objects/c0/c05b4d13d6b5539bf9894dd4f0445b1fbd29059db3f4d4b7eaeb86aa2da1f75a__FINAL_ATTEMPT12_REPORT.md)
+- [`provenance_capsule_v3/attempts/gpu6_file_recovery_attempt05/FINAL_ATTEMPT05_REPORT.md`](../../objects/fa/fa165c5bc3e7cdc8362fbc270fbe297120a897a35b93d5b349016df0063d9de2__FINAL_ATTEMPT05_REPORT.md)
+- [`provenance_capsule_v3/scientific_reproducibility_v1/PRECOMMIT_INPUT_FINALIZATION.json`](../../objects/cf/cf529b36970003cfc2270d71eb187b731c753ccd286918916180ae2ad37a9cfe__PRECOMMIT_INPUT_FINALIZATION.json)
+- [`provenance_capsule_v3/attempt_08_fixture_closure/STANDING_ENGINEERING_AUTHORIZATION_V1.md`](../../objects/24/24c0a2171938925336a0a15cc855023c18b204254f793e3c2e452b5653b6288b__STANDING_ENGINEERING_AUTHORIZATION_V1.md)
+- [`provenance_capsule_v3/attempt_09_output_directory/STANDING_ENGINEERING_AUTHORIZATION_V1.md`](../../objects/24/24c0a2171938925336a0a15cc855023c18b204254f793e3c2e452b5653b6288b__STANDING_ENGINEERING_AUTHORIZATION_V1.md)
+- [`provenance_capsule_v3/attempt_11_static_ast_qualification/STANDING_ENGINEERING_AUTHORIZATION_V1.md`](../../objects/24/24c0a2171938925336a0a15cc855023c18b204254f793e3c2e452b5653b6288b__STANDING_ENGINEERING_AUTHORIZATION_V1.md)
+- [`provenance_capsule_v3/scientific_reproducibility_v1/HISTORICAL_PRESERVATION_FINAL_INPUT_CHECK.json`](../../objects/99/99687d0a327fc58fedacbf8c13b08fb0a3ce2d49d2345038edc5607dc5f7b2e3__HISTORICAL_PRESERVATION_FINAL_INPUT_CHECK.json)
+- [`provenance_capsule_v3/attempt_12_alias_namespace_relocation/STANDING_ENGINEERING_AUTHORIZATION_V1.md`](../../objects/24/24c0a2171938925336a0a15cc855023c18b204254f793e3c2e452b5653b6288b__STANDING_ENGINEERING_AUTHORIZATION_V1.md)
+- [`provenance_capsule_v3/scientific_reproducibility_v3_virtual_namespace/FINAL_SCIENTIFIC_QUALIFICATION_FAILURE_REPORT.md`](../../objects/bb/bb1321ae45684d64751b07d641e01227761b378c91122e6e2f0a593644742d16__FINAL_SCIENTIFIC_QUALIFICATION_FAILURE_REPORT.md)
+- [`provenance_capsule_v3/scientific_reproducibility_v3_virtual_namespace/FINAL_SCIENTIFIC_QUALIFICATION_FAILURE_REPORT.json`](../../objects/7f/7fdf835e4c97ed995e93f5eeecdddefa53d5f2a39fb7a713a11d141cb9d7bf70__FINAL_SCIENTIFIC_QUALIFICATION_FAILURE_REPORT.json)
+- [`provenance_capsule_v3/attempt_10_ast_audit_association/failed_preparation_inputs/STANDING_ENGINEERING_AUTHORIZATION_V1.md`](../../objects/24/24c0a2171938925336a0a15cc855023c18b204254f793e3c2e452b5653b6288b__STANDING_ENGINEERING_AUTHORIZATION_V1.md)
+- [`provenance_capsule_v3/attempt_11_static_ast_qualification/failed_engineering_inputs/STANDING_ENGINEERING_AUTHORIZATION_V1.md`](../../objects/24/24c0a2171938925336a0a15cc855023c18b204254f793e3c2e452b5653b6288b__STANDING_ENGINEERING_AUTHORIZATION_V1.md)
+- [`provenance_capsule_v3/scientific_reproducibility_v4_whole_runtime_replay/advancement_inputs/historical_finalize_discovery.py`](../../objects/57/571ba87606f19994520685fc8db8479f7de8962e97e6086448ed2e31ec6dfeae__historical_finalize_discovery.py)
+- [`provenance_capsule_v3/attempt_12_alias_namespace_relocation/failed_engineering_inputs/STANDING_ENGINEERING_AUTHORIZATION_V1.md`](../../objects/24/24c0a2171938925336a0a15cc855023c18b204254f793e3c2e452b5653b6288b__STANDING_ENGINEERING_AUTHORIZATION_V1.md)
+- [`provenance_capsule_v3/scientific_reproducibility_v4_whole_runtime_replay/phase_b_qualification_evidence/fresh_process_01/preregistration.json`](../../objects/0e/0e74aa581fe582beab67f219ba17bd690dd0b46a1313d6cad28631c522d1eed2__preregistration.json)

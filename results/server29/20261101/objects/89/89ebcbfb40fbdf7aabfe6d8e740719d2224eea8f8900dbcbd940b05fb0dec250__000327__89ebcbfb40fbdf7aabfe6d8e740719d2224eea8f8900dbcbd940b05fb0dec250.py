@@ -1,0 +1,1 @@
+lambda _cls, import_str, obj: _tuple_new(_cls, (import_str, obj))

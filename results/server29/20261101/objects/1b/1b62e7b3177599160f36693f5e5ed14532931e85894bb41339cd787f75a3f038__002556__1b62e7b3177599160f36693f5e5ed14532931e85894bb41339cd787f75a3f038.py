@@ -1,0 +1,1 @@
+lambda _cls, category, value, line, position: _tuple_new(_cls, (category, value, line, position))

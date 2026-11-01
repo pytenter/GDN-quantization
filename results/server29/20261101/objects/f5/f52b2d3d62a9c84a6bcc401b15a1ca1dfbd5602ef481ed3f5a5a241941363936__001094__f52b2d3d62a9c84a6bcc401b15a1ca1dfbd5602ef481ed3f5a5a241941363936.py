@@ -1,0 +1,1 @@
+lambda _cls, grad_input, grad_grid: _tuple_new(_cls, (grad_input, grad_grid))

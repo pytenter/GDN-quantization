@@ -1,0 +1,1148 @@
+objavi/cgi_utils.py
+def path2url(path, default='/missing_path?%(path)s', full=False):
+    """convert local file paths to htdocs-relative addresses.  If the
+    file is not in the web tree, return default"""
+    if path.startswith('file:///'):
+        path = path[7:]
+    path = os.path.abspath(path)
+    if path.startswith(_htdocs):
+        path = path[len(_htdocs):]
+    else:
+        path = default % {'path': urllib.quote(path)}
+    if full:
+        return 'http://%s%s' % (SERVER_NAME, path)
+    return path
+objavi/config.py
+BASEDIR = ".."
+LULU_API_KEY = "" # optional, needed for lulu.com integration
+LULU_USER = "" # optional, needed for lulu.com integration
+LULU_PASSWORD = "" # optional, needed for lulu.com integration
+KEEP_TEMP_FILES = True
+TMPDIR = 'htdocs/tmp'
+LOGDIR = 'log'
+REDIRECT_LOG = True
+LOG_ROTATE_SIZE = 1000000
+SHOW_BOOKI_SERVERS = bool(_environ.get("SHOW_BOOKI_SERVERS", False))
+HTDOCS = 'htdocs'
+BOOKI_BOOK_DIR = 'htdocs/booki-books'
+BOOKI_BOOK_URL = '/booki-books'
+BOOKI_SHARED_DIRECTORY = 'htdocs/shared'
+BOOKI_SHARED_LONELY_USER_PREFIX = 'lonely-user-'
+WKHTMLTOPDF = 'wkhtmltopdf'
+WKHTMLTOPDF_EXTRA_COMMANDS = []
+USE_DUMP_OUTLINE = True
+CONTENTS_DEPTH = 1
+HTML2ODT = 'bin/html2odt'
+CGITB_DOMAINS = False
+BOOKLAND = 'bookland/bookland'
+PDFEDIT_MAX_PAGES = 20
+OBJAVI_CGI_MEMORY_LIMIT = 1600 * 1024 * 1024
+BOOK_LIST_CACHE = 3600 * 2
+CACHE_DIR = 'cache'
+TOC_URL = "http://%s/pub/%s/_index/TOC.txt"
+CHAPTER_URL = "http://%s/bin/view/%s/%s?skin=text"
+PUBLISH_DIR = 'htdocs/books'
+HTML_PUBLISH_DIR = 'htdocs/published'
+TEMPLATING_REPLACED_ELEMENT = 'content-goes-here'
+TEMPLATING_MENU_ELEMENT = 'menu-goes-here'
+TEMPLATING_BOOK_TITLE_ELEMENT = 'book-title-goes-here'
+TEMPLATING_CHAPTER_TITLE_ELEMENT = 'chapter-title-goes-here'
+TEMPLATING_DOWNLOAD_LINK_ELEMENT = 'download-link-goes-here'
+TEMPLATING_CONTENTS_ID = 'main-content'
+TEMPLATING_DEFAULT_TEMPLATE = 'templates/templating_template_flossmanuals.html'
+TEMPLATING_INDEX_FIRST = 'first'
+TEMPLATING_INDEX_CONTENTS = 'contents'
+TEMPLATING_INDEX_MODES = {  # contents file, first file
+    TEMPLATING_INDEX_FIRST: ('contents.html', 'index.html'),
+    TEMPLATING_INDEX_CONTENTS: ('index.html', None),
+}
+TAR_TEMPLATED_HTML = True
+POLL_NOTIFY_PATH = 'htdocs/progress/%s.txt'
+ZIP_URLS = {
+    #'TWiki':   'http://%(HTTP_HOST)s/booki-twiki-gateway.cgi?server=%(server)s&book=%(book)s&mode=zip',
+    'TWiki':   'http://objavi.booki.cc/booki-twiki-gateway.cgi?server=%(server)s&book=%(book)s&mode=zip',
+    'Booki':   'http://%(server)s/export/%(book)s/export',
+    'Archive': 'http://%(HTTP_HOST)s/espri.cgi?mode=zip&book=%(book)s',
+}
+DEFAULT_DIR = 'LTR'
+DEFAULT_SERVER = 'www.booki.cc'
+DEFAULT_BOOKI_SERVER = 'www.booki.cc'
+DEFAULT_SIZE = 'COMICBOOK'
+DEFAULT_ENGINE = 'webkit'
+RTL_SCRIPTS = ['persian', 'arabic', 'hebrew', 'urdu']
+USE_CACHED_IMAGES = False
+TRY_BOOK_CLEANUP_ON_DEL = False
+LANGUAGE_CSS = {
+    'en': {None: '/static/en.flossmanuals.net.css',
+           'web': '/static/en.flossmanuals.net-web.css',
+           'newspaper': '/static/en.flossmanuals.net-newspaper.css',
+           'openoffice': '/static/en.flossmanuals.net-openoffice.css',
+           },
+    'my': {None: '/static/my.flossmanuals.net.css',}
+}
+SERVER_DEFAULTS = {
+    'booki.flossmanuals.net': {
+        'css-book': '/static/en.flossmanuals.net.css',
+        'css-web': '/static/en.flossmanuals.net-web.css',
+        'css-newspaper': '/static/en.flossmanuals.net-newspaper.css',
+        'css-openoffice': '/static/en.flossmanuals.net-openoffice.css',
+        'lang': 'en',
+        'dir': 'LTR',
+        'toc-encoding': None,
+        'display': True,
+        'interface': 'Booki',
+        'toc_header': 'Table of Contents'
+      },
+      'fi-new.flossmanuals.net/kirjoita': {
+        'css-book': '/static/en.flossmanuals.net.css',
+        'css-web': '/static/en.flossmanuals.net-web.css',
+        'css-newspaper': '/static/en.flossmanuals.net-newspaper.css',
+        'css-openoffice': '/static/en.flossmanuals.net-openoffice.css',
+        'lang': 'en',
+        'dir': 'LTR',
+        'toc-encoding': None,
+        'display': True,
+        'interface': 'Booki',
+        'toc_header': 'Table of Contents'
+       },
+    'www.booki.cc': {
+        'css-book': '/static/en.flossmanuals.net.css',
+        'css-web': '/static/en.flossmanuals.net-web.css',
+        'css-newspaper': '/static/en.flossmanuals.net-newspaper.css',
+        'css-openoffice': '/static/en.flossmanuals.net-openoffice.css',
+        'lang': 'en',
+        'dir': 'LTR',
+        'toc-encoding': None,
+        'display': True,
+        'interface': 'Booki',
+        'toc_header': 'Table of Contents',
+        },
+    'translate-new.flossmanuals.net': {
+        'css-book': '/static/en.flossmanuals.net.css',
+        'css-web': '/static/en.flossmanuals.net-web.css',
+        'css-newspaper': '/static/en.flossmanuals.net-newspaper.css',
+        'css-openoffice': '/static/en.flossmanuals.net-openoffice.css',
+        'lang': 'en',
+        'dir': 'LTR',
+        'toc-encoding': None,
+        'display': True,
+        'interface': 'Booki',
+        'toc_header': 'Table of Contents',
+        },
+    'booki.halo.gen.nz': {
+        'css-book': '/static/en.flossmanuals.net.css',
+        'css-web': '/static/en.flossmanuals.net-web.css',
+        'css-newspaper': '/static/en.flossmanuals.net-newspaper.css',
+        'css-openoffice': '/static/en.flossmanuals.net-openoffice.css',
+        'lang': 'en',
+        'dir': 'LTR',
+        'toc-encoding': None,
+        'display': SHOW_BOOKI_SERVERS,
+        'interface': 'Booki',
+        'toc_header': 'Table of Contents',
+        },
+    'sd-14919.dedibox.fr/ecrire': {
+        'css-book': '/static/fr.flossmanuals.net.css',
+        'css-web': '/static/fr.flossmanuals.net-web.css',
+        'css-newspaper': '/static/fr.flossmanuals.net-newspaper.css',
+        'css-openoffice': '/static/fr.flossmanuals.net-openoffice.css',
+        'lang': 'fr',
+        'dir': 'LTR',
+        'toc-encoding': None,
+        'display': True,
+        'interface': 'Booki',
+        'toc_header': 'Table of Contents',
+        },
+    'archive.org': {
+        'css-book': '/static/en.flossmanuals.net.css',
+        'css-web': '/static/en.flossmanuals.net-web.css',
+        'css-newspaper': '/static/en.flossmanuals.net-newspaper.css',
+        'css-openoffice': '/static/en.flossmanuals.net-openoffice.css',
+        'lang': 'en',
+        'dir': 'LTR',
+        'toc-encoding': None,
+        'display': False,
+        'interface': 'Archive',
+        'toc_header': 'Table of Contents',
+        },
+    'en.flossmanuals.net': {
+        'css-book': '/static/en.flossmanuals.net.css',
+        'css-web': '/static/en.flossmanuals.net-web.css',
+        'css-newspaper': '/static/en.flossmanuals.net-newspaper.css',
+        'css-openoffice': '/static/en.flossmanuals.net-openoffice.css',
+        'lang': 'en',
+        'dir': 'LTR',
+        'toc-encoding': None,
+        'display': True,
+        'interface': 'TWiki',
+        'toc_header': 'Table of Contents',
+        },
+    'fi.flossmanuals.net': {
+        'css-book': '/static/en.flossmanuals.net.css',
+        'css-web': '/static/en.flossmanuals.net-web.css',
+        'css-newspaper': '/static/en.flossmanuals.net-newspaper.css',
+        'css-openoffice': '/static/en.flossmanuals.net-openoffice.css',
+        'lang': 'fi',
+        'dir': 'LTR',
+        'toc-encoding': None,
+        'display': True,
+        'interface': 'TWiki',
+        'toc_header': 'Table of Contents',
+        },
+    'fr.flossmanuals.net': {
+        'css-book': '/static/fr.flossmanuals.net.css',
+        'css-web': '/static/fr.flossmanuals.net-web.css',
+        'css-newspaper': '/static/fr.flossmanuals.net-newspaper.css',
+        'css': '/static/fr.flossmanuals.net.css',
+        'css-openoffice': '/static/fr.flossmanuals.net-openoffice.css',
+        'lang': 'fr',
+        'dir': 'LTR',
+        'toc-encoding': None,
+        'display': True,
+        'interface': 'TWiki',
+        'toc_header': 'Table of Contents',
+        },
+    'translate.flossmanuals.net': {
+        'css-book': None, #'/static/translate.flossmanuals.net.css',
+        'css-web': None, #'/static/translate.flossmanuals.net-web.css',
+        'css-newspaper': None, #'/static/translate.flossmanuals.net-newspaper.css',
+        'css': None, #'/static/translate.flossmanuals.net.css',
+        'css-openoffice': None, #'/static/translate.flossmanuals.net-openoffice.css',
+        'lang': None,
+        'dir': 'auto',
+        'toc-encoding': 'iso-8859-1',
+        'display': True,
+        'interface': 'TWiki',
+        'toc_header': 'Table of Contents',
+        },
+    'nl.flossmanuals.net': {
+        'css-book': '/static/nl.flossmanuals.net.css',
+        'css-web': '/static/nl.flossmanuals.net-web.css',
+        'css-newspaper': '/static/nl.flossmanuals.net-newspaper.css',
+        'css': '/static/nl.flossmanuals.net.css',
+        'css-openoffice': '/static/nl.flossmanuals.net-openoffice.css',
+        'lang': 'nl',
+        'dir': 'LTR',
+        'toc-encoding': 'iso-8859-1',
+        'display': True,
+        'interface': 'TWiki',
+        'toc_header': 'Table of Contents',
+        },
+    'bn.flossmanuals.net': {
+        'css-book': '/static/bn.flossmanuals.net.css',
+        'css-web': '/static/bn.flossmanuals.net-web.css',
+        'css-newspaper': '/static/bn.flossmanuals.net-newspaper.css',
+        'css': '/static/bn.flossmanuals.net.css',
+        'css-openoffice': '/static/bn.flossmanuals.net-openoffice.css',
+        'lang': 'bn',
+        'dir': 'LTR',
+        'toc-encoding': 'iso-8859-1',
+        'display': True,
+        'interface': 'TWiki',
+        'toc_header': 'Table of Contents',
+        },
+    'fa.flossmanuals.net': {
+        'css-book': '/static/fa.flossmanuals.net.css',
+        'css-web': '/static/fa.flossmanuals.net-web.css',
+        'css-newspaper': '/static/fa.flossmanuals.net-newspaper.css',
+        'css': '/static/fa.flossmanuals.net.css',
+        'css-openoffice': '/static/fa.flossmanuals.net-openoffice.css',
+        'lang': 'fa',
+        'dir': 'RTL',
+        'toc-encoding': 'iso-8859-1',
+        'display': True,
+        'interface': 'TWiki',
+        'toc_header': 'Table of Contents',
+        },
+}
+LANGUAGE_DIR = {
+    "ar": 'RTL',  # arabic (many variants)
+    "dv": 'RTL',  # dhivehi, maldives islands
+    "fa": 'RTL',  # farsi
+    #"ha": 'RTL',  # hausa, west africa, particularly niger and nigeria
+    "he": 'RTL',  # hebrew
+    "ps": 'RTL',  # pashto
+    "ur": 'RTL',  # urdu, pakistan
+    "yi": 'RTL',  # yiddish, israel
+}
+DEBUG_MODES = (
+    #'STARTUP',
+    #'INDEX',
+    #'PDFEDIT',
+    #'PDFGEN',
+    #'HTMLGEN',
+    )
+DEBUG_ALL = False
+BASE_MARGIN = 22
+PROPORTIONAL_MARGIN = 0.04
+BASE_GUTTER = 15
+PROPORTIONAL_GUTTER = 0.011
+PAGE_EXTREMA = {
+    #Maximum sizes based on B0 paper.  There was once a good reason
+    #for that, and there is no pressing need to change now (enough for
+    #anyone, etc).
+    'page_width':  (1, 1000, MM_2_POINT),
+    'page_height': (1, 1414, MM_2_POINT),
+    'gutter': (-1000, 1000, MM_2_POINT),
+    'top_margin': (0, 1500, MM_2_POINT),
+    'side_margin': (-500, 1500, MM_2_POINT),
+    'bottom_margin': (0, 1500, MM_2_POINT),
+    "columns": (1, 12, 1),
+    "column_margin": (-1000, 1000, MM_2_POINT),
+}
+PAGE_SIZE_DATA = {
+    'COMICBOOK':      {'pointsize': ((6.625 * 72), (10.25 * 72)), 'class': "lulu", 'display': True},
+    "POCKET":         {'pointsize': (4.25 * 72, 6.875 * 72), 'class': "lulu", 'display': True},
+
+    "USLETTER":       {'pointsize': (8.5 * 72, 11 * 72), 'class': "lulu us", 'display': True},
+    "USTRADE6x9":     {'pointsize': (6 * 72, 9 * 72), 'class': "lulu us", 'display': True},
+    "USTRADE":        {'pointsize': (6 * 72, 9 * 72), 'class': "lulu us", 'display': False}, #alias for booki
+    "LANDSCAPE9x7":   {'pointsize': (9 * 72, 7 * 72), 'class': "lulu us", 'display': True},
+    "SQUARE7.5":      {'pointsize': (7.5 * 72, 7.5 * 72), 'class': "lulu", 'display': True},
+    "ROYAL":          {'pointsize': (6.139 * 72, 9.21 * 72), 'class': "lulu us", 'display': True},
+    "CROWNQUARTO":    {'pointsize': (7.444 * 72, 9.681 * 72), 'class': "lulu us", 'display': True},
+    "SQUARE8.5":      {'pointsize': (8.5 * 72, 8.5 * 72), 'class': "lulu", 'display': True},
+    "US5.5x8.5":      {'pointsize': (5.5 * 72, 8.5 * 72), 'class': "us", 'display': True},
+    "DIGEST":         {'pointsize': (5.5 * 72, 8.5 * 72), 'class': "us lulu", 'display': True},
+    "US5x8":          {'pointsize': (5 * 72, 8 * 72), 'class': "us", 'display': True},
+    "US7x10":         {'pointsize': (7 * 72, 10 * 72), 'class': "us", 'display': True},
+
+    "A5":             {'pointsize': (148 * MM_2_POINT, 210 * MM_2_POINT), 'class': "lulu iso",
+                       'display': True},
+    "A4":             {'pointsize': (210 * MM_2_POINT, 297 * MM_2_POINT), 'class': "lulu iso",
+                       'display': True},
+    "A3 (NZ Tabloid)": {'pointsize': (297 * MM_2_POINT, 420 * MM_2_POINT), 'class': 'iso newspaper',
+                        'display': True},
+    "A2 (NZ Broadsheet)": {'pointsize': (420 * MM_2_POINT, 594 * MM_2_POINT), 'class': 'iso newspaper',
+                           'display': True},
+    "A1":             {'pointsize': (594 * MM_2_POINT, 841 * MM_2_POINT), 'class': 'iso', 'display': True},
+    "B5":             {'pointsize': (176 * MM_2_POINT, 250 * MM_2_POINT), 'class': 'iso', 'display': True},
+    "B4":             {'pointsize': (250 * MM_2_POINT, 353 * MM_2_POINT), 'class': 'iso', 'display': True},
+    "B3":             {'pointsize': (353 * MM_2_POINT, 500 * MM_2_POINT), 'class': 'iso', 'display': True},
+    "B2":             {'pointsize': (500 * MM_2_POINT, 707 * MM_2_POINT), 'class': 'iso', 'display': True},
+    "B1":             {'pointsize': (707 * MM_2_POINT, 1000 * MM_2_POINT), 'class': 'iso', 'display': True},
+
+    "UK Tabloid":     {'pointsize': (11 * INCH_2_POINT, 17 * INCH_2_POINT), 'class': 'newspaper',
+                       'display': True},
+    "UK Broadsheet":  {'pointsize': (18 * INCH_2_POINT, 24 * INCH_2_POINT), 'class': 'newspaper',
+                       'display': True},
+    "US Broadsheet":  {'pointsize': (15 * INCH_2_POINT, 22.75 * INCH_2_POINT), 'class': 'newspaper us',
+                       'display': True},
+    "Berliner"     :  {'pointsize': (315 * MM_2_POINT, 470 * MM_2_POINT), 'class': 'newspaper',
+                       'display': True},
+    "Foolscap (F4)":  {'pointsize': (210 * MM_2_POINT, 330 * MM_2_POINT), 'display': True},
+
+    "Oamaru Broadsheet":{'pointsize': (382 * MM_2_POINT, 540 * MM_2_POINT), 'class': 'newspaper',
+                         'display': True},
+    "Oamaru Tabloid": {'pointsize': (265 * MM_2_POINT, 380 * MM_2_POINT), 'class': 'newspaper',
+                       'display': True},
+
+    #ODT printable 380x560
+    #Aucklander 360x260
+    #Dominion 376x540
+
+    "custom":         {'class': "custom", 'display': True},
+}
+MIN_COLUMN_WIDTH = (110 * MM_2_POINT)
+ENGINES = {
+    'webkit' : [],
+    #'gecko' : [],
+}
+INSIDE_FRONT_COVER_TEMPLATE = 'templates/inside-front-cover.%s.html'
+END_MATTER_TEMPLATE = 'templates/end_matter.%s.html'
+FONT_LIST_INCLUDE = 'cache/font-list.inc'
+FONT_LIST_URL = '/font-list.cgi.pdf'
+FONT_EXAMPLE_SCRIPT_DIR = 'templates/font-list'
+LICENSES = {
+    'GPL': 'http://www.gnu.org/licenses/gpl.txt',
+    'GPLv2': 'http://www.gnu.org/licenses/gpl-2.0.txt',
+    'GPLv2+': 'http://www.gnu.org/licenses/gpl-2.0.txt',
+    'GPLv3': 'http://www.gnu.org/licenses/gpl-3.0.txt',
+    'GPLv3+': 'http://www.gnu.org/licenses/gpl-3.0.txt',
+    'LGPL': 'http://www.gnu.org/licenses/lgpl.txt',
+    'LGPLv2.1': 'http://www.gnu.org/licenses/lgpl-2.1.txt',
+    'LGPLv3': 'http://www.gnu.org/licenses/lgpl-3.0.txt',
+    'BSD': 'http://www.debian.org/misc/bsd.license',
+    'public domain': None,
+    'MIT': 'http://www.opensource.org/licenses/mit-license.html',
+    'Artistic': 'http://dev.perl.org/licenses/artistic.html',
+    'CC-BY': 'http://creativecommons.org/licenses/by/3.0/',
+    'CC-BY-SA': 'http://creativecommons.org/licenses/by-sa/3.0/',
+}
+DEFAULT_LICENSE = 'GPLv2+'
+FORM_TEMPLATE = 'templates/form.html'
+PROGRESS_ASYNC_TEMPLATE = 'templates/progress-async.html'
+PROGRESS_TEMPLATE = 'templates/progress.html'
+ASYNC_TEMPLATE = 'templates/async.txt'
+ARCHIVE_TEMPLATE = 'templates/archive.txt'
+NOWHERE_TEMPLATE = 'templates/nowhere.txt'
+FINISHED_MESSAGE = 'FINISHED'
+S3_SECRET = '/home/luka/s3.archive.org-secret'
+S3_ACCESSKEY = '/home/luka/s3.archive.org-accesskey'
+NAVPOINT_ID_TEMPLATE = 'chapter%s'
+CLAIM_UNAUTHORED = False
+IMG_CACHE = 'cache/images/'
+USE_IMG_CACHE_ALWAYS_HOSTS = ['objavi.halo.gen.nz']
+USE_ZIP_CACHE_ALWAYS_HOSTS = ['objavi.halo.gen.nz']
+IGNORABLE_TWIKI_BOOKS = ('Main', 'TWiki', 'PR', 'Trash', 'Sandbox',
+                         'Floss', 'Publish', 'Remix', 'Snippets')
+WHITESPACE_AND_NULL = ''.join(chr(_x) for _x in range(33))
+EPUB_COMPRESSED_SIZE_MAX = 70000
+EPUB_FILE_SIZE_MAX = 200000
+MARKER_CLASS_SPLIT = "espri-marker-name-clash-with-no-one--split"
+MARKER_CLASS_INFO = "espri-marker-name-clash-with-no-one--info"
+BOILERPLATE_HTML = { #(footer, header)
+    'LTR': ('htdocs/static/boilerplate/footer-LTR.html', None),
+    'RTL': ('htdocs/static/boilerplate/footer-RTL.html', None),
+    'fa': ('htdocs/static/boilerplate/footer-fa.html', None),
+    'ar': ('htdocs/static/boilerplate/footer-ar.html', None),
+    'my': ('htdocs/static/boilerplate/footer-my.html', None),
+    'hi': ('htdocs/static/boilerplate/footer-hi.html', None),
+    'none': (None, None),
+}
+DEFAULT_BOILERPLATE_HTML = BOILERPLATE_HTML[DEFAULT_DIR]
+LOCALISED_DIGITS = {
+    'fa': 0x6f0 - 48,
+    'ar': 0x660 - 48,
+    'hi': 0x966 - 48,
+    'my': 0x1040 - 48,
+}
+PAGE_NUMBER_OPTIONS = BOILERPLATE_HTML.keys() + ['auto']
+DEFAULT_PAGE_NUMBER_OPTION = 'auto'
+NO_BREAK_AFTER_TAGS = ('h2', 'h3', 'h4')
+objavi/xhtml_utils.py
+def empty_html_tree():
+    return lxml.html.document_fromstring('<html><body></body></html>').getroottree()
+objavi/pdf.py
+def embed_all_fonts(pdf_file):
+    tmp_file = pdf_file + '.pre-embed.pdf'
+    os.rename(pdf_file, tmp_file)
+    cmd = ['gs', '-q',                  # no messages to stdout
+           '-dSAFER',                   # read-only
+           '-dNOPLATFONTS',             # no platform fonts
+           '-dNOPAUSE',                 # don't prompt user
+           '-dBATCH',                   # ? undocumented
+           '-sDEVICE=pdfwrite',
+           #'-sPAPERSIZE=letter',
+           '-dCompatibilityLevel=1.4',  # pdf v4
+           '-dPDFSETTINGS=/printer',    # "printer optimised" pdf
+           '-dMaxSubsetPct=100',        # Always use a subset font
+           '-dSubsetFonts=false',       # never use a subset font (overrides above)
+           '-dEmbedAllFonts=true',      # As it says
+           #'-sOutputFile=-',           # write to stdout
+           '-sOutputFile=%s' %(pdf_file), # write to file
+           #could also use -dPDFX to make PDF/X3
+           #'-f',                        # ?
+           '--',
+           ] + [tmp_file]
+    run(cmd)
+objavi/pdf.py
+class PageSettings(object):
+    """Calculates and wraps commands for the generation and processing
+    of PDFs"""
+    def __init__(self, tmpdir, pointsize, **kwargs):
+        # the formulas for default gutters, margins and column margins
+        # are quite ad-hoc and certainly improvable.
+        self.tmpdir = tmpdir
+        self.width, self.height = pointsize
+        self.grey_scale = 'grey_scale' in kwargs
+
+        self.engine = kwargs.get('engine', config.DEFAULT_ENGINE)
+        # All measurements in points unless otherwise stated
+        # user interaction is in *mm*, but is converted in objavi2.py
+        default_margin = (config.BASE_MARGIN + config.PROPORTIONAL_MARGIN * min(pointsize))
+        default_gutter = (config.BASE_GUTTER + config.PROPORTIONAL_GUTTER * self.width)
+
+        self.top_margin = kwargs.get('top_margin', default_margin)
+        self.side_margin = kwargs.get('side_margin', default_margin)
+        self.bottom_margin = kwargs.get('bottom_margin', default_margin)
+        self.gutter = kwargs.get('gutter', default_gutter)
+
+        self.columns = kwargs.get('columns', 1)
+        if self.columns == 'auto': #default for newspapers is to work out columns
+            self.columns = self.width // config.MIN_COLUMN_WIDTH
+        self.columns = int(self.columns)
+
+        self.column_margin = kwargs.get('column_margin',
+                                        default_margin * 2 / (5.0 + self.columns))
+
+
+        # calculate margins in mm for browsers
+        self.margins = []
+        for m, clip in ((self.top_margin, 0),
+                        (self.side_margin, 0.5 * self.gutter),
+                        (self.bottom_margin, 0),
+                        (self.side_margin, 0.5 * self.gutter),
+                        ):
+            self.margins.append((m + clip) * POINT_2_MM)
+
+        if 'PDFGEN' in config.DEBUG_MODES:
+            log("making PageSettings with:")
+            for x in locals().iteritems():
+                log("%s: %s" % x, debug='PDFGEN')
+            for x in dir(self):
+                if not x.startswith('__'):
+                    log("self.%s: %s" % (x, getattr(self, x)), debug='PDFGEN')
+
+
+    def get_boilerplate(self, requested):
+        """Return (footer url, header url)"""
+        footer_tmpl, header_tmpl = config.BOILERPLATE_HTML.get(requested,
+                                                               config.DEFAULT_BOILERPLATE_HTML)
+        html = []
+        for fn in (footer_tmpl, header_tmpl):
+            if fn is not None:
+                f = open(fn)
+                s = f.read()
+                f.close()
+                #XXX can manipulate footer here, for CSS etc
+                fn2 = os.path.join(self.tmpdir, os.path.basename(fn))
+                f = open(fn2, 'w')
+                f.write(s)
+                f.close()
+                html.append(path2url(fn2, full=True))
+            else:
+                html.append(None)
+
+        return html
+
+
+    def _webkit_command(self, html_url, pdf, outline=False, outline_file=None, page_num=None):
+        m = [str(x) for x in self.margins]
+        outline_args = ['--outline',  '--outline-depth', '2'] * outline
+        if outline_file is not None:
+            outline_args += ['--dump-outline', outline_file]
+
+        page_num_args = []
+        if page_num:
+            footer_url, header_url = self.get_boilerplate(page_num)
+            if footer_url is not None:
+                page_num_args += ['--footer-html', footer_url]
+            if header_url is not None:
+                page_num_args += ['--header-html', header_url]
+
+        greyscale_args = ['-g'] * self.grey_scale
+        quiet_args = ['-q']
+        cmd = ([config.WKHTMLTOPDF] +
+               quiet_args +
+               ['--page-width', str(self.width * POINT_2_MM),
+                '--page-height', str(self.height * POINT_2_MM),
+                '-T', m[0], '-R', m[1], '-B', m[2], '-L', m[3],
+                #'--disable-smart-shrinking',
+                '-d', '100',
+                #'--zoom', '1.2',
+                '--encoding', 'UTF-8',
+                '--javascript-delay', '2000',
+                ] +
+               page_num_args +
+               outline_args +
+               greyscale_args +
+               config.WKHTMLTOPDF_EXTRA_COMMANDS +
+               [html_url, pdf])
+        log(' '.join(cmd))
+        return cmd
+
+
+    def make_raw_pdf(self, html, pdf, outline=False, outline_file=None, page_num=None):
+        if self.columns == 1:
+            html_url = path2url(html, full=True)
+            func = getattr(self, '_%s_command' % self.engine)
+            cmd = func(html_url, pdf, outline=outline, outline_file=outline_file, page_num=page_num)
+            run(cmd)
+        else:
+            #For multiple columns, generate a narrower single column pdf, and
+            #paste it into columns using pdfnup.
+            printable_width = self.width - 2.0 * self.side_margin - self.gutter
+            column_width = (printable_width - (self.columns - 1) * self.column_margin) / self.columns
+            page_width = column_width + self.column_margin
+            side_margin = self.column_margin * 0.5
+            if 'PDFGEN' in config.DEBUG_MODES:
+                log("making columns with:")
+                for k, v in locals().iteritems():
+                    log("%s: %r" % (k, v))
+                for k in ('width', 'side_margin', 'gutter', 'column_margin', 'columns', 'height'):
+                    log("self.%s: %r" % (k, getattr(self, k)))
+
+            columnmaker = PageSettings(self.tmpdir, (page_width, self.height),
+                                       gutter=0, top_margin=self.top_margin,
+                                       side_margin=side_margin,
+                                       bottom_margin=self.bottom_margin,
+                                       grey_scale=self.grey_scale,
+                                       engine=self.engine
+                                       )
+
+            column_pdf = pdf[:-4] + '-single-column.pdf'
+            columnmaker.make_raw_pdf(html, column_pdf, outline=outline,
+                                     outline_file=outline_file, page_num=None)
+            columnmaker.reshape_pdf(column_pdf)
+
+            # pdfnup seems to round down to an even number of output
+            # pages.  For example, if a book fills 13 pages, it will
+            # clip it to 12.  So it is necessary to add blank pages to
+            # round it up to an even number of output pages, which is
+            # to say a multiple of (self.columns * 2) input pages.
+
+            column_pages = count_pdf_pages(column_pdf)
+            overflow_pages = column_pages % (self.columns * 2)
+            if overflow_pages:
+                extra_pages = self.columns * 2 - overflow_pages
+            else:
+                extra_pages = 0
+
+            cmd = [PDFNUP,
+                   '--nup', '%sx1' % int(self.columns),
+                   #'--paper', papersize.lower() + 'paper',
+                   '--outfile', pdf,
+                   '--noautoscale', 'true',
+                   '--orient', 'portrait',
+                   '--paperwidth', '%smm' % int(self.width * POINT_2_MM),
+                   '--paperheight', '%smm' % int(self.height * POINT_2_MM),
+                   #'--tidy', 'false',
+                   '--pages', '1-last%s' % (',{}' * extra_pages,),
+                   #'--columnstrict', 'true',
+                   #'--column', 'true',
+                   column_pdf
+                   ]
+
+            run(cmd)
+
+
+
+    def reshape_pdf(self, pdf, dir=config.DEFAULT_DIR, centre_start=False,
+                    centre_end=False, even_pages=True):
+        """Spin the pdf for RTL text, resize it to the right size, and
+        shift the gutter left and right"""
+        ops = []
+        if self.gutter:
+            ops.append('shift')
+        if even_pages:
+            ops.append('even_pages')
+        gutter = self.gutter
+        if dir == 'RTL':
+            gutter = -gutter
+        if not ops:
+            return
+
+        cmd = ['pdfedit', '-s', 'wk_objavi.qs',
+               'dir=%s' % dir,
+               'filename=%s' % pdf,
+               'output_filename=%s' % pdf,
+               'operation=%s' % ','.join(ops),
+               'width=%s' % self.width,
+               'height=%s' % self.height,
+               'offset=%s' % gutter,
+               'centre_start=%s' % centre_start,
+               'centre_end=%s' % centre_end,
+               ]
+        run(cmd)
+
+
+    def make_barcode_pdf(self, isbn, pdf, corner='br'):
+        """Put an ISBN barcode in a corner of a single blank page."""
+
+        position = '%s,%s,%s,%s,%s' % (corner, self.width, self.height, self.side_margin, self.bottom_margin)
+        cmd1 = [config.BOOKLAND,
+                '--position', position,
+                str(isbn)]
+        cmd2 = ['ps2pdf',
+                '-dFIXEDMEDIA',
+                '-dDEVICEWIDTHPOINTS=%s' % self.width,
+                '-dDEVICEHEIGHTPOINTS=%s' % self.height,
+                '-', pdf]
+
+        p1 = Popen(cmd1, stdout=PIPE)
+        p2 = Popen(cmd2, stdin=p1.stdout, stdout=PIPE, stderr=PIPE)
+        out, err = p2.communicate()
+
+        log('ran:\n%s | %s' % (' '.join(cmd1), ' '.join(cmd2)))
+        log("return: %s and %s \nstdout:%s \nstderr:%s" % (p1.poll(), p2.poll(), out, err))
+
+    def calculate_cover_size(self, api_key, booksize, page_count):
+        import lulu
+        return lulu.calculate_cover_size(api_key, booksize, page_count)
+
+    def make_cover_pdf(self, pdf, spine_width):
+        width = self.width * POINT_2_MM
+        height = self.height * POINT_2_MM
+        spine_width = spine_width * POINT_2_MM
+
+        # XXX for now makes a blank cover
+        cmd = [config.WKHTMLTOPDF,
+               "-q",
+               "--page-width", str(2 * width + spine_width),
+               "--page-height", str(height),
+               "--load-error-handling", "ignore",
+               "/dev/zero", pdf
+               ]
+        run(cmd)
+
+    def upload_to_lulu(self, api_key, user, password, cover, contents, booksize, project, title, metadata={}):
+        import lulu
+        lulu.create_project(api_key, user, password, cover, contents, booksize, project, title, metadata)
+objavi/epub.py
+def _find_tag(doc, tag):
+    #log(lxml.etree.tostring(doc, encoding='utf-8', method='html').replace('&#13;', ''))
+    try:
+        doc = doc.getroot()
+    except AttributeError:
+        pass
+    if doc.nsmap:
+        try:
+            return doc.iter(XHTMLNS + tag).next()
+        except StopIteration:
+            log('doc had nsmap %s, but did not seem to be xhtml (looking for %s)' % (doc.nsmap, tag))
+    return doc.iter(tag).next()
+objavi/cgi_utils.py
+def try_to_kill(pid, signal=15):
+    log('kill -%s %s ' % (signal, pid))
+    try:
+        os.kill(int(pid), signal)
+    except OSError, e:
+        log('PID %s seems dead (kill -%s gives %s)' % (pid, signal, e))
+objavi/book_utils.py
+class ObjaviError(Exception):
+    pass
+objavi/book_utils.py
+def run(cmd):
+    try:
+        p = Popen(cmd, stdout=PIPE, stderr=PIPE)
+        out, err = p.communicate()
+    except Exception:
+        log("Failed on command: %r" % cmd)
+        raise
+    log("%s\n%s returned %s and produced\nstdout:%s\nstderr:%s" %
+        (' '.join(cmd), cmd[0], p.poll(), out, err))
+    return p.poll()
+objavi/cgi_utils.py
+def url2path(url):
+    """convert htdocs-relative addresses to local file paths"""
+    return config.HTDOCS + '/' + url.lstrip('/')
+objavi/book_utils.py
+def get_number_localiser(locale):
+    """Create a function that will convert a number into a string in
+    the locale appropriate script.  Often the returned function is
+    simply 'str'."""
+    offset = config.LOCALISED_DIGITS.get(locale)
+    if offset is None:
+        return str
+
+    def _localiser(n):
+        out = []
+        for c in str(n):
+            if c.isdigit():
+                c = unichr(ord(c) + offset)
+            out.append(c)
+        return ''.join(out)#.encode('UTF-8')
+
+    return _localiser
+objavi/epub.py
+def add_guts(src, dest):
+    """Append the contents of the <body> of one tree onto that of
+    another.  The source tree will be emptied."""
+    #print  lxml.etree.tostring(src)
+    sbody = _find_tag(src, 'body')
+    dbody = _find_tag(dest, 'body')
+    if len(dbody):
+        dbody[-1].tail = ((dbody[-1].tail or '') +
+                          (sbody.text or '')) or None
+    else:
+        dbody.text = sbody.text
+
+    for x in sbody:
+        dbody.append(x)
+
+    dbody.tail = ((dbody.tail or '') +
+                  (sbody.tail or '')) or None
+objavi/xhtml_utils.py
+def split_tree(tree):
+    """If a document has special marker elements (hr tags with class
+    of config.MARKER_CLASS_SPLIT) it will be broken into smaller
+    documents using the markers as boundaries.  Each element in the
+    new documents will be nested and ordered as before, though those
+    on the new edges will obviously lack siblings they once may have
+    had.
+
+    The new documents are returned as a list of Section objects (see
+    above), which bundles the new tree with an ID and title if the
+    marker elements contain those attributes.
+
+    The original tree will be destroyed or reused.
+    """
+    try:
+        root = tree.getroot()
+    except AttributeError:
+        root = tree
+
+    # find the node lineages along which to split the document.
+    # anything outside these lines (i.e., side branches) can be copied
+    # wholesale, which speeds things up considerably.
+    stacks = []
+    for hr in root.iter(tag='hr'):
+        klass = hr.get('class')
+        if klass == MARKER_CLASS_SPLIT:
+            stack = [hr]
+            stack.extend(x for x in hr.iterancestors())
+            stack.reverse()
+            stacks.append(stack)
+        elif klass == MARKER_CLASS_INFO:
+            hr.getparent().remove(hr)
+
+    iterstacks = iter(stacks)
+
+    src = root
+    dest = lxml.html.Element(root.tag, **dict(root.items()))
+    doc = dest
+    stack = iterstacks.next()
+    marker = stack[-1]
+
+    chapters = []
+    ID = 'unidentified-front-matter'
+    title = None
+    try:
+        while True:
+            for e in src:
+                if e not in stack:
+                    #cut and paste branch
+                    dest.append(e)
+                elif e is marker:
+                    #got one.
+                    chapters.append(Section(doc, ID, title))
+                    #The ID and title are for the *next* section, so
+                    #collect them before deleting the marker.
+                    ID = e.get('id')
+                    title = e.get('title')
+                    src.remove(e)
+                    src = root
+                    dest = lxml.html.Element(root.tag, **dict(root.items()))
+                    doc = dest
+                    stack = iterstacks.next()
+                    marker = stack[-1]
+                    break
+                else:
+                    #next level.
+                    #It is safe to descend without leaving a trail,
+                    #because side branches are not descended.
+                    dest = etree.SubElement(dest, e.tag, **dict(e.items()))
+                    dest.text = e.text
+                    e.text = None
+                    src = e
+                    break
+    except StopIteration:
+        #stacks have run out -- the rest of the tree is the last section
+        chapters.append(Section(src, ID, title))
+    return chapters
+objavi/book_utils.py
+def log_types(*args, **kwargs):
+    """Log the type of the messages as well as their value (size constrained)."""
+    size = kwargs.get('size', 50)
+    for a in args:
+        try:
+            s = ("%s" % (a,))
+        except Exception:
+            try:
+                s = ("%r" % (a,))
+            except Exception:
+                s = '<UNPRINTABLE!>'
+        log("%s: %s" % (type(a), s[:size]))
+objavi/book_utils.py
+def url_fetch2(url, suppress_error=False):
+    try:
+        f = urlopen(url)
+        s = f.read()
+        f.close()
+        return (s, f.info()['Content-type'])
+    except HTTPError, e:
+        log("HTTPError '%s' trying to fetch '%s'" % (e, url))
+        if not suppress_error:
+            raise
+    #returns None is error is suppressed
+objavi/book_utils.py
+def log(*messages, **kwargs):
+    """Send the messages to the appropriate place (stderr, or syslog).
+    If a <debug> keyword is specified, the message is only printed if
+    its value is in the global DEBUG_MODES."""
+    if 'debug' not in kwargs or config.DEBUG_ALL or kwargs['debug'] in config.DEBUG_MODES:
+        for m in messages:
+            try:
+                print >> sys.stderr, m
+            except Exception:
+                print >> sys.stderr, repr(m)
+        sys.stderr.flush()
+objavi/constants.py
+DC = "http://purl.org/dc/elements/1.1/"
+objavi/pdf.py
+def parse_outline(pdf, level_threshold, debug_filename=None):
+    """Create a structure reflecting the outline of a PDF.
+    A chapter heading looks like this:
+
+    BookmarkTitle: 2. What is sound?
+    BookmarkLevel: 1
+    BookmarkPageNumber: 3
+    """
+    cmd = ('pdftk', pdf, 'dump_data')
+    p = Popen(cmd, stdout=PIPE, stderr=PIPE)
+    outline, err = p.communicate()
+    #log("OUTLINE:", outline)
+    if debug_filename is not None:
+        try:
+            f = open(debug_filename, 'w')
+            f.write(outline)
+            f.close()
+        except IOError:
+            log("could not write to %s!" % debug_filename)
+
+    lines = (x.strip() for x in outline.split('\n') if x.strip())
+    contents = []
+
+    def _strip(s):
+        return s.strip(config.WHITESPACE_AND_NULL)
+
+    def extract(expected, conv=_strip):
+        line = lines.next()
+        try:
+            k, v = line.split(':', 1)
+            if k == expected:
+                return conv(v)
+        except ValueError:
+            log("trouble with line %r" %line)
+
+    #There are a few useless variables, then the pagecount, then the contents.
+    #The pagecount is useful, so pick it up first.
+    page_count = None
+    while page_count == None:
+        page_count = extract('NumberOfPages', int)
+
+    try:
+        while True:
+            title = extract('BookmarkTitle')
+            if title is not None:
+                level = extract('BookmarkLevel', int)
+                pagenum = extract('BookmarkPageNumber', int)
+                if level <= level_threshold and None not in (level, pagenum):
+                    contents.append((title, level, pagenum))
+    except StopIteration:
+        pass
+
+    return contents, page_count
+objavi/book_utils.py
+def guess_lang(server, book):
+    if server is None:
+        server = config.DEFAULT_SERVER
+    lang = config.SERVER_DEFAULTS[server].get('lang')
+    if lang is None and '_' in book:
+        lang = book[book.rindex('_') + 1:]
+    return lang
+objavi/constants.py
+DCNS = "{http://purl.org/dc/elements/1.1/}"
+objavi/book_utils.py
+def guess_page_number_style(lang, dir):
+    if lang in config.BOILERPLATE_HTML:
+        return lang
+    elif dir in config.BOILERPLATE_HTML:
+        return dir
+    return config.DEFAULT_DIR
+objavi/book_utils.py
+def make_book_name(book, server, suffix='.pdf', timestamp=None):
+    lang = guess_lang(server, book)
+    book = ''.join(x for x in book if x.isalnum())
+    if timestamp is None:
+        timestamp = time.strftime('%Y.%m.%d-%H.%M.%S')
+    return '%s-%s-%s%s' % (book, lang,
+                           timestamp,
+                           suffix)
+objavi/pdf.py
+def concat_pdfs(destination, *pdfs):
+    """Join all the named pdfs together into one and save it as <name>"""
+    cmd = ['pdftk']
+    cmd.extend(x for x in pdfs if x is not None)
+    cmd += ['cat', 'output', destination]
+    run(cmd)
+objavi/xhtml_utils.py
+class EpubChapter(BaseChapter):
+    def __init__(self, server, book, chapter_name, html, use_cache=False,
+                 cache_dir=None):
+        self.server = server
+        self.book = book
+        self.name = chapter_name
+        self._loadtree(html)
+
+    def prepare_for_epub(self):
+        """Shift all headings down 2 places."""
+        if ADJUST_HEADING_WEIGHT:
+            # a question to resolve:
+            # is it better (quicker) to have multiple, filtered iterations
+            # converting in order (h4->h5, h3->h4, etc) or to do a single,
+            # unfiltered pass and convert from a dict?
+
+            hmap = dict(('h%s' % x, 'h%s' % (x + 2)) for x in range(4, 0, -1))
+            hmap['h5'] = 'h6'
+            convert_tags(self.root, hmap)
+objavi/pdf.py
+def count_pdf_pages(pdf):
+    """How many pages in the PDF?"""
+    #XXX could also use python-pypdf or python-poppler
+    cmd = ('pdfinfo', pdf)
+    p = Popen(cmd, stdout=PIPE, stderr=PIPE)
+    out, err = p.communicate()
+    m = re.search(r'^\s*Pages:\s*(\d+)\s*$', out, re.MULTILINE)
+    return int(m.group(1))
+objavi/xhtml_utils.py
+ADJUST_HEADING_WEIGHT = False
+OK_TAGS = frozenset([
+    "body", "head", "html", "title", "abbr", "acronym", "address",
+    "blockquote", "br", "cite", "code", "dfn", "div", "em", "h1", "h2",
+    "h3", "h4", "h5", "h6", "kbd", "p", "pre", "q", "samp", "span",
+    "strong", "var", "a", "dl", "dt", "dd", "ol", "ul", "li", "object",
+    "param", "b", "big", "hr", "i", "small", "sub", "sup", "tt", "del",
+    "ins", "bdo", "caption", "col", "colgroup", "table", "tbody", "td",
+    "tfoot", "th", "thead", "tr", "img", "area", "map", "meta", "style",
+    "link", "base",
+    etree.Comment,
+    ])
+XHTML11_DOCTYPE = '''<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"
+    "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+'''
+XML_DEC = '<?xml version="1.0" encoding="UTF-8"?>\n'
+IMG_PREFIX = 'static/'
+    ID = 'unidentified-front-matter'
+                    ID = e.get('id')
+        ID = e.get('id')
+def empty_html_tree():
+def convert_tags(root, elmap):
+def url_to_filename(url, prefix=''):
+    def __init__(self, cache_dir=IMG_CACHE, prefix=IMG_PREFIX):
+    def read_local_url(self, path):
+    def _save_local_url(self, path, data):
+    def fetch_if_necessary(self, url, target=None, use_cache=True):
+    def as_html(self):
+    def as_xhtml(self):
+        def xhtml_copy(el, xel):
+    def remove_bad_tags(self):
+    def fix_bad_structure(self):
+    def _loadtree(self, html):
+    def __init__(self, server, book, chapter_name, html, use_cache=False,
+                 cache_dir=None):
+    def prepare_for_epub(self):
+    def __init__(self, tree, ID=None, title=None):
+    def __str__(self):
+def split_tree(tree):
+def localise_local_links(doc, old_filename=''):
+class ImageCache(object):
+class BaseChapter(object):
+class EpubChapter(BaseChapter):
+class Section(object):
+objavi/pdf.py
+def parse_extracted_outline(outline_file, depth=config.CONTENTS_DEPTH):
+    '''Extract outline data from an XML file structured as follows:
+
+      <?xml version="1.0" encoding="UTF-8"?>
+      <outline xmlns="http://code.google.com/p/wkhtmltopdf/outline">
+        <item title="" page="0" link="__WKANCHOR_0" backLink="__WKANCHOR_1">
+          <item title="1. ANONYMOUS" page="2" link="__WKANCHOR_2" backLink="__WKANCHOR_3"/>
+          <item title="2. HOW THIS BOOK IS WRITTEN" page="4" link="__WKANCHOR_4" backLink="__WKANCHOR_5">
+            <item title="WHAT IS A BOOK SPRINT?" page="4" link="__WKANCHOR_6" backLink="__WKANCHOR_7"/>
+            <item title="HOW TO WRITE THIS BOOK" page="11" link="__WKANCHOR_c" backLink="__WKANCHOR_d">
+              <item title="1. Register" page="11" link="__WKANCHOR_e" backLink="__WKANCHOR_f"/>
+              <item title="2. Contribute!" page="11" link="__WKANCHOR_g" backLink="__WKANCHOR_h"/>
+            </item>
+          </item>
+          <item title="3. ASSUMPTIONS" page="13" link="__WKANCHOR_i" backLink="__WKANCHOR_j">
+            <item title="WHAT THIS BOOK IS NOT..." page="13" link="__WKANCHOR_k" backLink="__WKANCHOR_l"/>
+          </item>
+        </item>
+      </outline>
+
+     In other words:
+
+     <!ELEMENT outline (item*)>
+     <!ELEMENT item (item*)>
+     and item has the following attributes:
+       title:    url-escaped string
+       page:     page number
+       link:     link to here from the TOC
+       backLink: link back to the TOC
+
+    Title is encoded as utf-8 text that has been "percent-encoding" as
+    described in section 2.1 of RFC 3986.
+    '''
+    from lxml import etree
+    f = open(outline_file, 'r')
+    tree = etree.parse(f)
+    f.close()
+
+    contents = []
+
+    def parse_item(e, depth):
+        title = urllib.unquote(e.get('title')).strip()
+        pageno = int(e.get('page'))
+        if depth:
+            contents.append((title, depth, pageno))
+        for x in e.iterchildren(config.WKTOCNS + 'item'):
+            parse_item(x, depth + 1)
+
+    for x in tree.getroot().iterchildren(config.WKTOCNS + 'item'):
+        parse_item(x, 0)
+
+    log(contents)
+    return contents
+objavi/epub_utils.py
+CONTAINER_PATH = 'META-INF/container.xml'
+CONTAINER_XML = '''<?xml version='1.0' encoding='utf-8'?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+  <rootfiles>
+    <rootfile media-type="application/oebps-package+xml" full-path="content.opf"/>
+  </rootfiles>
+</container>
+'''
+BARE_NCX = ('<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" '
+            '"http://www.daisy.org/z3986/2005/ncx-2005-1.dtd"> '
+            '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" />')
+def add_ncxtext(parent, tag, text):
+def make_ncx(toc, filemap, ID, title):
+def write_navtree(parent, subtoc, counter, depth, maxdepth, filemap):
+def make_navpoint(parent, n, title, url):
+    def __init__(self, filename):
+    def write_blob(self, path, blob, compression=ZIP_DEFLATED, mode=0644):
+    def add_file(self, ID, filename, mediatype, content, properties=None):
+    def add_ncx(self, toc, filemap, ID, title):
+    def add_spine_item(self, ID, linear=None):
+    def add_guide_item(self, type, title, href):
+    def write_opf(self, meta_info, primary_id=None):
+    def finish(self):
+class Epub(object):
+objavi/pdf.py
+def rotate_pdf(pdfin, pdfout):
+    """Turn the PDF on its head"""
+    cmd = ['pdftk', pdfin,
+           'cat',
+           '1-endD',
+           'output',
+           pdfout
+           ]
+    run(cmd)
+objavi/book_utils.py
+def guess_text_dir(server, book):
+    try:
+        dir = config.SERVER_DEFAULTS[server]['dir']
+    except KeyError:
+        dir = None
+    if dir not in ('LTR', 'RTL'):
+        log("server %s, book %s: no specified dir (%s)" %(server, book, dir))
+        lang = guess_lang(server, book)
+        dir = config.LANGUAGE_DIR.get(lang, config.DEFAULT_DIR)
+    log("server %s, book %s: found dir %s" %(server, book, dir))
+    return dir
+objavi/constants.py
+FM = "http://booki.cc/"
+objavi/book_utils.py
+def url_fetch(url, suppress_error=False):
+    try:
+        f = urlopen(url)
+        s = f.read()
+        f.close()
+        return s
+    except HTTPError, e:
+        log("HTTPError '%s' trying to fetch '%s'" % (e, url))
+        if not suppress_error:
+            raise
+    #returns None is error is suppressed

@@ -1,0 +1,11 @@
+def __create_fn__(_type_pre_self_positional, _type_self_arg, _type_post_self_positional, _type_pre_tensor_options_kwarg_only, _type_tensor_options, _type_post_tensor_options_kwarg_only, _type_out, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,pre_self_positional:_type_pre_self_positional,self_arg:_type_self_arg,post_self_positional:_type_post_self_positional,pre_tensor_options_kwarg_only:_type_pre_tensor_options_kwarg_only,tensor_options:_type_tensor_options,post_tensor_options_kwarg_only:_type_post_tensor_options_kwarg_only,out:_type_out)->_return_type:
+  __dataclass_builtins_object__.__setattr__(self,'pre_self_positional',pre_self_positional)
+  __dataclass_builtins_object__.__setattr__(self,'self_arg',self_arg)
+  __dataclass_builtins_object__.__setattr__(self,'post_self_positional',post_self_positional)
+  __dataclass_builtins_object__.__setattr__(self,'pre_tensor_options_kwarg_only',pre_tensor_options_kwarg_only)
+  __dataclass_builtins_object__.__setattr__(self,'tensor_options',tensor_options)
+  __dataclass_builtins_object__.__setattr__(self,'post_tensor_options_kwarg_only',post_tensor_options_kwarg_only)
+  __dataclass_builtins_object__.__setattr__(self,'out',out)
+  self.__post_init__()
+ return __init__

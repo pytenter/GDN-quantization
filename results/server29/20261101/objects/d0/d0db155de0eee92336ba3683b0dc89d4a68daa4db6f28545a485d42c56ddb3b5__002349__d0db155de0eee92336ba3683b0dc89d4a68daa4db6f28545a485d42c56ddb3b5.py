@@ -1,0 +1,1 @@
+lambda _cls, pid, hostname, mode, token, lease_duration, start: _tuple_new(_cls, (pid, hostname, mode, token, lease_duration, start))

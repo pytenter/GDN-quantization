@@ -1,0 +1,50 @@
+# qwen_group64_four_codec_aime26_archive
+
+原始相对目录：`qwen_group64_four_codec_aime26_archive`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/cross_host_v4/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/native_admission_v2/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/cross_host_v4/peer55/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/three_gpu_continuation_v5/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/three_gpu_ledger_repair_v6/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/three_gpu_reuse57_resume_v7/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/three_gpu_continuation_v5/peer55/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/three_gpu_ledger_repair_v6/peer55/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`revisions/QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/three_gpu_reuse57_resume_v7/peer55/runtime/qwen35_gdn_quant/make_vspace_final_report.py`](../../objects/e3/e38c53bdbb8fb9cf955e77565cde351c3b684b43b3bcb65a6487acdd5a839bf6__make_vspace_final_report.py)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/EXECUTION_PLAN.md`](../../objects/a5/a597bfee7e01cdff3bfc7ed77a55df902486b1ab0952c31da7b157588929e228__EXECUTION_PLAN.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/FINALIZER_STARTED.json`](../../objects/a9/a95719e84fdea65c8fa8537e3a228be04fab039a31c15bfc0f8e4877de6ce79f__FINALIZER_STARTED.json)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/FINAL_TASK_STATUS.json`](../../objects/e0/e0276e29bb4a40a38d3efdf913ad5814e07ad4e3e6ff753e6d80677a0a875d24__FINAL_TASK_STATUS.json)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/FINAL_SEAL_RECEIPT.json`](../../objects/6a/6a803bc583a790e858cdff6c7438473d08333e28ba7b560ea745ca30627fa2ee__FINAL_SEAL_RECEIPT.json)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/scripts/score_pass_cpu.py`](../../objects/7b/7b3749bfadf5fad792a9c3abd8ab9fdb1f5ddcab8855317ba872b8ea8727ce8b__score_pass_cpu.py)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/AIME26_SEED1_PROTOCOL.json`](../../objects/15/15dc63f33388524b347b104cbad43f4573f9677f8e32e638e9daf3c8258965e5__AIME26_SEED1_PROTOCOL.json)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/FINAL_SCIENTIFIC_REPORT.md`](../../objects/da/da1cdeaaf538bd4f37e56b6c0a39a09b9fd0654f769a235b508ce2a5bc2106cb__FINAL_SCIENTIFIC_REPORT.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/history/group32/HANDOFF.md`](../../objects/74/74958b92f476f24b75e9e060dfa939ee309a96ba7abf250f86cdac1157014de4__HANDOFF.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/scripts/finalize_offline.py`](../../objects/fa/fa6c51c0a86f991be931e96e3c976d42c6736533026378f739bacc646214a7a7__finalize_offline.py)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/FINAL_ARCHIVE_VERIFICATION.json`](../../objects/b2/b2ccbc6e830c3f18628a3173b46a61ff6d8f4c4d8e0c3e55ca94425d11049fba__FINAL_ARCHIVE_VERIFICATION.json)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/AIME26_SEED1_PROTOCOL_FREEZE.json`](../../objects/15/15dc63f33388524b347b104cbad43f4573f9677f8e32e638e9daf3c8258965e5__AIME26_SEED1_PROTOCOL.json)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/history/group32/EXECUTION_PLAN.md`](../../objects/bd/bdae9cdcd8f38068e7d60a52a93488137d1369f5dfd803844a3773234649733f__EXECUTION_PLAN.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/history/group32/SCORE_PASS_0.json`](../../objects/8d/8d7867b548ded4df2f14361f1c011aa7fcb3ee7bbe86590165e9b72a807c093e__P0_Q2_ORIGINAL_SCORE_PASS_0.json)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/history/group32/SCORE_PASS_1.json`](../../objects/8d/8d7867b548ded4df2f14361f1c011aa7fcb3ee7bbe86590165e9b72a807c093e__P0_Q2_ORIGINAL_SCORE_PASS_0.json)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/runtime/qwen35_gdn_quant/README.md`](../../objects/89/8908284334600b0cfbd2adf6f1cda8ff32a32c5d8d184e8083ab791f02415ea1__README.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/RESOURCE_AND_THROUGHPUT_ESTIMATE.md`](../../objects/26/265a9fc0e7a0082a387fed36ce814cb4a016f8b9c97fece94c0b4c28b1d4beb4__RESOURCE_AND_THROUGHPUT_ESTIMATE.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/runtime/transformers-qwen35/AGENTS.md`](../../objects/13/13285a5fd29ed8e73d122d3630397ada4bcda9971d5dd88d968ac9156114d762__AGENTS.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/runtime/transformers-qwen35/CLAUDE.md`](../../objects/13/13285a5fd29ed8e73d122d3630397ada4bcda9971d5dd88d968ac9156114d762__AGENTS.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/runtime/transformers-qwen35/ISSUES.md`](../../objects/89/89442f58e56a275edfeb64d8ad11bcb8ef861d94d55847cf278dceb7a4a008f8__ISSUES.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/runtime/transformers-qwen35/README.md`](../../objects/9f/9f745fda7e49125b047e41f99ff1bf67b1c092c34c61bdfda1c3460feaa95382__README.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/GROUP64_SYM_ASYM_NUMERICAL_CONTRACT.md`](../../objects/84/8414b8acc43a523a950a0c6344d05076213916c0e00b1fdbb4fcc85279e4299b__GROUP64_SYM_ASYM_NUMERICAL_CONTRACT.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/history/group32/FINALIZER_STARTED.json`](../../objects/ec/ec1f1e49b2d403ab89ba82e967656b5d57ed4ff292c3464c47e341e81f3732b1__FINALIZER_STARTED.json)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/history/group32/FINAL_TASK_STATUS.json`](../../objects/be/beebeb4fc780f037cc686bcc95dd0d22a21c8bb3a7d8c2f0318db7bd1b8fe8b9__FINAL_TASK_STATUS.json)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/history/group32/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/runtime/transformers-qwen35/SECURITY.md`](../../objects/e7/e774a4809fe39d34259a40f14eb4b8d2e8b01c3435b93f673e83661b3716bcca__SECURITY.md)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/history/group32/scripts/score_pass_cpu.py`](../../objects/f0/f09a5ae8b2c0ab1409c4ffb52f4d56b32383731d1a96ec0e11d768fd2b74cb00__score_pass_cpu.py)
+- [`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/runtime/transformers-qwen35/.ai/AGENTS.md`](../../objects/03/036cfe8c90c3aafb50566b40134924069d56dc7838f92e1773599d591ab3d9d8__AGENTS.md)
+- [`revisions/QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1/cross_host_v4/EXECUTION_PLAN.md`](../../objects/10/10a4fb0a58d250a4e218de7e3063ed85d6a61c23a482a3c940c7d6446133bfa7__EXECUTION_PLAN.md)

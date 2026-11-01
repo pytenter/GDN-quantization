@@ -1,0 +1,1 @@
+lambda _cls, values, inverse_indices: _tuple_new(_cls, (values, inverse_indices))

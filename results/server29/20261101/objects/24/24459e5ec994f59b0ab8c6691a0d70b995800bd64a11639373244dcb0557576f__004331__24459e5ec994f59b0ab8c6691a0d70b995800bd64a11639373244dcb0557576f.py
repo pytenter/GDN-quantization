@@ -1,0 +1,1 @@
+lambda _cls, fd, family, type, laddr, raddr, status, pid: _tuple_new(_cls, (fd, family, type, laddr, raddr, status, pid))

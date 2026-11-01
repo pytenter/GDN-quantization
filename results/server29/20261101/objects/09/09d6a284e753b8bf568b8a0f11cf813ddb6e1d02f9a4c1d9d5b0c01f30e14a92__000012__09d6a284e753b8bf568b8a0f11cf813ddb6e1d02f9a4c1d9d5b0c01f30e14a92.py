@@ -1,0 +1,1 @@
+lambda _cls, frame, filename, lineno, function, code_context, index: _tuple_new(_cls, (frame, filename, lineno, function, code_context, index))

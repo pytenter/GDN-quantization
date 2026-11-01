@@ -1,0 +1,1 @@
+Callable[[int], None] | None

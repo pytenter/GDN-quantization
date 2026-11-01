@@ -1,0 +1,7 @@
+def __create_fn__(_type_sp_seq_length, _type_sp_seq_length_is_variable, _type_sp_attn_implementation, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_sp_seq_length, _dflt_sp_seq_length_is_variable, _dflt_sp_attn_implementation, _return_type):
+ def __init__(self,sp_seq_length:_type_sp_seq_length=_dflt_sp_seq_length,sp_seq_length_is_variable:_type_sp_seq_length_is_variable=_dflt_sp_seq_length_is_variable,sp_attn_implementation:_type_sp_attn_implementation=_dflt_sp_attn_implementation)->_return_type:
+  self.sp_seq_length=sp_seq_length
+  self.sp_seq_length_is_variable=sp_seq_length_is_variable
+  self.sp_attn_implementation=sp_attn_implementation
+  self.__post_init__()
+ return __init__

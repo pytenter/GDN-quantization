@@ -1,0 +1,10 @@
+def __create_fn__(_type_partitioning_done, _type_old_num_fw_outputs, _type_old_num_fw_inputs, _type_new_fw_hop_gm, _type_new_bw_hop_gm, _type_new_num_sym_nodes, _type_new_num_saved_nodes, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_partitioning_done, _dflt_old_num_fw_outputs, _dflt_old_num_fw_inputs, _dflt_new_fw_hop_gm, _dflt_new_bw_hop_gm, _dflt_new_num_sym_nodes, _dflt_new_num_saved_nodes, _return_type):
+ def __init__(self,partitioning_done:_type_partitioning_done=_dflt_partitioning_done,old_num_fw_outputs:_type_old_num_fw_outputs=_dflt_old_num_fw_outputs,old_num_fw_inputs:_type_old_num_fw_inputs=_dflt_old_num_fw_inputs,new_fw_hop_gm:_type_new_fw_hop_gm=_dflt_new_fw_hop_gm,new_bw_hop_gm:_type_new_bw_hop_gm=_dflt_new_bw_hop_gm,new_num_sym_nodes:_type_new_num_sym_nodes=_dflt_new_num_sym_nodes,new_num_saved_nodes:_type_new_num_saved_nodes=_dflt_new_num_saved_nodes)->_return_type:
+  self.partitioning_done=partitioning_done
+  self.old_num_fw_outputs=old_num_fw_outputs
+  self.old_num_fw_inputs=old_num_fw_inputs
+  self.new_fw_hop_gm=new_fw_hop_gm
+  self.new_bw_hop_gm=new_bw_hop_gm
+  self.new_num_sym_nodes=new_num_sym_nodes
+  self.new_num_saved_nodes=new_num_saved_nodes
+ return __init__

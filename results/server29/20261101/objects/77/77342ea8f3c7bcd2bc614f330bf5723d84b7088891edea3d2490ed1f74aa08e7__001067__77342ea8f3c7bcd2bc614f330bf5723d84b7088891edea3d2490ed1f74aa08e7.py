@@ -1,0 +1,1 @@
+lambda _cls, mantissa, exponent: _tuple_new(_cls, (mantissa, exponent))

@@ -1,0 +1,1 @@
+lambda _cls, type, flatten_fn, unflatten_fn, flatten_with_keys_fn: _tuple_new(_cls, (type, flatten_fn, unflatten_fn, flatten_with_keys_fn))

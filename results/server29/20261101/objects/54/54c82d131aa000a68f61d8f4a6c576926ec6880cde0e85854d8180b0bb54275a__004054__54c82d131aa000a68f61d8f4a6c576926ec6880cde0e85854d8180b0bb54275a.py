@@ -1,0 +1,25 @@
+def __create_fn__(_type_compute_environment, _type_distributed_type, _type_mixed_precision, _type_use_cpu, _type_debug, _type_ec2_instance_type, _type_iam_role_name, _type_image_uri, _type_profile, _type_region, _type_num_machines, _type_gpu_ids, _type_base_job_name, _type_pytorch_version, _type_transformers_version, _type_py_version, _type_sagemaker_inputs_file, _type_sagemaker_metrics_file, _type_additional_args, _type_dynamo_config, _type_enable_cpu_affinity, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_image_uri, _dflt_profile, _dflt_region, _dflt_num_machines, _dflt_gpu_ids, _dflt_base_job_name, _dflt_pytorch_version, _dflt_transformers_version, _dflt_py_version, _dflt_sagemaker_inputs_file, _dflt_sagemaker_metrics_file, _dflt_additional_args, _dflt_dynamo_config, _dflt_enable_cpu_affinity, _return_type):
+ def __init__(self,compute_environment:_type_compute_environment,distributed_type:_type_distributed_type,mixed_precision:_type_mixed_precision,use_cpu:_type_use_cpu,debug:_type_debug,ec2_instance_type:_type_ec2_instance_type,iam_role_name:_type_iam_role_name,image_uri:_type_image_uri=_dflt_image_uri,profile:_type_profile=_dflt_profile,region:_type_region=_dflt_region,num_machines:_type_num_machines=_dflt_num_machines,gpu_ids:_type_gpu_ids=_dflt_gpu_ids,base_job_name:_type_base_job_name=_dflt_base_job_name,pytorch_version:_type_pytorch_version=_dflt_pytorch_version,transformers_version:_type_transformers_version=_dflt_transformers_version,py_version:_type_py_version=_dflt_py_version,sagemaker_inputs_file:_type_sagemaker_inputs_file=_dflt_sagemaker_inputs_file,sagemaker_metrics_file:_type_sagemaker_metrics_file=_dflt_sagemaker_metrics_file,additional_args:_type_additional_args=_dflt_additional_args,dynamo_config:_type_dynamo_config=_dflt_dynamo_config,enable_cpu_affinity:_type_enable_cpu_affinity=_dflt_enable_cpu_affinity)->_return_type:
+  self.compute_environment=compute_environment
+  self.distributed_type=distributed_type
+  self.mixed_precision=mixed_precision
+  self.use_cpu=use_cpu
+  self.debug=debug
+  self.ec2_instance_type=ec2_instance_type
+  self.iam_role_name=iam_role_name
+  self.image_uri=image_uri
+  self.profile=profile
+  self.region=region
+  self.num_machines=num_machines
+  self.gpu_ids=gpu_ids
+  self.base_job_name=base_job_name
+  self.pytorch_version=pytorch_version
+  self.transformers_version=transformers_version
+  self.py_version=py_version
+  self.sagemaker_inputs_file=sagemaker_inputs_file
+  self.sagemaker_metrics_file=sagemaker_metrics_file
+  self.additional_args=additional_args
+  self.dynamo_config=dynamo_config
+  self.enable_cpu_affinity=enable_cpu_affinity
+  self.__post_init__()
+ return __init__

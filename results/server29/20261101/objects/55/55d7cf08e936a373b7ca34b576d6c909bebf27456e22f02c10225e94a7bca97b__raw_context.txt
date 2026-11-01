@@ -1,0 +1,2561 @@
+MacResponse_Console/src/com/ainfosec/macresponse/console/ui/CasePathShell.java
+public class CasePathShell {
+	
+	Shell shell = null;
+	String casePath = null;
+
+	public CasePathShell(Display display) {
+		shell = new Shell(display);
+		shell.setText("MacResponse LE\u2122: Analysis Console Directory Browser");
+
+		initUI();
+
+		shell.pack();
+		shell.open();
+		while (!shell.isDisposed()) {
+			if (!display.readAndDispatch()) {
+				display.sleep();
+			}
+		}
+	}
+	
+	/**
+	 * Sets up the interface.
+	 */
+	private void initUI()
+	{
+		shell.setLayout(new GridLayout(6, true));
+		new Label(shell, SWT.NONE).setText("Directory:");
+
+		// Create the text box extra wide to show long paths
+		final Text text = new Text(shell, SWT.BORDER);
+		GridData data = new GridData(GridData.FILL_HORIZONTAL);
+		data.horizontalSpan = 3;
+		text.setLayoutData(data);
+
+		// Clicking the button will allow the user
+		// to select a directory
+		Button button = new Button(shell, SWT.PUSH);
+		button.setText("Browse...");
+		button.addSelectionListener(new SelectionAdapter() {
+			public void widgetSelected(SelectionEvent event) {
+				DirectoryDialog dlg = new DirectoryDialog(shell);
+
+				// Set the initial filter path according
+				// to anything they've selected or typed in
+				dlg.setFilterPath(text.getText());
+
+				// Change the title bar text
+				dlg.setText("SWT's DirectoryDialog");
+
+				// Customizable message displayed in the dialog
+				dlg.setMessage("Select a directory");
+
+				// Calling open() will open and run the dialog.
+				// It will return the selected directory, or
+				// null if user cancels
+				String dir = dlg.open();
+				if (dir != null) {
+					// Set the text box to the new selection
+					text.setText(dir);
+					casePath = dir;
+				}
+			}
+		});
+
+		Button okButton = new Button(shell, SWT.PUSH);
+		okButton.setText("OK");
+		okButton.addSelectionListener(new SelectionAdapter() {
+			public void widgetSelected(SelectionEvent event) {
+				shell.dispose();
+			}
+		});
+	}
+
+	public String getCasePath() {
+		return casePath;
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/ProcessInformationModule.java
+public class ProcessInformationModule extends TreeObject {
+	public ArrayList<Process> processes = new ArrayList<Process>();
+
+	@Override
+	public String[] getColumnNames() {
+		return Process.columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return Process.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Process Information";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if(childObjects == null) {
+			for(TreeObject to : processes) {
+				addChildObject(to);
+			}
+		}
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), Process.columnTitles, Process.columnNames, processes));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/CaseLogModule.java
+public class CaseLogModule extends TreeObject {
+	protected String treeNodeTitle = "Case Log";
+	
+	public ArrayList<LogMessage> logMessages = new ArrayList<LogMessage>();
+	
+	public String[] getColumnNames() {
+		return LogMessage.columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return LogMessage.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Case Log";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if (childObjects == null) {
+			for (LogMessage logMessage : logMessages) {
+				this.addChildObject(logMessage);
+			}
+		}
+
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), LogMessage.columnTitles, LogMessage.columnNames, logMessages));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/UnmappablePage.java
+public class UnmappablePage extends TreeObject {
+
+	public static final String[] columnNames = {
+		"physicalAddressStart", 
+		"physicalAddressEnd", 
+	};
+
+	public static final String[] columnTitles = {
+		"Physical Address Start", 
+		"Physical Address End", 
+	};
+
+	public String physicalAddressStart;
+	public String physicalAddressEnd;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		StringBuffer sb = new StringBuffer();
+		sb.append("Unmappable ");
+		sb.append(physicalAddressStart);
+		sb.append("-->");
+		sb.append(physicalAddressEnd);
+		
+		return sb.toString();
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/ActiveConnection.java
+public class ActiveConnection extends TreeObject {
+	public static final String[] columnNames = {
+		"connectionName",
+//		"localNetworkAddress",
+//		"foreignNetworkAddress"
+	};
+	
+	public static final String[] columnTitles = {
+		"Connection Name",
+//		"Local Network Address",
+//		"Foreign Network Address"
+	};
+	
+	public String connectionName;
+	public LocalNetworkAddress localNetworkAddress;
+	public ForeignNetworkAddress foreignNetworkAddress;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String getTitle() {
+		StringBuffer sb = new StringBuffer();
+		sb.append(connectionName);
+		sb.append(": ");
+		sb.append(localNetworkAddress.getTitle());
+		sb.append(" <--> ");
+		sb.append(foreignNetworkAddress.getTitle());
+		
+		return sb.toString();
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), getColumnTitles(), getColumnNames(), list));
+			ArrayList<TreeObject> list2 = new ArrayList<TreeObject>();
+			list2.add(localNetworkAddress);
+			displayData.addDisplayObject(new DisplayObject("Local Network Address", LocalNetworkAddress.columnTitles, LocalNetworkAddress.columnNames, list2));
+			ArrayList<TreeObject> list3 = new ArrayList<TreeObject>();
+			list3.add(foreignNetworkAddress);
+			displayData.addDisplayObject(new DisplayObject("Foreign Network Address", ForeignNetworkAddress.columnTitles, ForeignNetworkAddress.columnNames, list3));
+		}
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/DriverInformationModule.java
+public class DriverInformationModule extends TreeObject {
+	
+	public ArrayList<Driver> drivers = new ArrayList<Driver>();
+	
+	public String[] getColumnNames() {
+		return Driver.columnNames;
+	}
+	
+	public String[] getColumnTitles() {
+		return Driver.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Driver Information";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if(childObjects == null) {
+			for(TreeObject to : drivers) {
+				addChildObject(to);
+			}
+		}
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), Driver.columnTitles, Driver.columnNames, drivers));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/NetworkInterface.java
+public class NetworkInterface extends TreeObject {
+
+	public static final String[] columnNames = {
+		"networkInterfaceName",
+		"networkLocalLinkAddress"
+	};
+
+	public static final String[] columnTitles = {
+		"Network Interface Name",
+		"Network Local Link Address"
+	};
+
+	public String networkInterfaceName;
+	public String networkLocalLinkAddress;
+
+	public ArrayList<NetworkInterfaceFlag> networkInterfaceFlags = new ArrayList<NetworkInterfaceFlag>();
+	public ArrayList<NetworkAddress> networkAddresses = new ArrayList<NetworkAddress>();
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return networkInterfaceName;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+			displayData.addDisplayObject(new DisplayObject("Network Interface Flags", NetworkInterfaceFlag.columnTitles, NetworkInterfaceFlag.columnNames, networkInterfaceFlags));
+			displayData.addDisplayObject(new DisplayObject("Network Addresses", NetworkAddress.columnTitles, NetworkAddress.columnNames, networkAddresses));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/User.java
+public class User extends TreeObject {
+	
+	public static final String[] columnNames = {
+		"userName",
+		"uid",
+		"gid"
+	};
+	
+	public static final String[] columnTitles = {
+		"User Name",
+		"UID",
+		"GID"
+	};
+
+	public String userName;
+	public String uid;
+	public String gid;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return userName;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/LocalNetworkAddress.java
+public class LocalNetworkAddress extends TreeObject {
+	public static final String[] columnNames = {
+		"networkAddressValue",
+		"networkPortValue"
+	};
+	
+	public static final String[] columnTitles = {
+		"Network Address Value",
+		"Network Port Value"
+	};
+	
+	public String networkAddressValue;
+	public String networkPortValue;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return networkAddressValue;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// TODO Paul - verify none
+		
+		// Setup Display Data
+		// TODO Paul - verify none
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/AcquiredRegion.java
+public class AcquiredRegion extends TreeObject {
+	public static final String[] columnNames = {
+		"physicalAddressStart", 
+		"physicalAddressEnd", 
+		"fileOffsetStart", 
+		"fileOffsetEnd", 
+	};
+	
+	public static final String[] columnTitles = {
+		"Physical Address Start", 
+		"Physical Address End", 
+		"File Offset Start", 
+		"File Offset End", 
+	};
+
+	public String physicalAddressStart;
+	public String physicalAddressEnd;
+	public String fileOffsetStart;
+	public String fileOffsetEnd;	
+
+	public ArrayList<UnmappablePage> unmappablePages = new ArrayList<UnmappablePage>();
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String getTitle() {
+		return physicalAddressStart + "-" + physicalAddressEnd;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if((childObjects == null) && (unmappablePages != null)) {
+			for(TreeObject to : unmappablePages) {
+				addChildObject(to);
+			}
+		}
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/SpotlightApplicationListModule.java
+public class SpotlightApplicationListModule extends TreeObject {
+	protected String treeNodeTitle = "Spotlight Application List Module";
+	
+	public ArrayList<Application> applications = new ArrayList<Application>();
+	private BinaryNode binaryChild = null;
+	private ApplicationNode applicationChild = null;
+	
+	public String[] getColumnNames() {
+		return Application.columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return Application.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Spotlight Application List";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if(childObjects == null) {
+			if(binaryChild == null) {
+				binaryChild = new BinaryNode();
+				for(Application app : applications) {
+					if(app.applicationType.equals("binary")) {
+						binaryChild.addTableObject(app);
+					}
+				}
+				this.addChildObject(binaryChild);
+			}
+			if(applicationChild == null) {
+				applicationChild = new ApplicationNode();
+				for(Application app : applications) {
+					if(app.applicationType.equals("application")) {
+						applicationChild.addTableObject(app);
+					}
+				}
+				this.addChildObject(applicationChild);
+			}
+		}
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), Application.columnTitles, Application.columnNames, applications));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/PropertyListsModule.java
+public class PropertyListsModule extends TreeObject {
+	public ArrayList<PropertyList> propertyLists = new ArrayList<PropertyList>();
+	
+	public TreeObject getParentObject() {
+		return null;
+	}
+	
+	@Override
+	public String[] getColumnNames() {
+		return PropertyList.columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return PropertyList.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Property Lists";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if(childObjects == null) {
+			for(TreeObject to : propertyLists) {
+				addChildObject(to);
+			}
+		}
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), PropertyList.columnTitles, PropertyList.columnNames, propertyLists));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/NetworkConfigurationModule.java
+public class NetworkConfigurationModule extends TreeObject {
+	public ArrayList<NetworkInterface> networkInterfaces = new ArrayList<NetworkInterface>();
+	
+	public String[] getColumnNames() {
+		return NetworkInterface.columnNames;
+	}
+	
+	public String[] getColumnTitles() {
+		return NetworkInterface.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Network Configuration";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if(childObjects == null) {
+			for(TreeObject to : networkInterfaces) {
+				addChildObject(to);
+			}
+		}
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), NetworkInterface.columnTitles, NetworkInterface.columnNames, networkInterfaces));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/SystemConfigFile.java
+public class SystemConfigFile extends TreeObject {
+
+	public static final String[] columnNames = {
+		"filePath",
+	};
+
+	public static final String[] columnTitles = {
+		"File Path",
+	};
+	
+	public String filePath;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/LoginSession.java
+public class LoginSession extends TreeObject {
+
+	public static final String[] columnNames = {
+		"userName", 
+		"sessionId",
+		"sessionName",
+		"pid",
+		"sessionType",
+		"sessionTime",
+	};
+
+	public static final String[] columnTitles = {
+		"User Name", 
+		"Session ID",
+		"Session Name",
+		"Process ID",
+		"Session Type",
+		"Session Time",
+	};
+	
+	public String userName;
+	public String sessionId;
+	public String sessionName;
+	public String pid;
+	public String sessionType;
+	public String sessionTime;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void init() {
+		// Child Objects
+		// None!
+		
+		// Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/DiskInformationModule.java
+public class DiskInformationModule extends TreeObject {
+	protected String treeNodeTitle = "Disk Information";
+	
+	public ArrayList<MountedDisk> mountedDisks = new ArrayList<MountedDisk>();
+	
+	public String[] getColumnNames() {
+		return MountedDisk.columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return MountedDisk.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Disk Information";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if (childObjects == null) {
+			for (MountedDisk mountedDisk : mountedDisks) {
+				this.addChildObject(mountedDisk);
+			}
+		}
+
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), MountedDisk.columnTitles, MountedDisk.columnNames, mountedDisks));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/LogMessage.java
+public class LogMessage extends TreeObject {
+	
+	public static final String[] columnNames = {
+		"message",
+		"sourceFile",
+		"soureFunction",
+		"sourceLine"
+	};
+	
+	public static final String[] columnTitles = {
+		"Message",
+		"Source File",
+		"Soure Function",
+		"Source Line"
+	};
+
+	public String message;
+	public String sourceFile;
+	public String soureFunction;
+	public String sourceLine;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return message;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/PropertyList.java
+public class PropertyList extends TreeObject {
+
+	public static final String[] columnNames = {
+		"filePath", 
+		"casePath",
+	};
+
+	public static final String[] columnTitles = {
+		"File Path", 
+		"Case Path",
+	};
+	
+	public String filePath;
+	public String casePath;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return filePath;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/NetworkInterfaceFlag.java
+public class NetworkInterfaceFlag extends TreeObject {
+	
+	public static final String[] columnNames = {
+		"networkInterfaceFlagValue",
+	};
+	
+	public static final String[] columnTitles = {
+		"Network Interface Flag Value"
+	};
+	
+	public String networkInterfaceFlagValue;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return networkInterfaceFlagValue;
+	}
+
+	@Override
+	public void init() {
+		// Child Objects
+		// None
+		
+		// Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/NetworkAddress.java
+public class NetworkAddress extends TreeObject {
+
+	public static final String[] columnNames = {
+		"networkAddressType", 
+		"networkAddressValue",
+		"networkNetmask",
+		"networkBroadcastAddress",
+	};
+
+	public static final String[] columnTitles = {
+		"Network Address Type", 
+		"Network Address Value",
+		"Network Netmask",
+		"Network Broadcast Address",
+	};
+	
+	public String networkAddressType;
+	public String networkAddressValue;
+	public String networkNetmask;
+	public String networkBroadcastAddress;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		StringBuffer sb = new StringBuffer();
+		
+		sb.append(networkAddressType);
+		sb.append(": ");
+		sb.append(networkAddressValue);
+		
+		return sb.toString();
+	}
+
+	@Override
+	public void init() {
+		// Child Objects
+		// None!
+		
+		// Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/EnvironmentVariable.java
+public class EnvironmentVariable extends TreeObject {
+	public static final String[] columnNames = {
+		"environmentVariableValue", 
+	};
+	public static final String[] columnTitles = {
+		"Environment Variable Value", 
+	};
+	
+	public String environmentVariableValue;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return environmentVariableValue;
+	}
+
+	@Override
+	public void init() {
+		// Child Objects
+		// None!
+		
+		// Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/Dependency.java
+public class Dependency extends TreeObject {
+
+	public static final String[] columnNames = { "driverIndex" };
+
+	public static final String[] columnTitles = { "Driver Index" };
+
+	public String driverIndex;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return driverIndex;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/ScreenshotModule.java
+public class ScreenshotModule extends TreeObject {
+	
+	public static final String[] columnNames = {
+		"casePath", 
+	};
+	
+	public static final String[] columnTitles = {
+		"Screenshot Path", 
+	};
+	
+	public String casePath;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Screenshot";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/Process.java
+public class Process extends TreeObject {
+	public static final String[] columnNames = {
+		"pid",
+		"ppid",
+		"processName"
+	};
+	
+	public static final String[] columnTitles = {
+		"Process ID",
+		"Parent Process ID",
+		"Process Name"
+	};
+	
+	public String pid;
+	public String ppid;
+	public String processName;
+	
+	public ArrayList<CommandLineArg> commandLineArgs = new ArrayList<CommandLineArg>();
+	public ArrayList<EnvironmentVariable> environmentVariables = new ArrayList<EnvironmentVariable>();
+	public ArrayList<OpenFile> openFiles = new ArrayList<OpenFile>();
+	
+	public CommandLineArgsNode commandLineArgsNode = null;
+	public EnvironmentVariablesNode environmentVariablesNode = null;
+	public OpenFilesNode openFilesNode = null;
+	public OpenConnectionsNode openConnectionsNode = null;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return pid + " [" + processName + "]";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if(childObjects == null) {
+			if(commandLineArgs != null) {
+				if(commandLineArgsNode == null) {
+					commandLineArgsNode = new CommandLineArgsNode();
+					for(CommandLineArg cla : commandLineArgs) {
+						commandLineArgsNode.addCommandLineArg(cla);
+					}
+				}
+				addChildObject(commandLineArgsNode);
+			}
+			if(environmentVariables != null) {
+				if(environmentVariablesNode == null) {
+					environmentVariablesNode = new EnvironmentVariablesNode();
+					// TODO Phenom errors when there's a commandlinearg in the environment variables
+					try {
+					for(EnvironmentVariable ev : environmentVariables) {
+						environmentVariablesNode.addEnvironmentVariable(ev);
+					}
+					}catch (ClassCastException cce)
+					{
+						System.out.println("There's a command line arg in with the environment variables.");
+					}
+				}
+				addChildObject(environmentVariablesNode);
+			}
+			if(openFiles != null) {
+				if((openFilesNode == null) && (openConnectionsNode == null)) {
+					for(OpenFile openFile : openFiles) {
+						if(openFile.fileType.equals("IPv4") || openFile.fileType.equals("IPv6")) {
+							if(openConnectionsNode == null) {
+								openConnectionsNode = new OpenConnectionsNode();
+							}
+							openConnectionsNode.addOpenFile(openFile);
+						}
+						else {
+							if(openFilesNode == null) {
+								openFilesNode = new OpenFilesNode();
+							}
+							openFilesNode.addOpenFile(openFile);
+						}
+					}
+				}
+				addChildObject(openFilesNode);
+				addChildObject(openConnectionsNode);
+			}
+		}
+		
+		// Setup Display Data
+		// TODO Paul (Process Info, Command Line Args Table)
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+			displayData.addDisplayObject(new DisplayObject("Command Line Arguments", CommandLineArg.columnTitles,CommandLineArg.columnNames, commandLineArgs));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/Driver.java
+public class Driver extends TreeObject {
+
+	public static final String[] columnNames = {
+		"driverIndex", 
+		"driverRefs", 
+		"driverAddress", 
+		"driverSize", 
+		"driverName", 
+		"driverVersion" 
+	};
+
+	public static final String[] columnTitles = {
+		"Driver Index", 
+		"Driver Refs", 
+		"Driver Address", 
+		"Driver Size", 
+		"Driver Name", 
+		"Driver Version" 
+	};
+	
+	public String driverIndex;
+	public String driverRefs;
+	public String driverAddress;
+	public String driverSize;
+	public String driverName;
+	public String driverVersion;
+
+	public ArrayList<Dependency> dependencies = new ArrayList<Dependency>();
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return driverName;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if((childObjects == null) && (dependencies != null)) {
+			for(TreeObject to : dependencies) {
+				addChildObject(to);
+			}
+		}
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/RoutingTableEntry.java
+public class RoutingTableEntry extends TreeObject {
+	public static final String[] columnNames = {
+		"networkFamily"
+	};
+	
+	public static final String[] columnTitles = {
+		"networkFamily"
+	};
+	
+	public String networkFamily;
+	public NetworkDestination networkDestination;
+	public NetworkGateway networkGateway;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		StringBuffer sb = new StringBuffer();
+		sb.append(networkFamily);
+		sb.append(": ");
+		sb.append(networkDestination.getTitle());
+		sb.append(" (");
+		sb.append(networkGateway.getTitle());
+		sb.append(")");
+		
+		return sb.toString();
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// none
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), getColumnTitles(), getColumnNames(), list));
+			ArrayList<TreeObject> list2 = new ArrayList<TreeObject>();
+			list2.add(networkDestination);
+			displayData.addDisplayObject(new DisplayObject("Network Destination", NetworkDestination.columnTitles, NetworkDestination.columnNames, list2));
+			ArrayList<TreeObject> list3 = new ArrayList<TreeObject>();
+			list3.add(networkGateway);
+			displayData.addDisplayObject(new DisplayObject("Network Gateway", NetworkGateway.columnTitles, NetworkGateway.columnNames, list3));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/OpenFile.java
+public class OpenFile extends TreeObject {
+	
+	public static final String[] columnNames = {
+		"fileDescriptor",
+		"fileType",
+		"filePath",
+		"fileProtocol",
+		"localNetworkAddress",
+		"remoteNetworkAddress",
+	};
+	
+	public static final String[] columnTitles = {
+		"File Descriptor",
+		"File Type",
+		"File Path",
+		"File Protocol",
+		"Local Address",
+		"Foreign Address",
+	};
+	
+	public String fileDescriptor;
+	public String fileType;
+	public String filePath;
+	public String fileProtocol;
+	public LocalNetworkAddress localNetworkAddress;
+	public ForeignNetworkAddress foreignNetworkAddress;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		if(fileType.equals("IPv4") || fileType.equals("IPv6")) {
+			StringBuffer sb = new StringBuffer();
+			
+			sb.append(fileProtocol);
+			sb.append(": ");
+			sb.append(localNetworkAddress.getTitle());
+			sb.append(" <--> ");
+			sb.append(foreignNetworkAddress.getTitle());
+			
+			return sb.toString();
+		}
+		return filePath;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/SystemStartupItem.java
+public class SystemStartupItem extends TreeObject {
+
+	public static final String[] columnNames = {
+		"filePath",
+	};
+
+	public static final String[] columnTitles = {
+		"File Path",
+	};
+	
+	public String filePath;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/SystemDateTimeModule.java
+public class SystemDateTimeModule extends TreeObject {
+	public static final String[] columnNames = {
+		"systemTime", 
+	};
+	public static final String[] columnTitles = {
+		"System Time", 
+	};
+	
+	public String systemTime;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "System Date Time";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/CommandLineArg.java
+public class CommandLineArg extends TreeObject {
+	public static final String[] columnNames = {
+		"commandLineArgValue", 
+	};
+	public static final String[] columnTitles = {
+		"Command Line Arg Value", 
+	};
+	
+	public String commandLineArgValue;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return commandLineArgValue;
+	}
+
+	@Override
+	public void init() {
+		// Child Objects
+		// None!
+		
+		// Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/ForeignNetworkAddress.java
+public class ForeignNetworkAddress extends TreeObject {
+	public static final String[] columnNames = {
+		"networkAddressValue",
+		"networkPortValue"
+	};
+	
+	public static final String[] columnTitles = {
+		"Network Address Value",
+		"Network Port Value"
+	};
+	
+	public String networkAddressValue;
+	public String networkPortValue;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return networkAddressValue;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// TODO Paul - verify none
+		
+		// Setup Display Data
+		// TODO Paul - verify none
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/Application.java
+public class Application extends TreeObject {
+
+	public static final String[] columnNames = {
+		"applicationName", 
+		"applicationType", 
+		"filePath", 
+		"lastModifiedDate", 
+		"applicationVersion"
+	}; 
+	
+	public static final String[] columnTitles = {
+		"Application Name", 
+		"Application Type", 
+		"File Path", 
+		"Last Modified Date", 
+		"Application Version"
+	}; 
+
+	public String applicationName;
+	public String applicationType;
+	public String filePath;
+	public String lastModifiedDate;
+	public String applicationVersion;
+	
+	static public String getKey() {
+		return "filePath";
+	}
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void init() {
+		// Child Objects
+		// None!
+		
+		// Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/NetworkConnectionsModule.java
+public class NetworkConnectionsModule extends TreeObject {
+	public static final String[] columnNames = {
+		"activeConnections", 
+		"routingTableEntries"
+	};
+	
+	public static final String[] columnTitles = {
+		"Active Connections", 
+		"Routing Table Entries"
+	};
+	
+	public ArrayList<ActiveConnection> activeConnections = new ArrayList<ActiveConnection>();
+	public ArrayList<RoutingTableEntry> routingTableEntries = new ArrayList<RoutingTableEntry>();
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Network Connections";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if(childObjects == null) {
+			for(TreeObject to : activeConnections) {
+				addChildObject(to);
+			}
+			if(routingTableEntries != null && routingTableEntries.size() > 0) {
+				for(TreeObject to : routingTableEntries) {
+					addChildObject(to);
+				}
+			}
+		}
+		
+		// Setup Display Data
+		// TODO Paul NOW - display data
+//		if(displayData == null) {
+//			displayData = new DisplayData();
+//			displayData.addDisplayObject(new DisplayObject(getTitle(), ActiveConnection.columnTitles, ActiveConnection.columnNames, activeConnections));
+//		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/MountedDisk.java
+public class MountedDisk extends TreeObject {
+	
+	public static final String[] columnNames = {
+		"diskName",
+		"mountPoint",
+		"fileSystemType"
+
+	};
+	
+	public static final String[] columnTitles = {
+		"Disk Name",
+		"Mount Point",
+		"File System Type"
+	};
+
+	public String diskName;
+	public String mountPoint;
+	public String fileSystemType;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return diskName;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/LoginSessionsModule.java
+public class LoginSessionsModule extends TreeObject {
+	public ArrayList<LoginSession> loginSessions = new ArrayList<LoginSession>();
+	
+	public String[] getColumnNames() {
+		return LoginSession.columnNames;
+	}
+	
+	public String[] getColumnTitles() {
+		return LoginSession.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Login Session";
+	}
+
+	@Override
+	public ArrayList<? extends TreeObject> getChildObjects() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), LoginSession.columnTitles, LoginSession.columnNames, loginSessions));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/FileVaultLoggedInUser.java
+public class FileVaultLoggedInUser extends TreeObject {
+
+	public static final String[] columnNames = {
+		"userName", 
+		"mountPoint",
+		"sparsebundle",
+		"homeDirectoryCopied"
+	};
+
+	public static final String[] columnTitles = {
+		"User Name", 
+		"Mount Point",
+		"Sparse Bundle",
+		"Home Directory Copied?"
+	};
+	
+	public String userName;
+	public String mountPoint;
+	public String sparsebundle;
+	public String homeDirectoryCopied;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return userName;
+	}
+
+	@Override
+	public void init() {
+		// Child Objects
+		// None!
+		
+		// Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/AcquisitionImage.java
+public class AcquisitionImage extends TreeObject {
+
+	// TODO remove unused fields
+	
+	public static final String[] columnNames = {
+		"casePath", 
+//		"imageFileName", 
+//		"uncompressedImageSHA256Hash",
+		"imageCompressed",
+//		"compressedImageSHA256Hash",
+		"acquisitionInterrupted"
+	};
+
+	public static final String[] columnTitles = {
+		"Case Path", 
+//		"Image File Name", 
+//		"Uncompressed Image SHA256 Hash",
+		"Image Compressed",
+//		"Compressed Image SHA256 Hash",
+		"Acquisition Interrupted"
+	};
+
+	public String casePath;
+//	public String imageFileName;
+	public String imageCompressed;
+//	public String uncompressedImageSHA256Hash;
+//	public String compressedImageSHA256Hash;
+	public String acquisitionInterrupted;
+
+	public ArrayList<AcquiredRegion> acquiredRegions = new ArrayList<AcquiredRegion>();
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Acquisition Image";
+	}
+
+	@Override
+	public void init() {
+		// Child Objects
+		if(childObjects == null && acquiredRegions != null) {
+			for(TreeObject to : acquiredRegions) {
+				addChildObject(to);
+			}
+		}
+		
+		// Display Data
+		if(displayData == null) {
+			// TODO Paul image info and acquired regions table
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), getColumnTitles(), getColumnNames(), list));
+			displayData.addDisplayObject(new DisplayObject("Acquired Regions", AcquiredRegion.columnTitles, AcquiredRegion.columnNames, acquiredRegions));
+		}
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/UserInformationModule.java
+public class UserInformationModule extends TreeObject {
+	protected String treeNodeTitle = "User Information";
+	
+	public ArrayList<User> users = new ArrayList<User>();
+	
+	public String[] getColumnNames() {
+		return LogMessage.columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return LogMessage.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "User Information";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if (childObjects == null) {
+			for (User user : users) {
+				this.addChildObject(user);
+			}
+		}
+
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), User.columnTitles, User.columnNames, users));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/console/ui/MacResponseShell.java
+public class MacResponseShell implements Listener {
+	/** The shell that the Display object opens. Everything is added to this shell */
+	private Shell shell = null;
+	
+	// Menu Bar Items
+	private Menu rootMenu = null;
+	// The File Menu
+	private Menu fileMenu = null;
+	private MenuItem fileMenuItem = null;
+	private MenuItem exportPdfMenuItem = null;
+
+	private SashForm leftSashForm;
+	private SashForm rightSashForm;
+
+	/** The current table being displayed on the right */
+	private ArrayList<Composite> currentComposites = new ArrayList<Composite>();
+
+	/** The Tree on the left panel */
+	private Tree tree = null;
+	/** The Items in the Tree (parsed via rootObject.getObjects()) */
+	private TreeObject rootObject;
+
+	/** A HashMap of the TreeObjects that correspond to each TreeItem in the Tree */
+	private HashMap<TreeItem, TreeObject> treeObjects = new HashMap<TreeItem, TreeObject>();
+
+	/**
+	 * The Constructor which will create the shell and open it on
+	 * the Display object passed in.
+	 * @param display The Display to use.
+	 * @param rootObject The root to the TreeObjects to display.
+	 */
+	public MacResponseShell(Display display, TreeObject rootObject)
+	{
+		// Setup the base shell
+		shell = new Shell(display);
+		this.rootObject = rootObject;
+		shell.setText("MacResponse LE\u2122: Analysis Console");
+
+		// setup the UI
+		initUI();
+
+		// final setups
+		shell.setMaximized(true);
+
+		// Open the base shell
+		shell.open();
+
+		// Keep it alive
+		while(!shell.isDisposed())
+		{
+			if(!display.readAndDispatch())
+			{
+				display.sleep();
+			}
+		}
+	}
+
+	/**
+	 * Sets up the interface.
+	 */
+	private void initUI()
+	{
+		createMenu();
+		
+		// The Layout
+		GridLayout gridLayout = new GridLayout();
+		gridLayout.numColumns = 1;
+		shell.setLayout(gridLayout);
+
+		// The Information Composite
+		SashForm sashForm = new SashForm(shell, SWT.PUSH);
+		GridData gridData = new GridData(GridData.FILL_BOTH);
+		sashForm.setLayoutData(gridData);
+		leftSashForm = new SashForm(sashForm, SWT.CENTER);
+		rightSashForm = new SashForm(sashForm, SWT.CENTER);
+		sashForm.setWeights(new int[]{1, 4});
+		
+		// The status bar
+		Label label = new Label(shell, SWT.PUSH);
+		label.setText("Assured Information Security, Inc. (www.ainfosec.com)");
+		GridData gridData2 = new GridData(GridData.FILL_HORIZONTAL);
+		gridData2.horizontalAlignment = GridData.CENTER;
+		label.setLayoutData(gridData2);
+
+		// Tree Pane
+		tree = new Tree(leftSashForm, SWT.BORDER | SWT.CHECK);
+		populateTree(tree);
+		tree.addListener(SWT.Selection, this);
+	}
+
+	/**
+	 * Populate the Drop-down Menus.
+	 */
+	private void createMenu() {
+		// The Menu Bar
+		rootMenu = new Menu(shell, SWT.BAR);
+		shell.setMenuBar(rootMenu);
+		
+		// The File Menu
+		fileMenuItem = new MenuItem(rootMenu, SWT.CASCADE);
+		fileMenuItem.setText("&File");
+		fileMenu = new Menu(shell, SWT.DROP_DOWN);
+		fileMenuItem.setMenu(fileMenu);
+		exportPdfMenuItem = new MenuItem(fileMenu, SWT.PUSH);
+		exportPdfMenuItem.setText("E&xport PDF");
+		exportPdfMenuItem.addListener(SWT.Selection, this);
+	}
+
+	/**
+	 * Populate the items in the tree
+	 * @param tree The tree to fill.
+	 */
+	private void populateTree(Tree tree)
+	{
+		TreeItem rootItem = new TreeItem(tree, SWT.None);
+		// TODO Paul make this expanded by default
+		rootItem.setText("Mac Response");
+		treeObjects.put(rootItem, rootObject);
+		populateTreeItem(rootItem, rootObject);
+	}
+
+	/**
+	 * For treeItem, fill in the children
+	 * @param treeItem
+	 * @param dbo
+	 */
+	private void populateTreeItem(TreeItem treeItem, TreeObject dbo)
+	{
+		if(dbo == null || dbo.getChildObjects() == null || dbo.getChildObjects().size() == 0) {
+			return;
+		}
+
+		for(TreeObject dbo1: dbo.getChildObjects())
+		{
+			TreeItem item = new TreeItem(treeItem, SWT.NONE);
+			if(dbo1.getTitle() == null) {
+				item.setText("null");
+				System.out.println("null tree node title: " + dbo1.getClass().getSimpleName());
+			}
+			else {
+				item.setText(dbo1.getTitle());
+			}
+			if(treeObjects.containsKey(item))
+			{
+				System.out.println("Contains key, oh no!");
+			}
+			treeObjects.put(item, dbo1);
+			populateTreeItem(item, dbo1);
+		}
+	}
+
+	@Override
+	public void handleEvent(Event event) {
+		// Handle Menu events
+		if(event.widget instanceof MenuItem) {
+			// Export PDF
+			if(event.widget == exportPdfMenuItem) {
+				exportPdf();
+			}
+		}
+		// Handle checking an item's TreeItem
+		else if(event.detail == SWT.CHECK) {
+			TreeItem treeItem = (TreeItem)event.item;
+			recurseCheckTreeItem(treeItem, treeItem.getChecked());
+		}
+		// Handle Tree Selections
+		else if(event.item instanceof TreeItem) {
+			TreeItem treeItem = (TreeItem)event.item;
+
+			// The Tree Object
+			TreeObject to = treeObjects.get(treeItem);
+			if(to == null) {
+				System.out.println("to was null!");
+				return;
+			}
+			if(to.getDisplayData() == null) {
+				return;
+			}
+			while(currentComposites.size() != 0) {
+				currentComposites.get(0).dispose();
+				currentComposites.remove(0);
+			}
+			updateDisplay(to);
+			rightSashForm.layout();
+		}
+		// Handle other clicks
+		else
+		{
+			while(currentComposites.size() != 0)
+			{
+				currentComposites.get(0).dispose();
+				currentComposites.remove(0);
+			}
+		}
+	}
+
+	private void recurseCheckTreeItem(TreeItem treeItem, boolean checked) {
+		TreeObject treeObject = treeObjects.get(treeItem);
+		treeItem.setChecked(checked);
+		treeObject.setChecked(checked);
+		for(TreeItem childItem : treeItem.getItems()) {
+			recurseCheckTreeItem(childItem, checked);
+		}
+	}
+
+	private void updateDisplay(TreeObject to) {
+		// Display each DisplayObject
+		for(DisplayObject displayObject : to.getDisplayData().getDisplayObjects()) {
+			if(displayObject == null || displayObject.getObjects() == null) {
+				return;
+			}
+			// See if the DisplayObject has a list or a single object
+			if(displayObject.getObjects().size() == 1) {
+				TreeObject treeObject = displayObject.getObjects().get(0);	// There's only 1 item
+				
+				// Setup the composite we're adding the right side
+				Composite labelComposite = new Composite(rightSashForm, SWT.MULTI | SWT.BORDER | SWT.FULL_SELECTION);
+				GridLayout gl = new GridLayout(2, false);
+				gl.horizontalSpacing = 4;
+				gl.verticalSpacing = 4;
+				gl.marginBottom = 5;
+				gl.marginTop = 5;
+				labelComposite.setLayout(gl);
+				
+				// For each column, create/add a label with the title and the data
+				int i = 0;
+				for(String columnName : displayObject.getColumnNames()) {
+					Label columnNameLabel = new Label(labelComposite, SWT.NONE);
+					columnNameLabel.setText(displayObject.getColumnTitles()[i]);
+					
+					Label columnValueLabel = new Label(labelComposite, SWT.NONE);
+					try {
+						Field field = treeObject.getClass().getDeclaredField(columnName);
+						String val = (String)field.get(treeObject);
+						if(val == null)
+						{
+							val = "";
+						}
+						columnValueLabel.setText(val);
+					} catch (NoSuchFieldException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IllegalAccessException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					i++;
+				}
+				
+				currentComposites.add(labelComposite);
+			}
+			else {
+				Table table = new Table(rightSashForm, SWT.MULTI | SWT.BORDER | SWT.FULL_SELECTION);
+				table.setLinesVisible(true);
+				table.setHeaderVisible(true);
+
+				for(String columnName : displayObject.getColumnTitles()) {
+					TableColumn column = new TableColumn(table, SWT.NONE);
+					column.setText(columnName);
+					column.pack();
+				}
+
+				for(TreeObject to1 : displayObject.getObjects())
+				{
+					TableItem item = new TableItem(table, SWT.NONE);
+					int i = 0;
+					for(String columnName : displayObject.getColumnNames()) {
+						try {
+							Field field = to1.getClass().getDeclaredField(columnName);
+							String val = (String)field.get(to1);
+							if(val == null)
+							{
+								val = "";
+							}
+							item.setText(i, val);
+						} catch (NoSuchFieldException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						} catch (IllegalAccessException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+						i++;
+					}
+				}
+				// Resize the Columns
+				Rectangle area = rightSashForm.getClientArea();
+				Point size = table.computeSize(SWT.DEFAULT, SWT.DEFAULT);
+				ScrollBar vBar = table.getVerticalBar();
+				int width = area.width - table.computeTrim(0,0,0,0).width - vBar.getSize().x;
+				if (size.y > area.height + table.getHeaderHeight()) {
+					// Subtract the scrollbar width from the total column width
+					// if a vertical scrollbar will be required
+					Point vBarSize = vBar.getSize();
+					width -= vBarSize.x;
+				}
+				for(TableColumn column : table.getColumns())
+				{
+					column.setWidth(width / table.getColumnCount());
+				}
+
+				// Add to the list of current composites
+				currentComposites.add(table);
+			}
+		}
+	}
+	
+	private void exportPdf() {
+		// Save File Dialog
+		FileDialog fileDialog = new FileDialog(shell, SWT.SAVE);
+		String[] filterNames = new String[] {
+			"PDF Files (*.pdf)"
+		};
+		String[] filterExtensions = new String[] {
+			"*.pdf"
+		};
+		fileDialog.setFilterNames(filterNames);
+		fileDialog.setFilterExtensions(filterExtensions);
+		fileDialog.setFileName("output");
+
+		// Open the file dialog
+		String filename = fileDialog.open();
+		
+		// Check the filename selected
+		if (filename == null) {
+			final Shell messageDialog = new Shell(shell, SWT.DIALOG_TRIM);
+			messageDialog.setLayout(new GridLayout(1, true));
+
+			Label label = new Label(messageDialog, SWT.NONE);
+			label.setText("You did not select a valid filename to save to");
+
+			Button ok = new Button(messageDialog, SWT.PUSH);
+			ok.setText("OK");
+			ok.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, false, false));
+			ok.addSelectionListener(new SelectionAdapter() {
+				public void widgetSelected(SelectionEvent e) {
+					messageDialog.close();
+				}
+			});
+			messageDialog.setDefaultButton(ok);
+			messageDialog.pack();
+			messageDialog.open();
+			return;
+		}
+		
+		// Generate the report!
+		PdfGenerator.generateReport(filename, rootObject);
+		//RtfGenerator.generateReport(filename, rootObject);
+		System.out.println("Created file: " + filename);
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/FilesystemInformationModule.java
+public class FilesystemInformationModule extends TreeObject {
+	protected String treeNodeTitle = "Filesystem Information";
+	
+	public ArrayList<FilePathInfo> filePathInfos = new ArrayList<FilePathInfo>();
+	
+	public String[] getColumnNames() {
+		return FilePathInfo.columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return FilePathInfo.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Filesystem Information";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None (Displaying each is too many objects that the JVM will run out of memory)
+//		if (childObjects == null) {
+//			for (FilePathInfo filePathInfo : filePathInfos) {
+//				this.addChildObject(filePathInfo);
+//			}
+//		}
+
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), FilePathInfo.columnTitles, FilePathInfo.columnNames, filePathInfos));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/SystemControlItem.java
+public class SystemControlItem extends TreeObject {
+
+	public static final String[] columnNames = {
+		"sysctlName",
+		"sysctlValue",
+	};
+
+	public static final String[] columnTitles = {
+		"Sysctl Name",
+		"Sysctl Value",
+	};
+	
+	public String sysctlName;
+	public String sysctlValue;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/FilePathInfo.java
+public class FilePathInfo extends TreeObject {
+	
+	public static final String[] columnNames = {
+		"filePath",
+		"fileStat",
+	};
+	
+	public static final String[] columnTitles = {
+		"File Path",
+		"File Stat",
+	};
+
+	public String filePath;
+	public String fileStat;
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return filePath;
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None!
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), columnTitles, columnNames, list));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/FileVaultModule.java
+public class FileVaultModule extends TreeObject {
+
+	public ArrayList<FileVaultLoggedInUser> fileVaultLoggedInUsers = new ArrayList<FileVaultLoggedInUser>();
+	
+	public TreeObject getParentObject() {
+		return null;
+	}
+	
+	public String[] getColumnNames() {
+		return FileVaultLoggedInUser.columnNames;
+	}
+	
+	public String[] getColumnTitles() {
+		return FileVaultLoggedInUser.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "File Vault";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			displayData.addDisplayObject(new DisplayObject(getTitle(), FileVaultLoggedInUser.columnTitles, FileVaultLoggedInUser.columnNames, fileVaultLoggedInUsers));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/SystemInformationModule.java
+public class SystemInformationModule extends TreeObject {
+	public ArrayList<SystemControlItem> systemControlItems = new ArrayList<SystemControlItem>();
+	public ArrayList<SystemConfigFile> systemConfigFiles;
+	public ArrayList<SystemStartupItem> systemStartupItems = new ArrayList<SystemStartupItem>();
+
+	public static final String[] columnNames = {
+		"systemControlItems",
+		"systemConfigFiles",
+		"systemStartupItems"
+	};
+
+	public static final String[] columnTitles = {
+		"System Control Items",
+		"System Config Files",
+		"System Startup Items"
+	};
+	
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+	
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "System Information";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		// None
+		
+		// Setup Display Data
+		// TODO(Paul) will want to add system config files and startup items
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<TreeObject> list = new ArrayList<TreeObject>();
+			list.add(this);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), SystemControlItem.columnTitles, SystemControlItem.columnNames, systemControlItems));
+		}
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/TreeObject.java
+public abstract class TreeObject {
+	protected TreeObject parentObject = null;
+	protected ArrayList<TreeObject> childObjects = null;
+	protected DisplayData displayData = null;
+	
+	protected boolean isChecked = false;
+	
+	public void setChecked(boolean value) {
+		isChecked = value;
+		if(childObjects != null) {
+			for(TreeObject child : childObjects) {
+				child.setChecked(value);
+			}
+		}
+	}
+	
+	public boolean isChecked() {
+		return isChecked;
+	}
+
+	public void setParent(TreeObject parentObject) {
+		this.parentObject = parentObject;
+	}
+
+	public TreeObject getParentObject() {
+		return parentObject;
+	}
+
+	public void addChildObject(TreeObject to) {
+		if(to == null) {
+			return;
+		}
+		if (childObjects == null) {
+			childObjects = new ArrayList<TreeObject>();
+		}
+		to.setParent(this);
+		to.init();
+		childObjects.add(to);
+	}
+
+	public DisplayData getDisplayData() {
+		init();
+		return displayData;
+	}
+
+	public ArrayList<? extends TreeObject> getChildObjects() {
+		init();
+		return childObjects;
+	}
+
+	public abstract String getTitle();
+
+	public abstract String[] getColumnNames();
+	
+	public abstract String[] getColumnTitles();
+	
+	public abstract void init();
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/RootObject.java
+public class RootObject extends TreeObject
+{
+	@Override
+	public String[] getColumnNames()
+	{
+		return null;
+	}
+	
+	@Override
+	public String[] getColumnTitles()
+	{
+		return null;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Mac Response Modules";
+	}
+
+	@Override
+	public void init() {
+		// Child Objects
+		// No init necessary
+		
+		// Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/EfiMemoryRegion.java
+public class EfiMemoryRegion extends TreeObject {
+	public static final String[] columnNames = {
+		"physicalAddressStart", 
+		"physicalAddressEnd", 
+		"efiMemoryRegionType", 
+		"rangeIsDRAM", 
+	}; 
+	public static final String[] columnTitles = {
+		"Physical Address Start", 
+		"Physical Address End", 
+		"EFI Memory Region Type", 
+		"Range Is DRAM?", 
+	}; 
+
+	public String physicalAddressStart;
+	public String physicalAddressEnd;
+	public String efiMemoryRegionType;
+	public String rangeIsDRAM;
+
+	@Override
+	public String[] getColumnNames() {
+		return columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return null;
+	}
+
+	@Override
+	public void init() {
+		// Child Objects
+		// None!
+		
+		// Display Data
+		// None!
+	}
+}
+MacResponse_Console/src/com/ainfosec/macresponse/db/PhysicalMemoryModule.java
+public class PhysicalMemoryModule extends TreeObject {
+
+	public AcquisitionImage acquisitionImage;
+
+	public ArrayList<EfiMemoryRegion> efiMemoryRegions = new ArrayList<EfiMemoryRegion>();
+	public EfiMemoryRegionNode efiMemoryRegionNode = null;
+
+	@Override
+	public String[] getColumnNames() {
+		return AcquisitionImage.columnNames;
+	}
+
+	@Override
+	public String[] getColumnTitles() {
+		return AcquisitionImage.columnTitles;
+	}
+
+	@Override
+	public String getTitle() {
+		return "Physical Memory";
+	}
+
+	@Override
+	public void init() {
+		// Setup Children
+		if(childObjects == null) {
+			if(efiMemoryRegionNode == null) {
+				efiMemoryRegionNode = new EfiMemoryRegionNode();
+				for(EfiMemoryRegion emr : efiMemoryRegions) {
+					efiMemoryRegionNode.addEfiMemoryRegion(emr);
+				}
+			}
+			addChildObject(efiMemoryRegionNode);
+			addChildObject(acquisitionImage);
+		}
+		
+		// Setup Display Data
+		if(displayData == null) {
+			displayData = new DisplayData();
+			ArrayList<AcquisitionImage> a = new ArrayList<AcquisitionImage>();
+			a.add(acquisitionImage);
+			displayData.addDisplayObject(new DisplayObject(getTitle(), AcquisitionImage.columnTitles, AcquisitionImage.columnNames, a));
+		}
+	}
+}

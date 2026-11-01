@@ -1,0 +1,1 @@
+lambda _cls, all_gather_result, event: _tuple_new(_cls, (all_gather_result, event))

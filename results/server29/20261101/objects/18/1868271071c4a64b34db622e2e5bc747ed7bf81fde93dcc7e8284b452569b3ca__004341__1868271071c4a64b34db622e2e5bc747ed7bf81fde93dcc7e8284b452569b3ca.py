@@ -1,0 +1,1 @@
+lambda _cls, path, fd: _tuple_new(_cls, (path, fd))

@@ -1,0 +1,1 @@
+lambda _cls, construct_rpc_backend_options_handler, init_backend_handler: _tuple_new(_cls, (construct_rpc_backend_options_handler, init_backend_handler))

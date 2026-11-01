@@ -1,0 +1,7 @@
+def __create_fn__(_type_num_steps, _type_adjust_scheduler, _type_sync_with_dataloader, _type_sync_each_batch, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_num_steps, _dflt_adjust_scheduler, _dflt_sync_with_dataloader, _dflt_sync_each_batch, _return_type):
+ def __init__(self,num_steps:_type_num_steps=_dflt_num_steps,adjust_scheduler:_type_adjust_scheduler=_dflt_adjust_scheduler,sync_with_dataloader:_type_sync_with_dataloader=_dflt_sync_with_dataloader,sync_each_batch:_type_sync_each_batch=_dflt_sync_each_batch)->_return_type:
+  self.num_steps=num_steps
+  self.adjust_scheduler=adjust_scheduler
+  self.sync_with_dataloader=sync_with_dataloader
+  self.sync_each_batch=sync_each_batch
+ return __init__

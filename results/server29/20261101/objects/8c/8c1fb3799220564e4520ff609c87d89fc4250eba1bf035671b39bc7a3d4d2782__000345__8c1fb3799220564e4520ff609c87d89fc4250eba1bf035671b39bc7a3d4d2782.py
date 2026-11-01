@@ -1,0 +1,1 @@
+lambda _cls, anchor, nodes_map: _tuple_new(_cls, (anchor, nodes_map))

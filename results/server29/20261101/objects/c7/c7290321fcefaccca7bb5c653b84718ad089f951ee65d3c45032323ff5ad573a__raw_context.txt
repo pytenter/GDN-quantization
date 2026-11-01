@@ -1,0 +1,890 @@
+src/main/java/net/amigocraft/mglib/exception/PlayerOfflineException.java
+public class PlayerOfflineException extends Exception {
+
+	private static final long serialVersionUID = 1477050494550899458L;
+
+}
+src/main/java/net/amigocraft/mglib/MGUtil.java
+public class MGUtil {
+
+	static Main plugin;
+
+	/**
+	 * Returns the {@link JavaPlugin} instance for MGLib.
+	 *
+	 * <p><strong>This should not be called</strong> from a hooking plugin under
+	 * any circumstance.</p>
+	 *
+	 * @return the {@link JavaPlugin} instance for MGLib.
+	 * @since 0.4.0
+	 */
+	public static Main getPlugin() {
+		return plugin;
+	}
+
+	/**
+	 * Loads and returns the given plugin's arenas.yml file.
+	 *
+	 * @param plugin The plugin to load the YAML file from.
+	 * @return The loaded {@link YamlConfiguration} object.
+	 * @since 0.1.0
+	 */
+	public static MGYamlConfiguration loadArenaYaml(String plugin) {
+		@SuppressWarnings("deprecation")
+		JavaPlugin jp = Minigame.getMinigameInstance(plugin).getPlugin();
+		File f = new File(jp.getDataFolder(), "arenas.yml");
+		try {
+			if (!jp.getDataFolder().exists()) {
+				jp.getDataFolder().mkdirs();
+			}
+			if (!f.exists()) {
+				f.createNewFile();
+			}
+			MGYamlConfiguration y = new MGYamlConfiguration();
+			y.load(f);
+			return y;
+		}
+		catch (Exception ex) {
+			ex.printStackTrace();
+			Main.log.severe("An exception occurred while loading arena data for plugin " + plugin);
+			return null;
+		}
+	}
+
+	/**
+	 * Saves the given plugin's arenas.yml file.
+	 *
+	 * @param plugin the plugin to save the given {@link YamlConfiguration} to
+	 * @param y      the {@link YamlConfiguration} to save
+	 */
+	public static void saveArenaYaml(String plugin, YamlConfiguration y) {
+		@SuppressWarnings("deprecation")
+		JavaPlugin jp = Minigame.getMinigameInstance(plugin).getPlugin();
+		File f = new File(jp.getDataFolder(), "arenas.yml");
+		try {
+			if (!f.exists()) {
+				f.createNewFile();
+			}
+			y.save(f);
+		}
+		catch (Exception ex) {
+			ex.printStackTrace();
+			Main.log.severe("An exception occurred while saving arena data for plugin " + plugin);
+		}
+	}
+
+	/**
+	 * Determines whether the provided string can be parsed to an integer.
+	 *
+	 * @param s the string to check
+	 * @return whether the provided string can be parsed to an integer
+	 */
+	public static boolean isInteger(String s) {
+		try {
+			Integer.parseInt(s);
+			return true;
+		}
+		catch (NumberFormatException ex) {
+			return false;
+		}
+	}
+
+	/**
+	 * Logs the given message if verbose logging is enabled.
+	 *
+	 * @param message the message to log
+	 * @param prefix  the prefix to place in front of the message. This will
+	 *                automatically be placed within brackets
+	 * @param level   the {@link LogLevel level} at which to log the message
+	 * @since 0.3.0
+	 */
+	public static void log(String message, String prefix, LogLevel level) {
+		if (Main.LOGGING_LEVEL.compareTo(level) >= 0) {
+			StringBuilder sb = new StringBuilder();
+			sb.append("[").append(level.toString()).append("]");
+			if (prefix != null) {
+				sb.append("[").append(prefix).append("]");
+			}
+			sb.append(" ").append(message);
+			if (level == LogLevel.SEVERE) {
+				System.err.println(sb.toString());
+			}
+			else {
+				System.out.println(sb.toString());
+			}
+		}
+	}
+
+	/**
+	 * Calls an event, but sends it only to the appropriate plugin.
+	 * <strong>Please do not call this from your pluginv unless you are aware of
+	 * the implications.</strong>
+	 *
+	 * @param event the event to call
+	 * @since 0.3.0
+	 */
+	public static void callEvent(MGLibEvent event) {
+		HandlerList hl = event.getHandlers();
+		for (RegisteredListener rl : hl.getRegisteredListeners()) {
+			if (rl.getPlugin().getName().equals(event.getPlugin()) || rl.getPlugin().getName().equals("MGLib")) {
+				try {
+					rl.callEvent(event);
+				}
+				catch (EventException ex) {
+					ex.printStackTrace();
+				}
+			}
+		}
+	}
+
+	/**
+	 * Retrieves the sign attached to a given block, or null if ones does not
+	 * exist.
+	 *
+	 * @param block the block to check for an attached sign
+	 * @return the sign attached to a given block, or null if ones does not
+	 * exist
+	 */
+	public static Block getAttachedSign(Block block) {
+		BlockFace[] faces = new BlockFace[]{
+				BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST, BlockFace.UP
+		};
+		for (BlockFace face : faces) {
+			Block adjBlock = block.getRelative(face);
+			if (adjBlock.getState() instanceof Sign) {
+				if (face != BlockFace.UP) {
+					@SuppressWarnings("deprecation")
+					byte data = adjBlock.getData();
+					byte north = 0x2;
+					byte south = 0x3;
+					byte west = 0x4;
+					byte east = 0x5;
+					BlockFace attached = null;
+					if (data == east) {
+						attached = BlockFace.WEST;
+					}
+					else if (data == west) {
+						attached = BlockFace.EAST;
+					}
+					else if (data == north) {
+						attached = BlockFace.SOUTH;
+					}
+					else if (data == south) {
+						attached = BlockFace.NORTH;
+					}
+					if (adjBlock.getType() == Material.SIGN_POST) {
+						attached = BlockFace.DOWN;
+					}
+					if (block.getX() == adjBlock.getRelative(attached).getX() &&
+							block.getY() == adjBlock.getRelative(attached).getY() &&
+							block.getZ() == adjBlock.getRelative(attached).getZ()) {
+						return adjBlock;
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Determines the environment of the given world based on its folder
+	 * structure.
+	 *
+	 * @param world the name of the world to determine the environment of
+	 * @return the environment of the given world
+	 * @since 0.3.0
+	 */
+	public static Environment getEnvironment(String world) {
+		File worldFolder = new File(Bukkit.getWorldContainer(), world);
+		if (worldFolder.exists()) {
+			for (File f : worldFolder.listFiles()) {
+				if (f.getName().equals("region")) {
+					return Environment.NORMAL;
+				}
+				else if (f.getName().equals("DIM1")) {
+					return Environment.THE_END;
+				}
+				else if (f.getName().equals("DIM-1")) {
+					return Environment.NETHER;
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Deletes a folder recursively.
+	 *
+	 * @param folder the folder to delete
+	 * @since 0.3.0
+	 */
+	public static void deleteFolder(File folder) {
+		for (File f : folder.listFiles()) {
+			if (f.isDirectory()) {
+				deleteFolder(f);
+			}
+			else {
+				f.delete();
+			}
+		}
+	}
+
+	/**
+	 * Throws an {@link UnsupportedOperationException} if MGLib is not
+	 * disabling.
+	 *
+	 * @throws UnsupportedOperationException if MGLib is not currently
+	 *                                       disabling
+	 * @since 0.4.0
+	 */
+	public static void verifyDisablingStatus() throws UnsupportedOperationException {
+		if (!Main.isDisabling()) {
+			throw new UnsupportedOperationException(Main.locale.getMessage("plugin.alert.not-disabling"));
+		}
+	}
+
+	/**
+	 * Converts a Bukkit {@link Location} to a {@link Location3D}.
+	 *
+	 * @param location the {@link Location} to convert
+	 * @return the new {@link Location3D}
+	 * @since 0.4.0
+	 */
+	public static Location3D fromBukkitLocation(Location location) {
+		return fromBukkitLocation(location, false);
+	}
+
+	/**
+	 * Converts a Bukkit {@link Location} to a {@link Location3D}.
+	 *
+	 * @param location the {@link Location} to convert
+	 * @param copyOrientation whether the pitch and yaw of <code>location</code>
+	 *                        will be stored in the new {@link Location3D}
+	 *                        (defaults to <code>false</code> if omitted).
+	 * @return the new {@link Location3D}
+	 * @since 0.4.0
+	 */
+	public static Location3D fromBukkitLocation(Location location, boolean copyOrientation) {
+		if (copyOrientation) {
+			return new Location3D(location.getWorld().getName(),
+					(float)location.getX(), (float)location.getY(), (float)location.getZ(),
+					location.getPitch(), location.getYaw());
+		}
+		else {
+			return new Location3D(location.getWorld().getName(),
+					(float)location.getX(), (float)location.getY(), (float)location.getZ());
+		}
+	}
+
+	/**
+	 * Converts a {@link Location3D} to a Bukkit {@link org.bukkit.Location}.
+	 *
+	 * @param location the {@link Location3D} to convert
+	 *                        (defaults to <code>false</code> if omitted).
+	 * @return the new {@link org.bukkit.Location}
+	 * @since 0.4.0
+	 */
+	public static Location toBukkitLocation(Location3D location) {
+			return new Location(Bukkit.getWorld(location.getWorld()),
+					location.getX(), location.getY(), location.getZ(),
+					location.getPitch(), location.getYaw());
+	}
+}
+src/main/java/net/amigocraft/mglib/misc/Metadatable.java
+public interface Metadatable {
+
+	/**
+	 * Retrieves a given value from this object's metadata by its key.
+	 *
+	 * @param key the key to retrieve.
+	 * @return the key's mapped value, or null if it is not mapped.
+	 * @since 0.3.0
+	 */
+	public Object getMetadata(String key);
+
+	/**
+	 * Adds a key-value pair to this object's metadata.
+	 *
+	 * <p><strong>Note:</strong> This method consists of a single call to
+	 * {@link HashMap#put(Object, Object)}, so existing keys will be overwritten.</p>
+	 *
+	 * @param key   the key to store in the round's metadata.
+	 * @param value the value to assign to the given key.
+	 * @since 0.3.0
+	 */
+	public void setMetadata(String key, Object value);
+
+	/**
+	 * Removes the given key from this object's metadata.
+	 *
+	 * @param key the key to remove from this object's metadata.
+	 * @since 0.3.0
+	 */
+	public void removeMetadata(String key);
+
+	/**
+	 * Checks whether a given key is present in this object's metadata.
+	 *
+	 * @param key the key to test for.
+	 * @return whether the key is present in this object's metadata.
+	 * @since 0.3.0
+	 */
+	public boolean hasMetadata(String key);
+
+	/**
+	 * Retrieves a {@link HashMap} representing this object's complete metadata.
+	 *
+	 * @return this object's metadata in the form of a {@link HashMap}.
+	 * @since 0.3.0
+	 */
+	public HashMap<String, Object> getAllMetadata();
+
+}
+src/main/java/net/amigocraft/mglib/misc/JoinResult.java
+public enum JoinResult {
+
+	SUCCESS,
+	ROUND_FULL, // not used, RoundFullException thrown instead
+	ROUND_PREPARING,
+	ROUND_PLAYING,
+	INVENTORY_SAVE_ERROR,
+	CANCELLED,
+	INTERNAL_ERROR
+
+}
+src/main/java/net/amigocraft/mglib/util/NmsUtil.java
+public class NmsUtil {
+
+	private static final String VERSION_STRING;
+	private static final boolean NMS_SUPPORT;
+	public static final boolean SPECTATOR_SUPPORT;
+
+	// general classes for sending packets
+	public static Method craftPlayer_getHandle;
+	public static Field playerConnection;
+	public static Method playerConnection_sendPacket;
+	public static Method playerConnection_a_packetPlayInClientCommand;
+
+	// for respawning players automatically
+	public static Object clientCommandPacketInstance;
+
+	private static Method getOnlinePlayers;
+	public static boolean newOnlinePlayersMethod = false;
+
+	static {
+		boolean ss;
+		try {
+			GameMode.valueOf("SPECTATOR");
+			ss = true;
+		} catch (IllegalArgumentException ex) {
+			ss = false;
+		}
+		SPECTATOR_SUPPORT = ss;
+		boolean nmsException = false;
+		String[] array = Bukkit.getServer().getClass().getPackage().getName().split("\\.");
+		VERSION_STRING = array.length == 4 ? array[3] + "." : "";
+		try {
+			getOnlinePlayers = Bukkit.class.getMethod("getOnlinePlayers");
+			if (getOnlinePlayers.getReturnType() == Collection.class) {
+				newOnlinePlayersMethod = true;
+			}
+
+			// get method for recieving CraftPlayer's EntityPlayer
+			craftPlayer_getHandle = getCraftClass("entity.CraftPlayer").getMethod("getHandle");
+			// get the PlayerConnection of the EntityPlayer
+			playerConnection = getNmsClass("EntityPlayer").getDeclaredField("playerConnection");
+			// method to send the packet
+			playerConnection_sendPacket = getNmsClass("PlayerConnection").getMethod("sendPacket", getNmsClass("Packet"));
+			playerConnection_a_packetPlayInClientCommand = getNmsClass("PlayerConnection")
+					.getMethod("a", getNmsClass("PacketPlayInClientCommand"));
+
+			try {
+				try {
+					Class<? extends Enum> enumClass;
+					Object performRespawn;
+					try {
+						// this changed at some point in 1.8 to an inner class; I don't really care to figure out exactly when
+						enumClass = (Class<? extends Enum>)getNmsClass("PacketPlayInClientCommand$EnumClientCommand");
+					} catch (ClassNotFoundException ex) {
+						// older 1.8 builds/1.7
+						enumClass = (Class<? extends Enum>)getNmsClass("EnumClientCommand");
+					}
+					performRespawn = Enum.valueOf(
+							enumClass, "PERFORM_RESPAWN"
+					);
+					clientCommandPacketInstance = getNmsClass("PacketPlayInClientCommand")
+							.getConstructor(performRespawn.getClass())
+							.newInstance(performRespawn);
+				}
+				catch (ClassNotFoundException ex) {
+					ex.printStackTrace();
+					clientCommandPacketInstance = getNmsClass("Packet205ClientCommand").getConstructor().newInstance();
+					clientCommandPacketInstance.getClass().getDeclaredField("a").set(clientCommandPacketInstance, 1);
+				}
+			}
+			catch (ClassNotFoundException ex) {
+				ex.printStackTrace();
+				Main.log(Main.locale.getMessage("plugin.alert.nms.client-command"), LogLevel.WARNING);
+			}
+		}
+		catch (Exception ex) {
+			ex.printStackTrace();
+			Main.log(Main.locale.getMessage("plugin.alert.nms.fail"), LogLevel.WARNING);
+			nmsException = true;
+		}
+
+		NMS_SUPPORT = !nmsException;
+	}
+
+	/**
+	 * Retrieves a class by the given name from the package
+	 * <code>net.minecraft.server</code>.
+	 *
+	 * @param name the class to retrieve
+	 * @return the class object from the package
+	 * <code>net.minecraft.server</code>
+	 * @throws ClassNotFoundException if the class does not exist in the
+	 * package
+	 */
+	public static Class<?> getNmsClass(String name) throws ClassNotFoundException {
+		String className = "net.minecraft.server." + VERSION_STRING + name;
+		return Class.forName(className);
+	}
+
+	/**
+	 * Retrieves a class by the given name from the package
+	 * <code>org.bukkit.craftbukkit</code>.
+	 *
+	 * @param name the class to retrieve
+	 * @return the class object from the package
+	 * <code>org.bukkit.craftbukkit</code>
+	 * @throws ClassNotFoundException if the class does not exist in the
+	 * package
+	 */
+	public static Class<?> getCraftClass(String name) throws ClassNotFoundException {
+		String className = "org.bukkit.craftbukkit." + VERSION_STRING + name;
+		return Class.forName(className);
+	}
+
+	/**
+	 * Sends a PlayInClientCommand packet to the given player.
+	 *
+	 * @param player the {@link Player} to send the packet to
+	 * @throws Exception if an exception occurs while sending the packet
+	 */
+	public static void sendRespawnPacket(Player player) throws Exception {
+		if (NMS_SUPPORT) {
+			Object nmsPlayer = NmsUtil.craftPlayer_getHandle.invoke(player);
+			Object conn = NmsUtil.playerConnection.get(nmsPlayer);
+			NmsUtil.playerConnection_a_packetPlayInClientCommand.invoke(conn, NmsUtil.clientCommandPacketInstance);
+		}
+	}
+
+	/**
+	 * Version-independent getOnlinePlayers() method.
+	 *
+	 * @return a list of online players
+	 * @since 0.4.0
+	 */
+	@SuppressWarnings("unchecked")
+	public static Collection<? extends Player> getOnlinePlayers() {
+		try {
+			if (newOnlinePlayersMethod) {
+				return (Collection<? extends Player>)getOnlinePlayers.invoke(null);
+			}
+			else {
+				return Arrays.asList((Player[])getOnlinePlayers.invoke(null));
+			}
+		}
+		catch (IllegalAccessException ex) {
+			ex.printStackTrace();
+			Main.log(Main.locale.getMessage("plugin.alert.nms.online-players"), LogLevel.SEVERE);
+		}
+		catch (InvocationTargetException ex) {
+			ex.printStackTrace();
+			Main.log(Main.locale.getMessage("plugin.alert.nms.online-players"), LogLevel.SEVERE);
+		}
+		return null;
+	}
+
+	/**
+	 * Unsets all static objects in this class.
+	 *
+	 * @throws UnsupportedOperationException if MGLib is not currently disabling
+	 *
+	 * @since 0.4.0
+	 */
+	public static void uninitialize() {
+		MGUtil.verifyDisablingStatus();
+		craftPlayer_getHandle = null;
+		playerConnection = null;
+		playerConnection_sendPacket = null;
+	}
+}
+src/main/java/net/amigocraft/mglib/Main.java
+public static Locale locale;
+src/main/java/net/amigocraft/mglib/exception/NoSuchPlayerException.java
+public class NoSuchPlayerException extends Exception {
+
+	private static final long serialVersionUID = 2117053927855770796L;
+
+}
+src/main/java/net/amigocraft/mglib/event/player/MGPlayerSpectateEvent.java
+public class MGPlayerSpectateEvent extends MGPlayerEvent implements Cancellable {
+
+	protected Round round;
+	private boolean cancelled;
+
+	/**
+	 * Creates a new instance of this event.
+	 *
+	 * @param round  the round the player has joined
+	 * @param player the player involved in this event
+	 * @since 0.2.0
+	 */
+	public MGPlayerSpectateEvent(Round round, MGPlayer player) {
+		super(player);
+		this.round = round;
+	}
+
+	/**
+	 * Returns the {@link Round round} involved in this event.
+	 *
+	 * @return the {@link Round round} involved in this event
+	 * @since 0.2.0
+	 */
+	public Round getRound() {
+		return round;
+	}
+
+	@Override
+	public boolean isCancelled() {
+		return this.cancelled;
+	}
+
+	@Override
+	public void setCancelled(boolean cancel) {
+		this.cancelled = cancel;
+	}
+
+}
+src/main/java/net/amigocraft/mglib/exception/RoundFullException.java
+public class RoundFullException extends Exception {
+
+	private static final long serialVersionUID = -4824489285215148872L;
+
+}
+src/main/java/net/amigocraft/mglib/UUIDFetcher.java
+public class UUIDFetcher implements Callable<Map<String, UUID>> {
+
+	static HashMap<String, UUID> uuids = new HashMap<String, UUID>();
+
+	private static final double PROFILES_PER_REQUEST = 100;
+	private static final String PROFILE_URL = "https://api.mojang.com/profiles/minecraft";
+	private final JSONParser jsonParser = new JSONParser();
+	private final List<String> names;
+	private final boolean rateLimiting;
+
+	public UUIDFetcher(List<String> names, boolean rateLimiting) {
+		this.names = ImmutableList.copyOf(names);
+		this.rateLimiting = rateLimiting;
+	}
+
+	public UUIDFetcher(List<String> names) {
+		this(names, true);
+	}
+
+	public Map<String, UUID> call() throws Exception {
+		Map<String, UUID> uuidMap = new HashMap<String, UUID>();
+		int requests = (int)Math.ceil(names.size() / PROFILES_PER_REQUEST);
+		for (int i = 0; i < requests; i++) {
+			HttpURLConnection connection = createConnection();
+			String body = JSONArray.toJSONString(names.subList(i * 100, Math.min((i + 1) * 100, names.size())));
+			writeBody(connection, body);
+			JSONArray array = (JSONArray)jsonParser.parse(new InputStreamReader(connection.getInputStream()));
+			for (Object profile : array) {
+				JSONObject jsonProfile = (JSONObject)profile;
+				String id = (String)jsonProfile.get("id");
+				String name = (String)jsonProfile.get("name");
+				UUID uuid = UUIDFetcher.getUUID(id);
+				uuidMap.put(name, uuid);
+			}
+			if (rateLimiting && i != requests - 1) {
+				Thread.sleep(100L);
+			}
+		}
+		uuids.putAll(uuidMap);
+		return uuidMap;
+	}
+
+	private static void writeBody(HttpURLConnection connection, String body) throws Exception {
+		OutputStream stream = connection.getOutputStream();
+		stream.write(body.getBytes());
+		stream.flush();
+		stream.close();
+	}
+
+	private static HttpURLConnection createConnection() throws Exception {
+		URL url = new URL(PROFILE_URL);
+		HttpURLConnection connection = (HttpURLConnection)url.openConnection();
+		connection.setRequestMethod("POST");
+		connection.setRequestProperty("Content-Type", "application/json");
+		connection.setUseCaches(false);
+		connection.setDoInput(true);
+		connection.setDoOutput(true);
+		return connection;
+	}
+
+	private static UUID getUUID(String id) {
+		return UUID.fromString(id.substring(0, 8) + "-" + id.substring(8, 12) + "-" + id.substring(12, 16) + "-" +
+				id.substring(16, 20) + "-" + id.substring(20, 32));
+	}
+
+	public static byte[] toBytes(UUID uuid) {
+		ByteBuffer byteBuffer = ByteBuffer.wrap(new byte[16]);
+		byteBuffer.putLong(uuid.getMostSignificantBits());
+		byteBuffer.putLong(uuid.getLeastSignificantBits());
+		return byteBuffer.array();
+	}
+
+	public static UUID fromBytes(byte[] array) {
+		if (array.length != 16) {
+			throw new IllegalArgumentException("Illegal byte array length: " + array.length);
+		}
+		ByteBuffer byteBuffer = ByteBuffer.wrap(array);
+		long mostSignificant = byteBuffer.getLong();
+		long leastSignificant = byteBuffer.getLong();
+		return new UUID(mostSignificant, leastSignificant);
+	}
+
+	public static UUID getUUIDOf(String name) throws Exception {
+		if (uuids.containsKey(name)) {
+			return uuids.get(name);
+		}
+		UUID uuid = new UUIDFetcher(Arrays.asList(name)).call().get(name);
+		UUIDFetcher.addUUID(name, uuid);
+		return uuid;
+	}
+
+	public static void addUUID(String name, UUID uuid) {
+		uuids.put(name, uuid);
+	}
+
+	public static void removeUUID(String name) {
+		uuids.remove(name);
+	}
+
+	public static void uninitialize() {
+		MGUtil.verifyDisablingStatus();
+		uuids.clear();
+		uuids = null;
+	}
+}
+src/main/java/net/amigocraft/mglib/Main.java
+public class Main extends JavaPlugin {
+
+	/**
+	 * MGLib's logger.
+	 *
+	 * <p><strong>This is for use within the library; please do not use this in
+	 * your plugin or you'll confuse the server owner.</strong></p>
+	 *
+	 * @since 0.1.0
+	 */
+	public static Logger log;
+
+	/**
+	 * Whether block changes should be logged immediately.
+	 */
+	public static boolean IMMEDIATE_LOGGING;
+
+	/**
+	 * The minimum level at which messages should be logged.
+	 */
+	public static LogLevel LOGGING_LEVEL;
+
+	/**
+	 * Whether vanilla spectating is globally disabled.
+	 */
+	private static boolean VANILLA_SPECTATING_DISABLED;
+
+	/**
+	 * The locale for MGLib itself.
+	 */
+	public static Locale locale;
+
+	private static boolean disabling = false;
+
+	/**
+	 * Standard {@link JavaPlugin#onEnable()} override.
+	 *
+	 * @since 0.1.0
+	 */
+	@Override
+	@SuppressWarnings("unchecked")
+	public void onEnable() {
+
+		MGUtil.plugin = this;
+		log = getLogger();
+		Bukkit.getPluginManager().registerEvents(new MGListener(), this);
+		saveDefaultConfig();
+		IMMEDIATE_LOGGING = getConfig().getBoolean("immediate-logging");
+		LOGGING_LEVEL = LogLevel.valueOf(getConfig().getString("logging-level").toUpperCase());
+		if (LOGGING_LEVEL == null) {
+			LOGGING_LEVEL = LogLevel.WARNING;
+			Main.log("The configured logging level is invalid!", LogLevel.WARNING);
+		}
+		VANILLA_SPECTATING_DISABLED = getConfig().getBoolean("disable-vanilla-spectating");
+
+		locale = new Locale("MGLib");
+		locale.initialize();
+
+		// updater
+		if (getConfig().getBoolean("enable-updater")) {
+			new Updater(this, 74979, this.getFile(), Updater.UpdateType.DEFAULT, true);
+		}
+
+		// submit metrics
+		if (getConfig().getBoolean("enable-metrics")) {
+			try {
+				Metrics metrics = new Metrics(this);
+				metrics.start();
+			}
+			catch (IOException ex) {
+				log.warning(locale.getMessage("plugin.alert.metrics-fail"));
+			}
+		}
+		if (this.getDescription().getVersion().contains("dev")) {
+			log.warning(locale.getMessage("plugin.alert.dev-build"));
+		}
+
+		// store UUIDs of online players
+		List<String> names = new ArrayList<String>();
+		for (Player pl : NmsUtil.getOnlinePlayers()) {
+			names.add(pl.getName());
+		}
+		try {
+			new UUIDFetcher(names).call();
+		}
+		catch (Exception ex) {
+			ex.printStackTrace();
+			Main.log.severe(locale.getMessage("plugin.alert.uuid-fail"));
+		}
+
+		log.info(locale.getMessage("plugin.event.enable", this.toString()));
+	}
+
+	/**
+	 * Standard {@link JavaPlugin#onDisable()} override.
+	 *
+	 * @since 0.1.0
+	 */
+	@Override
+	public void onDisable() {
+		disabling = true;
+		Bukkit.broadcastMessage(ChatColor.DARK_PURPLE + "[MGLib] " + locale.getMessage("plugin.event.restart"));
+		for (Minigame mg : Minigame.getMinigameInstances()) {
+			for (Round r : mg.getRoundList()) {
+				r.end(false);
+			}
+		}
+		Minigame.uninitialize();
+		MGLibEvent.uninitialize();
+		NmsUtil.uninitialize();
+		UUIDFetcher.uninitialize();
+		log.info(locale.getMessage("plugin.event.disable", this.toString()));
+		Main.uninitialize();
+	}
+
+	/**
+	 * <p>This method should not be called from your plugin. So don't use it.
+	 * Please.</p>
+	 *
+	 * @param plugin the name of the plugin to register worlds for
+	 */
+	public static void registerWorlds(String plugin) {
+		MGListener.addWorlds(plugin);
+	}
+
+	private static void uninitialize() {
+		log = null;
+		MGUtil.plugin = null;
+	}
+
+	/**
+	 * Internal convenience method for logging. <strong>Please do not call this
+	 * from your plugin.</strong>
+	 *
+	 * @param message the message to log.
+	 * @param level   the {@link LogLevel level} at which to log the message
+	 * @since 0.3.0
+	 */
+	public static void log(String message, LogLevel level) {
+		MGUtil.log(message, "MGLib", level);
+	}
+
+	@Override
+	public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
+		if (label.equalsIgnoreCase("mglib")) {
+			sender.sendMessage(ChatColor.LIGHT_PURPLE +
+					locale.getMessage("plugin.event.info", getDescription().getVersion(), "Maxim Roncacé"));
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Retrieves worlds registered with MGLib's event listener for the given
+	 * plugin.
+	 *
+	 * @param plugin the plugin to retrieve worlds for
+	 * @return worlds registered with MGLib's event listener for the given
+	 * plugin
+	 * @since 0.4.0
+	 */
+	public static List<String> getWorlds(String plugin) {
+		return MGListener.getWorlds();
+	}
+
+	/**
+	 * Retrieves a hashmap mapping the names of online players to their
+	 * respective UUIDs.
+	 *
+	 * @return a hashmap mapping the names of online players to their
+	 * respective UUIDs
+	 * @since 0.3.0
+	 */
+	public static HashMap<String, UUID> getOnlineUUIDs() {
+		return UUIDFetcher.uuids;
+	}
+
+	/**
+	 * Retrieves whether vanilla spectating has been globally disabled by
+	 * MGLib's config.yml file.
+	 *
+	 * @return whether vanilla spectating has been globally disabled by MGLib's
+	 * config.yml file
+	 * @since 0.3.0
+	 */
+	public static boolean isVanillaSpectatingDisabled() {
+		return VANILLA_SPECTATING_DISABLED;
+	}
+
+	/**
+	 * Determines whether MGLib is in the process of disabling.
+	 * This is to provide security when unsetting static objects.
+	 *
+	 * @return whether MGLib is in the process of disabling.
+	 * @since 0.4.0
+	 */
+	public static boolean isDisabling() {
+		return disabling;
+	}
+
+}
+src/main/java/net/amigocraft/mglib/exception/PlayerPresentException.java
+public class PlayerPresentException extends Exception {
+
+	private static final long serialVersionUID = -5109025861934945989L;
+
+}

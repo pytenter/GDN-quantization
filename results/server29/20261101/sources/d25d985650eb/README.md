@@ -1,0 +1,50 @@
+# cleanroom
+
+原始相对目录：`cleanroom`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/gdn_rw_int8_quantizer_v1/final_report.md`](../../../../../reports/propagation/gdn_rw_int8_quantizer_v1_final_report.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/gdn_magnitude_conditioned_functional_v1/final_report.md`](../../../../../reports/propagation/gdn_magnitude_conditioned_functional_v1_final_report.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/reports/propagation/gdn_rw_int8_quantizer_v1_final_report.md`](../../../../../reports/propagation/gdn_rw_int8_quantizer_v1_final_report.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/experiments/LING_RECURRENT_DENSE_L6_L7_V1/reports/final_report.md`](../../objects/be/bec93724e672fd447c45c9e20be38db7870173e7a755971bcf47e8a3f165d482__final_report.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/experiments/LING_L6_L7_NEW_MEMBER_HANDOFF_V1/reports/FINAL_REPORT.md`](../../objects/4c/4ca1afe635ee62be5d21592501ba15ced0b71922e4970cce0562f993cbead03e__FINAL_REPORT.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/experiments/LING_RECURRENT_DENSE_L6_L7_V1/analysis/per_sample_scores.csv`](../../objects/19/19e6a76aabd715813415d570474274dcd6311b059cea3529ab2704be4f41be0c__per_sample_scores.csv)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/reports/propagation/gdn_magnitude_conditioned_functional_v1_final_report.md`](../../../../../reports/propagation/gdn_magnitude_conditioned_functional_v1_final_report.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/experiments/LING_L6_L7_PAIRED_TRAJECTORY_CLOSURE_V1/analysis/final_report.md`](../../objects/58/58b0d37586b9d9b7545fd48e00d1dfc4ef18d0bed2f363b225aff6eeb4b2309e__final_report.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/runs/ling_kda_aime24_int8_rc_end_to_end_formal_v1_distributed4/final_report.md`](../../objects/4e/4e8b89b0391284e3bf389605d55f72a6453e4fc4c7c2bdc67328551b35894fea__ling_kda_aime24_int8_rc_end_to_end_formal_v1_distributed4.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/artifacts/aime26_v1/formal/ling_sglang/parity/gate_e_prefill_endpoint_basis.json`](../../objects/b8/b8fc9cefc1b01359a706cd13fa4065052c7cd77827ea21290e1cce716e25f7c8__gate_e_prefill_endpoint_basis.json)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/experiments/LING_DENSE_TRAINING_SGLANG_PROVENANCE_AUDIT_V1/reports/final_report.md`](../../../../../experiments/ling_kda/dense/LING_DENSE_TRAINING_SGLANG_PROVENANCE_AUDIT_V1/reports/final_report.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/experiments/LING_L6_L7_PAIRED_TRAJECTORY_CLOSURE_V1/analysis/per_sample_outcomes.csv`](../../objects/0a/0a18f2259e112711bcd749fa007dcf6ba63560523117be2b7356f39b4606d56e__per_sample_outcomes.csv)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_functional_risk_state_space_pullback_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_functional_risk_state_space_pullback_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_out_proj_functional_direction_causal_v1_final_report.md`](../../../../../reports/mechanism/gdn_int8_out_proj_functional_direction_causal_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_long_horizon_functional_survival_audit_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_long_horizon_functional_survival_audit_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_real_rc_tangential_recurrent_mediation_v1_final_report.md`](../../../../../reports/mechanism/gdn_int8_real_rc_tangential_recurrent_mediation_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_rmsnorm_value_geometry_mechanism_closure_v1_final_report.md`](../../../../../reports/mechanism/gdn_int8_rmsnorm_value_geometry_mechanism_closure_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_value_basis_symmetry_breaking_localization_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_value_basis_symmetry_breaking_localization_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_linearized_functional_risk_proxy_extraction_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_linearized_functional_risk_proxy_extraction_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_value_geometry_transfer_validity_and_retest_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_value_geometry_transfer_validity_and_retest_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_rmsnorm_tangential_residual_filtering_causal_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_rmsnorm_tangential_residual_filtering_causal_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_value_direction_downstream_sensitivity_audit_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_value_direction_downstream_sensitivity_audit_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_functional_geometry_structural_simplification_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_functional_geometry_structural_simplification_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_query_conditioned_risk_efficiency_feasibility_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_query_conditioned_risk_efficiency_feasibility_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_functional_proxy_c_family_failure_localization_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_functional_proxy_c_family_failure_localization_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_functional_proxy_natural_config_generalization_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_functional_proxy_natural_config_generalization_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_functional_risk_beyond_reconstruction_controlled_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_functional_risk_beyond_reconstruction_controlled_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_functional_residual_geometry_principle_extraction_v1_final_report.md`](../../../../../reports/mechanism/gdn_int8_functional_residual_geometry_principle_extraction_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/results/propagation/gdn_int8_functional_orientation_low_rank_and_stability_audit_v1_final_report.md`](../../../../../reports/mechanism/gdn_int8_functional_orientation_low_rank_and_stability_audit_v1.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/README.md`](../../objects/22/22dafd58e35eb45180f7a565e86fb7901db00a5249c56d4acdc13bde8e3e6221__README.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/PROTOCOL.md`](../../objects/65/653457c1e423e5ecd2a41355760c87b795ef97593bb48b174b6d077fe0d6b884__PROTOCOL.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/EVIDENCE_MAP.md`](../../objects/73/736497856ea93605aa8c804d9ea74db7dd6497b932eb3354820edbb8edd96def__EVIDENCE_MAP.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/RESULT_SUMMARY.md`](../../objects/67/67b8655a3848dea4d3465fd07a34a9462fd94473d7c30a5de57b36166ec4197d__RESULT_SUMMARY.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/REPRODUCIBILITY.md`](../../../../../docs/REPRODUCIBILITY.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/RESEARCH_STATUS.md`](../../objects/9e/9e60e5ced7407b7b624cf60b8e1f2c1da9481d58bc6d90f043117f99841f1527__RESEARCH_STATUS.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/EXPERIMENT_INDEX.md`](../../objects/21/21ffcd7635dfffe8fa4f322497042a253c641d11a7c4201ddb6d2a3b5ea66575__EXPERIMENT_INDEX.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/SYNC_MANIFEST_2026-09-02.md`](../../objects/c2/c25088b7396ace76bad480df80e67f4580a7ba6b94141185b27bc3983ef8b220__SYNC_MANIFEST_2026-09-02.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/CANONICAL_PROMPT_MANIFEST.md`](../../../../../docs/CANONICAL_PROMPT_MANIFEST.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/RESEARCH_STATUS_2026-09-02.md`](../../objects/63/63152847371f08155a1cacda8b751969d5e774c3473b6c480895f3f21165ab04__RESEARCH_STATUS_2026-09-02.md)
+- [`LING_L6_L7_NEW_MEMBER_HANDOFF_V1_e1256bf_full/docs/LING_L6_L7_NEW_MEMBER_HANDOFF.md`](../../objects/f9/f9ca0cdda909c6dda01f58b87c1f3ce68f7aa6affdb6fa46c5ca30fd8e79006e__LING_L6_L7_NEW_MEMBER_HANDOFF.md)

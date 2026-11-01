@@ -1,0 +1,5 @@
+def __create_fn__(_type_type_promotion_kind, _type_override_return_dtype, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,type_promotion_kind:_type_type_promotion_kind,override_return_dtype:_type_override_return_dtype)->_return_type:
+  self.type_promotion_kind=type_promotion_kind
+  self.override_return_dtype=override_return_dtype
+ return __init__

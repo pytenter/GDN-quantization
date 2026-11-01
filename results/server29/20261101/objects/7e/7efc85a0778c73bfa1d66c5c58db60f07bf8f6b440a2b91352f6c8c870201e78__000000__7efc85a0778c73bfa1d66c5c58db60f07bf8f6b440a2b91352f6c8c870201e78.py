@@ -1,0 +1,1 @@
+SENTINEL.write_text('EXECUTED'); VALUE=7

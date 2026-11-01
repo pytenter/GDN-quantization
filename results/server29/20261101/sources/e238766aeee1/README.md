@@ -1,0 +1,47 @@
+# qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_directory_repair_rerun_20261022
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/qwen_gdn_oscar_resident_rotation_efficient_qualification_v1_directory_repair_rerun_20261022`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`HANDOFF.md`](../../objects/04/04ecb52eb7efa875fe39ca0f4086733d28b8295a27634c03240f7e6eaa6f2ab7__HANDOFF.md)
+- [`src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`AIME26_SEED1_PROTOCOL.json`](../../objects/8c/8cc760b3f5bcbe75e14e0059abc7da6f0116e00a37949382f4c7c06d7f93ab9a__AIME26_SEED1_PROTOCOL.json)
+- [`FINAL_SCIENTIFIC_REPORT.md`](../../objects/c7/c77c52b889a240c4c6d88db48ea4f417b40081048ff61cd8a985bac18a536a6b__FINAL_SCIENTIFIC_REPORT.md)
+- [`RESIDENT_EXECUTION_PLAN.md`](../../objects/22/224c1a94c7031dad0e1dbb1a8aa3dcd54e65a9f23efd650c5f62e473e661f887__RESIDENT_EXECUTION_PLAN.md)
+- [`provenance/PRIOR_HANDOFF.md`](../../objects/be/be1cbb600dab42bce4b6429692c28a94d4cd9489385b4855cce7829ab1c7aa0b__PRIOR_HANDOFF.md)
+- [`FINALIZER_CHAIN_STARTED.json`](../../objects/ad/ade10235b53894658c61c4de9f5c1a80274d34ea4133470ea807b82003a415ed__FINALIZER_CHAIN_STARTED.json)
+- [`HISTORY_SCORES_VERIFIED.json`](../../objects/27/2712561b33c3ac067fb5b92ff09a6ea3590927b49245072e42bb6cb0afc3a03e__HISTORY_SCORES_VERIFIED.json)
+- [`protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`ACTUAL_RESOURCE_COST_SUMMARY.json`](../../objects/32/329fedd9b8054776f3aeda61adce8b478ab1824dbf2ae7f5843560c026612813__ACTUAL_RESOURCE_COST_SUMMARY.json)
+- [`scripts/resident_score_pass_cpu.py`](../../objects/96/96ba631ddbe861c6f8f430f3edbbd980a0d88435f42cbf604487f1a797abef28__resident_score_pass_cpu.py)
+- [`operations/FINAL_CPU_ADMISSION.json`](../../objects/00/00261e8f15d58e504b8cec1195f99f0a7c94457a037b333e783ad5e1ea3debe2__FINAL_CPU_ADMISSION.json)
+- [`FINAL_CPU_ADMISSION_AND_RELEASE.json`](../../objects/23/230a08e317114a28ffbc8c333de90a32cebf9f1984131e096f82888a2349b126__FINAL_CPU_ADMISSION_AND_RELEASE.json)
+- [`scripts/resident_finalize_offline.py`](../../objects/44/44a7fddb58d8f629fbb985040976924c1cdaa0adead261f706b38fa74a00b13c__resident_finalize_offline.py)
+- [`history/P0_Q2_ORIGINAL_SCORE_PASS_0.json`](../../objects/8d/8d7867b548ded4df2f14361f1c011aa7fcb3ee7bbe86590165e9b72a807c093e__P0_Q2_ORIGINAL_SCORE_PASS_0.json)
+- [`history/P0_Q2_ORIGINAL_SCORE_PASS_1.json`](../../objects/8d/8d7867b548ded4df2f14361f1c011aa7fcb3ee7bbe86590165e9b72a807c093e__P0_Q2_ORIGINAL_SCORE_PASS_0.json)
+- [`history/P0_Q2_ORIGINAL_FINAL_SEAL_RECEIPT.json`](../../objects/ab/ab718fdf248d0f9e17495fc3630a34eaa132ec8b0d2121590cdf56597799863e__P0_Q2_ORIGINAL_FINAL_SEAL_RECEIPT.json)
+- [`history/P1_CANCELLED_CPU_SOURCE/SCORE_PASS_0.json`](../../objects/10/10c1a0d5f1cfb567bacda6a8bd3de5de566aaac63ac1df4244cedb297a6651a9__FROZEN_V4_PARTIAL_SCORES.json)
+- [`history/P1_CANCELLED_CPU_SOURCE/SCORE_PASS_1.json`](../../objects/10/10c1a0d5f1cfb567bacda6a8bd3de5de566aaac63ac1df4244cedb297a6651a9__FROZEN_V4_PARTIAL_SCORES.json)
+- [`analysis/CONTROL_TARGET_FINAL_TWO_FRESH_RESULT.json`](../../objects/28/288e79f30e3e4e17cec9401fb94c3a037ee5aa1ee3f2f17091239877e5f1739a__CONTROL_TARGET_FINAL_TWO_FRESH_RESULT.json)
+- [`history/P0_NORMALIZED_VERIFIED_DUAL_CPU_SCORES.json`](../../objects/3d/3d2f5b414299c72e7d83e98e82eb69f5cedbbd8db6c385a15413db353323fb56__P0_NORMALIZED_VERIFIED_DUAL_CPU_SCORES.json)
+- [`operations/CONTROL_TARGET_FINAL_TWO_FRESH_RESULT.json`](../../objects/28/288e79f30e3e4e17cec9401fb94c3a037ee5aa1ee3f2f17091239877e5f1739a__CONTROL_TARGET_FINAL_TWO_FRESH_RESULT.json)
+- [`analysis/ACTUAL_GUARD_TARGET_FINAL_TWO_FRESH_RESULT.json`](../../objects/83/83928e85ffd1b4a0202cfd2e5ef0e9701a67ff731a2cad3040dce9945b3131e1__ACTUAL_GUARD_TARGET_FINAL_TWO_FRESH_RESULT.json)
+- [`history/P1_CANCELLED_CPU_SOURCE/SCORE_PASS_0_STARTED.json`](../../objects/20/2027c6b294f2314b1c3de980b51e126529c3d1bc53458076a0150ce9ba99ee9f__SCORE_PASS_0_STARTED.json)
+- [`history/P1_CANCELLED_CPU_SOURCE/SCORE_PASS_1_STARTED.json`](../../objects/7b/7bfac4760a3d6b7adb077c534ee104c29ca25000a2b09083dcb12098ad878a78__SCORE_PASS_1_STARTED.json)
+- [`operations/ACTUAL_GUARD_TARGET_FINAL_TWO_FRESH_RESULT.json`](../../objects/83/83928e85ffd1b4a0202cfd2e5ef0e9701a67ff731a2cad3040dce9945b3131e1__ACTUAL_GUARD_TARGET_FINAL_TWO_FRESH_RESULT.json)
+- [`history/P1_CANCELLED_CPU_SOURCE/FROZEN_V4_PARTIAL_SCORES.json`](../../objects/10/10c1a0d5f1cfb567bacda6a8bd3de5de566aaac63ac1df4244cedb297a6651a9__FROZEN_V4_PARTIAL_SCORES.json)
+- [`provenance/PRIOR_TARGET_CONTROL_CPU/CONTROL_TARGET_FINAL_FRESH_1.json`](../../objects/0b/0b07983984aeecde15fdd02a4a2bcf22f4d20aafede4f907b4bc6cf8b9c913a1__CONTROL_TARGET_FINAL_FRESH_1.json)
+- [`provenance/PRIOR_TARGET_CONTROL_CPU/CONTROL_TARGET_FINAL_FRESH_2.json`](../../objects/85/85d15037fc62034777e3e5de1560683d46b1efd2d214a273fd2c2703cd0481db__CONTROL_TARGET_FINAL_FRESH_2.json)
+- [`provenance/PRIOR_DIRECTORY_SETUP_STOP/delivery/FINAL_SEAL_RECEIPT.json`](../../objects/a1/a19b30d3725b894b78aac33795ccac29ab61a7bc1ec8e69e238b48c47de41b9c__FINAL_SEAL_RECEIPT.json)
+- [`history/P1_CANCELLED_CPU_SOURCE/CPU_PARTIAL_SCORE_AND_REPORT_RESULT.json`](../../objects/5f/5f918c298a643bb7a47183696541352c5009d815ba8a4d3614ac62c03e31e6ef__CPU_PARTIAL_SCORE_AND_REPORT_RESULT.json)
+- [`provenance/PRIOR_DIRECTORY_SETUP_STOP/operations/FINAL_DELIVERY_SUMMARY.json`](../../objects/d2/d21553e3541f49620bb964e47fa86386030f20d3276a93658fa32ad895779518__FINAL_DELIVERY_SUMMARY.json)
+- [`provenance/PRIOR_TARGET_CONTROL_CPU/CONTROL_TARGET_FINAL_TWO_FRESH_RESULT.json`](../../objects/3e/3e7aa691e07233f17fb95461ccb3f8bdae144ecf28094df21134fd88d4cf3be7__CONTROL_TARGET_FINAL_TWO_FRESH_RESULT.json)
+- [`operations/TARGET_CONTROL_FRESH_1_evidence/admission_positive/GPU_QUALIFICATION_FINAL.json`](../../objects/77/773c89737a2c2652b15238f668a65dbb4abd95c0a71aa397593db088cb79afe1__GPU_QUALIFICATION_FINAL.json)
+- [`operations/TARGET_CONTROL_FRESH_2_evidence/admission_positive/GPU_QUALIFICATION_FINAL.json`](../../objects/7f/7f4c3576e72b1704d2d9a3d35c4c28df7feb9bd661b1e6af9ac02a07777cb602__GPU_QUALIFICATION_FINAL.json)
+- [`provenance/PRIOR_DIRECTORY_SETUP_STOP/operations/FINAL_INDEPENDENT_READONLY_VERIFICATION.json`](../../objects/60/60fb583bf425f53c0088634b24850a321edef887d419e9c6e983dc61245b617f__FINAL_INDEPENDENT_READONLY_VERIFICATION.json)
+- [`analysis/CONTROL_DIRECTORY_REPAIR_CPU_1_evidence/admission_positive/GPU_QUALIFICATION_FINAL.json`](../../objects/32/3216edd520c213d7f7271d6de6c25790c1aabc20d153b2fd46886b1260e7ddbc__GPU_QUALIFICATION_FINAL.json)

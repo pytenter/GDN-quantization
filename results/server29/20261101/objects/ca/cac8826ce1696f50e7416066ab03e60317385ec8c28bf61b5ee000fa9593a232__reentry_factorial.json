@@ -1,0 +1,14 @@
+{
+  "frozen_before_gpu_runs": true,
+  "model": "real Qwen3.5-9B layer-0 GatedDeltaNet with exact checkpoint tensors",
+  "input": "torch manual_seed 20260927; one BF16 [1,1,4096] synthetic hidden state; requires_grad=True",
+  "loss": "last output.float().square().mean()",
+  "world_size": 2,
+  "reentry_counts": [1, 2, 3, 4],
+  "reshard_after_forward": [true, false],
+  "primary_matrix_order": [[1, true], [2, true], [3, true], [4, true], [1, false], [2, false], [3, false], [4, false]],
+  "primary_cache_mode": "none",
+  "conditional_followups": ["same real GDN plus DynamicCache recurrent state", "canonical C128 QDQ", "Hadamard theta0 Key-side rotation", "full real decoder block", "small real-block stack"],
+  "isolation_rule": "one condition per fresh two-rank process; no changing inputs, weights, loss or FSDP wrapping between reshard controls",
+  "skip_rule": "If first reshard-true failure is N=2, do not run larger reshard-true N for confirmation; run preregistered reshard-false controls. Independently record unrun matrix cells."
+}

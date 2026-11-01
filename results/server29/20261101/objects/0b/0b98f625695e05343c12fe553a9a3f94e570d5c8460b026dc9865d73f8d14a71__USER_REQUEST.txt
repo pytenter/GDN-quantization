@@ -1,0 +1,17 @@
+# Codex任务：Qwen/GDN OSCAR高效常驻旋转State实现与正式前资格验收
+
+任务名称：QWEN_GDN_OSCAR_RESIDENT_ROTATION_EFFICIENT_QUALIFICATION_V1。
+模型Qwen3.5-9B/GDN；仅原授权三张RTX3090，实际UUID与进程核验可用性。
+高效实现C1=Uq@H128、S3=Uq@H128@PBR128。State从初始化起常驻对应旋转坐标；Q/K同步变换，原GDN递归、Value/Gate/Beta不变。原Q/K若在H坐标须用T=H.T@Uq@H，禁止重复Hadamard。本实现从原生未旋转Q/K入口接入。
+使用Symmetric INT8、Key-axis Group32、FP32scale、原canonical rounding/clip/scale floor；每token持续QDQ/writeback与下一token真实消费。S3的PBR已在常驻坐标内，QDQ不能重复PBR。禁止每token整块State正逆稠密旋转的Codec-only回退。
+审计真实HISTORICAL_PORT的QKV、Conv、L2Norm、Q scaling、repeat_interleave、Gate/Beta、递归、readout、cache与prefill/decode。优先16独立Q/K头批处理，避免32头重复稠密旋转及每头Python循环。
+复用冻结24层×16独立头Cq和确定性FP64 Uq；合成后一次部署精度转换，冻结矩阵、H/P、head映射与SHA。不重新Query采集，不用AIME校准、不选有利符号/排列/计算路径。旧P0/P1和所有失败终态只读。
+独立FP64与真实CPU/Torch数学资格：正交/维度、头映射、合法P、递归等价、不量化readout不变量、Gate/Beta/Value语义、C1/S3同U且只差P。FP32差异记录诊断，不采用旧4×H maxabs或2e-6均匀性硬阈值，不要求不同浮点图中间Tensor逐字节相同。结构、方向、头映射、重复归一化/错误cache必须STOP。
+GPU正式前：非AIME128-token无量化9B对照；C1/S3关闭QDQ数值诊断；32/128真实INT8QDQ、必要512连续/freshprocess；编码scale/writeback/next-consumption；finite；EOS/Sampler/RNG/cache reset；Prompt token0开始逐tokenQDQ；长context资源。
+性能：同GPU同非AIME文本同窗口，现有H+Sym32/C1/S3 TPS、显存、QK旋转/GDN/QDQ耗时、kernel次数、prompt/decode。确认无全State正逆矩阵乘、16uniquehead旋转。集中工程优化后同合同核验，记录真实新方法TPS与81920×60成本；无FutureKL。
+P1仍运行则不停止/修改/抢占，只在实际释放授权卡派发；独立root和工作树。无合法空闲GPU，允许READY或RESOURCE_BLOCKED_NO_DISPATCH，不能声称GPU资格。
+全部资格通过才C1/S3各30题seed1，原QwenPrompt/Sampler/FrozenV4，81920新token，共60；复用P1题目→UUID映射，同题同卡，三卡不同题并行、单卡串行。无Asym/DualM/INT4/FP保护/学习旋转/训练，不因低准确率/MSE停合法实验，不缩长、不调参、不筛选重试。
+交付准确率、独立复评分、配对rescue/lost、P0/P1协议匹配和U/PBR消融、EOS/length/token/资源、FP诊断、真实QDQ消费和实测性能。说明FP32载体非packedINT8、旧失败不重判、30题单seed探索性及协议不同不作严格因果。
+成功RESIDENT_ROTATION_QUALIFIED_FORMAL_COMPLETE_60_60_AND_STOP；数学/结构失败RESIDENT_ROTATION_MATH_FAIL_CLOSED_STOP；资源不允许RESOURCE_BLOCKED_NO_DISPATCH。性能不可执行报告真实数据和阻断原因，不静默回退Codec-only。集中实现，不多轮零散Patch-and-Retry。
+
+This file is a faithful operational transcription of the human request, not a claim of a byte-identical export of the chat message.

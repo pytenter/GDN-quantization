@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(username={self.username!r}, fullname={self.fullname!r}, avatar_url={self.avatar_url!r}, details={self.details!r}, is_following={self.is_following!r}, is_pro={self.is_pro!r}, num_models={self.num_models!r}, num_datasets={self.num_datasets!r}, num_spaces={self.num_spaces!r}, num_discussions={self.num_discussions!r}, num_papers={self.num_papers!r}, num_upvotes={self.num_upvotes!r}, num_likes={self.num_likes!r}, num_following={self.num_following!r}, num_followers={self.num_followers!r}, orgs={self.orgs!r})"
+ return __repr__

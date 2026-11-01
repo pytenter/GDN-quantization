@@ -1,0 +1,1 @@
+lambda _cls, heap_used, mmap_used: _tuple_new(_cls, (heap_used, mmap_used))

@@ -1,0 +1,1 @@
+lambda _cls, epoch, release, dev, pre, post, local: _tuple_new(_cls, (epoch, release, dev, pre, post, local))

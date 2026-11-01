@@ -1,0 +1,347 @@
+# Codex 任务：PACE + LQUnroll dP32 吞吐专项测试
+
+## 0. 任务目标
+
+当前正在执行的 PACE48 + LeapQuant-style Direct Read 实验包含：
+
+- `LQUnroll+dP8`
+- `LQUnroll+dP16`
+
+已有固定工作量吞吐结果：
+
+- dP8：6.65 tokens/s
+- dP16：6.79 tokens/s
+- 同卡、同输入、3 次中位数
+- dP16 相对 dP8：+2.1%
+
+现在新增一个**仅用于吞吐测试**的配置：
+
+`PACE48_LQUNROLL_DP32_THROUGHPUT_V1`
+
+目标是判断 dP32 在当前 PACE Mixed INT4/INT8 Direct Read 实现中，能否进一步提升 Decode Throughput。
+
+本次不进行 AIME26 正式生成、不评分、不调参、不增加纯 INT4 配置。
+
+## 1. GPU 和现有任务保护
+
+当前机器可能仍有以下任务：
+
+- 原 Mixed4/8 dP8/dP16 AIME26 评测。
+- GPU3 上独立的 PureINT4+dP16 实验。
+
+执行前必须检查所有 GPU 的实际进程、显存占用和设备 UUID。
+
+要求：
+
+1. 不停止、暂停、迁移现有任务。
+2. 不修改现有正在运行的源码。
+3. 不修改现有输出目录及 checkpoint。
+4. 只使用确认空闲的 GPU。
+5. 优先选择与历史固定工作量基线相同的 GPU 型号。
+6. 如果没有合适的空闲 GPU，停止启动并报告实际阻塞，不抢占设备。
+7. 独立创建测试进程和输出目录。
+
+不允许通过降低已有任务的优先级来获得性能结果。
+
+## 2. 固定配置
+
+从已经验证的 `LQUnroll+dP16` 源码创建独立的 dP32 配置。
+
+必须保持：
+
+- Qwen3.5-9B GDN。
+- 24 个 INT4 State Heads + 8 个 INT8 State Heads。
+- Key-axis G32。
+- Asymmetric Affine Quantizer。
+- FP16 scale mantissa + optional INT8 exponent。
+- 原整数 Zero Point。
+- 原 Head mask。
+- 原 K4 缓存。
+- FP32 Delta Update。
+- FP32 log-decay。
+- 原 LeapQuant-style Direct Read。
+- 原 GDN 更新、衰减和输出计算公式。
+- 原 Prefill 处理方式。
+- 原模型 dtype、tokenizer 和模型权重。
+- 原 GPU kernel 实现及所有性能相关配置。
+
+唯一允许改变的实验变量：
+
+`decode_period: 16 → 32`
+
+不得加入：
+
+- Compensator Tokens
+- Residual Smoothing
+- 新的位宽分配
+- Pure INT4
+- INT6
+- Rotation
+- 新的动态量化器
+- 不同的 kernel 快速路径
+
+不允许为了让 dP32 跑得更快而只给 dP32 增加额外优化。
+
+## 3. dP32 生命周期正确性
+
+首先进行非 AIME 验证。
+
+在 Decode 阶段：
+
+- Token 1～31：使用 packed base + 更新向量 Direct Read。
+- Token 32：更新、读出后重建完整 State 并量化写回。
+- Token 33：从新的 packed base 开始下一个窗口。
+- Token 64：再次提交完整 State。
+- 未满窗口终止：保留原 finalize(policy="preserve") 语义。
+
+必须核验：
+
+1. 周期计数没有 off-by-one。
+2. 第 31 次 Decode Forward 后不提交。
+3. 第 32 次 Decode Forward 后提交一次。
+4. 第 33 次开始新的 pending buffer。
+5. 第 64 次完成第二次提交。
+6. Prefill 结束后正确建立初始基础 State。
+7. 不会每 token 隐式调用完整 dense `_replay()`。
+8. 不出现持久的完整 FP32 State。
+9. dP32 使用与 dP16 相同的 Direct Read Kernel。
+10. 所有 tensor shape、dtype、packed 格式正确。
+11. Nonfinite 和 runtime errors 为零。
+
+与相同 dP32 数值规则下的 dense reference 对比输出和窗口边界 State。遵守既有验证门禁，不因 dP32 的测试结果临时修改数值容差。
+
+验证不通过时，不得启动性能测试。
+
+## 4. 固定工作量吞吐 Benchmark
+
+### 4.1 三配置比较
+
+测试：
+
+A. `LQUnroll+dP8`
+
+B. `LQUnroll+dP16`
+
+C. `LQUnroll+dP32`
+
+其中 A、B 仅作吞吐基线，不重新运行 AIME。
+
+优先使用现有固定工作量 benchmark 的原始输入和计时实现。
+
+所有配置必须保持：
+
+- 相同物理 GPU。
+- 相同 batch size。
+- 相同 Prompt Token IDs。
+- 相同 Decode Token IDs。
+- 相同 Prefill 长度。
+- 相同 Decode 长度。
+- 相同 CUDA / PyTorch / Triton 环境。
+- 相同 KV Cache 环境。
+- 相同 profiling 设置。
+
+为保证完全相同的输入，优先使用固定 Token 序列的 Teacher-forced Decode Benchmark，不允许不同配置因为生成答案不同而处理不同的 Token 输入。
+
+保持逐 Token Forward 的真实 GDN State 生命周期，不得通过整段并行 Prefill 代替 Decode。
+
+如现有 benchmark 已满足以上条件，直接复用，不另造不同口径的测试。
+
+### 4.2 重复次数
+
+每个配置运行 3 次正式计时，报告：
+
+- 每次 tokens/s。
+- Median tokens/s。
+- Min / Max。
+- 每次 Decode Wall。
+- 测试顺序。
+- GPU 运行环境。
+
+每次正式计时前使用相同 warmup 策略，预热和首次编译耗时不计入稳态吞吐，但应另行记录。
+
+建议轮换测试顺序：
+
+Run 1：dP8 → dP16 → dP32
+
+Run 2：dP16 → dP32 → dP8
+
+Run 3：dP32 → dP8 → dP16
+
+每次重建独立请求状态，禁止让上一轮的 recurrent cache 污染下一轮。
+
+使用 CUDA synchronization 或 CUDA Events 正确计时，不因额外逐 Token 同步改变实际 Decode 执行模式。
+
+如果历史 dP8/dP16 的源码、硬件、输入和测试方式与新 benchmark 完全一致，可保留历史值作为辅助对照；主要结论仍以本轮同卡重测为准。
+
+### 4.3 长上下文窗口
+
+如现有测试脚本支持固定 Decode Token 流，额外报告：
+
+- Token 2048～8192。
+- Token 8192～16384。
+
+这两个区间应使用相同 Token IDs 和同样的上下文构建方式。
+
+不得直接使用各配置自行生成的不同答案轨迹作为严格同输入基准。
+
+如果完成这些区间需要额外完整长序列生成，应优先采用现有固定输入回放方式；不自动启动新 AIME 生成任务。
+
+## 5. 必须拆分测量的性能指标
+
+除了端到端 tokens/s，还要测量：
+
+### A. 非边界 Token
+
+没有触发完整 State 写回时：
+
+- Packed base readout latency。
+- Delta Update 计算 latency。
+- Pending vector readout latency。
+- GPU kernel launch 数量（可测时）。
+- 实际更新记录访问数量。
+
+### B. 窗口边界 Token
+
+dP8 / dP16 / dP32 分别触发写回时：
+
+- 完整 State 重建时间。
+- Scale / zero point / exponent 编码时间。
+- INT4/INT8 packing 时间。
+- Boundary writeback latency。
+
+### C. 完整模型
+
+- Fixed-workload decode tokens/s。
+- 平均 TPOT。
+- P50 / P95 Decode Token Latency（具备逐 token 测量时）。
+- CUDA peak allocated。
+- CUDA peak reserved。
+- 实际 live state bytes。
+- 实际 update buffer bytes。
+- 写回总次数。
+
+不要将 GDN kernel speedup 与端到端模型 speedup 混为一谈。
+
+## 6. 内存核验
+
+此前设计每层每 Token 更新记录约为：
+
+- Packed K4 + metadata：1184 bytes。
+- FP32 Delta Update：16384 bytes。
+- FP32 log-decay：128 bytes。
+- 合计：17696 bytes。
+
+24 层合计理论容量：
+
+- dP8：3,397,632 bytes。
+- dP16：6,795,264 bytes。
+- dP32：13,590,528 bytes。
+
+以上只是基于原设计的预测，必须检查当前正式代码是否仍使用相同的 Record。
+
+报告以下数据：
+
+1. 实际 buffer 容量。
+2. 实际 buffer payload 峰值。
+3. 窗口内最大 pending。
+4. Packed base bytes。
+5. Optional exponent bytes。
+6. CUDA peak allocated/reserved。
+7. FP32 scratch 的实际分配情况。
+
+不要把容量当作长期 live memory，也不能将 allocator reserved 当作 State 的物理 payload。
+
+## 7. 最终吞吐比较
+
+生成下列表格：
+
+| 指标 | dP8 | dP16 | dP32 |
+|---|---:|---:|---:|
+| Fixed-workload tokens/s | | | |
+| 相对 dP8 变化 | | | |
+| 相对 dP16 变化 | | | |
+| 非边界 GDN latency | | | |
+| 边界 GDN latency | | | |
+| 平均 TPOT | | | |
+| Boundary writebacks | | | |
+| Buffer capacity | | | |
+| Live buffer peak | | | |
+| CUDA allocated peak | | | |
+
+同时输出每次独立测试的原始数值，不能只给汇总中位数。
+
+主要计算：
+
+`Speedup_32_vs_16 = throughput_dP32 / throughput_dP16`
+
+`Speedup_32_vs_8 = throughput_dP32 / throughput_dP8`
+
+`Delta_32_vs_16 = (Speedup_32_vs_16 - 1) × 100%`
+
+分析时明确区分：
+
+- 写回次数下降带来的收益。
+- 更长更新缓存造成的计算和读取开销。
+- Kernel 调度与显存压力。
+- 测量噪声。
+
+如果差距接近运行间波动范围，应报告为无法明确区分快慢，不得宣称显著加速。
+
+## 8. 本轮不进行的任务
+
+明确禁止：
+
+- 不运行 dP32 AIME26 30 题。
+- 不运行 dP32 正式推理准确率评估。
+- 不修改 dP8/dP16 已有正式生成轨迹。
+- 不新增 dP64 或更长周期。
+- 不添加 Compensator / Smoothing。
+- 不改变 Pure INT4 实验。
+- 不针对吞吐结果动态调参。
+- 不将本轮 benchmark 结果冒充生产 Serving 吞吐。
+
+本轮只回答 dP32 在相同 PACE Direct Read 实现下是否更快。
+
+## 9. 输出工件
+
+建立独立目录：
+
+`PACE48_LQUNROLL_DP32_THROUGHPUT_V1/`
+
+包含：
+
+- `CONFIG.json`
+- `SOURCE_IDENTITY.json`
+- `NUMERICAL_VALIDATION.md`
+- `BENCHMARK_RAW.csv`
+- `THROUGHPUT_COMPARISON.md`
+- `MEMORY_ACCOUNTING.json`
+- `KERNEL_LATENCY_REPORT.md`
+- `EXECUTION_LOG.md`
+- `MANIFEST.sha256`
+
+不得覆盖既有正式实验的任何工件。
+
+## 10. 最终决策
+
+最终输出中文总结，直接回答：
+
+1. dP32 的固定工作量 decode tokens/s 是多少？
+2. 相比 dP16 提升或下降百分之多少？
+3. 相比 dP8 提升或下降百分之多少？
+4. dP32 的量化写回时间是否明显减少？
+5. 更长的 Delta Buffer 是否增加了非边界 Token 延迟？
+6. 是否出现明显的内存和 GPU occupancy 压力？
+7. dP32 是否值得后续进行独立准确率评估？
+
+状态使用：
+
+- `COMPLETE`
+- `COMPLETE_NO_CLEAR_SPEEDUP`
+- `STOP_NUMERICAL_VALIDATION_FAILED`
+- `STOP_NO_IDLE_GPU`
+- `STOP_RUNTIME_BLOCKED`
+
+在有权限、资源和环境且门禁通过的情况下实际执行 benchmark，不要只给实现计划。
+
+完成后封存并停止，不自动开始 dP32 AIME 正式评测。

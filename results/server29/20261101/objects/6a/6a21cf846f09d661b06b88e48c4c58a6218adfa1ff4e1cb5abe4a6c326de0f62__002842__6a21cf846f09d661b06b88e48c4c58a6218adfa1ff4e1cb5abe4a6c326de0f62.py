@@ -1,0 +1,1 @@
+lambda _cls, index_name, buffer_name, mode: _tuple_new(_cls, (index_name, buffer_name, mode))

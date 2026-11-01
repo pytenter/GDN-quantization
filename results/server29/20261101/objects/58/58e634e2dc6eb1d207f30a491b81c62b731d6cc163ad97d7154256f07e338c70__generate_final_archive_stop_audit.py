@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Reduce completed fresh storage receipts only; never scientific scoring."""
+import collections,hashlib,json,time
+from pathlib import Path
+D=Path(__file__).resolve().parents[1]/'receipts'
+def read(n):return json.loads((D/n).read_bytes())
+summary=read('ARCHIVE_AUDIT_SUMMARY.json');assert summary['status']=='PASS_INDEPENDENT_STORAGE_DELIVERY_SCIENCE_REMAINS_INCOMPLETE_STOP'
+downloads={}
+for row in summary['downloaded_metadata']:
+ b=Path(row['local']).read_bytes();assert len(b)==row['bytes']and hashlib.sha256(b).hexdigest()==row['sha256'];assert row['status']=='PASS_EXACT_SMALL_METADATA_DOWNLOAD';downloads[Path(row['local']).name]=row
+assert len(downloads)==10
+pre=read('ARCHIVE_CATALOG_PRECHECK.json');assert all(not x['exists']for x in pre['rows'])and len(pre['rows'])==4
+inventory=read('PHYSICAL_ARCHIVE_INVENTORY_AND_UNCOMMITTED.json');assert inventory['status']=='PASS_PHYSICAL_ARCHIVE_ACCOUNTING_STORAGE_ONLY_SCIENCE_INCOMPLETE'and not inventory['missing_published'];physical={x['path']:x for x in inventory['rows']};assert len(physical)==len(inventory['rows'])
+per=[];seen=set();total_roles=collections.defaultdict(lambda:{'files':0,'bytes':0})
+for card in ['gpu0','gpu1','gpu2','gpu3']:
+ name=card+'_ACCEPTED_RAW_VERIFICATION.json';value=read(name);assert value['status']=='PASS_FRESH_REMOTE_ARCHIVE_VERIFICATION'and value['overall_scientific_status']=='FAIL_CLOSED_STOP_INCOMPLETE';assert value['no_GPU_calls']and value['no_large_Mac_download']and not value['large_raw_downloaded']
+ assert value['expected_object_receipts']==pre['expected_objects_by_card'][card];expected={x['path']:x for x in value['expected_object_receipts']};verified=value['cards'][0];assert verified['status']=='PASS_FRESH_REMOTE_RAW_SHA_BYTES'and verified['card_key']==card;assert len(verified['objects'])==value['objects']==len(expected)
+ roles=collections.defaultdict(lambda:{'files':0,'bytes':0})
+ for obj in verified['objects']:
+  exp=expected[obj['path']];actual=physical[obj['path']];assert obj['fresh_independent_stream_SHA']and obj['bytes']==exp['bytes']==actual['bytes']and obj['sha256']==exp['sha256']==actual['sha256'];assert obj['path']not in seen;seen.add(obj['path']);key=exp['role'];roles[key]['files']+=1;roles[key]['bytes']+=obj['bytes'];total_roles[key]['files']+=1;total_roles[key]['bytes']+=obj['bytes']
+  assert actual['classification']==('PUBLISHED_FAILURE_RAW_EVIDENCE'if key=='failure_raw_archive'else'PUBLISHED_REFERENCE_RAW_EVIDENCE')and not actual['scientific_qualification_from_storage_proof']
+ cat=verified['catalog'];assert cat['atomic_no_clobber_published'];catrow=physical[cat['path']];assert catrow['classification']=='STORAGE_CATALOG_METADATA'and catrow['bytes']==cat['bytes']and catrow['sha256']==cat['sha256'];catdownload=downloads[card+'_ASSET_CATALOG.json'];assert catdownload['bytes']==cat['bytes']and catdownload['sha256']==cat['sha256'];catjson=read(card+'_ASSET_CATALOG.json');assert catjson['status']=='PASS_FRESH_REMOTE_RAW_SHA_BYTES'and catjson['objects']==verified['objects']
+ per.append({'card_key':card,'files':len(expected),'bytes':sum(x['bytes']for x in expected.values()),'roles':dict(roles),'catalog':cat,'catalog_exact_download':catdownload,'verification_receipt':downloads[name],'archive_config_sha256':value['archive_config_sha256'],'frozen_archive_module_sha256':value['archive_module_sha256'],'started_unix':value['started_unix'],'finished_unix':value['finished_unix'],'storage_proof_is_not_scientific_qualification':True})
+assert dict(total_roles)=={'raw_archive':{'files':1024,'bytes':161658445824},'failure_raw_archive':{'files':1,'bytes':103556616}}
+assert len(seen)==1025 and sum(x['bytes']for x in per)==161762002440
+computed=collections.defaultdict(lambda:{'files':0,'bytes':0})
+for row in inventory['rows']:
+ computed[row['classification']]['files']+=1;computed[row['classification']]['bytes']+=row['bytes'];assert not row['scientific_qualification_from_storage_proof']
+assert dict(computed)==inventory['classifications']==summary['classifications'];assert len(inventory['rows'])==inventory['files']==summary['files'];assert sum(x['bytes']for x in inventory['rows'])==inventory['bytes']==summary['bytes'];assert inventory['published_expected_files']==1025
+uncommitted=[x for x in inventory['rows']if x['classification'].startswith('UNCOMMITTED_')];probe=[x for x in inventory['rows']if x['classification']=='ENGINEERING_ONLY_PROBE'];other=[x for x in inventory['rows']if x['classification']=='UNREFERENCED_ARCHIVE_ASSET_NOT_SCIENTIFICALLY_QUALIFIED']
+result={'schema':'FINAL_REPAIR_ARCHIVE_STOP_AUDIT_V1','status':'PASS_STORAGE_BYTES_AND_SMALL_DELIVERY_ONLY','scientific_status':'FAIL_CLOSED_STOP','scientific_completeness':'INCOMPLETE','scientific_qualification_from_storage_proof':False,'scope':'RAW_ARCHIVE_BYTE_PRESERVATION_AND_ACCOUNTING_ONLY','verified_published':{'files':1025,'bytes':161762002440,'reference_raw':total_roles['raw_archive'],'failure_raw':total_roles['failure_raw_archive'],'per_card':per},'physical_archive':{'archive_root':inventory['archive_root'],'files':inventory['files'],'bytes':inventory['bytes'],'classifications':inventory['classifications'],'inventory_receipt':downloads['PHYSICAL_ARCHIVE_INVENTORY_AND_UNCOMMITTED.json'],'fresh_verification_note':'All published raw freshly independently streamed on .29 by frozen per-card verifier. Subsequent physical inventory reused immediate fresh per-card SHA proofs and freshly streamed every other file; no storage proof is scientific numerical qualification.'},'uncommitted_assets':uncommitted,'uncommitted_assets_files':len(uncommitted),'uncommitted_assets_bytes':sum(x['bytes']for x in uncommitted),'engineering_probe_assets':probe,'other_unreferenced_assets':other,'catalog_precheck_receipt':downloads['ARCHIVE_CATALOG_PRECHECK.json'],'catalog_publication':'ONCE_PER_CARD_ATOMIC_NO_CLOBBER_AFTER_PRECHECK_ABSENT','all_current_physical_assets_accounted':True,'missing_published_assets':[],'all_downloaded_metadata_SHA_and_bytes_verified':True,'downloaded_metadata_files':len(downloads),'no_large_raw_downloaded':True,'no_GPU_calls':True,'no_deletion':True,'no_failed_or_partial_unit_restarted':True,'no_science_reclassification_of_orphan_temp_or_probe':True,'independent_audit_source_sha256':summary['remote_script_sha256'],'generated_unix':time.time()}
+p=D/'FINAL_ARCHIVE_STOP_AUDIT.json';raw=(json.dumps(result,ensure_ascii=False,sort_keys=True,indent=2)+'\n').encode()
+with p.open('xb')as f:f.write(raw)
+print(json.dumps({'path':str(p),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'status':result['status'],'verified_published':{k:v for k,v in result['verified_published'].items()if k!='per_card'},'physical_archive':{k:v for k,v in result['physical_archive'].items()if k not in ['inventory_receipt','fresh_verification_note']},'uncommitted_files':len(uncommitted),'other_unreferenced_files':len(other)},ensure_ascii=False))

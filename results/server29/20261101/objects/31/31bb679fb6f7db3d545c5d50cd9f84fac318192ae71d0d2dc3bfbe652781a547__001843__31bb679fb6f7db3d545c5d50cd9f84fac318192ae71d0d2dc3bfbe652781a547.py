@@ -1,0 +1,1 @@
+lambda _cls, all_reduce_input, event: _tuple_new(_cls, (all_reduce_input, event))

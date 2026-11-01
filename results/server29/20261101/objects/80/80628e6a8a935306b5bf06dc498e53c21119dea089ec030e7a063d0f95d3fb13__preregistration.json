@@ -1,0 +1,196 @@
+{
+  "task": "QWEN_GDN_HADAMARD_DUAL_AXIS_INT8_FEASIBILITY_V1",
+  "phase": "CPU_ONLY",
+  "parameters": {
+    "seed": 20261015,
+    "shape": [
+      1,
+      32,
+      128,
+      128
+    ],
+    "batch_two_shape": [
+      2,
+      32,
+      128,
+      128
+    ],
+    "imbalance_log10_range": [
+      -3,
+      3
+    ],
+    "sparse_keep_probability": 0.01,
+    "outlier_value": 10000.0,
+    "tie_values": [
+      -127.0,
+      -126.5,
+      -2.5,
+      -1.5,
+      -0.5,
+      0.0,
+      0.5,
+      1.5,
+      2.5,
+      126.5,
+      127.0
+    ],
+    "coordinate": "Hadamard key coordinate; Hadamard case transforms a native synthetic state exactly once as H.T @ S",
+    "stress_cases_G3": {
+      "tiny": 1e-30,
+      "large": 10000000000.0,
+      "finite_fp32_max": 3.4028234663852886e+38
+    },
+    "metrics_zero_reference_relative_mse": 0.0,
+    "latency_warmup": 2,
+    "latency_repeats": 7,
+    "recurrent": {
+      "shape": [
+        2,
+        3,
+        128,
+        128
+      ],
+      "steps": [
+        1,
+        8,
+        32,
+        128
+      ],
+      "decay": 0.97,
+      "noise": 0.01,
+      "rank_one_amplitude": 0.001,
+      "seed": 20262015
+    }
+  },
+  "input_manifest": {
+    "normal": {
+      "shape": [
+        1,
+        32,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "sha256": "70d5404d40790b99137988593a76256d91349830fdab835739845ded3b645c5d",
+      "seed": 20261015
+    },
+    "hadamard_synthetic": {
+      "shape": [
+        1,
+        32,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "sha256": "56f525699826a95111665a8cbf0e35ce661934ffefd5cbdc55cd2a74e0b6dae0",
+      "seed": 20261016
+    },
+    "row_imbalance": {
+      "shape": [
+        1,
+        32,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "sha256": "e0e9c7f7c5f4f62a9e4f94771d770c7849df44b63fd807c4be9e7aee23a4b8f4",
+      "seed": 20261017
+    },
+    "column_imbalance": {
+      "shape": [
+        1,
+        32,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "sha256": "52daa180aaacd8bfdf3d85e3b74512c7a21910f1036fe35b355027111772c9d3",
+      "seed": 20261018
+    },
+    "sparse": {
+      "shape": [
+        1,
+        32,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "sha256": "1ccf4330a6f90d7293eb00fb20c209b800352416c613b2ad6aea8ed48dbec7c3",
+      "seed": 20261019
+    },
+    "zeros": {
+      "shape": [
+        1,
+        32,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "sha256": "5647f05ec18958947d32874eeb788fa396a05d0bab7c1b71f112ceb7e9b31eee",
+      "seed": 20261020
+    },
+    "single_outlier": {
+      "shape": [
+        1,
+        32,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "sha256": "88efec6dfb3e2dd052dff8001cd17095c527dfdac1fc75b9dfe240a43d35ce42",
+      "seed": 20261021
+    },
+    "signed_ties": {
+      "shape": [
+        1,
+        32,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "sha256": "726c00a816aa4ec397a1b71e76325391ea2269470d227264d706ffe947939bef",
+      "seed": 20261022
+    },
+    "batch_two": {
+      "shape": [
+        2,
+        32,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "sha256": "94be3cff3d7bd5f5a56ee820819695eccbab68b486975f4eca7e1323d291f8d2",
+      "seed": 20261023
+    }
+  },
+  "exact_parity": {
+    "G1": "torch.equal codes/scales/dequant; tolerance zero",
+    "G2": "torch.equal codes/FP16 scales/reconstruction; tolerance zero"
+  },
+  "operation_order": "DUAL sequential x/r then /c; final reconstruction (r*c)*z matching official fit_state; never x/(r*c)",
+  "scale_bounds": {
+    "half_min": 5.960464477539063e-08,
+    "half_max": 65504.0,
+    "canonical_epsilon": 1e-12,
+    "row_mean_min": 1e-20,
+    "LS_den_min": 1e-30,
+    "zero_denominator": "retain previous column scale"
+  },
+  "aggregation": "Every case reported; unweighted arithmetic mean across the nine preregistered synthetic cases descriptive only; no selection, inference or sign-test",
+  "first_failure": "Stop subsequent gates; preserve traceback and deterministic reproducer. New-code repairs only with history; no criteria relaxation.",
+  "code_sha256": {
+    "src/._dual_axis_codec.py": "1d8def3b6297557961f574486c91236164c139b25a222836efad67bac280ae14",
+    "src/._panel.py": "1d8def3b6297557961f574486c91236164c139b25a222836efad67bac280ae14",
+    "src/._references.py": "1d8def3b6297557961f574486c91236164c139b25a222836efad67bac280ae14",
+    "src/dual_axis_codec.py": "cd494824c242b2ce967dc470b50160aff25cf1776e1d45344d547a30fb6253e6",
+    "src/panel.py": "78063c713ea02a0d8a832b31687d39dcfa53a65688706c746d412098d53c9527",
+    "src/references.py": "e9b611e0f961dce27a21549018d25a00eede13a83c2a69ca8ca81984a1268dbf",
+    "tests/._test_codec.py": "1d8def3b6297557961f574486c91236164c139b25a222836efad67bac280ae14",
+    "tests/._test_recurrent_semantics.py": "1d8def3b6297557961f574486c91236164c139b25a222836efad67bac280ae14",
+    "tests/._test_reference_parity.py": "1d8def3b6297557961f574486c91236164c139b25a222836efad67bac280ae14",
+    "tests/test_codec.py": "89973edf696863f0a3030d5d9328320c44c06a5e0cdd5a465dc4f7a6c55a7ff6",
+    "tests/test_recurrent_semantics.py": "c49a796576f0d2d49580d0346e08e3846cd4bb2a3544e67ecc004be88b51f9b6",
+    "tests/test_reference_parity.py": "f7a269bc75d2c9b492f4c9a71ff707245202997f7170645eabfb5661351845a8"
+  },
+  "entry_sha256": "d1d3c860cbc5e69b12869adfe6fc4d5f070858b5308b4cd5e2236e9055fe4674"
+}

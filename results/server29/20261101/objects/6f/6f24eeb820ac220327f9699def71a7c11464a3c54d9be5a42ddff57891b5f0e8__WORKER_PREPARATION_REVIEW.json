@@ -1,0 +1,108 @@
+{
+  "status": "PASS_CPU_WORKER_PREPARATION_REVIEW_NOT_GPU_QUALIFICATION",
+  "task_id": "QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1",
+  "ALLOW_GPU_RESTORE": "NO",
+  "GPU_dispatches": 0,
+  "GPU_queries": 0,
+  "worker": {
+    "path": "/Users/pytenter/Documents/临时项目1/QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1/worker/restoration_worker.py",
+    "bytes": 22673,
+    "sha256": "1c67f7ef2c92e187e34c2144c67ee06210867f2b8fc611ee0ba45471923e58d0",
+    "review_snapshot": "/Users/pytenter/Documents/临时项目1/QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1/analysis/protocol/WORKER_REVIEW_FINAL_SOURCE.py.txt"
+  },
+  "CPU_mocks": {
+    "path": "/Users/pytenter/Documents/临时项目1/QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1/analysis/protocol/WORKER_PREPARATION_CPU_MOCKS.json",
+    "sha256": "edf55f2814c5f50d56c01d754d14d2c8468ef495432e0c73bd2fc3d56d670f86",
+    "checks_passed": 25
+  },
+  "findings_and_resolutions": [
+    {
+      "id": "W1",
+      "issue": "dict recurrent/conv state andmetadata omission",
+      "resolution": "RESOLVED_IN_REVIEWED_SOURCE",
+      "evidence": "Recursive walker and seven cache/metadata CPU fixtures; unknown metadata rejected."
+    },
+    {
+      "id": "W2",
+      "issue": "FP64 oracle reset from actual input eachstep",
+      "resolution": "RESOLVED_WITH_EXPLICIT_SCOPE",
+      "evidence": "Separate oracle_states per layer carries fromtoken0. It conditions on actualmodel activations/native normalized q/k; not independent whole-model FP64."
+    },
+    {
+      "id": "W3",
+      "issue": "First math failure metrics/raw lost",
+      "resolution": "RESOLVED_IN_REVIEWED_SOURCE",
+      "evidence": "Perhelper mathJSON saved andearliestfailure raw/metrics written before boundraise. Nonfinitehelper tensors are saved beforefailing."
+    },
+    {
+      "id": "W4",
+      "issue": "Native normalization not independentlybounded",
+      "resolution": "RESOLVED_WITH_FROZEN_TOLERANCE_SCOPE",
+      "evidence": "FP64 normalization reference from actual raw q/k bounded by numericplan. NoGPU execution or acceptance observed."
+    },
+    {
+      "id": "W5",
+      "issue": "Different pointers canoverlap storage",
+      "resolution": "RESOLVED_FOR_PERSISTENT_GDN_STATE_RANGE",
+      "evidence": "ContiguousGDNstate required andfullbyte address intervals reject overlaps. Alias topology retained in cache trace."
+    },
+    {
+      "id": "W6",
+      "issue": "Informal2GB rawestimate too small",
+      "resolution": "CORRECTED_IN_PROPOSED_PLAN_INTERFACE",
+      "evidence": "Two32token fullGDNstate traces alone3GiB; worker enforces bound plan.max_numeric_raw_bytes; root prepares8GiBraw/10GiBfree gate. ActualGPUfiles/capacityNOT_RUN."
+    },
+    {
+      "id": "W7",
+      "issue": "Fresh mismatch lacked quantitativefirstscalar",
+      "resolution": "RESOLVED_IN_REVIEWED_SOURCE_AND_CPU_FAKES",
+      "evidence": "PureCPU diff decoder reports layout/actualbytes/firstelement/maxabs/relative andmetadata/alias equality; signedzero bytefail retained evennumeric0."
+    },
+    {
+      "id": "W8",
+      "issue": "dictkey tuples becomeJSONlists andcause guaranteed falsefreshfailure",
+      "resolution": "RESOLVED_IN_REVIEWED_SOURCE_AND_CPU_ROUNDTRIP",
+      "evidence": "metadata keys nowlist/list, true JSON roundtripfixturePASS; prepatch reproduction retained WORKER_METADATA_JSON_ROUNDTRIP_BUG.json."
+    },
+    {
+      "id": "W9",
+      "issue": "Numeric OLD environment checked onlybeforemodelload",
+      "resolution": "RESOLVED_IN_REVIEWED_SOURCE",
+      "evidence": "assert_old_environment now runs aftermodelload andatPOSTFLIGHT; benchmarkOLD also checkedoutside timing."
+    }
+  ],
+  "benchmark": {
+    "source_sha256": "08b62839e88fa6bb49f10388a19e152e04beb0ab36b347ffcfdf2d9259e2ff8c",
+    "historical_source_unchanged": true,
+    "shim": "Copied OLD module path/global rebinding and library/environment admission outside original timedwindow; original matchedmain counters/finitegates/timing semantics remain."
+  },
+  "numeric_scope": {
+    "tokens": 32,
+    "prefill_tokens": 1,
+    "cached_tokens": 31,
+    "layers": 32,
+    "GDN_layers": 24,
+    "normalization_reference": "CPUFP64 normalization ofactualGPUBF16inputs, withplanbound; noGPUmathreplacement",
+    "state_reference": "CPUseparateFP64recurrence state carriedfromtoken0, conditioned onactualq/k/v/g/b activations",
+    "fresh": "SameGPUtwofresh logits/fullcache/input/cursor/metadata/alias bytecomparison; actualexecutionNOT_RUN",
+    "historical_OLD_exact_byte": "NOT_RETAINED_NOT_CLAIMED",
+    "comparison_to_NEW_STRICT": "NOT_REQUIRED"
+  },
+  "frozen_math_thresholds_expected": {
+    "state": "1e-5 +1e-4*maxabs(reference)",
+    "core": "0.001 +0.01*maxabs(reference)",
+    "normalization": "0.0001 +0.02*maxabs(reference)",
+    "status": "Prospective bounded32token engineeringqualification thresholds; noactualGPUPASS andnot importedhistoricalnumericalqualification."
+  },
+  "integration_boundaries": [
+    "Root-owned finalplan/controller/sourcefreeze/authorization and all selectedexternaldependency bindings must stillpass integratedCPU checks. Thisworkerreview isnot authorization orfullharness review.",
+    "Mappinglibrary checks acceptonly prospectivelybound actualpath/SHA/bytes andrecord fullmaps. Same-phase selectedsemanticlibraryset consistency acrossOLDfresh/benchmark must beverified inread-onlyreceipt comparison oritsdifferences preserved; pre/postfullmaps equality isnotrequired becauseallowedlazylibraries mayload.",
+    "NoactualCPU-Torch cacheimplementation executedbythissubagent. Cachewalker andrawdecode wereAST-extracted andtestedwithstdlib fakes, notGPUorTorch kernels.",
+    "NoGPUmathematical,finite,safety,fresh,TPS,release orOOMclaim hasbeen established. ParentobservedCPU-only Torchfixtures remainseparateevidence.",
+    "32tokenprefix qualification doesnotdirectly establishnumericalreproducibility overmeasuredpositions128..255, multi-tokenprefillnativecumsum,32K/81K,INT8orAIME.",
+    "Noevidenceofuninitializedreads isnot acompleteformalproofagainstallsuchreads. Source audit+finite/state/alias checks haveboundedobservation scope.",
+    "Native normalized q/k areused asrecurrence inputs, evenafterindependent normalizationbounds; this isnot anindependent whole-modelFP64 reference orfullmodelhistoricalexactbyteproof."
+  ],
+  "CPU_tool_history": "Initialfakefixture omitted torch.dtype/device while parent hadalready patchedarrays; toolerror preserved ininitialfindings. Serializationbugwas found andfixedbeforeanyGPU. No scientific/GPUfailure manufactured.",
+  "final_source_stable_check": true
+}

@@ -1,0 +1,1 @@
+lambda _cls, socket, is_verified: _tuple_new(_cls, (socket, is_verified))

@@ -1,0 +1,1 @@
+def foo(data, selectors): pass

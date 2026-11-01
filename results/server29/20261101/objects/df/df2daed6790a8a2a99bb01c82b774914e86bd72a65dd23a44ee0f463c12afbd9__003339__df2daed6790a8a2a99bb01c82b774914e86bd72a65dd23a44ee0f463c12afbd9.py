@@ -1,0 +1,1 @@
+lambda _cls, grouper, list: _tuple_new(_cls, (grouper, list))

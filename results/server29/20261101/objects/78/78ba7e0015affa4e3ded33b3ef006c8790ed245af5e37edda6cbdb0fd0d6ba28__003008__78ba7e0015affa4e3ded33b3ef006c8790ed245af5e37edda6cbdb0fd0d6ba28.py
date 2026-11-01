@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(name={self.name!r}, layout={self.layout!r}, inputs={self.inputs!r}, constant_args={self.constant_args!r}, kwargs={self.kwargs!r}, output_view={self.output_view!r}, python_kernel_name={self.python_kernel_name!r}, cpp_kernel_name={self.cpp_kernel_name!r}, ordered_kwargs_for_cpp_kernel={self.ordered_kwargs_for_cpp_kernel!r}, op_overload={self.op_overload!r}, arg_properties={self.arg_properties!r}, kwarg_properties={self.kwarg_properties!r}, unbacked_bindings={self.unbacked_bindings!r}, mutation_outputs={self.mutation_outputs!r})"
+ return __repr__

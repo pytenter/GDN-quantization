@@ -1,0 +1,27 @@
+AUTHORITATIVE STORAGE ACCOUNTING CORRECTION
+
+The previous STORAGE_CAPACITY_GATE double-counted SAFETY_MARGIN_BYTES because
+it was included in PEAK_REQUIRED_STORAGE_BYTES and was additionally subtracted
+from AVAILABLE_DATA_BYTES. This is an accounting-specification bug, not a
+scientific protocol change or safety-margin relaxation.
+
+BASE_PEAK_BYTES = SINGLE_DOCUMENT_DRIVE_BYTES + CAPTURE_TEMPORARY_BYTES
+  + ATOMIC_FINALIZE_OVERHEAD_BYTES + REPLAY_TEMPORARY_BYTES + RESULT_ARTIFACT_BYTES
+SAFETY_MARGIN_BYTES = max(5 GiB, 20% of BASE_PEAK_BYTES)
+PEAK_REQUIRED_STORAGE_BYTES = BASE_PEAK_BYTES + SAFETY_MARGIN_BYTES
+STORAGE_CAPACITY_GATE = PASS iff PEAK_REQUIRED_STORAGE_BYTES <= AVAILABLE_DATA_BYTES
+Do not subtract SAFETY_MARGIN_BYTES again.
+
+Previously audited required = 26090930176 bytes.
+Previously audited available = 30559752192 bytes.
+Correct gate = PASS; headroom = 4468822016 bytes.
+
+Preserve the previous FAIL_AND_STOP_STORAGE_CAPACITY report as historical
+evidence. Record correction append-only. Do not repeat selection or change the
+four documents, Native/H/C6R/C7, horizons, metrics, dtype, quantizer, recurrence
+semantics or release policy. Resume next unfinished engineering gate. If all
+remaining preregistered gates PASS, automatically continue sequential
+per-document capture -> four-anchor replay -> seal -> release. Any new
+engineering gate failure still FAIL_AND_STOP.
+
+Source: direct human user instruction in this chat, 2026-10-05.

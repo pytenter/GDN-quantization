@@ -1,0 +1,11 @@
+{
+  "task": "QWEN_HADAMARD_ERROR_INJECTION_FUNCTIONAL_ANALYSIS_V1",
+  "version": "v2-pilot-parity-shape",
+  "trigger": "Initial zero-injection pilot failed output-projection absolute parity at GDN layer 0 (maximum 0.03125); no formal comparison was performed.",
+  "diagnosis": "The pilot's manual out_proj call had shape [T, hidden] whereas the frozen model calls it with [3, T, hidden]. Different GEMM execution shapes can yield BF16 rounding differences even for the same FP values.",
+  "repair": "Evaluate norm/gate and out_proj for all three injected branches together using the model's original batch dimensions and unchanged module weights/forward implementations.",
+  "preservation": "Remote run_injection.py and analysis/pilot.log retain the failed v1 source and log. Run v2 from run_injection_v2.py with analysis/pilot_v2.log.",
+  "scientific_semantics": "Unchanged; same FP state, FP query/gate, observed Identity/Hadamard native-basis error vectors, and frozen downstream modules.",
+  "new_generation": false,
+  "formal_comparison_started": false
+}

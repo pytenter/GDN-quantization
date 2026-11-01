@@ -1,0 +1,1 @@
+lambda _cls, values, counts: _tuple_new(_cls, (values, counts))

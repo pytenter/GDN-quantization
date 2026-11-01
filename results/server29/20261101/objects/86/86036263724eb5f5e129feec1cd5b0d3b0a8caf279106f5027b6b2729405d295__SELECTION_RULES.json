@@ -1,0 +1,40 @@
+{
+  "task_id": "QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1",
+  "frozen_before_new_dataset_access": true,
+  "utc": "2026-10-15T09:08:38.909702+00:00",
+  "seed": 20261015,
+  "pool": "Only already legally cached LongBench RepoBench-P test Arrow and RepoBench-P_e test JSONL; no network fetch",
+  "raw_text": "Exact UTF-8 context field only, no normalization, no query/answer concatenation",
+  "dedup": "Deduplicate equal raw SHA256 across sources; reject duplicate ID conflicts; source preference P Arrow then P_e JSONL, source row ascending",
+  "exclusions": "Union of actual historical IDs/raw SHA in old EXCLUSION_REGISTRY and old canary runtime SELECTION_EXCLUSION_REGISTRY, all 8 selected NoInflation docs, old 128 canary docs, known human Ling IDs",
+  "eligibility": "Full exact context tokenized by frozen Qwen official tokenizer with add_special_tokens=False and no chat template; at least32769 tokens; no truncation before eligibility",
+  "order": [
+    "raw_text_sha256 ascending",
+    "SHA256(str(seed)+\"|\"+document_id) ascending",
+    "document_id ascending"
+  ],
+  "seed_usage": "Only deterministic tie-break; raw SHA ties are eliminated by dedup, no sampling RNG",
+  "project_rule": "If all eligible candidates have reliable explicit repository/project IDs in snapshot schema, take first SHA-ranked candidate then first candidate with a different project; if none exists, next SHA-ranked. If reliable project identity is absent/incomplete, no inferred project labels; choose first two SHA-ranked eligible unique raw documents and report UNKNOWN.",
+  "requested_n": 2,
+  "consumed_input": "input_ids[:32768], token_cursor t consumes ids[t]; scoring after ids[t] predicts ids[t+1]; retain first32769 including next target",
+  "score_positions": {
+    "formula": "8192+64*k",
+    "k_range": [
+      0,
+      383
+    ],
+    "count": 384
+  },
+  "outcome_blind": true,
+  "not_used_for_selection": [
+    "row imbalance",
+    "codec errors",
+    "Dual-M benefit",
+    "model outputs",
+    "KL",
+    "mechanism metrics"
+  ],
+  "insufficient_candidates": "STOP; do not shorten length or replace pool/rule",
+  "GPU_allowed_for_selection": false,
+  "model_weights_loaded": false
+}

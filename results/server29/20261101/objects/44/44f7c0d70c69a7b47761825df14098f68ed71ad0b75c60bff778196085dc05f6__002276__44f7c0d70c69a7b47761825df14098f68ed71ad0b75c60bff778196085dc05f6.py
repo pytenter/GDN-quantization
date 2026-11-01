@@ -1,0 +1,25 @@
+def __create_fn__(_type__fx_graph_cache_key, _type__time_taken_ns, _type_current_callable, _type_cache_key, _type_source_code, _type_cache_linemap, _type_device_types, _type_device_idxs, _type_mutated_inputs, _type_mutated_input_idxs, _type_constants, _type_frozen_param_names, _type_torchbind_constants, _type_output_strides, _type_disabled_cudagraphs_reason, _type_metrics_deltas, _type_counter_deltas, _type_guards_expr, _type_cudagraph_info, _type_fx_kwargs, _type_inputs_to_check, _type_boxed_forward_device_index, _type__boxed_call, _type__triton_bundle, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt__boxed_call, _dflt__triton_bundle, _return_type):
+ def __init__(self,current_callable:_type_current_callable,cache_key:_type_cache_key,source_code:_type_source_code,cache_linemap:_type_cache_linemap,device_types:_type_device_types,device_idxs:_type_device_idxs,mutated_inputs:_type_mutated_inputs,mutated_input_idxs:_type_mutated_input_idxs,constants:_type_constants,frozen_param_names:_type_frozen_param_names,torchbind_constants:_type_torchbind_constants,output_strides:_type_output_strides,disabled_cudagraphs_reason:_type_disabled_cudagraphs_reason,metrics_deltas:_type_metrics_deltas,counter_deltas:_type_counter_deltas,guards_expr:_type_guards_expr,cudagraph_info:_type_cudagraph_info,fx_kwargs:_type_fx_kwargs,inputs_to_check:_type_inputs_to_check,boxed_forward_device_index:_type_boxed_forward_device_index,_boxed_call:_type__boxed_call=_dflt__boxed_call,_triton_bundle:_type__triton_bundle=_dflt__triton_bundle)->_return_type:
+  self.current_callable=current_callable
+  self.cache_key=cache_key
+  self.source_code=source_code
+  self.cache_linemap=cache_linemap
+  self.device_types=device_types
+  self.device_idxs=device_idxs
+  self.mutated_inputs=mutated_inputs
+  self.mutated_input_idxs=mutated_input_idxs
+  self.constants=constants
+  self.frozen_param_names=frozen_param_names
+  self.torchbind_constants=torchbind_constants
+  self.output_strides=output_strides
+  self.disabled_cudagraphs_reason=disabled_cudagraphs_reason
+  self.metrics_deltas=metrics_deltas
+  self.counter_deltas=counter_deltas
+  self.guards_expr=guards_expr
+  self.cudagraph_info=cudagraph_info
+  self.fx_kwargs=fx_kwargs
+  self.inputs_to_check=inputs_to_check
+  self.boxed_forward_device_index=boxed_forward_device_index
+  self._boxed_call=_boxed_call
+  self._triton_bundle=_triton_bundle
+ return __init__

@@ -1,0 +1,7 @@
+def __create_fn__(_type_input_qspec_map, _type_output_qspec, _type_allow_implicit_sharing, _type__annotated, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_input_qspec_map, _dflt_output_qspec, _dflt_allow_implicit_sharing, _dflt__annotated, _return_type):
+ def __init__(self,input_qspec_map:_type_input_qspec_map=_HAS_DEFAULT_FACTORY,output_qspec:_type_output_qspec=_dflt_output_qspec,allow_implicit_sharing:_type_allow_implicit_sharing=_dflt_allow_implicit_sharing,_annotated:_type__annotated=_dflt__annotated)->_return_type:
+  self.input_qspec_map=_dflt_input_qspec_map() if input_qspec_map is _HAS_DEFAULT_FACTORY else input_qspec_map
+  self.output_qspec=output_qspec
+  self.allow_implicit_sharing=allow_implicit_sharing
+  self._annotated=_annotated
+ return __init__

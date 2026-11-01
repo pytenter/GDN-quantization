@@ -1,0 +1,845 @@
+# CODEX TASK
+# LING_LONG_HORIZON_PROPAGATION_CONFIRM_V1
+
+EXPERIMENT =
+LING_LONG_HORIZON_PROPAGATION_CONFIRM_V1
+
+PARENT =
+LING_PROPAGATION_SURROGATE_VALIDATION_V1
+
+EVIDENCE_TYPE =
+PROSPECTIVE_HORIZON_SPECIFIC_CONFIRMATION_FROM_PRIOR_DISCOVERY
+
+============================================================
+0. SCIENTIFIC STATUS THAT MUST NOT BE REWRITTEN
+============================================================
+
+The parent experiment is already complete and its verdict is frozen:
+
+LING_PROPAGATION_SURROGATE_VALIDATION_V1
+
+DISCOVERY_COMPLETE = 64/64
+
+Parent discovery medians across all 12 panels:
+
+  J_INJ   = 0.8500000000000001
+  J_DECAY = 0.8352941176470587
+  J_PROP  = 0.7397058823529412
+
+Parent 32768-token medians:
+
+  J_INJ   = 0.597059
+  J_DECAY = 0.611765
+  J_PROP  = 0.694118
+
+Parent J_PROP 32768 pairwise concordance:
+
+  0.779167
+
+Parent advancement result:
+
+  J_DECAY better than J_INJ = 5/12
+  J_PROP  better than J_INJ = 6/12
+
+  DISCOVERY_SURROGATE_GATE = FAIL
+  SELECTED_PROPAGATION_SURROGATE = NONE
+  CONFIRMATION_COMPLETE = 0/64
+
+The following parent verdict MUST remain unchanged:
+
+  PRIMARY_NEXT_STEP_CATEGORY =
+  STOP_PROPAGATION_OBJECTIVE_TRAINING
+
+Do NOT edit, reinterpret, or overwrite the parent experiment.
+
+This new experiment exists because the FAILED parent discovery
+generated one NEW hypothesis:
+
+> Full-transition propagation information may become useful specifically
+> in the genuinely long-horizon regime, even though it did not provide
+> stable improvement across 2K/8K/32K panels.
+
+The new hypothesis is:
+
+  At T = 32768 only,
+  J_PROP ranks J_ACC more reliably than J_INJ.
+
+This hypothesis did NOT pass the original global parent gate.
+It now receives a separate prospective test on untouched holdout docs.
+
+============================================================
+1. ABSOLUTE SCOPE
+============================================================
+
+Allowed:
+
+  NEW_RECURRENT_REPLAY = YES
+  NEW_GPU_MEASUREMENT = YES
+  NEW_ANALYSIS = YES
+
+Forbidden:
+
+  NEW_TRAINING = NO
+  NEW_OPTIMIZER_STEP = 0
+  NEW_AIME_GENERATION = 0
+  NEW_FREE_GENERATION = 0
+  NEW_ROTATION_LEARNING = NO
+  NEW_ROTATION_SELECTION = NO
+  NEW_DOCUMENT_SELECTION = NO
+  NEW_SURROGATE_SELECTION = NO
+  NEW_METRIC_FAMILY = NO
+
+Do NOT:
+
+- train L9;
+- modify L7R/L8;
+- modify any frozen rotation;
+- introduce observability/readout/KL/margin metrics;
+- add a new propagation formula;
+- revisit 2K/8K as advancement targets;
+- change thresholds after viewing data.
+
+FINAL_ACTION is always STOP.
+
+============================================================
+2. REUSE THE UNTOUCHED CONFIRMATION DOCS
+============================================================
+
+The parent preregistration already froze:
+
+  4 Discovery docs
+  4 Confirmation docs
+
+Use EXACTLY the four parent-frozen Confirmation docs.
+
+Do not select replacements.
+
+Before any rotation-conditioned measurement, verify:
+
+  PARENT_CONFIRMATION_COMPLETE = 0/64
+
+and verify that no rotation-conditioned scientific results for those
+four docs were previously generated or read.
+
+Allowed prior objects:
+
+- immutable token IDs;
+- document identity;
+- document SHA;
+- frozen FP transition trace if it was prepared without
+  rotation-conditioned treatment results.
+
+If any parent confirmation treatment result already exists and was
+scientifically inspected:
+
+  CONFIRMATION_CLEAN_HOLDOUT_GATE = FAIL
+  FINAL_ACTION = STOP
+
+Otherwise:
+
+  CONFIRMATION_CLEAN_HOLDOUT_GATE = PASS
+
+============================================================
+3. REUSE THE EXACT PARENT ROTATION BANK
+============================================================
+
+Reuse the exact same 16-condition frozen rotation bank from:
+
+  LING_PROPAGATION_SURROGATE_VALIDATION_V1
+
+Do NOT:
+
+- add rotations;
+- remove rotations;
+- re-interpolate rotations;
+- change order;
+- regenerate equivalent matrices from new parameters.
+
+Verify exact per-condition SHA256 and orthogonality against the parent
+manifest.
+
+Required:
+
+  ROTATION_BANK_COUNT = 16
+  PARENT_ROTATION_BANK_IDENTITY_GATE = PASS
+
+============================================================
+4. REUSE THE EXACT PARENT SCIENTIFIC IMPLEMENTATION
+============================================================
+
+Reuse unchanged:
+
+- deterministic runtime;
+- KDA transition;
+- zero-write transition;
+- native/physical basis;
+- INT8-R128 QDQ implementation;
+- normalization;
+- eps;
+- J_INJ definition;
+- J_PROP definition;
+- Rademacher sign generator;
+- 8-probe schedule;
+- token indexing;
+- recurrent writeback semantics;
+- teacher-forced frozen-transition semantics.
+
+Required:
+
+  PARENT_RUNTIME_IDENTITY_GATE = PASS
+  PARENT_KDA_TRANSITION_IDENTITY_GATE = PASS
+  PARENT_QDQ_IDENTITY_GATE = PASS
+  PARENT_JINJ_DEFINITION_IDENTITY_GATE = PASS
+  PARENT_JPROP_DEFINITION_IDENTITY_GATE = PASS
+
+Do NOT re-derive or improve J_PROP.
+
+This is a confirmation of the exact parent J_PROP.
+
+============================================================
+5. SYSTEM BOUNDARY
+============================================================
+
+Keep the exact parent boundary:
+
+  ON_POLICY_WITH_RESPECT_TO_RECURRENT_STATE_AND_QDQ
+  UNDER_A_FROZEN_TEACHER_FORCED_TRANSITION_TRACE
+
+Each rotation:
+
+- uses its own persistent INT8 recurrent writeback;
+- therefore develops its own recurrent-state distribution;
+- shares the same frozen token/upstream transition trace for that doc.
+
+Do NOT call this full autoregressive on-policy evaluation.
+
+============================================================
+6. HARDWARE
+============================================================
+
+Use:
+
+  2 × RTX4090
+
+Use the same deterministic runtime as the parent.
+
+Assign:
+
+  confirmation doc 0 → GPU0
+  confirmation doc 1 → GPU1
+  confirmation doc 2 → GPU0
+  confirmation doc 3 → GPU1
+
+or reuse the exact parent deterministic doc→GPU rule if it was already
+frozen.
+
+All 16 rotations of the same document must remain on the same physical GPU.
+
+Record GPU UUIDs.
+
+============================================================
+7. HORIZON
+============================================================
+
+This new experiment has ONE primary horizon:
+
+  T = 32768
+
+Run each document × rotation once to 32768.
+
+Do NOT use 2048 or 8192 for advancement.
+
+For efficiency:
+
+- it is acceptable not to aggregate J_PROP/J_INJ ranking panels at
+  2K or 8K;
+- implementation health counters may still exist;
+- they must not influence the verdict.
+
+The scientific hypothesis is explicitly 32K-specific.
+
+============================================================
+8. STATISTICAL UNIT
+============================================================
+
+There are:
+
+  4 fresh holdout documents
+  ×
+  16 frozen rotations
+
+= 64 replay units.
+
+For each document independently:
+
+rank the 16 rotations using:
+
+  J_INJ(32768)
+  J_PROP(32768)
+
+against:
+
+  J_ACC(32768)
+
+The statistical panel unit is:
+
+  one document across 16 rotations.
+
+Do NOT pool all 64 rotation-document points into one pseudo-independent
+correlation for the primary verdict.
+
+============================================================
+9. PRIMARY METRICS
+============================================================
+
+Primary baseline:
+
+  J_INJ
+
+Primary treatment surrogate:
+
+  J_PROP
+
+Ground truth:
+
+  J_ACC
+
+Use their EXACT parent definitions.
+
+J_DECAY is NOT a candidate in this experiment.
+
+Reason:
+
+The parent already showed no stable decay-only advantage, and the new
+hypothesis concerns the 32K full-transition J_PROP signal.
+
+If J_DECAY can be obtained essentially for free from existing code, it
+may be saved as:
+
+  ANCILLARY_ONLY
+
+but it must NOT affect any gate or candidate selection.
+
+============================================================
+10. PER-DOCUMENT STATISTICS
+============================================================
+
+For each of the four untouched confirmation docs calculate across the
+16 rotations:
+
+  rho_INJ[d]
+    =
+  Spearman(J_INJ, J_ACC)
+
+  rho_PROP[d]
+    =
+  Spearman(J_PROP, J_ACC)
+
+  delta_rho[d]
+    =
+  rho_PROP[d] - rho_INJ[d]
+
+Also calculate:
+
+  concordance_INJ[d]
+
+  concordance_PROP[d]
+
+using the exact parent pairwise-order definition.
+
+Report all four documents separately.
+
+Do not hide negative or weak documents.
+
+============================================================
+11. PROSPECTIVE CONFIRMATION GATE
+============================================================
+
+The new long-horizon hypothesis is SUPPORTED only if ALL four rules pass.
+
+Rule A — paired superiority:
+
+  rho_PROP[d] > rho_INJ[d]
+
+in at least:
+
+  3 / 4 documents
+
+Rule B — positive absolute association:
+
+  rho_PROP[d] > 0
+
+in at least:
+
+  3 / 4 documents
+
+Rule C — effect strength:
+
+  median_d rho_PROP[d] >= 0.50
+
+Rule D — ordering quality:
+
+  median_d concordance_PROP[d] >= 0.65
+
+These rules intentionally reuse the relevant long-horizon components
+of the parent preregistration as much as possible.
+
+Do NOT invent p-values.
+
+Do NOT alter the thresholds.
+
+============================================================
+12. VERDICT
+============================================================
+
+If all A–D pass:
+
+  LONG_HORIZON_PROPAGATION_CONFIRMATION = SUPPORTED
+
+If any fail:
+
+  LONG_HORIZON_PROPAGATION_CONFIRMATION = NOT_SUPPORTED
+
+There is no:
+
+  DIRECTIONALLY_SUPPORTIVE_BUT_UNDERPOWERED
+
+category for this experiment.
+
+The small n=4 is handled by the deterministic advancement rules,
+not by post-hoc interpretation.
+
+============================================================
+13. IMPORTANT SCIENTIFIC INTERPRETATION
+============================================================
+
+If SUPPORTED, allowed conclusion:
+
+> On four previously untouched long-context documents, the exact
+> full-transition J_PROP surrogate prospectively outperformed raw J_INJ
+> for ranking 32K accumulated recurrent-state distortion across the
+> frozen 16-rotation bank.
+
+This DOES NOT overturn the parent failure.
+
+The correct combined statement would be:
+
+> Propagation awareness did not provide a stable advantage across all
+> 2K/8K/32K panels in the parent experiment, but a separately tested
+> 32K-specific advantage replicated on untouched holdout documents.
+
+Forbidden claims:
+
+- J_PROP is universally superior;
+- J_INJ is useless;
+- propagation-aware training improves reasoning;
+- L9 is validated;
+- AIME will improve.
+
+============================================================
+14. IF NOT SUPPORTED
+============================================================
+
+If the new confirmation fails:
+
+  SIMPLE_PROPAGATION_ENERGY_ROUTE =
+  NOT_SUPPORTED_AT_32K
+
+  NEW_TRAINING_AUTHORIZED = NO
+  AIME_AUTHORIZED = NO
+
+  PRIMARY_NEXT_STEP_CATEGORY =
+  STOP_SIMPLE_PROPAGATION_ENERGY
+
+Do not run:
+
+- energy-coherence decomposition;
+- observability metric;
+- L9;
+- new 64K experiment
+
+inside this task.
+
+STOP.
+
+============================================================
+15. IF SUPPORTED
+============================================================
+
+Even if SUPPORTED:
+
+  NEW_TRAINING_AUTHORIZED = NO
+  AIME_AUTHORIZED = NO
+
+Do NOT train L9.
+
+Instead create ONLY a proposal:
+
+  proposals/LING_ERROR_COHERENCE_DIAGNOSIS_V1.json
+
+The proposed next mechanism question is:
+
+> Why does J_PROP rank long-horizon error better at 32K while its
+> magnitude explains only a small fraction of J_ACC?
+
+The next experiment should examine the exact one-step energy budget:
+
+  e_{t+1}
+    =
+  M_t e_t + eta_{t+1}
+
+and therefore:
+
+  ||e_{t+1}||^2
+    =
+  ||M_t e_t||^2
+    +
+  ||eta_{t+1}||^2
+    +
+  2 <M_t e_t, eta_{t+1}>
+
+The proposal should identify three components:
+
+  HISTORY_ENERGY
+    =
+  ||M_t e_t||^2
+
+  INJECTION_ENERGY
+    =
+  ||eta_t||^2
+
+  ALIGNMENT_TERM
+    =
+  2 <M_t e_t, eta_t>
+
+The proposal must state:
+
+  - this would be a NEW exploratory mechanism hypothesis;
+  - it must not reuse the current confirmation docs as future
+    confirmatory evidence;
+  - no training is authorized.
+
+Do NOT execute that proposal here.
+
+============================================================
+16. WHY THE ALIGNMENT TERM MATTERS
+============================================================
+
+The proposal may explain:
+
+If:
+
+  <M_t e_t, eta_t> > 0
+
+then the new quantization injection reinforces already accumulated error.
+
+If:
+
+  <M_t e_t, eta_t> < 0
+
+then the new injection partially cancels existing error.
+
+This is only a future hypothesis.
+
+Do NOT compute or inspect this term before the primary 32K confirmation
+verdict is sealed.
+
+This prevents the current clean holdout from becoming a metric-search set
+before the confirmation is finished.
+
+============================================================
+17. RAW FREEZE
+============================================================
+
+Execution order:
+
+  64/64 units complete
+        ↓
+  freeze all raw scientific outputs
+        ↓
+  emit SHA256 manifest
+        ↓
+  only then aggregate correlations/concordances
+        ↓
+  seal verdict
+
+No interim scientific ranking may trigger:
+
+- retries;
+- rotation removal;
+- document removal;
+- metric modification.
+
+============================================================
+18. RESUME / FAILURE POLICY
+============================================================
+
+A completed:
+
+  document × rotation
+
+unit is immutable.
+
+If a worker crashes:
+
+- resume only incomplete units;
+- do not rerun completed units;
+- preserve crash evidence.
+
+Scientific semantic/runtime failure after measurement begins:
+
+  STOP
+
+Do not alter protocol and continue.
+
+============================================================
+19. PREMEASUREMENT FREEZE
+============================================================
+
+Before the first rotation-conditioned confirmation replay:
+
+freeze:
+
+- exact four parent confirmation docs;
+- exact token SHA;
+- exact 16-condition rotation bank;
+- exact J_INJ/J_PROP/J_ACC definitions;
+- exact 8-probe sign schedule;
+- exact runtime;
+- exact 32768 horizon;
+- exact four advancement rules;
+- doc→GPU assignment.
+
+Require:
+
+  git diff --check = PASS
+  scientific worktree = CLEAN
+
+Record:
+
+  PREMEASUREMENT_COMMIT_SHA
+
+============================================================
+20. REQUIRED OUTPUTS
+============================================================
+
+At minimum:
+
+protocol/
+  preregistration.json
+  inherited_confirmation_docs.json
+  inherited_rotation_bank.json
+  metric_identity.json
+
+provenance/
+  parent_identity.json
+  runtime_identity.json
+  clean_holdout_audit.json
+  hardware_identity.json
+  PREMEASUREMENT_SHA256SUMS
+
+raw/
+  confirmation/
+
+analysis/
+  per_document_32k_metrics.csv
+  32k_summary.json
+  pairwise_concordance.csv
+
+proposals/
+  LING_ERROR_COHERENCE_DIAGNOSIS_V1.json
+    ONLY IF SUPPORTED
+
+FINAL_REPORT.md
+FINAL_SHA256SUMS
+
+============================================================
+21. FINAL REPORT VERDICT BLOCK
+============================================================
+
+FINAL_REPORT.md must begin with:
+
+EXPERIMENT =
+LING_LONG_HORIZON_PROPAGATION_CONFIRM_V1
+
+PARENT_EXPERIMENT =
+LING_PROPAGATION_SURROGATE_VALIDATION_V1
+
+EVIDENCE_TYPE =
+PROSPECTIVE_HORIZON_SPECIFIC_CONFIRMATION_FROM_PRIOR_DISCOVERY
+
+PARENT_DISCOVERY_VERDICT =
+FAIL_PRESERVED
+
+NEW_TRAINING =
+NO
+
+NEW_AIME_GENERATION =
+0
+
+CONFIRMATION_CLEAN_HOLDOUT_GATE =
+PASS/FAIL
+
+PARENT_ROTATION_BANK_IDENTITY_GATE =
+PASS/FAIL
+
+PARENT_RUNTIME_IDENTITY_GATE =
+PASS/FAIL
+
+PARENT_KDA_TRANSITION_IDENTITY_GATE =
+PASS/FAIL
+
+PARENT_QDQ_IDENTITY_GATE =
+PASS/FAIL
+
+CONFIRMATION_COMPLETE =
+.../64
+
+PRIMARY_HORIZON =
+32768
+
+DOC0_RHO_JINJ =
+...
+
+DOC0_RHO_JPROP =
+...
+
+DOC0_DELTA_RHO =
+...
+
+DOC1_RHO_JINJ =
+...
+
+DOC1_RHO_JPROP =
+...
+
+DOC1_DELTA_RHO =
+...
+
+DOC2_RHO_JINJ =
+...
+
+DOC2_RHO_JPROP =
+...
+
+DOC2_DELTA_RHO =
+...
+
+DOC3_RHO_JINJ =
+...
+
+DOC3_RHO_JPROP =
+...
+
+DOC3_DELTA_RHO =
+...
+
+JPROP_BEATS_JINJ_COUNT =
+.../4
+
+JPROP_POSITIVE_RHO_COUNT =
+.../4
+
+MEDIAN_JPROP_RHO =
+...
+
+MEDIAN_JPROP_CONCORDANCE =
+...
+
+LONG_HORIZON_PROPAGATION_CONFIRMATION =
+SUPPORTED /
+NOT_SUPPORTED /
+NOT_EVALUATED
+
+PARENT_GLOBAL_PROPAGATION_GATE =
+FAIL_PRESERVED
+
+REASONING_IMPROVEMENT =
+NOT_EVALUATED
+
+NEW_TRAINING_AUTHORIZED =
+NO
+
+AIME_AUTHORIZED =
+NO
+
+PRIMARY_NEXT_STEP_CATEGORY =
+PREREGISTER_ERROR_COHERENCE_DIAGNOSIS /
+STOP_SIMPLE_PROPAGATION_ENERGY
+
+FINAL_ACTION =
+STOP
+
+============================================================
+22. FINAL QUESTIONS
+============================================================
+
+Explicitly answer:
+
+Q1.
+On the four untouched parent holdout docs, does J_PROP beat J_INJ at
+32768 in at least 3/4 documents?
+
+Q2.
+Is the median J_PROP Spearman >= 0.50?
+
+Q3.
+Is the median J_PROP pairwise concordance >= 0.65?
+
+Q4.
+Does the long-horizon signal independently replicate?
+
+Q5.
+Does this change the parent V1 global verdict?
+
+Required answer:
+
+  NO.
+  Parent V1 remains FAIL.
+
+Q6.
+Does this justify L9 training?
+
+Required answer:
+
+  NO.
+  Even if supported, the next step is mechanism decomposition,
+  not training.
+
+Q7.
+Does this establish reasoning improvement?
+
+Required answer:
+
+  NO.
+
+============================================================
+23. ABSOLUTE RULE
+============================================================
+
+This experiment is NOT a rescue analysis of the failed parent.
+
+It is a new prospective test of one hypothesis generated by the failed
+parent discovery:
+
+  "Propagation information may become specifically useful at 32K."
+
+The old experiment stays failed regardless of this result.
+
+If the 32K hypothesis does not replicate on the untouched docs:
+
+  drop simple propagation-energy as the next training objective.
+
+If it does replicate:
+
+  do NOT train yet.
+
+  next investigate whether long-horizon accumulation is controlled by:
+
+    persistent history energy
+    +
+    new injection energy
+    +
+    cross-time alignment/cancellation.
+
+Proceed now.

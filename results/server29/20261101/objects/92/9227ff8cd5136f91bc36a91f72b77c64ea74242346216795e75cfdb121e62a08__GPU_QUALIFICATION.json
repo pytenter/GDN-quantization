@@ -1,0 +1,179 @@
+{
+  "task_id": "QWEN_GDN_AIME26_STEPQUANT6_VS_H_DUALM_2SEED_V1",
+  "RUN_ID": "AIME26_STEP6_HDUALM_REPAIR_20261017_V1",
+  "status": "PASS",
+  "scope": "TWELVE_BOUNDED_PRE_FORMAL_GATES_ONLY",
+  "gates": [
+    {
+      "number": 1,
+      "name": "Official STEPQuant codec reference parity and actual full9B Plan",
+      "status": "PASS",
+      "evidence": {
+        "calibration/PLAN_CPU_QUALIFICATION.json": "ca4a08c3772ec6d9c1232ef637bd6f89b944292a38bc937e921214ff7b05a3a8",
+        "independent_review/CALIBRATION_PLAN_INDEPENDENT_REVIEW.json": "8be36e38098214a5bfba6f655e02dc09997a0e256df0ff9ba2d59725f393f162",
+        "independent_review/CANARY_STAGE_INDEPENDENT_REVIEW.json": "d157250745e5cd093ca92732c12d23fbc41d9d2d31aba9e3d829d7e149afe469"
+      },
+      "scope": "Actual32x2048 nonAIME calibration; official f2deac58131219e6aecff274f8eabe88e08d2e3c fullPlan24layers/768heads. ActualGPU codes/scales/pivots exact; decode uses pre-frozen official atol=rtol1e-6, not byte-equivalence to fit_state."
+    },
+    {
+      "number": 2,
+      "name": "Original H128 and Dual-M reference parity",
+      "status": "PASS",
+      "evidence": {
+        "RUNTIME_CPU_CLOSURE_FINAL.json": "4c197c880c496cf45db08a2523308aa581b44bcd51dc96f950e9fb3ff73faac8",
+        "H_DUAL_M_IDENTITY.json": "bb0482f0b9cb1e084d09ba3d1f3e5964105264f1e9519f84d72ced76f68928a5",
+        "independent_review/CANARY_STAGE_INDEPENDENT_REVIEW.json": "d157250745e5cd093ca92732c12d23fbc41d9d2d31aba9e3d829d7e149afe469"
+      },
+      "scope": "Original columnLS/finalencode/FP16floor/clip/round codec, H key-coordinate path. Actual GPU reference parity and3072 H calls per128tokens. Historical compensated whole-model path is not claimed identical."
+    },
+    {
+      "number": 3,
+      "name": "Common original native GDN integration",
+      "status": "PASS",
+      "evidence": {
+        "RUNTIME_BINDING_CONTRACT.md": "42d111c740f1ebd945e00420c7ed8e6176f4db9e70317f51d8e26ad2c82ce0b6",
+        "independent_review/CANARY_STAGE_INDEPENDENT_REVIEW.json": "d157250745e5cd093ca92732c12d23fbc41d9d2d31aba9e3d829d7e149afe469",
+        "independent_review/FRESH_STAGE_INDEPENDENT_REVIEW.json": "ba054f21bd7e1f323a19f8ea8e0a00eaeea8901a601661c568ecc735d0df619c"
+      },
+      "scope": "Both use unchanged original90d native chunk/recurrent fallback and same BF16 model; actual closure metadata and traced prefill/decode boundaries verified. No alternate recurrence or unquantized state shadow."
+    },
+    {
+      "number": 4,
+      "name": "Actual per-token QDQ and writeback",
+      "status": "PASS",
+      "evidence": {
+        "independent_review/CANARY_STAGE_INDEPENDENT_REVIEW.json": "d157250745e5cd093ca92732c12d23fbc41d9d2d31aba9e3d829d7e149afe469",
+        "independent_review/FRESH_STAGE_INDEPENDENT_REVIEW.json": "ba054f21bd7e1f323a19f8ea8e0a00eaeea8901a601661c568ecc735d0df619c"
+      },
+      "scope": "Each actual128-token record has128QDQcalls and3072layerwritebacks, immediate postprefill plus127decode updates; same QDQ source used formal."
+    },
+    {
+      "number": 5,
+      "name": "Next native kernel consumes written state",
+      "status": "PASS",
+      "evidence": {
+        "independent_review/CANARY_STAGE_INDEPENDENT_REVIEW.json": "d157250745e5cd093ca92732c12d23fbc41d9d2d31aba9e3d829d7e149afe469",
+        "independent_review/FRESH_STAGE_INDEPENDENT_REVIEW.json": "ba054f21bd7e1f323a19f8ea8e0a00eaeea8901a601661c568ecc735d0df619c"
+      },
+      "scope": "3048 actual perlayer transitions per128record byte-SHA checked, decoded/post/cache identical. Formal retains object/storage/availableversion/count checks, not per-token CPU tensor hashing."
+    },
+    {
+      "number": 6,
+      "name": "FP16 scales and pivots safety",
+      "status": "PASS",
+      "evidence": {
+        "independent_review/CANARY_STAGE_INDEPENDENT_REVIEW.json": "d157250745e5cd093ca92732c12d23fbc41d9d2d31aba9e3d829d7e149afe469",
+        "independent_review/FRESH_STAGE_INDEPENDENT_REVIEW.json": "ba054f21bd7e1f323a19f8ea8e0a00eaeea8901a601661c568ecc735d0df619c"
+      },
+      "scope": "Observed finite positive FP16 scales/pivots and zero affected-energy/relativeMSE maxima in prefix. STEP columnfloor524288 per128record retained; no no-floor claim. Formal source keeps finite checks and frozen perlayer/head FP16 risk STOP (affectedenergy>=1e-4 and relativeMSE>1e-2), not a proven longhorizon guarantee."
+    },
+    {
+      "number": 7,
+      "name": "128-token fresh-process numeric qualification",
+      "status": "PASS",
+      "evidence": {
+        "independent_review/FRESH_STAGE_INDEPENDENT_REVIEW.json": "ba054f21bd7e1f323a19f8ea8e0a00eaeea8901a601661c568ecc735d0df619c"
+      },
+      "scope": "All4GPUs x bothmethods x two independent processes; same-GPU entire128tokens, initial/finalGenerator, sampling/H/forward/QDQ trace exact. PREFIX_ONLY; no claim81920numericproof or universal CUDA determinism."
+    },
+    {
+      "number": 8,
+      "name": "Effective original stochastic sampler and seed",
+      "status": "PASS",
+      "evidence": {
+        "protocol_recovery/CPU_PROTOCOL_QUALIFICATION.json": "5efd3e81fff703056d004458bbcf7a8c9bc6736c7caaed4ea03c60ac4e09493b",
+        "independent_review/CANARY_STAGE_INDEPENDENT_REVIEW.json": "d157250745e5cd093ca92732c12d23fbc41d9d2d31aba9e3d829d7e149afe469",
+        "independent_review/FRESH_STAGE_INDEPENDENT_REVIEW.json": "ba054f21bd7e1f323a19f8ea8e0a00eaeea8901a601661c568ecc735d0df619c",
+        "FROZEN_UNITS.json": "230319f4eebd3261a2561847403294aa46be534baebb3453de2ea9e094f064d8"
+      },
+      "scope": "RealGPU seed1Generator advances and same-GPU fresh repeats exactly; original samplerAST and CPU seed1vs2/non-greedy fixture pass. Seed2 GPU canary was NOT independently run; formal fixed units use the same parameterized manual_seed(seed) and independentGenerator. Both seeds must later pass complete-record checks."
+    },
+    {
+      "number": 9,
+      "name": "81920 configuration allowed",
+      "status": "PASS",
+      "evidence": {
+        "PREREGISTRATION.json": "488e1f4fa58de02e18c9898c8d77b5963a8f7dadf17d5c3d488abc90c2e9888e",
+        "MODEL_CONFIG_READONLY.json": "53f220c3ea33b8cb592cd250467fa67e47af5f205f28d6e949c9aa0d3e64f9a4",
+        "independent_review/RESOURCE_STAGE_INDEPENDENT_REVIEW.json": "51d5093272cfdf383b0c7ebda3cdce5ca0db0d1ff076786ebd0ef90ad07dbc60"
+      },
+      "scope": "Fixed81920 newtokens + maximum373prompt =82293, below model262144 configured positions; actual longKV/nativeSDPA capacity pressure performed. Long recurrent trajectory numeric status NOT_TESTED_NEW_METHODS, numerical qualification PREFIX_ONLY128; no guaranteed completion inferred."
+    },
+    {
+      "number": 10,
+      "name": "Four RTX3090 memory/runtime resource admission and forecast",
+      "status": "PASS",
+      "evidence": {
+        "independent_review/RESOURCE_STAGE_INDEPENDENT_REVIEW.json": "51d5093272cfdf383b0c7ebda3cdce5ca0db0d1ff076786ebd0ef90ad07dbc60",
+        "PRE_FORMAL_RESOURCE_PREDICTION.json": "c9d52515182734fddc69d25c311721f5dd876d41aa49ecfe4ed3bf07c4ee5357"
+      },
+      "scope": "Each realGPU live-model82293KV +cat/expandedworkspace+nativeSDPA finite, allocated22289758720B,reserved22334668800B, driverfree2786787328B >frozen1GiB. Conditional timing scenarios explicitly separate audited128 rates from not-yet-measured formal rates. No taskGPUh hardcap."
+    },
+    {
+      "number": 11,
+      "name": "Exact FrozenV4 independent post-generation scorer",
+      "status": "PASS",
+      "evidence": {
+        "protocol_recovery/CPU_PROTOCOL_QUALIFICATION.json": "5efd3e81fff703056d004458bbcf7a8c9bc6736c7caaed4ea03c60ac4e09493b",
+        "protocol_recovery/OFFLINE_FINISHER_CPU_GUARD_TEST_FINAL.json": "7b7397bd763ba94ff3e07e34162ae0940c73c331f0f05a95d827ab2a37277e5d",
+        "source/score_complete_generations.py": "5779172768df3adb1a044612d23b800a4b1f9847b4b3271144999d2ca072854d"
+      },
+      "scope": "Exact historical fa5dd904 source and CPU extraction fixtures; frozen independent finisher requires120 unique legal COMPLETE, both60, fourworkers each30, source/Plan/GPU/payload/termination and actual release. No currentAIME output scored; incomplete yields no empty scienceCSV."
+    },
+    {
+      "number": 12,
+      "name": "FourGPU model/source/Plan/environment identities",
+      "status": "PASS",
+      "evidence": {
+        "MODEL_TOKENIZER_FRESH_IDENTITY.json": "1a9ad56c34ad33440e80994bf5927876483ef514c9fc43fe916bce83c45866de",
+        "SOURCE_MANIFEST.json": "3ad66d7fffe0687724ad0b89a99ce1f48ee9740f4a7323cae0081ec78b36cf4c",
+        "RUNTIME_SOURCE_MANIFEST.json": "fc72e7c6b55d5becd839f9a36e2f96c7793ce4c8b6ccebbcc5fee9abb2886a6f",
+        "PREREGISTRATION.json": "488e1f4fa58de02e18c9898c8d77b5963a8f7dadf17d5c3d488abc90c2e9888e",
+        "independent_review/CANARY_STAGE_INDEPENDENT_REVIEW.json": "d157250745e5cd093ca92732c12d23fbc41d9d2d31aba9e3d829d7e149afe469",
+        "independent_review/FRESH_STAGE_INDEPENDENT_REVIEW.json": "ba054f21bd7e1f323a19f8ea8e0a00eaeea8901a601661c568ecc735d0df619c",
+        "independent_review/RESOURCE_STAGE_INDEPENDENT_REVIEW.json": "51d5093272cfdf383b0c7ebda3cdce5ca0db0d1ff076786ebd0ef90ad07dbc60"
+      },
+      "scope": "Shared17model/tokenizer files streamingSHA verified;214task+2952external sourceSHA rechecked. Actual4physical3090UUID/CVDlogical0/BF16/native90d/Plan/runtime/environment metadata bound across canary/fresh/resource. Formal repeats frozen source/admission and physical checks before actual use."
+    }
+  ],
+  "gate_count": 12,
+  "bindings": {
+    "prereg_sha256": "488e1f4fa58de02e18c9898c8d77b5963a8f7dadf17d5c3d488abc90c2e9888e",
+    "source_manifest_sha256": "3ad66d7fffe0687724ad0b89a99ce1f48ee9740f4a7323cae0081ec78b36cf4c",
+    "runtime_source_manifest_sha256": "fc72e7c6b55d5becd839f9a36e2f96c7793ce4c8b6ccebbcc5fee9abb2886a6f",
+    "model_tokenizer_identity_sha256": "1a9ad56c34ad33440e80994bf5927876483ef514c9fc43fe916bce83c45866de",
+    "plan_sha256": "a0613ebdf249f90f6ef128b283733ca4368baca8fbeef6e09b1f4db25cd0fa79",
+    "units_sha256": "230319f4eebd3261a2561847403294aa46be534baebb3453de2ea9e094f064d8"
+  },
+  "fixed_gpu_UUIDs": {
+    "0": "GPU-a78176ed-f97f-c54f-6201-5a01b570f422",
+    "1": "GPU-596e6591-b065-bb91-fd35-a1e90ba8f9e3",
+    "2": "GPU-b7ed673d-18ba-39ca-d7bc-c846af4f6b31",
+    "3": "GPU-30b07aba-a728-7649-4899-e09d33f8bc75"
+  },
+  "actual_formal_generations_at_admission": 0,
+  "formal_sampling_cap": 81920,
+  "numeric_qualification": "PREFIX_ONLY_128",
+  "scientific_numeric_81920": "NOT_TESTED_NEW_METHODS",
+  "persistent_carrier": "Bothmethods nativeFP32 reconstructedQDQ values; no unquantized shadow; not physical packedINT8",
+  "STEP_actual_head_bits": {
+    "4": 299,
+    "6": 170,
+    "8": 267,
+    "16": 32
+  },
+  "STEP_actual_mean_data_bits_excluding_metadata": 6.333333333333333,
+  "known_disclosures": [
+    "STEP decode-fit maxabs0 but3072layer byteSHA differences per128record; no byteexact fit-reference claim or unverified signedzero diagnosis",
+    "STEP524288columnfloorhits per128record retained; zero observed affectedenergy/relativeMSE; FP16pivot placeholder explanation source-level only",
+    "Historical prefillQDQFalse versus currentTrue and compensated/detTrue versus currentoriginalnative/detFalse: old AIME results referenceonly",
+    "Actual81K capacity pressure is not an81K recurrent numerical trajectory or proof of future stability"
+  ],
+  "previous_failed_run": "Parent original STOP247file seal permanently retained; original0.006847216834624609GPUh inherited",
+  "independent_admission_review": {
+    "path": "independent_review/FORMAL_ADMISSION_REVIEW.json",
+    "sha256": "ec124c8e047d3d070fc1af18f46b8f8d1a500250745ae366f8ffabe216624ca4"
+  },
+  "admission_builder_sha256": "9ed05554db0e1549dee64f7a3f1ae3e3a4a74fdae386db00bfa63c63097c59ad",
+  "recorded_utc": "2026-10-17T10:28:04.890798+00:00"
+}

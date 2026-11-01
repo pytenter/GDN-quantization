@@ -1,0 +1,1 @@
+lambda _cls, reason, orig_code: _tuple_new(_cls, (reason, orig_code))

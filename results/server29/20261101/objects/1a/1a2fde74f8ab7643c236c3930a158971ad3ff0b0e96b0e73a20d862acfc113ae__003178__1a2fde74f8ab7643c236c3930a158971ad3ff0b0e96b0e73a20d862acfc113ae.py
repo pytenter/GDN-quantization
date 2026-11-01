@@ -1,0 +1,7 @@
+def __create_fn__(_type_dim, _type_loop, _type_bytes_contiguous_or_broadcast, _type_bytes_non_contiguous, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_bytes_contiguous_or_broadcast, _dflt_bytes_non_contiguous, _return_type):
+ def __init__(self,dim:_type_dim,loop:_type_loop,bytes_contiguous_or_broadcast:_type_bytes_contiguous_or_broadcast=_dflt_bytes_contiguous_or_broadcast,bytes_non_contiguous:_type_bytes_non_contiguous=_dflt_bytes_non_contiguous)->_return_type:
+  self.dim=dim
+  self.loop=loop
+  self.bytes_contiguous_or_broadcast=bytes_contiguous_or_broadcast
+  self.bytes_non_contiguous=bytes_non_contiguous
+ return __init__

@@ -1,0 +1,935 @@
+HARK/distribution.py
+class MeanOneLogNormal(Lognormal):
+    def __init__(self, sigma=1.0, seed=0):
+        mu = -0.5 * sigma ** 2
+        super().__init__(mu=mu, sigma=sigma, seed=seed)
+HARK/distribution.py
+def combine_indep_dstns(*distributions, seed=0):
+    """
+    Given n lists (or tuples) whose elements represent n independent, discrete
+    probability spaces (probabilities and values), construct a joint pmf over
+    all combinations of these independent points.  Can take multivariate discrete
+    distributions as inputs.
+
+    Parameters
+    ----------
+    distributions : [np.array]
+        Arbitrary number of distributions (pmfs).  Each pmf is a list or tuple.
+        For each pmf, the first vector is probabilities and all subsequent vectors
+        are values.  For each pmf, this should be true:
+        len(X_pmf[0]) == len(X_pmf[j]) for j in range(1,len(distributions))
+
+    Returns
+    -------
+    A DiscreteDistribution, consisting of:
+
+    P_out: np.array
+        Probability associated with each point in X_out.
+
+    X_out: np.array (as many as in *distributions)
+        Discrete points for the joint discrete probability mass function.
+    """
+    # Get information on the distributions
+    dist_lengths = ()
+    dist_dims = ()
+    for dist in distributions:
+        dist_lengths += (len(dist.pmf),)
+        dist_dims += (dist.dim(),)
+    number_of_distributions = len(distributions)
+
+    # Initialize lists we will use
+    X_out = []
+    P_temp = []
+
+    # Now loop through the distributions, tiling and flattening as necessary.
+    for dd, dist in enumerate(distributions):
+
+        # The shape we want before we tile
+        dist_newshape = (
+            (1,) * dd + (len(dist.pmf),) + (1,) * (number_of_distributions - dd)
+        )
+
+        # The tiling we want to do
+        dist_tiles = dist_lengths[:dd] + (1,) + dist_lengths[dd + 1 :]
+
+        # Now we are ready to tile.
+        # We don't use the np.meshgrid commands, because they do not
+        # easily support non-symmetric grids.
+
+        # First deal with probabilities
+        Pmesh = np.tile(dist.pmf.reshape(dist_newshape), dist_tiles)  # Tiling
+        flatP = Pmesh.ravel()  # Flatten the tiled arrays
+        P_temp += [
+            flatP,
+        ]  # Add the flattened arrays to the output lists
+
+        # Then loop through each value variable
+        for n in range(dist_dims[dd]):
+            if dist.dim() > 1:
+                Xmesh = np.tile(dist.X[n].reshape(dist_newshape), dist_tiles)
+            else:
+                Xmesh = np.tile(dist.X.reshape(dist_newshape), dist_tiles)
+            flatX = Xmesh.ravel()
+            X_out += [
+                flatX,
+            ]
+
+    # We're done getting the flattened X_out arrays we wanted.
+    # However, we have a bunch of flattened P_temp arrays, and just want one
+    # probability array. So get the probability array, P_out, here.
+    P_out = np.prod(np.array(P_temp), axis=0)
+
+    assert np.isclose(np.sum(P_out), 1), "Probabilities do not sum to 1!"
+    return DiscreteDistribution(P_out, X_out, seed=seed)
+HARK/distribution.py
+class Lognormal(Distribution):
+    """
+    A Lognormal distribution
+
+    Parameters
+    ----------
+    mu : float or [float]
+        One or more means of underlying normal distribution.
+        Number of elements T in mu determines number of rows of output.
+    sigma : float or [float]
+        One or more standard deviations of underlying normal distribution.
+        Number of elements T in sigma determines number of rows of output.
+    seed : int
+        Seed for random number generator.
+    """
+
+    mu = None
+    sigma = None
+
+    def __init__(self, mu=0.0, sigma=1.0, seed=0):
+        self.mu = np.array(mu)
+        self.sigma = np.array(sigma)
+        # Set up the RNG
+        super().__init__(seed)
+
+        if self.mu.size != self.sigma.size:
+            raise Exception(
+                "mu and sigma must be of same size, are %s, %s"
+                % ((self.mu.size), (self.sigma.size))
+            )
+
+    def draw(self, N):
+        """
+        Generate arrays of lognormal draws. The sigma parameter can be a number
+        or list-like.  If a number, output is a length N array of draws from the
+        lognormal distribution with standard deviation sigma. If a list, output is
+        a length T list whose t-th entry is a length N array of draws from the
+        lognormal with standard deviation sigma[t].
+
+        Parameters
+        ----------
+        N : int
+            Number of draws in each row.
+
+        Returns:
+        ------------
+        draws : np.array or [np.array]
+            T-length list of arrays of mean one lognormal draws each of size N, or
+            a single array of size N (if sigma is a scalar).
+        """
+
+        draws = []
+        for j in range(self.mu.size):
+            draws.append(
+                self.RNG.lognormal(
+                    mean=self.mu.item(j), sigma=self.sigma.item(j), size=N
+                )
+            )
+        # TODO: change return type to np.array?
+        return draws[0] if len(draws) == 1 else draws
+
+    def approx(self, N, tail_N=0, tail_bound=None, tail_order=np.e):
+        """
+        Construct a discrete approximation to a lognormal distribution with underlying
+        normal distribution N(mu,sigma).  Makes an equiprobable distribution by
+        default, but user can optionally request augmented tails with exponentially
+        sized point masses.  This can improve solution accuracy in some models.
+
+        Parameters
+        ----------
+        N: int
+            Number of discrete points in the "main part" of the approximation.
+        tail_N: int
+            Number of points in each "tail part" of the approximation; 0 = no tail.
+        tail_bound: [float]
+            CDF boundaries of the tails vs main portion; tail_bound[0] is the lower
+            tail bound, tail_bound[1] is the upper tail bound.  Inoperative when
+            tail_N = 0.  Can make "one tailed" approximations with 0.0 or 1.0.
+        tail_order: float
+            Factor by which consecutive point masses in a "tail part" differ in
+            probability.  Should be >= 1 for sensible spacing.
+
+        Returns
+        -------
+        d : DiscreteDistribution
+            Probability associated with each point in array of discrete
+            points for discrete probability mass function.
+        """
+        tail_bound = tail_bound if tail_bound is not None else [0.02, 0.98]
+        # Find the CDF boundaries of each segment
+        if self.sigma > 0.0:
+            if tail_N > 0:
+                lo_cut = tail_bound[0]
+                hi_cut = tail_bound[1]
+            else:
+                lo_cut = 0.0
+                hi_cut = 1.0
+            inner_size = hi_cut - lo_cut
+            inner_CDF_vals = [
+                lo_cut + x * N ** (-1.0) * inner_size for x in range(1, N)
+            ]
+            if inner_size < 1.0:
+                scale = 1.0 / tail_order
+                mag = (1.0 - scale ** tail_N) / (1.0 - scale)
+            lower_CDF_vals = [0.0]
+            if lo_cut > 0.0:
+                for x in range(tail_N - 1, -1, -1):
+                    lower_CDF_vals.append(
+                        lower_CDF_vals[-1] + lo_cut * scale ** x / mag
+                    )
+            upper_CDF_vals = [hi_cut]
+            if hi_cut < 1.0:
+                for x in range(tail_N):
+                    upper_CDF_vals.append(
+                        upper_CDF_vals[-1] + (1.0 - hi_cut) * scale ** x / mag
+                    )
+            CDF_vals = lower_CDF_vals + inner_CDF_vals + upper_CDF_vals
+            temp_cutoffs = list(
+                stats.lognorm.ppf(
+                    CDF_vals[1:-1], s=self.sigma, loc=0, scale=np.exp(self.mu)
+                )
+            )
+            cutoffs = [0] + temp_cutoffs + [np.inf]
+            CDF_vals = np.array(CDF_vals)
+
+            K = CDF_vals.size - 1  # number of points in approximation
+            pmf = CDF_vals[1 : (K + 1)] - CDF_vals[0:K]
+            X = np.zeros(K)
+            for i in range(K):
+                zBot = cutoffs[i]
+                zTop = cutoffs[i + 1]
+                # Manual check to avoid the RuntimeWarning generated by "divide by zero"
+                # with np.log(zBot).
+                if zBot == 0:
+                    tempBot = np.inf
+                else:
+                    tempBot = (self.mu + self.sigma ** 2 - np.log(zBot)) / (
+                        np.sqrt(2) * self.sigma
+                    )
+                tempTop = (self.mu + self.sigma ** 2 - np.log(zTop)) / (
+                    np.sqrt(2) * self.sigma
+                )
+                if tempBot <= 4:
+                    X[i] = (
+                        -0.5
+                        * np.exp(self.mu + (self.sigma ** 2) * 0.5)
+                        * (erf(tempTop) - erf(tempBot))
+                        / pmf[i]
+                    )
+                else:
+                    X[i] = (
+                        -0.5
+                        * np.exp(self.mu + (self.sigma ** 2) * 0.5)
+                        * (erfc(tempBot) - erfc(tempTop))
+                        / pmf[i]
+                    )
+
+        else:
+            pmf = np.ones(N) / N
+            X = np.exp(self.mu) * np.ones(N)
+        return DiscreteDistribution(
+            pmf, X, seed=self.RNG.randint(0, 2 ** 31 - 1, dtype="int32")
+        )
+
+    @classmethod
+    def from_mean_std(cls, mean, std, seed=0):
+        """
+        Construct a LogNormal distribution from its
+        mean and standard deviation.
+
+        This is unlike the normal constructor for the distribution,
+        which takes the mu and sigma for the normal distribution
+        that is the logarithm of the Log Normal distribution.
+
+        Parameters
+        ----------
+        mean : float or [float]
+            One or more means.  Number of elements T in mu determines number
+            of rows of output.
+        std : float or [float]
+            One or more standard deviations. Number of elements T in sigma
+            determines number of rows of output.
+        seed : int
+            Seed for random number generator.
+
+        Returns
+        ---------
+        LogNormal
+
+        """
+        mean_squared = mean ** 2
+        variance = std ** 2
+        mu = np.log(mean / (np.sqrt(1.0 + variance / mean_squared)))
+        sigma = np.sqrt(np.log(1.0 + variance / mean_squared))
+
+        return cls(mu=mu, sigma=sigma, seed=seed)
+HARK/distribution.py
+def add_discrete_outcome_constant_mean(distribution, x, p, sort=False):
+    """
+    Adds a discrete outcome of x with probability p to an existing distribution,
+    holding constant the relative probabilities of other outcomes and overall mean.
+
+    Parameters
+    ----------
+    distribution : DiscreteDistribution
+        A DiscreteDistribution
+    x : float
+        The new value to be added to the distribution.
+    p : float
+        The probability of the discrete outcome x occuring.
+    sort: bool
+        Whether or not to sort X before returning it
+
+    Returns
+    -------
+    d : DiscreteDistribution
+        Probability associated with each point in array of discrete
+        points for discrete probability mass function.
+    """
+
+    if type(distribution) != TimeVaryingDiscreteDistribution:
+        X = np.append(x, distribution.X * (1 - p * x) / (1 - p))
+        pmf = np.append(p, distribution.pmf * (1 - p))
+
+        if sort:
+            indices = np.argsort(X)
+            X = X[indices]
+            pmf = pmf[indices]
+
+        return DiscreteDistribution(pmf, X)
+    elif type(distribution) == TimeVaryingDiscreteDistribution:
+        # apply recursively on all the internal distributions
+        return TimeVaryingDiscreteDistribution(
+            [
+                add_discrete_outcome_constant_mean(d, x, p)
+                for d in distribution.distributions
+            ],
+            seed=distribution.seed,
+        )
+HARK/utilities.py
+def CRRAutility(c, gam):
+    """
+    Evaluates constant relative risk aversion (CRRA) utility of consumption c
+    given risk aversion parameter gam.
+
+    Parameters
+    ----------
+    c : float
+        Consumption value
+    gam : float
+        Risk aversion
+
+    Returns
+    -------
+    (unnamed) : float
+        Utility
+
+    Tests
+    -----
+    Test a value which should pass:
+    >>> c, gamma = 1.0, 2.0    # Set two values at once with Python syntax
+    >>> utility(c=c, gam=gamma)
+    -1.0
+    """
+    
+    if gam == 1:
+        return np.log(c)
+    else:
+        return c ** (1.0 - gam) / (1.0 - gam)
+HARK/ConsumptionSaving/ConsPortfolioModel.py
+class PortfolioSolution(MetricObject):
+class PortfolioConsumerType(RiskyAssetConsumerType):
+class SequentialPortfolioConsumerType(PortfolioConsumerType):
+class ConsPortfolioSolver(MetricObject):
+class ConsPortfolioDiscreteSolver(ConsPortfolioSolver):
+class ConsPortfolioJointDistSolver(ConsPortfolioDiscreteSolver, ConsPortfolioSolver):
+class ConsSequentialPortfolioSolver(ConsPortfolioSolver):
+    def __init__(
+        self,
+        cFuncAdj=None,
+        ShareFuncAdj=None,
+        vFuncAdj=None,
+        vPfuncAdj=None,
+        cFuncFxd=None,
+        ShareFuncFxd=None,
+        vFuncFxd=None,
+        dvdmFuncFxd=None,
+        dvdsFuncFxd=None,
+        aGrid=None,
+        Share_adj=None,
+        EndOfPrddvda_adj=None,
+        ShareGrid=None,
+        EndOfPrddvda_fxd=None,
+        EndOfPrddvds_fxd=None,
+        AdjPrb=None,
+    ):
+    def __init__(self, verbose=False, quiet=False, **kwds):
+    def pre_solve(self):
+    def update(self):
+    def update_solution_terminal(self):
+    def update_ShareGrid(self):
+    def update_ShareLimit(self):
+    def get_Rfree(self):
+    def initialize_sim(self):
+    def sim_birth(self, which_agents):
+    def get_controls(self):
+    def __init__(self, verbose=False, quiet=False, **kwds):
+    def __init__(
+        self,
+        solution_next,
+        ShockDstn,
+        IncShkDstn,
+        RiskyDstn,
+        LivPrb,
+        DiscFac,
+        CRRA,
+        Rfree,
+        PermGroFac,
+        BoroCnstArt,
+        aXtraGrid,
+        ShareGrid,
+        vFuncBool,
+        AdjustPrb,
+        DiscreteShareBool,
+        ShareLimit,
+        IndepDstnBool,
+    ):
+    def def_utility_funcs(self):
+    def set_and_update_values(self):
+    def prepare_to_solve(self):
+    def prepare_to_calc_EndOfPrdvP(self):
+    def m_nrm_next(self, shocks, b_nrm_next):
+    def calc_EndOfPrdvP(self):
+        def dvdb_dist(shocks, b_nrm, Share_next):
+        def dvds_dist(shocks, b_nrm, Share_next):
+        def EndOfPrddvda_dist(shock, a_nrm, Share_next):
+        def EndOfPrddvds_dist(shock, a_nrm, Share_next):
+    def optimize_share(self):
+    def make_basic_solution(self):
+    def make_ShareFuncAdj(self):
+    def add_save_points(self):
+    def add_vFunc(self):
+    def make_EndOfPrdvFunc(self):
+        def v_intermed_dist(shocks, b_nrm, Share_next):
+        def EndOfPrdv_dist(shock, a_nrm, Share_next):
+    def make_vFunc(self):
+    def make_porfolio_solution(self):
+    def solve(self):
+    def optimize_share(self):
+    def make_ShareFuncAdj(self):
+    def solve(self):
+    def set_and_update_values(self):
+    def prepare_to_calc_EndOfPrdvP(self):
+    def r_port(self, shocks, share):
+    def m_nrm_next(self, shocks, a_nrm, r_port):
+    def calc_EndOfPrdvP(self):
+        def dvdm(m_nrm_next, shares):
+        def dvds(m_nrm_next, shares):
+        def EndOfPrddvda_dists(shocks, a_nrm, shares):
+        def EndOfPrddvds_dist(shocks, a_nrm, shares):
+    def make_EndOfPrdvFunc(self):
+        def v_dist(shocks, a_nrm, shares):
+    def solve(self):
+    def add_SequentialShareFuncAdj(self, solution):
+    def solve(self):
+HARK/frame.py
+class FrameAgentType(AgentType):
+    """
+    A variation of AgentType that uses Frames to organize
+    its simulation steps.
+
+    Frames allow for state, control, and shock resolutions
+    in a specified order, rather than assuming that they
+    are resolved as shocks -> states -> controls -> poststates.
+
+    Attributes
+    ----------
+
+    frames : [Frame]
+        #Keys are tuples of strings corresponding to model variables.
+        #Values are methods.
+        #Each frame method should update the the variables
+        #named in the key.
+        #Frame order is significant here.
+    """
+
+    cycles = 0 # for now, only infinite horizon models.
+
+    # frames property
+    frames = [
+        Frame(
+            ('y'),('x'),
+            transition = lambda x: x^2
+        )
+    ]
+
+    def __init__(self, **kwds):
+
+        ## set up relationships between frames
+        for frame in self.frames:
+            frame.children = []
+            frame.parents = []
+
+        for frame in self.frames:
+            if frame.scope is not None:
+                for var in frame.scope:
+                    scope_frames = [frm for frm in self.frames if var in frm.target]
+
+                    for scope_frame in scope_frames:
+                        if self.frames.index(frame) > self.frames.index(scope_frame):
+                            if frame not in scope_frame.children:
+                                scope_frame.children.append(frame)
+
+                            if scope_frame not in frame.parents:
+                                frame.parents.append(scope_frame)
+                        else:
+                            ffr = ForwardFrameReference(frame)
+                            bfr = BackwardFrameReference(frame)
+
+                            # ignoring equivalence checks for now
+                            scope_frame.children.append(ffr)
+                            frame.parents.append(bfr)
+
+        # Initialize a basic AgentType
+        #AgentType.__init__(
+        #    self,
+        #    **kwds
+        #)
+
+    def initialize_sim(self):
+
+        for frame in self.frames:
+            for var in frame.target:
+
+                if frame.aggregate:
+                    val = np.empty(1)
+                    if frame.default is not None and var in frame.default:
+                        val[:] = frame.default[var]
+                else:
+                    val = np.empty(self.AgentCount)
+
+                if frame.control:
+                    self.controls[var] = val
+                elif  isinstance(frame.transition, Distribution):
+                    self.shocks[var] = val
+                else:
+                    self.state_now[var] = val
+    
+        super().initialize_sim()
+
+    def sim_one_period(self):
+        """
+        Simulates one period for this type.
+        Calls each frame in order.
+        These should be defined for
+        AgentType subclasses, except getMortality (define
+        its components simDeath and simBirth instead)
+        and readShocks.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        if not hasattr(self, "solution"):
+            raise Exception(
+                "Model instance does not have a solution stored. To simulate, it is necessary"
+                " to run the `solve()` method of the class first."
+            )
+
+        # Mortality adjusts the agent population
+        self.get_mortality()  # Replace some agents with "newborns"
+
+        # state_{t-1}
+        for frame in self.frames:
+            for var in frame.target:
+                if var in self.state_now:
+                    self.state_prev[var] = self.state_now[var]
+                
+                    if not frame.aggregate:
+                        self.state_now[var] = np.empty(self.AgentCount)
+                    else:
+                        self.state_now[var] = np.empty(1)
+
+        # transition the variables in the frame
+        for frame in self.frames:
+            self.transition_frame(frame)
+
+        # Advance time for all agents
+        self.t_age = self.t_age + 1  # Age all consumers by one period
+        self.t_cycle = self.t_cycle + 1  # Age all consumers within their cycle
+        self.t_cycle[
+            self.t_cycle == self.T_cycle
+        ] = 0  # Resetting to zero for those who have reached the end
+
+    def sim_birth(self, which_agents):
+        """
+        Makes new agents for the simulation.
+        Takes a boolean array as an input, indicating which
+        agent indices are to be "born".
+
+        Populates model variable values with value from `init`
+        property
+
+        Parameters
+        ----------
+        which_agents : np.array(Bool)
+            Boolean array of size self.AgentCount indicating which agents should be "born".
+
+        Returns
+        -------
+        None
+        """
+        which_agents = which_agents.astype(bool)
+
+        for frame in self.frames:
+            if not frame.aggregate:
+                for var in frame.target:
+
+                    N = np.sum(which_agents)
+
+                    if frame.default is not None and var in frame.default:
+                        if callable(frame.default[var]):
+                            value = frame.default[var](self, N)
+                        else:
+                            value = frame.default[var]
+
+                        if var in self.state_now:
+                            ## need to check in case of aggregate variables.. PlvlAgg
+                            if hasattr(self.state_now[var],'__getitem__'):
+                                self.state_now[var][which_agents] = value
+                        elif var in self.controls:
+                            self.controls[var][which_agents] = value
+                        elif var in self.shocks:
+                            ## assuming no aggregate shocks... 
+                            self.shocks[var][which_agents] = value
+
+        # from ConsIndShockModel. Needed???
+        self.t_age[which_agents] = 0  # How many periods since each agent was born
+        self.t_cycle[
+            which_agents
+        ] = 0  # Which period of the cycle each agent is currently in
+
+        ## simplest version of this.
+    def transition_frame(self, frame):
+        """
+        Updates the model variables in `target`
+        using the `transition` function.
+        The transition function will use current model
+        variable state as arguments.
+        """
+        # build a context object based on model state variables
+        # and 'self' reference for 'global' variables
+        context = {} # 'self' : self}
+        context.update(self.shocks)
+        context.update(self.controls)
+        context.update(self.state_prev)
+
+        # use the "now" version of variables that have already been targetted.
+        for pre_frame in self.frames[:self.frames.index(frame)]:
+            for var in pre_frame.target:
+                if var in self.state_now:
+                    context.update({var : self.state_now[var]})
+
+        context.update(self.parameters)
+
+        # The "most recently" computed value of the variable is used.
+        # This could be the value from the 'previous' time step.
+
+        # limit context to scope of frame
+        local_context = {
+            var : context[var]
+            for var
+            in frame.scope
+        } if frame.scope is not None else context.copy()
+
+        if frame.transition is not None:
+            if isinstance(frame.transition, Distribution):
+                # assume this is an IndexDistribution keyed to age (t_cycle)
+                # for now
+                # later, t_cycle should be included in local context, etc.
+                if frame.aggregate:
+                    new_values = (frame.transition.draw(1),)
+                else:    
+                    new_values = (frame.transition.draw(self.t_cycle),)
+
+            else: # transition is function of state variables not an exogenous shock
+                new_values = frame.transition(
+                    self,
+                    **local_context
+                )
+
+        else:
+            raise Exception(f"Frame has None for transition: {frame}")
+
+        # because we want to alter the 'now' not 'prev' table
+        context.update(self.state_now)
+
+        # because the context was a shallow update,
+        # the model values can be modified directly(?)
+        for i,t in enumerate(frame.target):
+            if t in context:
+                context[t][:] = new_values[i]
+            else:
+                raise Exception(f"From frame {frame.target}, target {t} is not in the context object.")
+HARK/frame.py
+class Frame():
+    """
+    An object representing a single 'frame' of an optimization problem.
+    A frame defines some variables of a model, including what other variables
+    (if any) they depend on for their values.
+    """
+
+    def __init__(
+            self,
+            target,
+            scope,
+            default = None,
+            transition = None,
+            objective = None,
+            aggregate = False,
+            control = False,
+            reward = False
+    ):
+        """
+        """
+
+        self.target = target if isinstance(target, tuple) else (target,) # tuple of variables
+        self.scope = scope # tuple of variables
+        self.default = default # default value used in simBirth; a dict
+        ## Careful! Transition functions need to return a tuple, even if there is only one state value
+        self.transition = transition # for use in simulation
+        self.objective = objective # for use in solver
+        self.aggregate = aggregate
+        self.control = control
+        self.reward = reward
+
+    def __repr__(self):
+        return f"<{self.__class__}, target:{self.target}, scope:{self.scope}>"
+
+    def name(self):
+        target = self.target
+        return str(target[0]) if len(target) == 1 else str(self.target)
+HARK/distribution.py
+class Bernoulli(Distribution):
+    """
+    A Bernoulli distribution.
+
+    Parameters
+    ----------
+    p : float or [float]
+        Probability or probabilities of the event occurring (True).
+
+    seed : int
+        Seed for random number generator.
+    """
+
+    p = None
+
+    def __init__(self, p=0.5, seed=0):
+        self.p = np.array(p)
+        # Set up the RNG
+        super().__init__(seed)
+
+    def draw(self, N):
+        """
+        Generates arrays of booleans drawn from a simple Bernoulli distribution.
+        The input p can be a float or a list-like of floats; its length T determines
+        the number of entries in the output.  The t-th entry of the output is an
+        array of N booleans which are True with probability p[t] and False otherwise.
+
+        Arguments
+        ---------
+        N : int
+            Number of draws in each row.
+
+        Returns
+        -------
+        draws : np.array or [np.array]
+            T-length list of arrays of Bernoulli draws each of size N, or a single
+        array of size N (if sigma is a scalar).
+        """
+        draws = []
+        for j in range(self.p.size):
+            draws.append(self.RNG.uniform(size=N) < self.p.item(j))
+        return draws[0] if len(draws) == 1 else draws
+HARK/distribution.py
+class IndexDistribution(Distribution):
+    """
+    This class provides a way to define a distribution that
+    is conditional on an index.
+
+    The current implementation combines a defined distribution
+    class (such as Bernoulli, LogNormal, etc.) with information
+    about the conditions on the parameters of the distribution.
+
+    For example, an IndexDistribution can be defined as
+    a Bernoulli distribution whose parameter p is a function of
+    a different inpute parameter.
+
+    Parameters
+    ----------
+
+    engine : Distribution class
+        A Distribution subclass.
+
+    conditional: dict
+        Information about the conditional variation
+        on the input parameters of the engine distribution.
+        Keys should match the arguments to the engine class
+        constructor.
+
+    seed : int
+        Seed for random number generator.
+    """
+
+    conditional = None
+    engine = None
+
+    def __init__(self, engine, conditional, RNG = None, seed=0):
+        
+        if RNG is None:
+            # Set up the RNG
+            super().__init__(seed)
+        else:
+            # If an RNG is received, use it in whatever state it is in.
+            self.RNG = RNG
+            # The seed will still be set, even if it is not used for the RNG,
+            # for whenever self.reset() is called.
+            # Note that self.reset() will stop using the RNG that was passed
+            # and create a new one.
+            self.seed = seed
+
+        self.conditional = conditional
+        self.engine = engine
+        
+        
+        self.dstns = []
+        
+        # Test one item to determine case handling
+        item0 = list(self.conditional.values())[0]
+        
+        if type(item0) is list:
+            # Create and store all the conditional distributions
+            for y in range(len(item0)):
+                cond = {key: val[y] for (key, val) in self.conditional.items()}
+                self.dstns.append(self.engine(seed=self.RNG.randint(0, 2 ** 31 - 1), **cond))
+                
+        elif type(item0) is float:
+            
+            self.dstns = [self.engine(seed=self.RNG.randint(0, 2 ** 31 - 1), **conditional)]
+
+        else:
+            raise (
+                Exception(
+                    f"IndexDistribution: Unhandled case for __getitem__ access. y: {y}; conditional: {self.conditional}"
+                )
+            )
+            
+    def __getitem__(self, y):
+        
+        return self.dstns[y]
+
+    def approx(self, N, **kwds):
+        """
+        Approximation of the distribution.
+
+        Parameters
+        ----------
+        N : init
+            Number of discrete points to approximate
+            continuous distribution into.
+
+        kwds: dict
+            Other keyword arguments passed to engine
+            distribution approx() method.
+
+        Returns:
+        ------------
+        dists : [DiscreteDistribution]
+            A list of DiscreteDistributions that are the
+            approximation of engine distribution under each condition.
+
+            TODO: It would be better if there were a conditional discrete
+            distribution representation. But that integrates with the
+            solution code. This implementation will return the list of
+            distributions representations expected by the solution code.
+        """
+
+        # test one item to determine case handling
+        item0 = list(self.conditional.values())[0]
+
+        if type(item0) is float:
+            # degenerate case. Treat the parameterization as constant.
+            return self.dstns[0].approx(N, **kwds)
+
+        if type(item0) is list:
+            return TimeVaryingDiscreteDistribution(
+                [self[i].approx(N, **kwds) for i, _ in enumerate(item0)]
+            )
+
+    def draw(self, condition):
+        """
+        Generate arrays of draws.
+        The input is an array containing the conditions.
+        The output is an array of the same length (axis 1 dimension)
+        as the conditions containing random draws of the conditional
+        distribution.
+
+        Parameters
+        ----------
+        condition : np.array
+            The input conditions to the distribution.
+
+        Returns:
+        ------------
+        draws : np.array
+        """
+        # for now, assume that all the conditionals
+        # are of the same type.
+        # this matches the HARK 'time-varying' model architecture.
+
+        # test one item to determine case handling
+        item0 = list(self.conditional.values())[0]
+
+        if type(item0) is float:
+            # degenerate case. Treat the parameterization as constant.
+            N = condition.size
+
+            return self.engine(
+                seed=self.RNG.randint(0, 2 ** 31 - 1), **self.conditional
+            ).draw(N)
+
+        if type(item0) is list:
+            # conditions are indices into list
+            # somewhat convoluted sampling strategy retained
+            # for test backwards compatibility
+
+            draws = np.zeros(condition.size)
+
+            for c in np.unique(condition):
+                these = c == condition
+                N = np.sum(these)
+
+                cond = {key: val[c] for (key, val) in self.conditional.items()}
+                draws[these] = self[c].draw(N)
+
+            return draws

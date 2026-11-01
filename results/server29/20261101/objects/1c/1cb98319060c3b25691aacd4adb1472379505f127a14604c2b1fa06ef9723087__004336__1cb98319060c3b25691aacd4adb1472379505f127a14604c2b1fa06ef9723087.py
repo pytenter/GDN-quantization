@@ -1,0 +1,1 @@
+lambda _cls, label, current, high, critical: _tuple_new(_cls, (label, current, high, critical))

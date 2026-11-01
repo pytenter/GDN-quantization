@@ -1,0 +1,90 @@
+{
+  "FINAL_ACTION": "STOP even if supported",
+  "NEW_AIME_GENERATION": 0,
+  "NEW_TRAINING": "NO",
+  "confirmation_authorization": "only after discovery64/64rawfreeze and selected candidate PASS",
+  "cross_term_residual": {
+    "caveat": "finite Monte Carlo variability and BF16 rotated-write rounding can also contribute; not an isolated exact cross-term",
+    "definition": "J_ACC-J_PROP",
+    "policy": "DESCRIPTIVE_ONLY"
+  },
+  "decay": {
+    "d_eff_squared": "exp(2*canonical_log_decay).mean(true-head,key)",
+    "label": "DECAY_ONLY_APPROXIMATION",
+    "recurrence": "A_t=d_eff_t^2*A_(t-1)+inj_energy_t; A_0=0; no erase",
+    "tensor_layout": "[layer-as-batch,token=1,true-head,key]"
+  },
+  "epsilon": 1e-12,
+  "gate": "PASS",
+  "ground_truth": "mean_{tokens,layers} ||Squant@R.T-Sfp||^2/(||Sfp||^2+eps)",
+  "historical_relative_injection": "mean ||eta||/(||y||+eps); descriptive only",
+  "horizons": [
+    2048,
+    8192,
+    32768
+  ],
+  "injection": "own true post-update pre-Q FP32 y; eta=Q(y)-y; mean ||eta||^2/(||y||^2+eps)",
+  "layer_ids": [
+    0,
+    1,
+    2,
+    4,
+    5,
+    6,
+    8,
+    9,
+    10,
+    12,
+    13,
+    14,
+    16,
+    17,
+    18,
+    20,
+    21,
+    22
+  ],
+  "probe_count": 8,
+  "probe_sign_schedule": {
+    "algorithm": "SHA256(ascii seed:one-based-token:zero-based-probe), first-byte low bit; one=>+1 else -1",
+    "artifact": {
+      "bytes": 263749,
+      "path": "/data01/user2/worktrees/ling-propagation-surrogate-validation-v1/experiments/LING_PROPAGATION_SURROGATE_VALIDATION_V1/protocol/probe_signs.pt",
+      "sha256": "60b5caa6e7ae0ab883b69d53135ab3572df5bac1ebe56efc3aee54f394c33d7f"
+    },
+    "seed": 20261005,
+    "shared_all_docs_and_rotations": true
+  },
+  "propagation": {
+    "energy": "mean_r ||z_r,t||^2/(||Sfp_t||^2+eps)",
+    "implementation": "same actual FLA fused kernel with zero value; beta rank1 erase retained",
+    "interpretation": "signed estimator of propagated injection energy, not equal to J_ACC",
+    "recurrence": "z_r,t=propagate_zero_write(z_r,t-1,record_t)+xi_r,t*eta_t"
+  },
+  "resources": {
+    "assignment": "doc_rank%2",
+    "hardware": "2xRTX4090 only",
+    "replay": "FP model unloaded; all18layers/probes batched bitwise qualified",
+    "rotation_order": "frozen bank manifest",
+    "single_rollout": true,
+    "trace_capture": "once FP model exact teacher forcing"
+  },
+  "statistics": {
+    "concordance": "concordant/120 over all rotation pairs; all ties non-success, categories separately reported",
+    "no_discovery_confirmation_pooling": true,
+    "no_pvalues": true,
+    "rules": {
+      "A": "beats J_INJ strictly at least9/12",
+      "B": "positive32768 at least3/4",
+      "C": "median32768rho>=0.50",
+      "D": "median32768concordance>=0.65"
+    },
+    "selection": "long-rho, all-rho, long-concordance, exact tie J_DECAY",
+    "spearman": "average ranks, exact equality ties; constant panel undefined and candidate fails"
+  },
+  "system_boundary": "ON_POLICY_WITH_RESPECT_TO_RECURRENT_STATE_AND_QDQ UNDER_A_FROZEN_TEACHER_FORCED_TRANSITION_TRACE",
+  "task": "LING_PROPAGATION_SURROGATE_VALIDATION_V1",
+  "value_basis": "state key-first @ R; value float32 @ R then original BF16; recover @R.T",
+  "window": "one-based inclusive [1024,h]; history propagates from token1",
+  "window_start": 1024
+}

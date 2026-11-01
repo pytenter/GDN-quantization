@@ -1,0 +1,50 @@
+# aime26-sglang-rotation-v1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/worktrees/aime26-sglang-rotation-v1`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`docs/gdn_rw_int8_quantizer_v1/final_report.md`](../../../../../reports/propagation/gdn_rw_int8_quantizer_v1_final_report.md)
+- [`docs/gdn_magnitude_conditioned_functional_v1/final_report.md`](../../../../../reports/propagation/gdn_magnitude_conditioned_functional_v1_final_report.md)
+- [`reports/propagation/gdn_rw_int8_quantizer_v1_final_report.md`](../../../../../reports/propagation/gdn_rw_int8_quantizer_v1_final_report.md)
+- [`reports/propagation/gdn_magnitude_conditioned_functional_v1_final_report.md`](../../../../../reports/propagation/gdn_magnitude_conditioned_functional_v1_final_report.md)
+- [`results/propagation/gdn_int8_functional_risk_state_space_pullback_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_functional_risk_state_space_pullback_v1.md)
+- [`results/propagation/gdn_int8_out_proj_functional_direction_causal_v1_final_report.md`](../../../../../reports/mechanism/gdn_int8_out_proj_functional_direction_causal_v1.md)
+- [`results/propagation/gdn_int8_long_horizon_functional_survival_audit_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_long_horizon_functional_survival_audit_v1.md)
+- [`results/propagation/gdn_int8_real_rc_tangential_recurrent_mediation_v1_final_report.md`](../../../../../reports/mechanism/gdn_int8_real_rc_tangential_recurrent_mediation_v1.md)
+- [`results/propagation/gdn_int8_rmsnorm_value_geometry_mechanism_closure_v1_final_report.md`](../../../../../reports/mechanism/gdn_int8_rmsnorm_value_geometry_mechanism_closure_v1.md)
+- [`results/propagation/gdn_int8_value_basis_symmetry_breaking_localization_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_value_basis_symmetry_breaking_localization_v1.md)
+- [`results/propagation/gdn_int8_linearized_functional_risk_proxy_extraction_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_linearized_functional_risk_proxy_extraction_v1.md)
+- [`results/propagation/gdn_int8_value_geometry_transfer_validity_and_retest_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_value_geometry_transfer_validity_and_retest_v1.md)
+- [`results/propagation/gdn_int8_rmsnorm_tangential_residual_filtering_causal_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_rmsnorm_tangential_residual_filtering_causal_v1.md)
+- [`results/propagation/gdn_int8_value_direction_downstream_sensitivity_audit_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_value_direction_downstream_sensitivity_audit_v1.md)
+- [`results/propagation/gdn_int8_functional_geometry_structural_simplification_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_functional_geometry_structural_simplification_v1.md)
+- [`results/propagation/gdn_int8_query_conditioned_risk_efficiency_feasibility_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_query_conditioned_risk_efficiency_feasibility_v1.md)
+- [`results/propagation/gdn_int8_functional_proxy_c_family_failure_localization_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_functional_proxy_c_family_failure_localization_v1.md)
+- [`results/propagation/gdn_int8_functional_proxy_natural_config_generalization_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_functional_proxy_natural_config_generalization_v1.md)
+- [`results/propagation/gdn_int8_functional_risk_beyond_reconstruction_controlled_v1_final_report.md`](../../../../../reports/propagation/gdn_int8_functional_risk_beyond_reconstruction_controlled_v1.md)
+- [`results/propagation/gdn_int8_functional_residual_geometry_principle_extraction_v1_final_report.md`](../../../../../reports/mechanism/gdn_int8_functional_residual_geometry_principle_extraction_v1.md)
+- [`results/propagation/gdn_int8_functional_orientation_low_rank_and_stability_audit_v1_final_report.md`](../../../../../reports/mechanism/gdn_int8_functional_orientation_low_rank_and_stability_audit_v1.md)
+- [`docs/gdn_rotation_headroom_v1/pilot_report.md`](../../../../../reports/propagation/gdn_rotation_headroom_v1_pilot_report.md)
+- [`docs/gdn_rotation_headroom_v1/formal_report.md`](../../../../../reports/propagation/gdn_rotation_headroom_v1_formal_report.md)
+- [`docs/gdn_rw_int8_quantizer_v1/formal_report.md`](../../../../../reports/propagation/gdn_rw_int8_quantizer_v1_formal_report.md)
+- [`docs/gdn_rotation_headroom_v1/operator_graph.md`](../../../../../reports/propagation/gdn_rotation_headroom_v1_operator_graph.md)
+- [`docs/gdn_rotation_headroom_v1/protocol_audit.md`](../../../../../reports/propagation/gdn_rotation_headroom_v1_protocol_audit.md)
+- [`docs/gdn_rotation_headroom_v1/range_results.csv`](../../objects/9a/9a071d493336fd5123535e1b6f960ec4cdb5ec408182429fd978e6a40c7a20d2__functional_results.csv)
+- [`docs/gdn_rw_int8_quantizer_v1/protocol_audit.md`](../../../../../reports/propagation/gdn_rw_int8_quantizer_v1_protocol_audit.md)
+- [`docs/gdn_rotation_headroom_v1/efficiency_audit.md`](../../../../../reports/propagation/gdn_rotation_headroom_v1_efficiency_audit.md)
+- [`docs/gdn_rotation_headroom_v1/protocol_audit.json`](../../../../propagation/gdn_rotation_headroom_v1_protocol_audit.json)
+- [`docs/gdn_rw_int8_quantizer_v1/efficiency_audit.md`](../../../../../reports/propagation/gdn_rw_int8_quantizer_v1_efficiency_audit.md)
+- [`docs/gdn_rw_int8_quantizer_v1/protocol_audit.json`](../../../../propagation/gdn_rw_int8_quantizer_v1_protocol_audit.json)
+- [`docs/gdn_rotation_headroom_v1/future_kl_results.csv`](../../objects/9a/9a071d493336fd5123535e1b6f960ec4cdb5ec408182429fd978e6a40c7a20d2__functional_results.csv)
+- [`docs/gdn_rotation_headroom_v1/equivariance_local.csv`](../../objects/e6/e60dc9efe97636a9e275bd4ef009e26b8542adab2e6a066ea63185b290a58e25__equivariance_local.csv)
+- [`docs/gdn_rotation_headroom_v1/functional_results.csv`](../../objects/9a/9a071d493336fd5123535e1b6f960ec4cdb5ec408182429fd978e6a40c7a20d2__functional_results.csv)
+- [`docs/gdn_rw_int8_quantizer_v1/gamma_action_space.csv`](../../objects/6d/6d2640ce2ae2465ee5016b4cb5b876e65261361f996fac0063cc7846391d924d__gamma_action_space.csv)
+- [`docs/gdn_rw_int8_quantizer_v1/formal_unit_results.csv`](../../objects/cb/cb7f32fc2d95749e1b2acd37e60652f26e11e591c54da49c407c25f6cc77974d__formal_unit_results.csv)
+- [`reports/orientation/gdn_int8_row_e2e_completion_v1.md`](../../../../../reports/orientation/gdn_int8_row_e2e_completion_v1.md)
+- [`docs/gdn_rw_int8_quantizer_v1/action_ranking_report.md`](../../../../../reports/propagation/gdn_rw_int8_quantizer_v1_action_ranking_report.md)
+- [`docs/gdn_rotation_headroom_v1/final_classification.json`](../../../../propagation/gdn_rotation_headroom_v1_final_classification.json)

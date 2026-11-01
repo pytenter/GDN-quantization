@@ -1,0 +1,50 @@
+# pace48_lqunroll_dp32_throughput_v1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/pace48_lqunroll_dp32_throughput_v1`
+
+原结构化状态：**STOPPED**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`README.md`](../../objects/5d/5d65f3a668c3ecbcbd2776685136ebffbe7387cca8b71dbb2deb873e19005bd4__README.md)
+- [`scripts/score_cpu.py`](../../objects/43/439a48719cd40cac6d10f4d8b86d0a39a2050f17a37088bba882dabe85b682cc__score_cpu.py)
+- [`vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`releases/ASSET_FIX_V2/README.md`](../../objects/5d/5d65f3a668c3ecbcbd2776685136ebffbe7387cca8b71dbb2deb873e19005bd4__README.md)
+- [`analysis/PAPER_MECHANISM_REVIEW.md`](../../objects/7b/7b551c17a68007bde8baec6d78c502bacddb300e1ea4ad45716077625a00c101__PAPER_MECHANISM_REVIEW.md)
+- [`operations/CONTINUATION_HANDOFF.md`](../../objects/1e/1ea06bbad6e42cb3d3a0761a3a5974b4d42744e083c8489a287cef417942fc59__CONTINUATION_HANDOFF.md)
+- [`releases/ASSET_FIX_V2/EXECUTION_LOG.md`](../../objects/a7/a78000f300721fa7a3d147d059e3052b8638d40a769fc3efb0164e81dd0cc94b__EXECUTION_LOG.md)
+- [`operations/PRELAUNCH_CPU_SCOPE_NOTES.md`](../../objects/38/38c7b7167de0aea1af3d61fb55d5322f04c81c02fc071967f4e7b56bfad58076__PRELAUNCH_CPU_SCOPE_NOTES.md)
+- [`releases/ASSET_FIX_V2/BENCHMARK_RAW.csv`](../../objects/e0/e07326d80b8910a9e98fdb46e2ba6679c42c10ceea45abd5b170fc2c3aa9add9__BENCHMARK_RAW.csv)
+- [`releases/ASSET_FIX_V2/scripts/score_cpu.py`](../../objects/43/439a48719cd40cac6d10f4d8b86d0a39a2050f17a37088bba882dabe85b682cc__score_cpu.py)
+- [`releases/ASSET_FIX_V2/NUMERICAL_VALIDATION.md`](../../objects/b3/b3ba648f036c6cabdb469cd8b65c83b625d92e2c467b6b368d1bfd30a7e07a59__NUMERICAL_VALIDATION.md)
+- [`releases/ASSET_FIX_V2/KERNEL_LATENCY_REPORT.md`](../../objects/a1/a1a7d2ac932ba07ad6e914214bf76ac82d6a9107e109bf247e06f51508f7a377__KERNEL_LATENCY_REPORT.md)
+- [`releases/ASSET_FIX_V2/THROUGHPUT_COMPARISON.md`](../../objects/65/6533b6e1fa559dea9902b9426149527f89e94aff8e8e889cd5ca4e17e64863d7__THROUGHPUT_COMPARISON.md)
+- [`configs/NUMERICAL_ADMISSION_PREREGISTRATION.json`](../../objects/aa/aaa0154fb9f95bb9b595749de2ab4d0428976aa77981ce82998f5e9af32fc230__NUMERICAL_ADMISSION_PREREGISTRATION.json)
+- [`releases/ASSET_FIX_V2/vendor/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`releases/ASSET_FIX_V2/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`protocol/INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json`](../../objects/45/458041afe7011c5055d92bed1f97bc95b21f081a480a31092495c33e7e521094__INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json)
+- [`releases/ASSET_FIX_V2/analysis/PAPER_MECHANISM_REVIEW.md`](../../objects/7b/7b551c17a68007bde8baec6d78c502bacddb300e1ea4ad45716077625a00c101__PAPER_MECHANISM_REVIEW.md)
+- [`releases/ASSET_FIX_V2/operations/CONTINUATION_HANDOFF.md`](../../objects/f7/f77478bc3453414ffce3638fc43925aae585a2dbd60b7d94bfc4fdb3d13a2dde__CONTINUATION_HANDOFF.md)
+- [`releases/ASSET_FIX_V2/operations/ASSET_FIX_SCOPE_NOTES.md`](../../objects/ce/ceac7c25265fab99dd4bd5f79144319810b22eed8644ae07b162ab97bedbe22f__ASSET_FIX_SCOPE_NOTES.md)
+- [`releases/ASSET_FIX_V2/operations/PRELAUNCH_CPU_SCOPE_NOTES.md`](../../objects/38/38c7b7167de0aea1af3d61fb55d5322f04c81c02fc071967f4e7b56bfad58076__PRELAUNCH_CPU_SCOPE_NOTES.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_STOP/EXECUTION_LOG.md`](../../objects/45/45f4288e674b05821e3e68f2718cc792be86dbf06f87352ae6be5aa7ecc84c90__EXECUTION_LOG.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_OVERLAP/EXECUTION_LOG.md`](../../objects/c0/c0751cb5212cc2a518828e97af80988aaa7858df71c4003d35a34d2a5f1fa04e__EXECUTION_LOG.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_COMPLETE/EXECUTION_LOG.md`](../../objects/c0/c0751cb5212cc2a518828e97af80988aaa7858df71c4003d35a34d2a5f1fa04e__EXECUTION_LOG.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_OVERLAP/BENCHMARK_RAW.csv`](../../objects/3e/3e071e7510903272ecb925564f155cbba6e4a9489dbbd139b8f7b1d3d90132a9__BENCHMARK_RAW.csv)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_COMPLETE/BENCHMARK_RAW.csv`](../../objects/6d/6d2373bae9649e6fbc10cee534694d45000c0e183a4a819876362b752a0c51b9__BENCHMARK_RAW.csv)
+- [`releases/ASSET_FIX_V2/configs/NUMERICAL_ADMISSION_PREREGISTRATION.json`](../../objects/aa/aaa0154fb9f95bb9b595749de2ab4d0428976aa77981ce82998f5e9af32fc230__NUMERICAL_ADMISSION_PREREGISTRATION.json)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_STOP/NUMERICAL_VALIDATION.md`](../../objects/8c/8c07cfcbe76c23f07dcbb35855cebbb7148997b79eab5e89bd2396679d5b86ca__NUMERICAL_VALIDATION.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_STOP/KERNEL_LATENCY_REPORT.md`](../../objects/f2/f2c026afb5dd56b9a3411b9996b725c5ccb0e50ea453ac44ff2b59ee9dc47df8__KERNEL_LATENCY_REPORT.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_STOP/THROUGHPUT_COMPARISON.md`](../../objects/32/32dfd2df5654c85e7c4301729194d1dd738f4e70a917ab17a2c5178b85e0083e__THROUGHPUT_COMPARISON.md)
+- [`releases/ASSET_FIX_V2/protocol/INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json`](../../objects/45/458041afe7011c5055d92bed1f97bc95b21f081a480a31092495c33e7e521094__INHERITED_AIME26_SEED1_PROTOCOL_FREEZE.json)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_OVERLAP/NUMERICAL_VALIDATION.md`](../../objects/8c/8c07cfcbe76c23f07dcbb35855cebbb7148997b79eab5e89bd2396679d5b86ca__NUMERICAL_VALIDATION.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_COMPLETE/NUMERICAL_VALIDATION.md`](../../objects/8c/8c07cfcbe76c23f07dcbb35855cebbb7148997b79eab5e89bd2396679d5b86ca__NUMERICAL_VALIDATION.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_OVERLAP/KERNEL_LATENCY_REPORT.md`](../../objects/f2/f2c026afb5dd56b9a3411b9996b725c5ccb0e50ea453ac44ff2b59ee9dc47df8__KERNEL_LATENCY_REPORT.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_OVERLAP/THROUGHPUT_COMPARISON.md`](../../objects/21/2105736c9d84e4b9ef28b1d966e0c9c3ab9080d1cf8dd328ba79330e6c732bc8__THROUGHPUT_COMPARISON.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_COMPLETE/KERNEL_LATENCY_REPORT.md`](../../objects/f2/f2c026afb5dd56b9a3411b9996b725c5ccb0e50ea453ac44ff2b59ee9dc47df8__KERNEL_LATENCY_REPORT.md)
+- [`cpu_tests/CPU_FIXTURES_ONLY_7jwqnmdh/REPORT_COMPLETE/THROUGHPUT_COMPARISON.md`](../../objects/4f/4ff3ed2922ccf651c86c48a32020c37d8c6bed007c7c4c94df04f41150899d56__THROUGHPUT_COMPARISON.md)
+- [`releases/ASSET_FIX_V2_FINAL_CPU_REVIEW_20261029/.incoming_part01/FINAL_COMPARISON.md`](../../objects/e3/e30a700df20457cad0964fd1cb1a2deac46477c6bd90bfb273e1aefc51fd1ce0__FINAL_COMPARISON.md)
+- [`releases/ASSET_FIX_V2/cpu_tests/CPU_FIXTURES_ONLY_eg51f6sj/REPORT_STOP/EXECUTION_LOG.md`](../../objects/45/45f4288e674b05821e3e68f2718cc792be86dbf06f87352ae6be5aa7ecc84c90__EXECUTION_LOG.md)

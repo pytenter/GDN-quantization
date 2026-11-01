@@ -1,0 +1,868 @@
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/models/BaseModel.java
+public class BaseModel {
+
+	protected final ProcessorContext context;
+
+	public BaseModel(ProcessorContext context) {
+		this.context = context;
+	}
+
+}
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/analyzers/CascadingTypeAnalyzer.java
+public interface Analysis {
+
+	void prependOnce(Analysis analysis);
+
+	void appendOnce(Analysis analysis);
+
+	void prependOnce(String string);
+
+	void appendOnce(String string);
+
+	String emit();
+
+	void transform(CodeTransform transform);
+
+	void wrap(CodeTransform transformation);
+
+	String preEmitOnce();
+
+	String postEmitOnce();
+
+}
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/SourceUtils.java
+public static final TypeVariableName T = var("T");
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/models/FieldModel.java
+public class FieldModel {
+
+	public enum Flag {
+		HIDDEN
+	}
+
+	public final VariableElement element;
+	private final Set<Class<? extends Annotation>> annotated;
+	final EnumSet<Flag> flags = EnumSet.noneOf(Flag.class);
+
+	public FieldModel(VariableElement element, Set<Class<? extends Annotation>> annotated) {
+		this.element = element;
+		this.annotated = annotated;
+	}
+
+	public String name() {
+		return element.getSimpleName().toString();
+	}
+
+	public <A extends Annotation> Optional<A> annotation(Class<A> annotationClass) {
+		return annotated.contains(annotationClass)
+				? Optional.of(element.getAnnotation(annotationClass)) : Optional.empty();
+	}
+
+	public EnumSet<Flag> flags() {
+		return EnumSet.copyOf(flags);
+	}
+
+	public TypeElement enclosingElement() {
+		return (TypeElement) element.getEnclosingElement();
+	}
+
+	public TypeMirror type() {
+		return element.asType();
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (o == null || getClass() != o.getClass())
+			return false;
+		FieldModel that = (FieldModel) o;
+		return element.equals(that.element);
+
+	}
+
+	@Override
+	public int hashCode() {
+		return element.hashCode();
+	}
+
+	@Override
+	public String toString() {
+		return MoreObjects.toStringHelper(this).add("element", element).add("flags", flags)
+				.toString();
+	}
+}
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/SourceUtils.java
+public static ParameterizedTypeName type(Class<?> clazz, TypeVariableName... variableNames) {
+	return ParameterizedTypeName.get(ClassName.get(clazz), variableNames);
+}
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/models/ClassInfo.java
+public class ClassInfo {
+
+	public final String fullyQualifiedPackageName;
+	public final String className;
+
+	public final List<String> enclosingClasses;
+
+	public ClassInfo(String fullyQualifiedPackageName, String className,
+			List<String> enclosingClasses) {
+		this.fullyQualifiedPackageName = fullyQualifiedPackageName;
+		this.className = className;
+		this.enclosingClasses = Collections.unmodifiableList(enclosingClasses);
+	}
+
+	public ClassInfo(String fullyQualifiedPackageName, String className,
+			String... enclosingClasses) {
+		this(fullyQualifiedPackageName, className, Arrays.asList(enclosingClasses));
+	}
+
+	public String fullyQualifiedClassName() {
+		return fullyQualifiedPackageName + "."
+				+ (enclosingClasses.size() == 0 ? "" : Joiner.on('$').join(enclosingClasses) + "$")
+				+ className;
+	}
+
+	public ClassInfo withFqpnTransform(Function<String, String> function) {
+		return new ClassInfo(function.apply(fullyQualifiedPackageName), className, enclosingClasses);
+	}
+
+	public ClassInfo withNameTransform(Function<String, String> function) {
+		return new ClassInfo(fullyQualifiedPackageName, function.apply(className), enclosingClasses);
+	}
+
+	public ClassInfo withEnclosingClasses(String... classes) {
+
+		ArrayList<String> c = new ArrayList<>(enclosingClasses);
+		c.addAll(Arrays.asList(classes));
+
+		return new ClassInfo(fullyQualifiedPackageName, className, c);
+	}
+
+	public ClassName toClassName() {
+		if (enclosingClasses.isEmpty()) {
+			return ClassName.get(fullyQualifiedPackageName, className);
+		} else {
+			// XXX this is just stupid, JavaPoet has a private constructor just
+			// for this...
+			ArrayList<String> names = new ArrayList<>(enclosingClasses);
+			names.add(className);
+			List<String> subList = names.subList(1, names.size());
+			return ClassName.get(fullyQualifiedPackageName, names.get(0),
+					subList.toArray(new String[subList.size()]));
+		}
+	}
+
+	@Override
+	public String toString() {
+		return fullyQualifiedClassName();
+	}
+}
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/models/SourceClassModel.java
+public class SourceClassModel extends BaseModel {
+
+	private final TypeElement enclosingClass;
+	private SourceClassModel parent;
+	private Set<SourceClassModel> children;
+	final List<FieldModel> fields = new ArrayList<>();
+
+	SourceClassModel(ProcessorContext context, TypeElement enclosingClass) {
+		super(context);
+		this.enclosingClass = enclosingClass;
+
+		if (!enclosingClassValid(context, enclosingClass)) {
+			throw new RuntimeException("Element " + enclosingClass + " is not valid");
+		}
+
+	}
+
+	void linkParent(Map<String, SourceClassModel> map) {
+		TypeElement superClass = enclosingClass;
+		while ((superClass.getKind() == ElementKind.CLASS)) {
+			final Element superElement = context.types().asElement(superClass.getSuperclass());
+			if (!(superElement instanceof TypeElement)) {
+				break;
+			}
+			superClass = (TypeElement) superElement;
+
+			final SourceClassModel superModel = map.get(superClass.getQualifiedName().toString());
+			if (superModel != null) {
+				// we found our closest super class
+				this.parent = superModel;
+				break;
+			}
+		}
+		// this.children.forEach(c -> c.linkParent(map));
+	}
+
+	void findChildren(Map<String, SourceClassModel> map, RoundEnvironment environment) {
+		Set<SourceClassModel> models = new HashSet<>();
+		for (Element root : environment.getRootElements()) {
+
+			root.accept(new SimpleElementVisitor8<Void, Set<SourceClassModel>>() {
+
+				@Override
+				public Void visitType(TypeElement element, Set<SourceClassModel> models) {
+					if (element.getKind() == ElementKind.CLASS && element != enclosingClass) {
+						// we're in a class now
+						if (context.utils().isAssignable(element.asType(), mirror(), true)) {
+							// the class extends the source class, add it to the
+							// map
+							SourceClassModel existing = map
+									.get(element.getQualifiedName().toString());
+							if (existing != null) {
+								// class model was instantiated in the
+								// verification phase
+
+								if (existing.parent == null)
+									existing.parent = SourceClassModel.this;
+
+								models.add(existing);
+							} else {
+								// new class found
+								SourceClassModel model = new SourceClassModel(context, element);
+								model.parent = SourceClassModel.this;
+								models.add(model);
+								model.findChildren(map, environment);
+							}
+						}
+						// keep walking
+						element.getEnclosedElements().forEach(e -> e.accept(this, models));
+					}
+					return null;
+				}
+			}, models);
+		}
+		this.children = Collections.unmodifiableSet(models);
+	}
+
+	void markHiddenFields() {
+		// set colliding fields with the proper flag
+		fields.stream().filter(model -> parent != null && parent.containsFieldWithSameName(model))
+				.findAny().ifPresent(m -> m.flags.add(Flag.HIDDEN));
+	}
+
+	private boolean containsFieldWithSameName(FieldModel model) {
+		return fields.stream().anyMatch(m -> m.name().equals(model.name()));
+	}
+
+	public List<FieldModel> fields() {
+		return Collections.unmodifiableList(fields);
+	}
+
+	public String fullyQualifiedName() {
+		return enclosingClass.getQualifiedName().toString();
+	}
+
+	public String simpleName() {
+//		if (enclosingClass.getNestingKind() != NestingKind.TOP_LEVEL) {
+//			String fqn = enclosingClass.getQualifiedName().toString();
+//			return fqn.substring(fqn.indexOf('.') + 1, fqn.length());
+//		} else {
+			return enclosingClass.getSimpleName().toString();
+//		}
+	}
+
+	public String fullyQualifiedPackageName() {
+		return context.elements().getPackageOf(enclosingClass).toString();
+	}
+
+	public boolean containsModifier(Modifier modifier) {
+		return enclosingClass.getModifiers().contains(modifier);
+	}
+
+	public ClassInfo asClassInfo() {
+		String fqpn = fullyQualifiedPackageName();
+		String className;
+		if (enclosingClass.getNestingKind() != NestingKind.TOP_LEVEL) {
+			// in case of the static class, we get all the nested classes and
+			// replace '.' with '$'
+			className = CharMatcher.is('.')
+					.replaceFrom(fullyQualifiedName().replace(fqpn + ".", ""), '$');
+		} else {
+			className = simpleName();
+		}
+		return new ClassInfo(fqpn, className);
+	}
+
+	public TypeElement originatingElement() {
+		return enclosingClass;
+	}
+
+	public <A extends Annotation> Optional<A> annotation(Class<A> annotationClass) {
+		return Optional.ofNullable(enclosingClass.getAnnotation(annotationClass));
+	}
+
+	public Optional<SourceClassModel> directSuperModel() {
+		return Optional.ofNullable(parent);
+	}
+
+	public Optional<SourceClassModel> directSuperModelWithAnnotation(
+			Class<? extends Annotation> annotationClass) {
+		return parent != null && parent.containsAnyAnnotation(annotationClass) ? directSuperModel()
+				: Optional.empty();
+	}
+
+	public boolean containsAnyAnnotation(Class<? extends Annotation> annotationClass) {
+		return fields.stream().anyMatch(fm -> fm.annotation(annotationClass).isPresent());
+	}
+
+	public Set<SourceClassModel> children() {
+		return children;
+	}
+
+	public TypeMirror mirror() {
+		return enclosingClass.asType();
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (o == null || getClass() != o.getClass())
+			return false;
+		SourceClassModel that = (SourceClassModel) o;
+		return enclosingClass.equals(that.enclosingClass);
+
+	}
+
+	@Override
+	public int hashCode() {
+		return enclosingClass.hashCode();
+	}
+
+	@Override
+	public String toString() {
+		return MoreObjects.toStringHelper(this).add("enclosingClass", enclosingClass)
+				.add("parent", parent != null ? parent.fullyQualifiedName() : null)
+				.add("children", Arrays.toString(children.stream()
+						.map(SourceClassModel::fullyQualifiedName).toArray(String[]::new)))
+				.add("fields", fields).toString();
+	}
+}
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/analyzers/CascadingTypeAnalyzer.java
+public enum InvocationType {
+	SAVE, RESTORE
+}
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/BundleContext.java
+class SimpleBundleContext implements BundleContext {
+
+	private final String sourceObjectName;
+	private final String bundleObjectName;
+
+	SimpleBundleContext(String sourceObjectName, String bundleObjectName) {
+		this.sourceObjectName = sourceObjectName;
+		this.bundleObjectName = bundleObjectName;
+	}
+
+	@Override
+	public String sourceObjectName() {
+		return sourceObjectName;
+	}
+
+	@Override
+	public String bundleObjectName() {
+		return bundleObjectName;
+	}
+
+	@Override
+	public String toString() {
+		return MoreObjects.toStringHelper(this).add("sourceObjectName", sourceObjectName)
+				.add("bundleObjectName", bundleObjectName).toString();
+	}
+}
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/analyzers/Element.java
+public class Element<T extends TypeMirror> {
+
+	private final FieldModel model;
+
+	private final List<CodeTransform> keyNameTransformations;
+	private final List<CodeTransform> fieldAccessorTransformations;
+	private String accessorExpression;
+
+	private TypeMirror fieldMirror;
+	private T refinedMirror;
+
+	@SuppressWarnings("unchecked")
+	public Element(FieldModel model) {
+		this.model = model;
+		this.keyNameTransformations = new ArrayList<>();
+		this.fieldAccessorTransformations = new ArrayList<>();
+		this.accessorExpression = "";
+		this.fieldMirror = model.type();
+		this.refinedMirror = (T) model.type();
+	}
+
+	// copy constructor
+	@SuppressWarnings("unchecked")
+	private Element(Element<?> element) {
+		this.model = element.model;
+		this.keyNameTransformations = new ArrayList<>(element.keyNameTransformations);
+		this.fieldAccessorTransformations = new ArrayList<>(element.fieldAccessorTransformations);
+		this.accessorExpression = element.accessorExpression;
+		this.fieldMirror = element.fieldMirror;
+		this.refinedMirror = (T) element.refinedMirror;
+	}
+
+	public javax.lang.model.element.Element originatingElement() {
+		return model.element;
+	}
+
+	public FieldModel model() {
+		return model;
+	}
+
+	public String accessor(Function<String, String> fieldAccessFunction) {
+		String fieldAccess = fieldAccessFunction.apply(model.name() + accessorExpression);
+		for (Function<String, String> transformations : fieldAccessorTransformations) {
+			fieldAccess = transformations.apply(fieldAccess);
+		}
+		return fieldAccess;
+	}
+
+	public String uniqueName() {
+		if (model.flags().contains(Flag.HIDDEN)) {
+			// fieldName_packageName
+			return model.name() + "_" + model.enclosingElement().getQualifiedName();
+		} else {
+			// fieldName
+			return model.name();
+		}
+	}
+
+	public String keyName() {
+		String keyName = "\"" + uniqueName() + "\"";
+		for (Function<String, String> transformations : keyNameTransformations) {
+			keyName = transformations.apply(keyName);
+		}
+		return keyName;
+	}
+
+	public TypeMirror fieldMirror() {
+		return fieldMirror;
+	}
+
+	public T refinedMirror() {
+		return refinedMirror;
+	}
+
+	public Builder<T> toBuilder() {
+		return new Builder<>(this);
+	}
+
+	public <NT extends TypeMirror> Element<NT> refine(NT newTypeMirror) {
+		return toBuilder().refinedType(newTypeMirror).build();
+	}
+
+	public static class Builder<T extends TypeMirror> {
+
+		public enum SetterMode {
+			APPEND((o, i) -> o + i), PREPEND((o, i) -> i + o), REPLACE((o, i) -> i);
+
+			private final BiFunction<String, String, String> function;
+
+			SetterMode(BiFunction<String, String, String> function) {
+				this.function = function;
+			}
+
+			public String process(String original, String input) {
+				return function.apply(original, input);
+			}
+		}
+
+		private Element<T> element;
+
+		private Builder(Element<T> element) {
+			this.element = new Element<>(element);
+		}
+
+		public <NT extends TypeMirror> Builder<NT> type(NT type) {
+			return fieldType(type).refinedType(type);
+		}
+
+		public Builder<T> fieldType(TypeMirror mirror) {
+			element.fieldMirror = mirror;
+			return this;
+		}
+
+		@SuppressWarnings("unchecked")
+		public <NT extends TypeMirror> Builder<NT> refinedType(NT mirror) {
+			element.refinedMirror = (T) mirror;
+			return (Builder<NT>) this;
+		}
+
+		public Builder<T> keyName(SetterMode mode, String name) {
+			element.keyNameTransformations.add((original) -> mode.process(original, name));
+			return this;
+		}
+
+		public Builder<T> fieldNameTransforms(CodeTransform transform) {
+			element.fieldAccessorTransformations.add(transform);
+			return this;
+		}
+
+		public Builder<T> accessor(SetterMode mode, String accessor) {
+			element.accessorExpression = mode.process(element.accessorExpression, accessor);
+			return this;
+		}
+
+		public Element<T> build() {
+			final Element<T> element = this.element;
+			// forbid mutation through the builder once the object has been
+			// build
+			this.element = null;
+			return element;
+		}
+
+	}
+
+	@Override
+	public String toString() {
+		return MoreObjects.toStringHelper(this)
+				.add("keyNameTransformations", Iterables.size(keyNameTransformations))
+				.add("accessorExpression", accessorExpression).add("fieldMirror", fieldMirror)
+				.add("refinedMirror", refinedMirror).toString();
+	}
+}
+akatsuki-compiler/src/main/java/com/sora/util/akatsuki/analyzers/CascadingTypeAnalyzer.java
+public abstract class CascadingTypeAnalyzer<S extends CascadingTypeAnalyzer<S, T, A>, T extends TypeMirror, A extends Analysis>
+		extends TransformationContext {
+
+	private int cascadeDepth;
+
+	public enum InvocationType {
+		SAVE, RESTORE
+	}
+
+	public static final Escaper ESCAPER = new CharEscaperBuilder()
+			.addEscapes(new char[] { '[', ']', '.', '(', ')' }, "_").toEscaper();
+
+	protected TypeMirror targetMirror;
+	protected TypeCastStrategy strategy = TypeCastStrategy.AUTO_CAST;
+	protected String suffix = "";
+
+	S target(TypeMirror mirror) {
+		final S instance = createInstance(this);
+		cloneFields(instance);
+		instance.targetMirror = mirror;
+		return instance;
+	}
+
+	S cast(TypeCastStrategy strategy) {
+		final S instance = createInstance(this);
+		cloneFields(instance);
+		instance.strategy = strategy;
+		return instance;
+	}
+
+	S suffix(String suffix) {
+		final S instance = createInstance(this);
+		cloneFields(instance);
+		instance.suffix = this.suffix + suffix;
+		return instance;
+	}
+
+	private void cloneFields(CascadingTypeAnalyzer<?, ?, ?> target) {
+		target.targetMirror = this.targetMirror;
+		target.suffix = this.suffix;
+		target.strategy = this.strategy;
+	}
+
+	protected abstract S createInstance(TransformationContext context);
+
+	public enum TypeCastStrategy {
+		NO_CAST((context, from, to) -> null), //
+		FORCE_CAST((context, from, to) -> to.toString()), //
+		AUTO_CAST((context, from, to) -> context.utils().isAssignable(from, to, true) ? null
+				: to.toString());//
+
+		private final ClassCastFunction function;
+
+		TypeCastStrategy(ClassCastFunction function) {
+			this.function = function;
+		}
+
+		public interface ClassCastFunction {
+			String createCastExpression(ProcessorContext context, TypeMirror from, TypeMirror to);
+		}
+
+	}
+
+	public CascadingTypeAnalyzer(TransformationContext context) {
+		super(context);
+		this.cascadeDepth = 0;
+	}
+
+	public static class InvocationContext<T extends TypeMirror> {
+		public final BundleContext bundleContext;
+		public final Element<T> field;
+		public final InvocationType type;
+
+		public InvocationContext(BundleContext bundleContext, Element<T> field,
+				InvocationType type) {
+			this.bundleContext = bundleContext;
+			this.field = field;
+			this.type = type;
+		}
+	}
+
+	protected abstract A createAnalysis(InvocationContext<T> context) throws UnknownTypeException;
+
+	protected String fieldAccessor(InvocationContext<?> context) {
+		return context.field.accessor(fn -> {
+			String objectName = context.bundleContext.sourceObjectName();
+			return Strings.isNullOrEmpty(objectName) ? fn : objectName + "." + fn;
+		});
+	}
+
+	@SuppressWarnings("unchecked")
+	public A transform(BundleContext bundleContext, Element<?> element, InvocationType type)
+			throws UnknownTypeException {
+		Log.verbose(this,
+				type + ">" + cascadeDepth + Strings.repeat(" ", cascadeDepth) + "\\Cascade:"
+						+ toString() + " -> " + element.toString() + " with " + bundleContext);
+		return createAnalysis(new InvocationContext<>(bundleContext, (Element<T>) element, type));
+	}
+
+	protected Analysis cascade(CascadingTypeAnalyzer<?, ?, ?> transformation,
+			InvocationContext<?> context, TypeMirror mirror) throws UnknownTypeException {
+		return cascade(transformation, context, f -> f.refine(mirror));
+	}
+
+	protected Analysis cascade(CascadingTypeAnalyzer<?, ?, ?> transformation,
+			InvocationContext<?> context, Function<Element<?>, Element<?>> elementTransformation)
+					throws UnknownTypeException {
+		transformation.cascadeDepth = cascadeDepth + 1;
+		return transformation.transform(context.bundleContext,
+				elementTransformation.apply(context.field), context.type);
+
+	}
+
+	protected TypeMirror targetOrElse(TypeMirror mirror) {
+		return targetMirror != null ? targetMirror : mirror;
+	}
+
+	public interface Analysis {
+
+		void prependOnce(Analysis analysis);
+
+		void appendOnce(Analysis analysis);
+
+		void prependOnce(String string);
+
+		void appendOnce(String string);
+
+		String emit();
+
+		void transform(CodeTransform transform);
+
+		void wrap(CodeTransform transformation);
+
+		String preEmitOnce();
+
+		String postEmitOnce();
+
+	}
+
+	@Override
+	public String toString() {
+		return MoreObjects.toStringHelper(this).add("targetMirror", targetMirror)
+				.add("strategy", strategy).add("suffix", suffix).toString();
+	}
+
+	static abstract class ChainedAnalysis implements Analysis {
+
+		private final List<String> preEmit = new ArrayList<>();
+		private final List<String> postEmit = new ArrayList<>();
+		protected final CodeTransforms transforms = new CodeTransforms();
+
+		@Override
+		public void prependOnce(Analysis analysis) {
+			appendAnalysis(preEmit, analysis);
+		}
+
+		@Override
+
+		public void appendOnce(Analysis analysis) {
+			appendAnalysis(postEmit, analysis);
+
+		}
+
+		@Override
+		public void wrap(CodeTransform transform) {
+			transforms.append(transform);
+		}
+
+		@Override
+		public void prependOnce(String string) {
+			preEmit.add(string);
+		}
+
+		@Override
+		public void appendOnce(String string) {
+			postEmit.add(string);
+		}
+
+		@Override
+		public String preEmitOnce() {
+			return preEmit.stream().collect(Collectors.joining());
+		}
+
+		@Override
+		public String postEmitOnce() {
+			return postEmit.stream().collect(Collectors.joining());
+		}
+
+		private void appendAnalysis(List<String> list, Analysis analysis) {
+			list.add(analysis.preEmitOnce());
+			list.add(analysis.emit());
+			list.add(analysis.postEmitOnce());
+		}
+
+	}
+
+	static class DefaultAnalysis extends ChainedAnalysis {
+
+		private final Map<String, Object> scope;
+		private RawStatement expression;
+
+		DefaultAnalysis(Map<String, Object> scope, RawStatement statement) {
+			this.scope = scope;
+			this.expression = statement;
+		}
+
+		@Override
+		public String emit() {
+			return preEmitOnce() + MustacheUtils.render(scope, transforms.apply(expression.render(scope))) + postEmitOnce();
+		}
+
+		@Override
+		public void transform(CodeTransform transform) {
+			expression.transform(transform);
+		}
+
+		static <T extends TypeMirror> DefaultAnalysis of(CascadingTypeAnalyzer<?, T, ?> analyzer,
+				RawStatement statement, InvocationContext<T> context,
+				Map<String, Object> extraScope) {
+			final HashMap<String, Object> scope = new HashMap<>();
+			scope.put("fieldName", analyzer.fieldAccessor(context));
+			scope.put("keyName", context.field.keyName());
+			scope.put("bundle", context.bundleContext.bundleObjectName());
+			if (extraScope != null)
+				scope.putAll(extraScope);
+			return new DefaultAnalysis(scope, statement);
+		}
+
+		static <T extends TypeMirror> DefaultAnalysis of(CascadingTypeAnalyzer<?, T, ?> analyzer,
+				String methodName, InvocationContext<T> context) {
+			final HashMap<String, Object> scope = new HashMap<>();
+			scope.put("methodName", methodName);
+			RawStatement statement;
+			if (context.type == InvocationType.SAVE) {
+				// field mirror -> target mirror , we don't need to cast
+				statement = new InvocationStatement(
+						"{{bundle}}.put{{methodName}}({{keyName}}, {{fieldName}})");
+			} else {
+				if (analyzer.targetMirror != null) {
+					// when restore, target mirror is the return mirror so we
+					// cast in opposite detection: target mirror -> field mirror
+					final String castExpression = analyzer.strategy.function.createCastExpression(
+							analyzer, analyzer.targetMirror, context.field.fieldMirror());
+					if (!Strings.isNullOrEmpty(castExpression)) {
+						scope.put("cast", true);
+						scope.put("castExpression", castExpression);
+					}
+				}
+				statement = new InvocationAssignmentStatement("{{fieldName}}",
+						"{{#cast}}({{castExpression}}){{/cast}}{{bundle}}.get{{methodName}}({{keyName}})");
+			}
+			return of(analyzer, statement, context, scope);
+		}
+
+	}
+
+	public static class ConversionException extends RuntimeException {
+
+		public ConversionException(String message) {
+			super(message);
+		}
+
+		public ConversionException(String message, Throwable cause) {
+			super(message, cause);
+		}
+	}
+
+	public static class UnknownTypeException extends ConversionException {
+
+		// public final Field<?> field;
+
+		public UnknownTypeException(Element<?> element) {
+			super("unknown type " + element + "(" + element.refinedMirror().getClass() + ")");
+		}
+
+		public UnknownTypeException(TypeMirror mirror) {
+			super("unknown type " + mirror + "(" + mirror.getClass() + ")");
+		}
+
+	}
+
+	@FunctionalInterface
+	public interface CodeTransform extends Function<String, String> {
+
+	}
+
+	public static class CodeTransforms {
+		private final ArrayList<CodeTransform> transforms = new ArrayList<>();
+
+		public void append(CodeTransform transform) {
+			this.transforms.add(transform);
+		}
+
+		public String apply(String source) {
+			for (CodeTransform transform : transforms) {
+				source = transform.apply(source);
+			}
+			return source;
+		}
+	}
+
+	public interface RawStatement {
+
+		String render(Object scope);
+
+		void transform(CodeTransform transformation);
+
+	}
+
+	public static class InvocationStatement implements RawStatement {
+
+		private String template;
+
+		public InvocationStatement(String template) {
+			this.template = template;
+		}
+
+		@Override
+		public String render(Object scope) {
+			return MustacheUtils.render(scope, template) + ";\n";
+		}
+
+		@Override
+		public void transform(CodeTransform transform) {
+			template = transform.apply(template);
+		}
+	}
+
+	public static class InvocationAssignmentStatement extends InvocationStatement {
+
+		private final String variable;
+
+		public InvocationAssignmentStatement(String variable, String template) {
+			super(template);
+			this.variable = variable;
+		}
+
+		@Override
+		public String render(Object scope) {
+			return MustacheUtils.render(scope, variable) + " = " + super.render(scope);
+		}
+	}
+}

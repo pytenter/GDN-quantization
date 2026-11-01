@@ -1,0 +1,540 @@
+audiolazy/lazy_math.py
+def log(x, base=None):
+def log1p(x):
+def log10(x):
+def log2(x):
+def factorial(n):
+def dB10(data):
+def dB20(data):
+def sign(x):
+audiolazy/lazy_synth.py
+def modulo_counter(start=0., modulo=256., step=1.):
+def line(dur, begin=0., end=1., finish=False):
+def fadein(dur):
+def fadeout(dur):
+def attack(a, d, s):
+def ones(dur=None):
+def zeros(dur=None):
+def adsr(dur, a, d, s, r):
+def white_noise(dur=None, low=-1., high=1.):
+def gauss_noise(dur=None, mu=0., sigma=1.):
+  def __binary__(cls, op):
+    def dunder(self, other):
+  def __rbinary__(cls, op):
+    def dunder(self, other):
+  def __unary__(cls, op):
+    def dunder(self):
+  def __init__(self, table, cycles=1):
+  def table(self):
+  def table(self, value):
+  def __len__(self):
+  def __call__(self, freq, phase=0.):
+  def __getitem__(self, idx):
+  def __eq__(self, other):
+  def __ne__(self, other):
+  def harmonize(self, harmonics_dict):
+  def normalize(self):
+def sinusoid(freq, phase=0.):
+def impulse(dur=None, one=1., zero=0.):
+def karplus_strong(freq, tau=2e4, memory=white_noise):
+class TableLookupMeta(AbstractOperatorOverloaderMeta):
+class TableLookup(meta(metaclass=TableLookupMeta)):
+DEFAULT_TABLE_SIZE = 2**16
+audiolazy/lazy_misc.py
+def sHz(rate):
+  """
+  Unit conversion constants.
+
+  Useful for casting to/from the default package units (number of samples for
+  time and rad/second for frequency). You can use expressions like
+  ``440 * Hz`` to get a frequency value, or assign like ``kHz = 1e3 * Hz`` to
+  get other unit, as you wish.
+
+  Parameters
+  ----------
+  rate :
+    Sample rate in samples per second
+
+  Returns
+  -------
+  A tuple ``(s, Hz)``, where ``s`` is the second unit and ``Hz`` is the hertz
+  unit, as the number of samples and radians per sample, respectively.
+
+  """
+  return float(rate), 2 * pi / rate
+audiolazy/lazy_compat.py
+def orange(*args, **kwargs):
+def iteritems(dictionary):
+def itervalues(dictionary):
+def im_func(method):
+def meta(*bases, **kwargs):
+    def __new__(mcls, name, mbases, namespace):
+PYTHON2 = sys.version_info.major == 2
+STR_TYPES = (getattr(builtins, "basestring", str),)
+INT_TYPES = (int, getattr(builtins, "long", None)) if PYTHON2 else (int,)
+SOME_GEN_TYPES = (types.GeneratorType, xrange(0).__class__, enumerate, xzip,
+                  xzip_longest, xmap, xfilter)
+NEXT_NAME = "next" if PYTHON2 else "__next__"
+HAS_MATMUL = sys.version_info >= (3,5)
+  class NewMeta(type):
+audiolazy/lazy_itertools.py
+def accumulate(iterable):
+def tee(data, n=2):
+audiolazy/lazy_misc.py
+def rint(x, step=1):
+  """
+  Round to integer.
+
+  Parameters
+  ----------
+  x :
+    Input number (integer or float) to be rounded.
+  step :
+    Quantization level (defaults to 1). If set to 2, the output will be the
+    "best" even number.
+
+  Result
+  ------
+  The step multiple nearest to x. When x is exactly halfway between two
+  possible outputs, it'll result the one farthest to zero.
+
+  """
+  div, mod = divmod(x, step)
+  err = min(step / 10., .1)
+  result = div * step
+  if x > 0:
+    result += err
+  elif x < 0:
+    result -= err
+  if (operator.ge if x >= 0 else operator.gt)(2 * mod, step):
+    result += step
+  return int(result)
+audiolazy/lazy_misc.py
+def blocks(seq, size=None, hop=None, padval=0.):
+  """
+  General iterable blockenizer.
+
+  Generator that gets ``size`` elements from ``seq``, and outputs them in a
+  collections.deque (mutable circular queue) sequence container. Next output
+  starts ``hop`` elements after the first element in last output block. Last
+  block may be appended with ``padval``, if needed to get the desired size.
+
+  The ``seq`` can have hybrid / hetherogeneous data, it just need to be an
+  iterable. You can use other type content as padval (e.g. None) to help
+  segregate the padding at the end, if desired.
+
+  Note
+  ----
+  When hop is less than size, changing the returned contents will keep the
+  new changed value in the next yielded container.
+
+  """
+  # Initialization
+  res = deque(maxlen=size) # Circular queue
+  idx = 0
+  last_idx = size - 1
+  if hop is None:
+    hop = size
+  reinit_idx = size - hop
+
+  # Yields each block, keeping last values when needed
+  if hop <= size:
+    for el in seq:
+      res.append(el)
+      if idx == last_idx:
+        yield res
+        idx = reinit_idx
+      else:
+        idx += 1
+
+  # Yields each block and skips (loses) data due to hop > size
+  else:
+    for el in seq:
+      if idx < 0: # Skips data
+        idx += 1
+      else:
+        res.append(el)
+        if idx == last_idx:
+          yield res
+          #res = dtype()
+          idx = size-hop
+        else:
+          idx += 1
+
+  # Padding to finish
+  if idx > max(size-hop, 0):
+    for _ in xrange(idx,size):
+      res.append(padval)
+    yield res
+audiolazy/lazy_misc.py
+def lag2freq(v):
+  """ Converts from lag (number of samples) to frequency (rad/sample). """
+  return 2 * pi / v
+audiolazy/lazy_stream.py
+class Stream(meta(Iterable, metaclass=StreamMeta)):
+  """
+  Stream class. Stream instances are iterables that can be seem as generators
+  with elementwise operators.
+
+  Examples
+  --------
+  If you want something like:
+
+  >>> import itertools
+  >>> x = itertools.count()
+  >>> y = itertools.repeat(3)
+  >>> z = 2*x + y
+  Traceback (most recent call last):
+      ...
+  TypeError: unsupported operand type(s) for *: 'int' and ...
+
+  That won't work with standard itertools. That's an error, and not only
+  __mul__ but also __add__ isn't supported by their types. On the other hand,
+  you can use this Stream class:
+
+  >>> x = Stream(itertools.count()) # Iterable
+  >>> y = Stream(3) # Non-iterable repeats endlessly
+  >>> z = 2*x + y
+  >>> z
+  <audiolazy.lazy_stream.Stream object at 0x...>
+  >>> z.take(12)
+  [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25]
+
+  If you just want to use your existing code, an "itertools" alternative is
+  already done to help you:
+
+  >>> from audiolazy import lazy_itertools as itertools
+  >>> x = itertools.count()
+  >>> y = itertools.repeat(3)
+  >>> z = 2*x + y
+  >>> w = itertools.takewhile(lambda pair: pair[0] < 10, enumerate(z))
+  >>> list(el for idx, el in w)
+  [3, 5, 7, 9, 11, 13, 15, 17, 19, 21]
+
+  All operations over Stream objects are lazy and not thread-safe.
+
+  See Also
+  --------
+  thub :
+    "Tee" hub to help using the Streams like numbers in equations and filters.
+  tee :
+    Just like itertools.tee, but returns a tuple of Stream instances.
+  Stream.tee :
+    Keeps the Stream usable and returns a copy to be used safely.
+  Stream.copy :
+    Same to ``Stream.tee``.
+
+  Notes
+  -----
+  In that example, after declaring z as function of x and y, you should
+  not use x and y anymore. Use the thub() or the tee() functions, or
+  perhaps the x.tee() or x.copy() Stream methods instead, if you need
+  to use x again otherwhere.
+
+  """
+  __ignored_classes__ = tuple()
+
+  def __init__(self, *dargs):
+    """
+    Constructor for a Stream.
+
+    Parameters
+    ----------
+    *dargs:
+      The parameters should be iterables that will be chained together. If
+      they're not iterables, the stream will be an endless repeat of the
+      given elements. If any parameter is a generator and its contents is
+      used elsewhere, you should use the "tee" (Stream method or itertools
+      function) before.
+
+    Notes
+    -----
+    All operations that works on the elements will work with this iterator
+    in a element-wise fashion (like Numpy 1D arrays). When the stream
+    sizes differ, the resulting stream have the size of the shortest
+    operand.
+
+    Examples
+    --------
+    A finite sequence:
+
+    >>> x = Stream([1,2,3]) + Stream([8,5]) # Finite constructor
+    >>> x
+    <audiolazy.lazy_stream.Stream object at 0x...>
+    >>> tuple(x)
+    (9, 7)
+
+    But be careful:
+
+    >>> x = Stream(1,2,3) + Stream(8,5) # Periodic constructor
+    >>> x
+    <audiolazy.lazy_stream.Stream object at 0x...>
+    >>> x.take(15) # Don't try "tuple" or "list": this Stream is endless!
+    [9, 7, 11, 6, 10, 8, 9, 7, 11, 6, 10, 8, 9, 7, 11]
+
+    """
+    if len(dargs) == 0:
+      raise TypeError("Missing argument(s)")
+
+    elif len(dargs) == 1:
+      if isinstance(dargs[0], Iterable):
+        self._data = iter(dargs[0])
+      else:
+        self._data = it.repeat(dargs[0])
+
+    else:
+      if all(isinstance(arg, Iterable) for arg in dargs):
+        self._data = it.chain(*dargs)
+      elif not any(isinstance(arg, Iterable) for arg in dargs):
+        self._data = it.cycle(dargs)
+      else:
+        raise TypeError("Input with both iterables and non-iterables")
+
+  def __iter__(self):
+    """ Returns the Stream contents iterator. """
+    return self._data
+
+  def __bool__(self):
+    """
+    Boolean value of a stream, called by the bool() built-in and by "if"
+    tests. As boolean operators "and", "or" and "not" couldn't be overloaded,
+    any trial to cast an instance of this class to a boolean should be seen
+    as a mistake.
+    """
+    raise TypeError("Streams can't be used as booleans.\n"
+                    "If you need a boolean stream, try using bitwise "
+                    "operators & and | instead of 'and' and 'or'. If using "
+                    "'not', you can use the inversion operator ~, casting "
+                    "its returned int back to bool.\n"
+                    "If you're using it in a 'if' comparison (e.g. for unit "
+                    "testing), try to freeze the stream before with "
+                    "list(my_stream) or tuple(my_stream).")
+
+  __nonzero__ = __bool__ # For Python 2.x compatibility
+
+  def blocks(self, *args, **kwargs):
+    """
+    Interface to apply audiolazy.blocks directly in a stream, returning
+    another stream. Use keyword args.
+    """
+    return Stream(blocks(iter(self), *args, **kwargs))
+
+  def take(self, n=None, constructor=list):
+    """
+    Returns a container with the n first elements from the Stream, or less if
+    there aren't enough. Use this without args if you need only one element
+    outside a list.
+
+    Parameters
+    ----------
+    n :
+      Number of elements to be taken. Defaults to None.
+      Rounded when it's a float, and this can be ``inf`` for taking all.
+    constructor :
+      Container constructor function that can receie a generator as input.
+      Defaults to ``list``.
+
+    Returns
+    -------
+    The first ``n`` elements of the Stream sequence, created by the given
+    constructor unless ``n == None``, which means returns the next element
+    from the sequence outside any container.
+    If ``n`` is None, this can raise StopIteration due to lack of data in
+    the Stream. When ``n`` is a number, there's no such exception.
+
+    Examples
+    --------
+    >>> Stream(5).take(3) # Three elements
+    [5, 5, 5]
+    >>> Stream(1.2, 2, 3).take() # One element, outside a container
+    1.2
+    >>> Stream(1.2, 2, 3).take(1) # With n = 1 argument, it'll be in a list
+    [1.2]
+    >>> Stream(1.2, 2, 3).take(1, constructor=tuple) # Why not a tuple?
+    (1.2,)
+    >>> Stream([1, 2]).take(3) # More than the Stream size, n is integer
+    [1, 2]
+    >>> Stream([]).take() # More than the Stream size, n is None
+    Traceback (most recent call last):
+      ...
+    StopIteration
+
+    Taking rounded float quantities and "up to infinity" elements
+    (don't try using ``inf`` with endless Stream instances):
+
+    >>> Stream([4, 3, 2, 3, 2]).take(3.4)
+    [4, 3, 2]
+    >>> Stream([4, 3, 2, 3, 2]).take(3.6)
+    [4, 3, 2, 3]
+    >>> Stream([4, 3, 2, 3, 2]).take(inf)
+    [4, 3, 2, 3, 2]
+
+    See Also
+    --------
+    Stream.peek :
+      Returns the n first elements from the Stream, without removing them.
+
+    Note
+    ----
+    You should avoid using take() as if this would be an iterator. Streams
+    are iterables that can be easily part of a "for" loop, and their
+    iterators (the ones automatically used in for loops) are slightly faster.
+    Use iter() builtin if you need that, instead, or perhaps the blocks
+    method.
+
+    """
+    if n is None:
+      return next(self._data)
+    if isinf(n) and n > 0:
+      return constructor(self._data)
+    if isinstance(n, float):
+      n = rint(n) if n > 0 else 0 # So this works with -inf and nan
+    return constructor(next(self._data) for _ in xrange(n))
+
+  def copy(self):
+    """
+    Returns a "T" (tee) copy of the given stream, allowing the calling
+    stream to continue being used.
+    """
+    a, b = it.tee(self._data) # 2 generators, not thread-safe
+    self._data = a
+    return Stream(b)
+
+  def peek(self, n=None, constructor=list):
+    """
+    Sees/peeks the next few items in the Stream, without removing them.
+
+    Besides that this functions keeps the Stream items, it's the same to the
+    ``Stream.take()`` method.
+
+    See Also
+    --------
+    Stream.take :
+      Returns the n first elements from the Stream, removing them.
+
+    Note
+    ----
+    When applied in a StreamTeeHub, this method doesn't consume a copy.
+    Data evaluation is done only once, i.e., after peeking the data is simply
+    stored to be yielded again when asked for.
+
+    """
+    return self.copy().take(n=n, constructor=constructor)
+
+  def skip(self, n):
+    """
+    Throws away the first ``n`` values from the Stream.
+
+    Note
+    ----
+    Performs the evaluation lazily, i.e., the values are thrown away only
+    after requesting the next value.
+
+    """
+    def skipper(data):
+      for _ in xrange(int(round(n))):
+        next(data)
+      for el in data:
+        yield el
+
+    self._data = skipper(self._data)
+    return self
+
+  def limit(self, n):
+    """
+    Enforces the Stream to finish after ``n`` items.
+    """
+    data = self._data
+    self._data = (next(data) for _ in xrange(int(round(n))))
+    return self
+
+  def __getattr__(self, name):
+    """
+    Returns a Stream of attributes or methods, got in an elementwise fashion.
+    """
+    if name == NEXT_NAME:
+      raise AttributeError("Streams are iterable, not iterators")
+    return Stream(getattr(a, name) for a in self._data)
+
+  def __call__(self, *args, **kwargs):
+    """
+    Returns the results from calling elementwise (where each element is
+    assumed to be callable), with the same arguments.
+    """
+    return Stream(a(*args, **kwargs) for a in self._data)
+
+  def append(self, *other):
+    """
+    Append self with other stream(s). Chaining this way has the behaviour:
+
+      ``self = Stream(self, *others)``
+
+    """
+    self._data = it.chain(self._data, Stream(*other)._data)
+    return self
+
+  def map(self, func):
+    """
+    A lazy way to apply the given function to each element in the stream.
+    Useful for type casting, like:
+
+    >>> from audiolazy import count
+    >>> count().take(5)
+    [0, 1, 2, 3, 4]
+    >>> my_stream = count().map(float)
+    >>> my_stream.take(5) # A float counter
+    [0.0, 1.0, 2.0, 3.0, 4.0]
+
+    """
+    self._data = xmap(func, self._data)
+    return self
+
+  def filter(self, func):
+    """
+    A lazy way to skip elements in the stream that gives False for the given
+    function.
+    """
+    self._data = xfilter(func, self._data)
+    return self
+
+  @classmethod
+  def register_ignored_class(cls, ignore):
+    cls.__ignored_classes__ += (ignore,)
+
+  def __abs__(self):
+    return self.map(abs)
+audiolazy/lazy_misc.py
+@almost_eq.strategy("bits")
+def almost_eq(a, b, bits=32, tol=1, ignore_type=True, pad=0.):
+  """
+  Almost equal, based on the amount of floating point significand bits.
+
+  Alternative to "a == b" for float numbers and iterables with float numbers,
+  and tests for sequence contents (i.e., an elementwise a == b, that also
+  works with generators, nested lists, nested generators, etc.). If the type
+  of both the contents and the containers should be tested too, set the
+  ignore_type keyword arg to False.
+  Default version is based on 32 bits IEEE 754 format (23 bits significand).
+  Could use 64 bits (52 bits significand) but needs a
+  native float type with at least that size in bits.
+  If a and b sizes differ, at least one will be padded with the pad input
+  value to keep going with the comparison.
+
+  Note
+  ----
+  Be careful with endless generators!
+
+  """
+  if not (ignore_type or type(a) == type(b)):
+    return False
+  is_it_a = isinstance(a, Iterable)
+  is_it_b = isinstance(b, Iterable)
+  if is_it_a != is_it_b:
+    return False
+  if is_it_a:
+    return all(almost_eq.bits(ai, bi, bits, tol, ignore_type)
+               for ai, bi in xzip_longest(a, b, fillvalue=pad))
+  significand = {32: 23, 64: 52, 80: 63, 128: 112
+                }[bits] # That doesn't include the sign bit
+  power = tol - significand - 1
+  return abs(a - b) <= 2 ** power * abs(a + b)

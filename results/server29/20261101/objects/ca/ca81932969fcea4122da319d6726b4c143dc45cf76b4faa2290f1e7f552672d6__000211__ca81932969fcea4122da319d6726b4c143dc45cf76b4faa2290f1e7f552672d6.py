@@ -1,0 +1,1 @@
+lambda _cls, typ, serialized_type_name, to_dumpable_context, from_dumpable_context: _tuple_new(_cls, (typ, serialized_type_name, to_dumpable_context, from_dumpable_context))

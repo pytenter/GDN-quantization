@@ -1,0 +1,1 @@
+Mapping[str, Warning] | None

@@ -1,0 +1,1 @@
+lambda _cls, G1, G2, G1_labels, G2_labels, nodes_of_G1Labels, nodes_of_G2Labels, G2_nodes_of_degree: _tuple_new(_cls, (G1, G2, G1_labels, G2_labels, nodes_of_G1Labels, nodes_of_G2Labels, G2_nodes_of_degree))

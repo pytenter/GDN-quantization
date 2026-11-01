@@ -1,0 +1,1519 @@
+clembot/core/checks.py
+class AccessDenied(CommandError):
+async def _check_is_owner(ctx):
+async def _check_is_trusted(ctx):
+async def _check_is_guild_owner(ctx):
+async def _check_is_guild_admin(ctx):
+async def _check_is_moderator(ctx):
+async def check_is_owner(ctx):
+async def check_is_trusted(ctx):
+async def check_is_guild_owner(ctx):
+async def check_is_guild_admin(ctx):
+async def check_is_moderator(ctx):
+def go_thru_sometimes():
+def is_bot_owner():
+def is_trusted():
+def is_guild_owner():
+def is_guild_admin():
+def is_guild_mod():
+clembot/utilities/utils/snowflake.py
+CLEM_EPOCH = 1502123160
+def to_timestamp(_id):
+def create():
+    def __init__(self):
+    def next(self):
+    def dumps(self, number):
+    def loads(self, value):
+    def cuid(cls, id):
+def main():
+class Snowflake:
+class Base36:
+class CUIDGenerator:
+clembot/utilities/utils/embeds.py
+class Embeds:
+
+    def __init__(self):
+        return
+
+    @staticmethod
+    async def ask_for_input(ctx, prompt_embed, validate_response=None):
+        """
+        returns cancel if configuration is cancelled.
+        """
+        def check(msg):
+            return msg.author == ctx.message.author and msg.channel == ctx.channel
+
+        await ctx.send(embed=prompt_embed)
+
+        while True:
+            try:
+                response = await ctx.bot.wait_for('message', check=check, timeout=60)
+            except asyncio.TimeoutError:
+                await Embeds.error(ctx.channel, 'Too late!')
+                return "cancel"
+            except Exception as error:
+                break
+            response_content = response.content.strip()
+            if response_content == "cancel" or (validate_response and validate_response(response_content)):
+                return response_content
+            else:
+                await Embeds.error(ctx.channel, 'I could not interpret your response. Try again!')
+                continue
+        return "cancel"
+
+
+    @staticmethod
+    def google_location_preview_url(lat_long):
+        key = config_template.api_keys["google-api-key"]
+        gmap_base_url = f"https://maps.googleapis.com/maps/api/staticmap?center={lat_long}&markers=color:blue%7C{lat_long}&maptype=roadmap&size=250x125&zoom=15&key={key}"
+
+        return gmap_base_url
+
+    @staticmethod
+    async def message(channel, description, title=None, footer=None, user=None, icon=MyEmojis.INFO):
+        try:
+            error_message = "The output contains more than 2000 characters."
+
+            user_mention = f"{icon} "
+            if user:
+                user_mention = f"{user_mention}**{user.display_name}** "
+
+            if len(description) >= 2000:
+                discord.Embed(description="{0}".format(error_message), colour=discord.Color.red())
+
+            message_embed = discord.Embed(description=f"{user_mention}{description}", colour=discord.Colour.green(), title=title)
+            if footer:
+                message_embed.set_footer(text=footer)
+            return await channel.send(embed=message_embed)
+        except Exception as error:
+            Logger.error(error)
+
+
+    @staticmethod
+    async def error(channel, description, user=None):
+
+        color = discord.Colour.red()
+        user_mention = ""
+        if user:
+            user_mention = f"**{user.display_name}** "
+        error_embed = discord.Embed(description=f"{MyEmojis.ERROR} {user_mention}{description}", colour=color)
+        return await channel.send(embed=error_embed)
+
+    @staticmethod
+    async def error_notification(ctx, header, error, disappear_in=30):
+        """The message stays for 30 seconds and disappears!"""
+        try:
+            err_msg = await ctx.send(embed=Embeds.make_embed(msg_type='error', header=header, content=error.__str__()))
+            if disappear_in:
+                await asyncio.sleep(disappear_in)
+                await err_msg.delete()
+        except Exception as err:
+            Logger.error(err)
+
+
+    @staticmethod
+    def trim_to(text, length, delimiter=","):
+        if len(text) == 0:
+            return "None"
+        if text and delimiter:
+            return text[:text.rfind(delimiter, 0, length)] + " ** and more1.**" if len(text) > length else text
+        return text
+
+    @staticmethod
+    def make_embed(msg_type='', header=None, header_icon=None, title=None, title_url=None, content=None, thumbnail='',
+                   image='', fields=None, footer=None, footer_icon=None, inline=True, guild=None, msg_color=None):
+        """Returns a formatted discord embed object.
+
+        Define either a type or a colour.
+        Types are:
+        error, warning, info, success, help.
+        """
+        embed_types = {
+            'error':{
+                'icon':'https://i.imgur.com/juhq2uJ.png',
+                'colour':'red'
+            },
+            'warning':{
+                'icon':'https://i.imgur.com/4JuaNt9.png',
+                'colour':'gold'
+            },
+            'info':{
+                'icon':'https://i.imgur.com/wzryVaS.png',
+                'colour':'blue'
+            },
+            'success':{
+                'icon':'https://i.imgur.com/ZTKc3mr.png',
+                'colour':'green'
+            },
+            'help':{
+                'icon':'https://i.imgur.com/kTTIZzR.png',
+                'colour':'blue'
+            }
+        }
+        if msg_type in embed_types.keys():
+            msg_color = embed_types[msg_type]['colour']
+            header_icon = embed_types[msg_type]['icon']
+        if guild and not msg_color:
+            msg_color = color(guild)
+        else:
+            if not isinstance(msg_color, discord.Colour):
+                msg_color = color(msg_color)
+
+        embed = discord.Embed(title=title or discord.Embed.Empty, url=title_url or discord.Embed.Empty,
+            description=content, colour=msg_color)
+
+        if header:
+            embed.set_author(name=header, icon_url=header_icon or discord.Embed.Empty, url=discord.Embed.Empty)
+
+        if thumbnail:
+            embed.set_thumbnail(url=thumbnail)
+        if image:
+            embed.set_image(url=image)
+        if fields:
+            for key, value in fields.items():
+                ilf = inline
+                if not isinstance(value, str):
+                    if not value:
+                        continue
+                    else:
+                        ilf = value[0]
+                        value = value[1]
+                if value:
+                    embed.add_field(name=f"**{key}**", value=Embeds.trim_to(value, 995), inline=ilf)
+        if footer:
+            footer = {'text':footer}
+            if footer_icon:
+                footer['icon_url'] = footer_icon
+            embed.set_footer(**footer)
+        return embed
+clembot/exts/raid/raid.py
+class RosterLocation:
+
+    def __init__(self, raid_boss = Union[Pokemon, str], poi_location: POILocation=None, eta=None):
+        self.raid_boss = raid_boss
+        self.poi_location = poi_location
+        self.eta = eta
+
+    def to_dict(self):
+        state_dict = {
+            'raid_boss': self.raid_boss if isinstance(self.raid_boss, str) else self.raid_boss.id,
+            'poi' : self.poi_location.to_dict(),
+            'eta' : self.eta,
+        }
+        return state_dict
+
+    @classmethod
+    async def from_dict(cls, bot, state):
+        p_raid_boss, p_eta, p_poi = ([state.get(attr, None) for attr in ['raid_boss', 'eta', 'poi']])
+
+        raid_boss = "egg" if p_raid_boss == "egg" else Pokemon.to_pokemon(p_raid_boss)
+        poi_location = await POILocation.from_dict(bot, p_poi)
+
+        return cls(raid_boss=raid_boss, poi_location=poi_location, eta=p_eta)
+
+    @classmethod
+    async def from_command_text(cls, ctx, text, update_mode=False):
+        args = text.split()
+
+        if len(args) == 0:
+            raise BadArgument("No information found about egg/boss location and/or eta.")
+
+        if args[0] == 'egg':
+            pkmn_or_egg = 'egg'
+            del args[0]
+        else:
+            try:
+                pkmn_or_egg = (await Pokemon.convert(ctx, args[0]))
+            except BadArgument as error:
+                if not update_mode:
+                    raise error
+                else:
+                    pkmn_or_egg = None
+            if pkmn_or_egg:
+                del args[0]
+
+        eta=None
+        if len(args) > 0:
+            index = -1
+            if args[-1].upper() == 'AM' or args[-1].upper() == 'PM':
+                eta = ''.join(args[-2:])
+                index = -2
+            else:
+                eta = args[-1]
+            if convert_into_time(eta, require_am_pm=False) is None:
+                eta = None
+            else:
+                del args[index:]
+
+        poi_location = None
+        if len(args) > 0:
+            poi_location = await POILocationConverter.convert(ctx, ' '.join(args))
+
+        return cls(raid_boss=pkmn_or_egg, poi_location=poi_location, eta=eta)
+
+    @property
+    def raid_for(self):
+        if isinstance(self.raid_boss, Pokemon):
+            return self.raid_boss.label
+        return self.raid_boss
+
+    @property
+    def raid_at(self):
+        if self.poi_location:
+            return self.poi_location.gym_embed_label
+
+    def raid_location_embed(self):
+        return (RosterLocationEmbed.from_roster_location(self)).embed
+clembot/exts/config/channel_metadata.py
+class ChannelMetadata:
+
+    by_channel = dict()
+    _in_progress_config_channels = []
+
+    def __init__(self, bot, channel):
+        self.bot = bot
+        self.channel = channel
+
+    def __eq__(self, other):
+        return self.channel.id == other.channel.id
+
+    @classmethod
+    def begin_configuration(cls, channel_id):
+        cls._in_progress_config_channels.append(channel_id)
+
+
+    @classmethod
+    def end_configuration(cls, channel_id):
+        if cls.config_in_progress(channel_id):
+            cls._in_progress_config_channels.remove(channel_id)
+
+    @classmethod
+    def config_in_progress(cls, channel_id):
+        return channel_id in cls._in_progress_config_channels
+
+
+    @property
+    def _data(self):
+        report_channel_query = self.bot.dbi.table('channel_metadata').query()
+        _data = report_channel_query.where(channel_id=self.channel.id)
+        return _data
+
+    @classmethod
+    def cache(cls, channel_dict):
+        ChannelMetadata.by_channel[channel_dict.get('channel_id')] = channel_dict
+
+
+    @classmethod
+    def evict(cls, channel_id):
+        ChannelMetadata.by_channel.pop(channel_id, None)
+
+
+    @classmethod
+    async def find(cls, bot, channel_id, guild_id = None):
+
+        channel_metadata = ChannelMetadata.by_channel.get(channel_id)
+        if channel_metadata:
+            return channel_metadata
+
+        report_channel_query = bot.dbi.table('channel_metadata').query()
+        _data = report_channel_query.where(channel_id=channel_id)
+        db_record = await _data.get()
+
+        if db_record:
+            channel_metadata = ChannelMetadata.deserialize(dict(db_record[0]))
+            ChannelMetadata.cache(channel_metadata)
+            return channel_metadata
+
+        if guild_id:
+            await ChannelMetadata.insert(bot, {'channel_id': channel_id, 'guild_id': guild_id})
+        return ChannelMetadata.by_channel.get(channel_id)
+
+
+    @classmethod
+    async def city(cls, bot, channel_id):
+        channel_dict = await ChannelMetadata.find(bot, channel_id)
+        if channel_dict:
+            return channel_dict.get('city')
+        raise Exception("City has not been set for this channel.")
+
+    @staticmethod
+    def serialize(data_dict):
+        return _.map_values(data_dict, lambda val: json.dumps(val) if isinstance(val, dict) else val)
+
+    @staticmethod
+    def deserialize(data_dict):
+        return { k :json.loads(v) if k == 'config' and v is not None else v for (k, v) in data_dict.items()}
+
+
+    @classmethod
+    async def update(cls, bot, channel_dict):
+        channel_metadata_table = bot.dbi.table('channel_metadata')
+        update_dict=ChannelMetadata.serialize(channel_dict)
+        channel_metadata_table_update = channel_metadata_table.update(**update_dict).where(channel_id=channel_dict.get('channel_id'))
+        await channel_metadata_table_update.commit()
+        ChannelMetadata.cache(channel_dict)
+
+    @classmethod
+    async def insert(cls, bot, channel_dict):
+        channel_metadata_table = bot.dbi.table('channel_metadata')
+        insert_dict = ChannelMetadata.serialize(channel_dict)
+        channel_metadata_table_insert = channel_metadata_table.insert(**insert_dict)
+        await channel_metadata_table_insert.commit()
+        ChannelMetadata.cache(channel_dict)
+
+    @staticmethod
+    def embed(ctx, channel_dict):
+        return (ChannelConfigEmbed.from_channel_metadata(ctx, channel_dict)).embed
+
+    @staticmethod
+    def success_embed(ctx, channel_dict):
+        embed = (ChannelConfigEmbed.from_channel_metadata(ctx, channel_dict, "Configuration has been updated successfully.", Icons.configure_success)).embed
+        return embed
+
+    @staticmethod
+    def failure_embed(ctx, channel_dict):
+        embed = (ChannelConfigEmbed.from_channel_metadata(ctx, channel_dict, "No configuration changes done.", Icons.configure_failure)).embed
+        return embed
+
+    @staticmethod
+    def profile_embed(ctx, channel_dict, title=None):
+        return (ChannelConfigEmbed.from_channel_profile(ctx, channel_dict, title)).embed
+clembot/exts/config/channel_checks.py
+async def _is_wild_report_channel(ctx):
+async def _is_raid_report_channel(ctx):
+async def _is_nest_report_channel(ctx):
+def raid_report_enabled():
+def wild_report_enabled():
+def nest_report_enabled():
+clembot/core/bot.py
+def group(*args, **kwargs):
+    def decorator(func):
+        category = kwargs.get("category")
+        func.command_category = category
+        examples = kwargs.get("examples")
+        func.examples = examples
+        error_wrapped_func = wrap_error(func)
+        result = commands.group(*args, **kwargs)(error_wrapped_func)
+        return result
+    return decorator
+clembot/config/constants.py
+class MyEmojis:
+
+    DESPAWNED = '💨'
+    ON_MY_WAY = '🏎️'
+    TRASH = '🗑️'
+
+    REMOTE = f"{parse_emoji(None, config_template.misc_emoji.get('remote_raid'))}"
+    INVITE = f"{parse_emoji(None, config_template.misc_emoji.get('add_friend'))}"
+    HERE = f"{parse_emoji(None, config_template.misc_emoji.get('here'))}"
+    COMING = f"{parse_emoji(None, config_template.misc_emoji.get('coming'))}"
+    INTERESTED = f"{parse_emoji(None, config_template.misc_emoji.get('interested'))}"
+    INFO = f"{parse_emoji(None, config_template.misc_emoji.get('info'))}"
+    ERROR = f"{parse_emoji(None, config_template.misc_emoji.get('error'))}"
+    POKE_BATTLER = f"{parse_emoji(None, config_template.misc_emoji.get('pb'))}"
+clembot/exts/raid/raid.py
+class ChannelMessage:
+    """Represents a message identifier (channel_id, message_id)"""
+
+    @classmethod
+    def from_message(cls, message):
+        """returns channel_id-message_id"""
+        return f"{message.channel.id}-{message.id}"
+
+    @classmethod
+    async def from_id(cls, bot, channel_id, message_id):
+
+        channel = bot.get_channel(channel_id)
+
+        if channel is None:
+            return None, None
+
+        try:
+            message = await channel.fetch_message(message_id)
+        except Exception as error:
+            Logger.error(f"{channel_id} {message_id} {error}")
+            return channel, None
+
+        return channel, message
+
+
+    @classmethod
+    async def from_text(cls, bot, arg):
+        """returns Channel & Message from - separated IDs"""
+        channel_id, message_id = [int(a) for a in arg.split('-')]
+
+        channel = bot.get_channel(channel_id)
+        if not channel:
+            return None, None
+
+        try:
+            message = await channel.fetch_message(message_id)
+        except Exception as error:
+            Logger.info(f"{channel_id} => {channel}")
+            return channel, None
+
+        return channel, message
+
+    @classmethod
+    def split_parts(cls, arg):
+        """returns Channel & Message from - separated IDs"""
+        channel_id, message_id = [int(a) for a in arg.split('-')]
+        return channel_id, message_id
+clembot/exts/raid/raid.py
+class RaidParty(RSVPEnabled):
+    """
+    Also serves as raidparty_cache
+    """
+    by_channel = dict()
+    by_id = dict()
+    embed_options = ['description', 'rsvp']
+
+    def __init__(self, raid_party_id=None, bot=None, guild_id=None, channel_id=None, author_id = None,
+                 response_message_id = None, report_channel_id=None, city=None, timezone=None, roster= [] , roster_begins_at = 0,
+                 trainer_dict=dict()):
+        super().__init__(bot=bot, trainer_dict=trainer_dict)
+        self.id = raid_party_id
+        self.bot = bot
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.author_id = author_id
+        self.response_message_id = response_message_id
+        self.report_channel_id = report_channel_id
+        self.raid_type = "raidparty"
+        self.city = city
+        self.timezone = timezone
+        self.snowflake = Snowflake()
+        self.roster = roster
+        self.roster_begins_at = roster_begins_at
+        self.trainer_dict = trainer_dict
+
+    @property
+    def empty(self):
+        if len(self.roster) == 0:
+            return True
+        return False
+
+    @property
+    def current_location(self):
+        if self.empty:
+            return None
+        return self.roster[self.physical_index(self.roster_begins_at)]
+
+    @property
+    def current_location_index(self):
+        return self.roster_begins_at
+
+
+    def is_started_by(self, member_id):
+        return self.author_id == member_id
+
+    def physical_index(self, i):
+        return i - self.roster_begins_at
+
+    def __getitem__(self, i: int) -> RosterLocation:
+        """Get"""
+        if self.roster_begins_at <= i <= self.roster_begins_at + self.__len__():
+            return self.roster[self.physical_index(i)]
+        return None
+
+    def __setitem__(self, i: int, o: RosterLocation) -> None:
+        """Update"""
+        if self.physical_index(i) > len(self.roster):
+            return
+        self.roster[self.physical_index(i)] = o
+
+    def __delitem__(self, i: int) -> None:
+        """Remove"""
+        del self.roster[self.physical_index(i)]
+        print(f"{self.__repr__()} (after REMOVE {i})")
+
+    def __len__(self) -> int:
+        return len(self.roster)
+
+    def __contains__(self, __x: RosterLocation) -> bool:
+        return __x in self.roster
+
+
+    async def append(self, roster_location: RosterLocation):
+        self.roster.append(roster_location)
+        if self.roster_begins_at == 0:
+            self.roster_begins_at = 1
+        await self.update()
+
+    async def add_location(self, roster_location):
+        await self.append(roster_location)
+
+    def remove_location(self, location_number):
+        self.__delitem__(location_number)
+
+    async def move(self):
+        if self.empty:
+            raise ValueError("No next location available on the roster!")
+        self.remove_location(self.roster_begins_at)
+        self.roster_begins_at += 1
+        await self.update()
+
+    async def reset(self):
+        self.roster = []
+        self.roster_begins_at = 0
+        await self.update()
+
+    async def embed(self):
+        return (RaidPartyEmbed.from_raid_party(self)).embed
+
+    @property
+    def guild(self) -> discord.Guild:
+        return self.bot.get_guild(self.guild_id)
+
+    @property
+    def channel(self):
+        return self.guild.get_channel(self.channel_id)
+
+
+    def to_dict(self):
+        """Returns the raid_dict column value for the raid"""
+        state_dict = {
+            'raid_type' : self.raid_type,
+            'author_id': self.author_id,
+            'response_message_id' : self.response_message_id,
+            'report_channel_id' : self.report_channel_id,
+            'timezone': self.timezone,
+            'city' : self.city,
+            'roster_begins_at': self.roster_begins_at,
+            'roster': [rl.to_dict() for rl in self.roster],
+        }
+
+        if len(self.trainer_dict) > 0:
+            state_dict['trainer_dict'] = self.trainer_dict
+
+        return state_dict
+
+    def __setstate__(self, state):
+        return None
+
+
+    def get_state(self):
+        """Returns the DB representation of the raid report"""
+        state = self.to_dict()
+        db_state = {
+            'raid_party_id': self.id,
+            'guild_id': self.guild_id,
+            'channel_id': self.channel_id,
+            'raid_party_dict': json.dumps(state)
+        }
+        return db_state
+
+
+    @classmethod
+    def cache(cls, raid_party):
+        cls.by_channel[raid_party.channel_id] = raid_party
+        cls.by_id[raid_party.id] = raid_party
+
+    @classmethod
+    def evict(cls, raid_party):
+        cls.by_channel.pop(raid_party.channel_id, None)
+        cls.by_id.pop(raid_party.id, None)
+
+    @classmethod
+    async def from_cache(cls, ctx, raid_id=None):
+        if raid_id:
+            raid = cls.by_id.get(raid_id, None)
+            if not raid:
+                RaidRepository.set_dbi(ctx.bot.dbi)
+                raid_from_db = await RaidRepository.find_raid_by_id(raid_id)
+                raid = await Raid.from_db_dict(ctx.bot, raid_from_db)
+                if not raid:
+                    return None
+                return raid
+        else:
+            raid = cls.by_channel.get(ctx.channel.id, None)
+            if not raid:
+                RaidRepository.set_dbi(ctx.bot.dbi)
+                raid_from_db = await RaidRepository.find_raid_for_channel(ctx.guild.id, ctx.channel.id)
+                raid = await Raid.from_db_dict(ctx.bot, raid_from_db)
+                if not raid:
+                    return None
+                return raid
+
+
+    @classmethod
+    async def from_db_dict(cls, bot, db_dict):
+        """
+        :param bot:
+        :param db_dict:
+        :return: Raid object, also caches the object
+        """
+        guild_id, channel_id, raid_party_id, raid_party_dict_text \
+            = [db_dict.get(attr, None) for attr in ['guild_id', 'channel_id', 'raid_party_id', 'raid_party_dict']]
+
+        raid_party_dict = json.loads(raid_party_dict_text)
+
+        roster_dict, trainer_dict = [raid_party_dict.get(attr, {}) for attr in
+               ['roster', 'trainer_dict']]
+
+        roster_dict = json.loads(roster_dict) if isinstance(roster_dict, str) else roster_dict
+
+        roster = [await RosterLocation.from_dict(bot, rl) for rl in roster_dict]
+
+        p_raid_type, p_author_id, p_response_message_id, p_report_channel_id, p_timezone, p_city, p_roster_begins_at = [raid_party_dict.get(attr, None) for attr in
+                                                 ['raid_type', 'author_id', 'response_message_id', 'report_channel_id', 'timezone', 'city', 'roster_begins_at']]
+
+        raid_party = RaidParty(raid_party_id=raid_party_id, bot=bot, guild_id=guild_id, channel_id=channel_id,
+                    author_id=p_author_id, response_message_id=p_response_message_id, report_channel_id=p_report_channel_id, timezone=p_timezone, city=p_city,
+                    roster=roster, roster_begins_at=p_roster_begins_at, trainer_dict=trainer_dict)
+
+        RaidParty.cache(raid_party)
+        return raid_party
+
+    @property
+    def cuid(self):
+        return CUIDGenerator.cuid(self.id)
+
+
+    def __str__(self):
+        value = f"{self.cuid}"
+        return value
+
+
+
+
+    async def insert(self):
+        raid_table = self.bot.dbi.table('raid_party_report')
+        raid_table_insert = raid_table.insert(**self.get_state())
+        await raid_table_insert.commit()
+        RaidParty.cache(raid_party=self)
+
+
+    async def update(self):
+        raid_table = self.bot.dbi.table('raid_party_report')
+        raid_table_update = raid_table.update(raid_party_dict=json.dumps(self.to_dict())).where(raid_party_id=self.id)
+        await raid_table_update.commit()
+        RaidParty.cache(raid_party=self)
+        # await self.update_messages()
+        Logger.info(f"[{self.cuid}] => raid_party update() finished!")
+
+    async def delete(self):
+        """Deletes the raid record from DB and evicts from cache."""
+        raid_table = self.bot.dbi.table('raid_party_report')
+        raid_table_delete = raid_table.query().where(raid_party_id=self.id)
+        self.bot.loop.create_task(raid_table_delete.delete())
+        RaidParty.evict(raid_party=self)
+        Logger.info(f"[{self.cuid}] => raid delete() finished!")
+
+    async def add_rsvp(self, member_id: str, status, count=None):
+
+        member_id = str(member_id)
+        if not count:
+            count = 1
+
+        self.trainer_dict = self.trainer_dict or {}
+
+        self.trainer_dict.setdefault(member_id, {})
+        self.trainer_dict[member_id]['status'] = status
+        self.trainer_dict[member_id]['count'] = count
+
+        await self.update()
+
+
+    async def cancel_rsvp(self, member_id: str):
+        member_id = str(member_id)
+        member = self.trainer_dict.pop(member_id, None)
+        await self.update()
+        return member
+
+
+    def validate_count(self, count_value):
+
+        try:
+            count = int(count_value)
+        except Exception as error:
+            raise ValueError(
+                "I can't understand how many are in your group, please use a number to specify the party size.")
+
+        if 1 <= count <= 20:
+            return count
+        else:
+            raise ValueError("Group size is limited between 1-20.")
+
+
+    USERS_PATTERN = '<@!?(\d{17,19})>'
+
+    @staticmethod
+    def from_mention(text: str):
+        new_text = text.replace("<","").replace(">","").replace("!","").replace("@","")
+        return new_text
+
+
+    async def handle_rsvp(self, message, status):
+        """
+        '!x <@!415421645214449664> <@!159985870458322944> <@!289657500167438336> 5'
+        """
+
+        arguments = message.content.split()[1:]
+        party_status = {}
+        mention_count_dict = {}
+
+        if len(arguments) == 0:
+            party_status[str(message.author.mention)] = 1
+        elif message.mentions:
+            # create a dictionary like a, 1, b, c, 2 => { a: 1, 1: 1, b: 1, c: 2}
+
+            words = iter(arguments)
+            word = next(words)
+
+            while word:
+                try:
+                    prev_word = word
+                    word = next(words)
+                    if word.isdigit():
+                        mention_count_dict[prev_word] = int(word)
+                    else:
+                        mention_count_dict[prev_word] = 1
+                except StopIteration:
+                    mention_count_dict[prev_word] = 1
+                    break
+
+            # only leave mention_id in keys, discard other elements of dictionary
+            party_status =  { key: mention_count_dict[key] for key in mention_count_dict.keys() if re.search(self.USERS_PATTERN, key) }
+
+        elif len(arguments) == 1:
+            party_status[str(message.author.mention)] = self.validate_count(arguments[0])
+
+
+        try:
+            Logger.info(party_status)
+            total_trainer_rsvp = 0
+            if status == 'x':
+                for mention, party_size in party_status.items():
+                    removed_user = await self.cancel_rsvp(member_id=Raid.from_mention(mention))
+                    if removed_user is None:
+                        embed_msg = f"{mention} had no status to cancel."
+                        await Embeds.error(message.channel, embed_msg)
+                    else:
+                        embed_msg = f"{mention}'s status has been cancelled."
+                        await Embeds.message(message.channel, embed_msg)
+                embed_msg = ""
+            else:
+                for user_id, party_size in party_status.items():
+                    await self.add_rsvp(member_id=Raid.from_mention(user_id), status=status, count=party_size)
+                    total_trainer_rsvp += party_size
+
+                with_trainers = "" if total_trainer_rsvp == 1 else " with a total of {trainer_count} trainers".format(trainer_count=total_trainer_rsvp)
+                is_or_are = "is" if len(party_status) == 1 else "are"
+                embed_msg = f"{', '.join([mention for mention in party_status.keys()])} {is_or_are} {_.get(RSVPEnabled.STATUS_MESSAGE, f'{status}.message')}{with_trainers}"
+
+            await self.send_rsvp_embed(message, description=embed_msg, options=self.embed_options)
+
+        except ValueError as value_error:
+            await Embeds.error(message.channel, f"{value_error}", user=message.author)
+
+        except Exception as error:
+            Logger.info(error)
+
+
+    async def send_rsvp_embed(self, message, description=None, options=['rsvp', 'i', 'c', 'h']):
+
+        return await message.channel.send(embed=await self.rsvp_embed_by_options(message, options=options,
+                                                                           description=description))
+
+    def size_by_status(self, status):
+        count = 0
+
+        for trainer in self.trainer_dict.values():
+            if trainer['status'] == status:
+                count += int(trainer['count'])
+
+        return count
+
+
+
+    async def handle_group_start(self):
+
+        users_starting = {}
+
+        for trainer_id in self.trainer_dict:
+            if self.trainer_dict[trainer_id]['status'] in ["h", "hr", "ir"]:
+                trainer = self.bot.get_user(int(trainer_id))
+                users_starting[trainer_id] = trainer.mention
+
+        if len(users_starting) > 0:
+            embed_message = f"The group of trainers waiting at location {self.current_location_index} are starting. Trainers {', '.join(users_starting.values())}, please make sure you sync-up with other players."
+            await Embeds.message(self.channel, description=embed_message)
+        else:
+            embed_message = f"How can you start when there is nobody waiting at the location?"
+            await Embeds.error(self.channel, description=embed_message)
+clembot/exts/raid/raid_checks.py
+def _is_raid_channel(ctx):
+def _is_raid_party_channel(ctx):
+def _is_rsvp_enabled(ctx):
+def raid_channel():
+def raid_party_channel():
+def rsvp_enabled():
+clembot/core/checks.py
+class AccessDenied(CommandError):
+    pass
+clembot/exts/raid/raid_cog.py
+class NoRaidForChannelError(ValueError):
+    pass
+clembot/exts/raid/raid.py
+class RaidRepository:
+    _dbi = None
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def set_dbi(cls, dbi):
+        cls._dbi = dbi
+
+    @classmethod
+    async def find_raid_for_channel(cls, guild_id, channel_id):
+        raid_table = cls._dbi.table('raid_report')
+        raid_table_query = raid_table.query().select().where(guild_id=guild_id, channel_id=channel_id)
+        list_of_raids = await raid_table_query.getjson()
+        return list_of_raids[0]
+
+    @classmethod
+    async def find_raid_by_id(cls, raid_report_id):
+        raid_table = cls._dbi.table('raid_report')
+        raid_table_query = raid_table.query().select().where(raid_report_id=raid_report_id)
+        list_of_raids = await raid_table_query.getjson()
+        return list_of_raids[0]
+
+
+    @classmethod
+    async def find_raids(cls):
+        raid_table = cls._dbi.table('raid_report')
+        raid_table_query = raid_table.query().select()
+        list_of_raids = await raid_table_query.getjson()
+
+        list_of_raids = [raid for raid in list_of_raids if raid.get('guild_id', None) == (config_template.development_guild_id if config_template.development_guild_id is not None else raid.get('guild_id', None))]
+
+        return list_of_raids
+
+    @classmethod
+    async def find_raid_parties(cls):
+        raid_table = cls._dbi.table('raid_party_report')
+        raid_table_query = raid_table.query().select()
+        list_of_raids = await raid_table_query.getjson()
+        return list_of_raids
+
+    @classmethod
+    async def find_raids_reported_in_channel(cls, bot, channel_id):
+
+        query = raids_reported_in_channel_query
+        query_args = [str(channel_id)]
+        raid_list = await bot.dbi.execute_query_json(query, *query_args)
+        print(raid_list)
+
+        raid_id_list = [record.get('raid_id') for record in raid_list]
+        print(raid_id_list)
+
+
+        return raid_id_list
+clembot/exts/pkmn/gm_pokemon.py
+class Pokemon:
+
+    _cache = dict()
+
+    def __init__(self, db_dict, pokedex_num, aliases=[], pokemon_form_id=None):
+        self.db_dict = db_dict
+        self.pokedex_num = pokedex_num
+        self.aliases = aliases
+        self.pokemon_form_id = pokemon_form_id
+
+    def __getitem__(self, item):
+        """use [] operator to access members, simpler to create entity objects"""
+        return self.db_dict.get(item)
+
+
+    def __setitem__(self, key, value):
+        """use [] operator to access members, simpler to create entity objects. Handles array kind of values."""
+        self.db_dict[key] = value
+
+
+    def __repr__(self):
+        return self.label
+
+    @property
+    def id(self):
+        return self.aliases[0] if self.aliases else None
+
+    @property
+    def label(self):
+        return self.id.title()
+
+    # @property
+    # def label(self):
+    #     if self.pokeform_display_text:
+    #         return self.pokeform_display_text.capitalize()
+    #     return None
+
+
+    @property
+    def form(self):
+        form = _.get(self.db_dict, 'pokemonId')
+        if '_ALOLA' in form:
+            form = form.replace('_ALOLA','_ALOLA_FORM')
+        return form
+
+    @property
+    def base_attack(self):
+        return _.get(self.db_dict, 'stats.baseAttack')
+
+    @property
+    def base_defense(self):
+        return _.get(self.db_dict, 'stats.baseDefense')
+
+    @property
+    def base_stamina(self):
+        return _.get(self.db_dict, 'stats.baseStamina')
+
+    @property
+    def fast_moves(self):
+        return list(map(lambda move: move.replace("_FAST", ""), _.get(self.db_dict, 'quickMoves')))
+
+    @property
+    def fast_moves_labels(self):
+        return list(map(lambda move: move.replace("_"," ").title() , self.fast_moves))
+
+    @property
+    def charge_moves(self):
+        return list(map(lambda move: move, _.get(self.db_dict, 'cinematicMoves')))
+
+    @property
+    def charge_moves_labels(self):
+        return list(map(lambda move: move.replace("_"," ").title() , self.charge_moves))
+
+
+    @property
+    def type1(self):
+        type1 = _.get(self.db_dict, 'type')
+        if type1:
+            return type1.replace("POKEMON_TYPE_","").upper()
+        return None
+
+    @property
+    def type2(self):
+        type2 = _.get(self.db_dict, 'type2')
+        if type2:
+            return type2.replace("POKEMON_TYPE_", "").upper()
+        return None
+
+    @property
+    def types(self):
+        if self.type2:
+            return [self.type1, self.type2]
+        return [self.type1]
+
+    @property
+    def type1_icon(self):
+        if self.type1:
+            key = self.type1.lower()
+            return config_template.type_emoji[key]
+        return None
+
+    @property
+    def type2_icon(self):
+        if self.type2:
+            key = self.type2.lower()
+            return config_template.type_emoji[key]
+        return None
+
+    @property
+    def shiny(self):
+        return False
+
+    def _gender_type(self):
+        return 'X'
+
+    @property
+    def gender(self):
+        return 'MALE'
+
+
+    @property
+    def extended_label(self):
+        """returns pokemon(pokedex) type1 type2"""
+        extended_label=f"{self.label} ({self.pokedex_num}) {self.type1_icon}"
+        if self.type2_icon:
+            extended_label=f"{extended_label}{self.type2_icon}"
+        return extended_label
+
+    @property
+    def preview_url(self):
+        url = "https://raw.githubusercontent.com/TrainingB/Clembot/v2-rewrite/images/pkmn/"
+        if self.form:
+            url += str(self.form)
+        if self.shiny:
+            url += '_SHINY'
+        if self._gender_type() == 'DIMORPH' and self.gender:
+            url += f'_{self.gender.upper()}'
+        url += '.png'
+        # url += '?cache=5'
+        return url
+
+    # async def color(self):
+    #     url = await self.sprite_url()
+    #     color = await formatters.url_color(url)
+    #     return color
+
+    @property
+    def raid_cp_range(self):
+        low_cp = self.calculate_cp(20, 10, 10, 10)
+        high_cp = self.calculate_cp(20, 15, 15, 15)
+        return [low_cp, high_cp]
+
+
+    def calculate_cp(self, level, attiv, defiv, staiv):
+        if None in [level, attiv, defiv, staiv]:
+            return None
+        else:
+            cpm = CPCalculator().cpM[level]
+            att = (self.base_attack + attiv)*cpm
+            defense = (self.base_defense + defiv)*cpm
+            sta = (self.base_stamina + staiv)*cpm
+            cp = math.floor((att*defense**0.5*sta**0.5)/10)
+            if cp < 10:
+                cp = 10
+            return cp
+
+    @classmethod
+    def cache(cls, form):
+        Pokemon._cache[form.aliases[0]] = form
+
+    @classmethod
+    def to_pokemon(cls, search_for):
+        if len(cls._cache) < 1:
+            raise Exception("Error : Pokemon forms are not loaded yet.")
+
+        if search_for:
+            return cls._cache.get(search_for.upper(), None)
+
+        return None
+
+    @classmethod
+    async def load(cls, bot):
+
+        if len(Pokemon._cache) == 0:
+            table = bot.dbi.table('PB_POKEMON_FORM')
+            forms = await table.query().select().getjson()
+
+            for form in forms:
+                pForm = Pokemon(json.loads(form.get('data')), form.get('pokedex_id'), form.get('aliases'), form.get('pokemon_form_id'))
+                Pokemon.cache(pForm)
+        GMPokemonFormSpellHelper.set_dictionary(cls._cache.keys())
+
+    @classmethod
+    async def convert(cls, ctx, argument) :
+
+        await cls.load(ctx.bot)
+
+        pokemon_form = cls.to_pokemon(argument.upper())
+        if pokemon_form:
+            return pokemon_form
+        else:
+            possible_pokemon_form = await Pokemon.auto_correct(ctx, argument.upper())
+            if possible_pokemon_form:
+                pokemon_form = cls.to_pokemon(possible_pokemon_form)
+                return pokemon_form
+
+        raise BadArgument(f"{argument} could not be resolved to a pokemon.")
+
+    @staticmethod
+    async def auto_correct(ctx, pokemon_as_text):
+
+        not_acceptable_message = f"**{pokemon_as_text}** isn't a Pokemon!"
+
+        suggestion = GMPokemonFormSpellHelper.correction(pokemon_as_text)
+
+        if suggestion and suggestion != pokemon_as_text:
+
+            not_acceptable_message += f" Did you mean **{suggestion}**?"
+            replace_pokemon = await Utilities.ask_confirmation(ctx, ctx.message, not_acceptable_message, "Alright!", "That's okay!", "Timed Out!")
+            if replace_pokemon:
+                return suggestion
+
+        return None
+
+
+
+
+
+    @property
+    def weaknesses(self):
+        """
+        Given a Pokemon name, return a list of its weaknesses as defined in the type chart
+        Calculate sum of its weaknesses and resistances.
+        -2 == immune , -1 == NVE, 0 == neutral, 1 == SE, 2 == double SE
+        """
+        type_eff = {}
+        for p_type in self.types:
+            for atk_type in _TYPE_CHART[p_type]:
+                if atk_type not in type_eff:
+                    type_eff[atk_type] = 0
+                type_eff[atk_type] += _TYPE_CHART[p_type][atk_type]
+
+        # Summarize into a list of weaknesses,
+        # sorting double weaknesses to the front and marking them with 'x2'.
+        ret = []
+        for p_type, effectiveness in sorted(type_eff.items(), key=lambda x: x[1], reverse=True):
+            if effectiveness == 1:
+                ret.append(p_type.lower())
+            elif effectiveness == 2:
+                ret.append(p_type.lower() + "x2")
+
+        return ret
+
+
+    @property
+    def weaknesses_icon(self):
+        """
+        Given a list of weaknesses, return a space-separated string of their type IDs as defined in the type_id_dict
+        """
+        ret = ""
+        for weakness in self.weaknesses:
+            # Handle an "x2" postfix defining a double weakness
+            x2 = ""
+            if weakness[-2:] == "x2":
+                weakness = weakness[:-2]
+                x2 = "x2"
+
+            # Append to string
+            ret += config_template.type_emoji[weakness] + x2 + " "
+
+        return ret
+clembot/core/bot.py
+def command(*args, **kwargs):
+    def decorator(func):
+        category = kwargs.get("category")
+        examples = kwargs.get("examples")
+        func.command_category = category
+        func.examples = examples
+        error_wrapped_func = wrap_error(func)
+        result = commands.command(*args, **kwargs)(error_wrapped_func)
+        return result
+    return decorator
+clembot/core/logs.py
+def init_loggers():
+clembot/utilities/utils/utilities.py
+class Utilities:
+
+    numbers = {"0": ":zero:", "1": ":one:", "2": ":two:", "3": ":three:", "4": ":four:", "5": ":five:", "6": ":six:", "7": ":seven:", "8": ":eight:", "9": ":nine:"}
+
+    @staticmethod
+    def trim_to(text, length, delimiter=","):
+        if len(text) == 0:
+            return "None"
+        if text and delimiter:
+            return text[:text.rfind(delimiter, 0, length)] + " ** and more.**" if len(text) > length else text
+        return text
+
+    @staticmethod
+    def emojify_numbers(number):
+        number_emoji = ""
+
+        reverse = "".join(reversed(str(number)))
+
+        for digit in reverse[::-1]:
+
+            emoji = Utilities.numbers.get(digit)
+            if not emoji:
+                emoji = ":regional_indicator_" + digit.lower() + ":"
+
+            number_emoji = number_emoji + emoji
+
+        return number_emoji
+
+    @staticmethod
+    def _normalize(emoji):
+        initial_emoji = emoji
+        if isinstance(emoji, discord.Reaction):
+            emoji = emoji.emoji
+
+        if isinstance(emoji, discord.Emoji):
+            emoji = ':%s:%s' % (emoji.name, emoji.id)
+
+        elif isinstance(emoji, discord.PartialEmoji):
+            emoji = emoji._as_reaction()
+        elif isinstance(emoji, str):
+            pass
+
+        if emoji.count(':') == 1 and not emoji.startswith(':'):
+            emoji = f":{emoji}"
+
+        if emoji.__contains__(">") and emoji.__contains__("<"):
+            emoji = emoji.replace('<','').replace('>','')
+        return emoji
+
+
+    @staticmethod
+    def _demojify(emoji):
+        # convert emoji to id
+        if isinstance(emoji, discord.Reaction):
+            emoji = emoji.emoji.id
+
+        if isinstance(emoji, discord.Emoji):
+            emoji = emoji.id
+        elif isinstance(emoji, discord.PartialEmoji):
+            emoji = emoji.id if emoji.id else emoji.name
+        elif isinstance(emoji, str):
+            pass
+
+        return emoji
+
+    @staticmethod
+    def _emojify(emoji):
+        if emoji.__contains__(">") and emoji.__contains__("<"):
+            emoji = emoji.replace('<', '').replace('>', '')
+        return emoji
+
+    @staticmethod
+    def _uuid(cls, id):
+        try:
+            return '%x' % (hash(id) % 10 ** 8)
+        except Exception as error:
+            Logger.error(error)
+            return id
+
+    @staticmethod
+    async def _send_error_message(channel, description, user=None):
+
+        color = discord.Colour.red()
+        user_mention = ""
+        if user:
+            user_mention = f"Beep Beep! **{user.display_name}** "
+        error_embed = discord.Embed(description=f"{user_mention}{description}", colour=color)
+        return await channel.send(embed=error_embed)
+
+    @staticmethod
+    async def message(destination, description, user=None):
+
+        color = discord.Colour.green()
+        user_mention = ""
+        if user:
+            user_mention = f"Beep Beep! **{user.display_name}** "
+        error_embed = discord.Embed(description=f"{user_mention}{description}", colour=color)
+        return await destination.send(embed=error_embed)
+
+    @staticmethod
+    async def message_as_text(channel, description):
+        return await channel.send(description)
+
+    @staticmethod
+    async def error(channel, description, user=None):
+
+        color = discord.Colour.red()
+        user_mention = ""
+        if user:
+            user_mention = f"Beep Beep! **{user.display_name}** "
+        error_message = f"{user_mention}{description}"
+        error_embed = discord.Embed(description=f"{error_message}", colour=color)
+        Logger.error(error_message)
+        return await channel.send(embed=error_embed)
+
+    @staticmethod
+    async def _send_message(channel, description, title=None, footer=None, user=None):
+        try:
+
+            error_message = "The output contains more than 2000 characters."
+
+            user_mention = ""
+            if user:
+                user_mention = f"Beep Beep! **{user.display_name}** "
+
+            if len(description) >= 2000:
+                discord.Embed(description="{0}".format(error_message))
+
+            color = discord.Colour.green()
+            message_embed = discord.Embed(description=f"{user_mention}{description}", colour=color, title=title)
+            if footer:
+                message_embed.set_footer(text=footer)
+            return await channel.send(embed=message_embed)
+        except Exception as error:
+            Logger.error(error)
+
+    @staticmethod
+    async def _send_embed(channel, description=None, title=None, additional_fields={}, footer=None):
+
+        embed = discord.Embed(description=description, colour=discord.Colour.gold(), title=title)
+
+        for label, value in additional_fields.items():
+            if value:
+                embed.add_field(name="**{0}**".format(label), value=value, inline=False)
+
+        if footer:
+            embed.set_footer(text=footer)
+
+        try:
+            return await channel.send(embed=embed)
+        except Exception as error:
+            return await channel.send(error)
+
+    @command(name="export")
+    async def _export(self, ctx):
+
+        return await self._send_message(ctx.channel, "Beep Beep! **{}**, This feature is under-development!".format(ctx.message.author.display_name))
+
+        Logger.error("_export() called!")
+
+        raid_dict = ctx.bot.guild_dict[ctx.guild.id]['raidchannel_dict'][ctx.channel.id]
+
+        channel_mentions = ctx.message.raw_channel_mentions
+
+        if len(channel_mentions) < 1:
+            await self._send_error_message(ctx.channel, "Beep Beep! **{}**, Please provide the channel reference to export the details!".format(ctx.message.author.display_name))
+
+    @command(name="clean_content")
+    async def _clean_content(self, message):
+
+        message_content = {}
+        content_without_mentions = message.content
+
+        for mention in message.mentions:
+            mention_text = mention.mention.replace("!", "")
+            content_without_mentions = content_without_mentions.replace("<@!", "<@").replace(mention_text, '')
+
+        # remove extra spaces
+        message_content['content_without_mentions'] = re.sub(' +', ' ', content_without_mentions)
+
+        return message_content
+
+    @staticmethod
+    def get_help_embed(description, usage, available_value_title, available_values, mode="message"):
+
+        if mode == "message":
+            color = discord.Colour.green()
+        else:
+            color = discord.Colour.red()
+
+        help_embed = discord.Embed( description="**{0}**".format(description), colour=color)
+
+        help_embed.add_field(name="**Usage :**", value = "**{0}**".format(usage))
+        help_embed.add_field(name="**{0} :**".format(available_value_title), value=_("**{0}**".format(", ".join(available_values))), inline=False)
+
+        return help_embed
+
+    @staticmethod
+    async def _send_error_message_and_cleanup(channel, message, user):
+        log_message = await Embeds.error(channel, message, user=user)
+        await asyncio.sleep(8)
+        await log_message.delete()
+
+
+    @staticmethod
+    async def get_image_embed(channel, image_url):
+        embed = discord.Embed(colour=channel.guild.me.colour)
+        embed.set_thumbnail(url=image_url)
+        return await channel.send(embed=embed)
+
+    @staticmethod
+    async def ask(message, destination, user_list=None, *, react_list=['✅', '❎']):
+        if user_list and type(user_list) != __builtins__.list:
+            user_list = [user_list]
+
+
+        def check(reaction, user):
+            if user_list and type(user_list) is __builtins__.list:
+                return (user.id in user_list) and (reaction.message.id == message.id) and (reaction.emoji in react_list)
+            elif not user_list:
+                return (user.id != message.guild.me.id) and (reaction.message.id == message.id) and (reaction.emoji in react_list)
+
+
+        for r in react_list:
+            await asyncio.sleep(0.25)
+            await message.add_reaction(r)
+        try:
+            reaction, user = await Clembot.wait_for('reaction_add', check=check, timeout=60)
+            return reaction, user
+        except asyncio.TimeoutError:
+            await message.clear_reactions()
+            return
+
+
+    @staticmethod
+    @wrap_error
+    async def ask_confirmation(ctx, message, rusure_message, yes_message, no_message, timed_out_message):
+        author = message.author
+        channel = message.channel
+
+        reaction_list = ['✅', '❎']
+        # reaction_list = ['❔', '✅', '❎']
+
+        rusure = await ctx.channel.send(f"Beep Beep! {rusure_message}")
+        await rusure.add_reaction( "✅")  # checkmark
+        await rusure.add_reaction( "❎")  # cross
+
+        def check(react, user):
+            if user.id != author.id:
+                return False
+            return True
+
+        # res = await Clembot.wait_for_reaction(reaction_list, message=rusure, check=check, timeout=60)
+        try:
+            reaction, user = await ctx.bot.wait_for('reaction_add', check=check, timeout=10)
+        except asyncio.TimeoutError:
+            await rusure.delete()
+            confirmation = await channel.send(f"Beep Beep! {timed_out_message}")
+            await asyncio.sleep(1)
+            await confirmation.delete()
+            return False
+
+        if reaction.emoji == "❎":
+            await rusure.delete()
+            confirmation = await channel.send(f"Beep Beep! {no_message}")
+            await asyncio.sleep(1)
+            await confirmation.delete()
+            return False
+        elif reaction.emoji == "✅":
+            await rusure.delete()
+            confirmation = await channel.send(f"Beep Beep! {yes_message}")
+            await asyncio.sleep(1)
+            await confirmation.delete()
+            return True
+
+
+    @staticmethod
+    @wrap_error
+    async def ask_via_reactions(ctx, message, question_message, accepted_message, rejected_message, timed_out_message, reaction_dict, error_response):
+        author = message.author
+        channel = message.channel
+
+        rusure = await ctx.channel.send(f"{question_message}")
+
+        for r in reaction_dict.keys():
+            await rusure.add_reaction(r)
+
+        def check(react, user):
+            if user.id != author.id:
+                return False
+            return True
+
+        try:
+            reaction, user = await ctx.bot.wait_for('reaction_add', check=check, timeout=10)
+        except asyncio.TimeoutError:
+            await rusure.delete()
+            confirmation = await channel.send(f"{timed_out_message}")
+            await asyncio.sleep(1)
+            await confirmation.delete()
+            return error_response
+
+        if reaction.emoji not in reaction_dict.keys():
+            await rusure.delete()
+            confirmation = await channel.send(f"{rejected_message}")
+            await asyncio.sleep(1)
+            await confirmation.delete()
+            return error_response
+
+        elif reaction.emoji in reaction_dict.keys():
+            await rusure.delete()
+            confirmation = await channel.send(f"{accepted_message}")
+            await asyncio.sleep(1)
+            await confirmation.delete()
+            return reaction_dict.get(reaction.emoji, error_response)
+
+
+    @staticmethod
+    async def send_to_hastebin(destination, whatever):
+        whatever = whatever.encode('ascii', errors='replace').decode('utf-8')
+        print(whatever)

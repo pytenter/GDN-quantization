@@ -1,0 +1,32 @@
+Independent CPU delivery analysis, added after the execution source freeze.
+
+This directory is not part of the frozen GPU execution source manifest. It must
+never modify the preregistration, reducer, documents, execution sources, GPU
+receipts, or score payloads.
+
+Command, only after all task GPU reservations are released and final coordinator
+receipts exist:
+  CUDA_VISIBLE_DEVICES="" /data/ydai/miniconda3/envs/bitdecode/bin/python analysis_scripts/postprocess_scores.py
+
+Safe control-only check (does not read actual scores or write science outputs):
+  python3 analysis_scripts/postprocess_scores.py --self-test
+
+The script verifies all frozen execution manifest entries, the model-content
+receipt, final GPU release, complete phase receipts, and actual full-vocabulary
+FP32 score artifacts before calling the unchanged frozen reducer. Source logits
+are read on CPU only. Each actual score gets an independent binary64 audit and
+the prospectively fixed conditional arithmetic resolution.
+
+If zero documents have all three valid full32768 trajectories, only
+analysis/POSTPROCESS_STATUS.json with NOT_RUN is written. No empty science CSV
+or synthetic science values are created. One valid paired document yields only
+PARTIAL results; two-document means require two complete paired documents.
+
+The reducer resolution covers arithmetic on identical saved logits under the
+stated IEEE64/libm assumptions. It does not bound long-forward uncertainty or
+reclassify the preserved native/H equivalence failure. N=2 is exploratory and
+repository/project independence remains UNKNOWN.
+
+Existing result outputs are never overwritten. A failure of metadata, identity,
+finite values, position pairing, or arithmetic checks raises an error; it must
+be reported as a delivery-analysis issue without restarting GPU execution.

@@ -1,0 +1,28 @@
+{
+  "task": "QWEN_PERSISTENT_FUNCTIONAL_SURROGATE_V1",
+  "amendment_version": 1,
+  "amended_at": "2026-09-24T00:00:00+08:00",
+  "timing": "Before formal comparison and before any full replay shard was launched.",
+  "statement": "Execution order changed before formal comparison: rotation-aware M5 validation is now the primary gate; persistent functional replay is retained as fallback.",
+  "preserved_assets": [
+    "preregistration.json",
+    "analyze_persistent_surrogate.py",
+    "replay_persistent_functional.py",
+    "source_audit and replay-parity infrastructure"
+  ],
+  "observed_parity_attempt": {
+    "status": "INFRASTRUCTURE_ERROR_BEFORE_GATE_RESULT",
+    "error": "In-place quantization of an inference tensor was attempted outside torch.inference_mode during the anchor-repeat portion.",
+    "formal_persistent_comparison_started": false,
+    "full_replay_shards_started": false,
+    "result_used": false
+  },
+  "new_primary_task": "QWEN_ROTATION_AWARE_M5_VALIDATION_V1",
+  "fallback_activation_rule": "Resume deterministic KL/delta-NLL/delta-margin and multi-horizon persistent replay only if ROTATION_AWARE_M5_GATE = FAIL.",
+  "prohibited_during_primary_gate": [
+    "full-vocabulary KL replay",
+    "delta-NLL replay",
+    "delta-margin replay",
+    "multi-horizon persistent replay"
+  ]
+}

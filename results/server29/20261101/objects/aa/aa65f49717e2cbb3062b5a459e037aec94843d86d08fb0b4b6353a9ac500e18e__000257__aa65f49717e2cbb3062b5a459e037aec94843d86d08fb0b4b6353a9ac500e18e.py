@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self.profiling_window_duration_sec,self.number_of_events,self.profiler_prepare_call_duration_us,self.profiler_enable_call_duration_us,self.profiler_disable_call_duration_us,self.parse_kineto_call_duration_us,self.function_events_build_tree_call_duration_us,)==(other.profiling_window_duration_sec,other.number_of_events,other.profiler_prepare_call_duration_us,other.profiler_enable_call_duration_us,other.profiler_disable_call_duration_us,other.parse_kineto_call_duration_us,other.function_events_build_tree_call_duration_us,)
+  return NotImplemented
+ return __eq__

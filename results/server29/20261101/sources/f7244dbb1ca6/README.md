@@ -1,0 +1,50 @@
+# consolidation
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/consolidation`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`GDN-quantization-qwen3090-20260921/results/aime26/81920/qwen_gdn/frozen_v4_per_sample.csv`](../../../../aime26/81920/qwen_gdn/frozen_v4_per_sample.csv)
+- [`GDN-quantization-qwen3090-20260921/README.md`](../../objects/05/058e738f797aeea85dcfff57083f41e55ec78da9de37454fff19c27024cf9a82__README.md)
+- [`GDN-quantization-qwen3090-20260921/docs/PROTOCOL.md`](../../objects/65/653457c1e423e5ecd2a41355760c87b795ef97593bb48b174b6d077fe0d6b884__PROTOCOL.md)
+- [`GDN-quantization-qwen3090-20260921/docs/EVIDENCE_MAP.md`](../../../../../docs/EVIDENCE_MAP.md)
+- [`GDN-quantization-qwen3090-20260921/docs/RESULT_SUMMARY.md`](../../objects/5b/5b8a670f5c7c8ea0eec3dc39c1374206ffbd56b0c37f54bb452c6d3d775e84cd__RESULT_SUMMARY.md)
+- [`GDN-quantization-qwen3090-20260921/docs/REPRODUCIBILITY.md`](../../../../../docs/REPRODUCIBILITY.md)
+- [`GDN-quantization-qwen3090-20260921/docs/RESEARCH_STATUS.md`](../../objects/ed/ed282bf3b4fc3280e733c47e25675e6b52883eb7494c290387979a8335566f30__RESEARCH_STATUS.md)
+- [`GDN-quantization-qwen3090-20260921/docs/EXPERIMENT_INDEX.md`](../../objects/a1/a12127b04a0ff4ffaf8b603330ada08ab74de2c3b518cf459e1abcdbb7e728ec__EXPERIMENT_INDEX.md)
+- [`GDN-quantization-qwen3090-20260921/docs/CANONICAL_PROMPT_MANIFEST.md`](../../../../../docs/CANONICAL_PROMPT_MANIFEST.md)
+- [`GDN-quantization-qwen3090-20260921/docs/server_inventory/qwen3090.md`](../../../../../docs/server_inventory/qwen3090.md)
+- [`GDN-quantization-qwen3090-20260921/experiments/shared/scoring/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`GDN-quantization-qwen3090-20260921/results/aime26/81920/qwen_gdn/frozen_v4_summary.json`](../../../../aime26/81920/qwen_gdn/frozen_v4_summary.json)
+- [`GDN-quantization-qwen3090-20260921/reports/orientation/gdn_int8_row_e2e_completion_v1.md`](../../../../../reports/orientation/gdn_int8_row_e2e_completion_v1.md)
+- [`GDN-quantization-qwen3090-20260921/experiments/qwen_gdn/aime26/81920/test_aime26_scorer.py`](../../../../../experiments/ling_kda/aime26/81920/test_aime26_scorer.py)
+- [`GDN-quantization-qwen3090-20260921/reports/orientation/gdn_int8_axis_geometry_rescue_v1.md`](../../../../../reports/orientation/gdn_int8_axis_geometry_rescue_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/rotation/gdn_rotation_headroom_v1_formal_report.md`](../../../../../reports/propagation/gdn_rotation_headroom_v1_formal_report.md)
+- [`GDN-quantization-qwen3090-20260921/reports/propagation/gdn_int8_readout_aware_propagation_audit_v1.md`](../../../../../reports/propagation/gdn_int8_readout_aware_propagation_audit_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/propagation/gdn_int8_single_pulse_residual_propagation_v1.md`](../../../../../reports/propagation/gdn_int8_single_pulse_residual_propagation_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/effective_update/gdn_int8_effective_update_metric_audit_v1.md`](../../../../../reports/effective_update/gdn_int8_effective_update_metric_audit_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/mechanism/gdn_int8_out_proj_functional_direction_causal_v1.md`](../../../../../reports/mechanism/gdn_int8_out_proj_functional_direction_causal_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/orientation/gdn_int8_orientation_state_change_mechanism_v1.md`](../../../../../reports/orientation/gdn_int8_orientation_state_change_mechanism_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/rotation/gdn_postconv_structured_rotation_v1_formal_report.md`](../../../../../reports/propagation/gdn_postconv_structured_rotation_v1_formal_report.md)
+- [`GDN-quantization-qwen3090-20260921/reports/mechanism/gdn_int8_real_rc_tangential_recurrent_mediation_v1.md`](../../../../../reports/mechanism/gdn_int8_real_rc_tangential_recurrent_mediation_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/propagation/gdn_int8_residual_direction_sensitivity_panel_v1.md`](../../../../../reports/propagation/gdn_int8_residual_direction_sensitivity_panel_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/mechanism/gdn_int8_rmsnorm_value_geometry_mechanism_closure_v1.md`](../../../../../reports/mechanism/gdn_int8_rmsnorm_value_geometry_mechanism_closure_v1.md)
+- [`GDN-quantization-qwen3090-20260921/results/aime26/81920/qwen_gdn/evidence/integrity/qwen_protocol_manifest.json`](../../../../aime26/81920/qwen_gdn/evidence/integrity/qwen_protocol_manifest.json)
+- [`GDN-quantization-qwen3090-20260921/reports/rotation/gdn_postconv_structured_rotation_v1_fp_equivalence_report.md`](../../../../../reports/propagation/gdn_postconv_structured_rotation_v1_fp_equivalence_report.md)
+- [`GDN-quantization-qwen3090-20260921/reports/causal_intervention/gdn_int8_residual_geometry_causal_intervention_v1.md`](../../../../../reports/causal_intervention/gdn_int8_residual_geometry_causal_intervention_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/causal_intervention/gdn_int8_residual_strength_causal_intervention_v1.md`](../../../../../reports/causal_intervention/gdn_int8_residual_strength_causal_intervention_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/effective_update/gdn_int8_effective_update_small_prompt_validation_v1.md`](../../../../../reports/effective_update/gdn_int8_effective_update_small_prompt_validation_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/mechanism/qwen_gdn_mag_matched_residual_functional_geometry_closure_v1.md`](../../../../../reports/mechanism/qwen_gdn_mag_matched_residual_functional_geometry_closure_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/mechanism/gdn_int8_functional_residual_geometry_principle_extraction_v1.md`](../../../../../reports/mechanism/gdn_int8_functional_residual_geometry_principle_extraction_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/mechanism/gdn_int8_functional_orientation_low_rank_and_stability_audit_v1.md`](../../../../../reports/mechanism/gdn_int8_functional_orientation_low_rank_and_stability_audit_v1.md)
+- [`GDN-quantization-qwen3090-20260921/reports/mechanism/qwen_gdn_persistent_source_error_magnitude_equalization_transfer_v1.md`](../../../../../reports/mechanism/qwen_gdn_persistent_source_error_magnitude_equalization_transfer_v1.md)
+- [`GDN-quantization-qwen3090-20260921/results/mechanism/qwen_gdn/gdn_int8_out_proj_functional_direction_causal_v1_final_summary.json`](../../../../mechanism/qwen_gdn/gdn_int8_out_proj_functional_direction_causal_v1_final_summary.json)
+- [`GDN-quantization-qwen3090-20260921/results/mechanism/qwen_gdn/gdn_int8_real_rc_tangential_recurrent_mediation_v1_final_summary.json`](../../../../mechanism/qwen_gdn/gdn_int8_real_rc_tangential_recurrent_mediation_v1_final_summary.json)
+- [`GDN-quantization-qwen3090-20260921/results/rotation/qwen_key_hadamard/prototypes/gdn_rotation_headroom_v1_final_classification.json`](../../../../propagation/gdn_rotation_headroom_v1_final_classification.json)
+- [`GDN-quantization-qwen3090-20260921/results/mechanism/qwen_gdn/gdn_int8_rmsnorm_value_geometry_mechanism_closure_v1_final_summary.json`](../../../../mechanism/qwen_gdn/gdn_int8_rmsnorm_value_geometry_mechanism_closure_v1_final_summary.json)
+- [`GDN-quantization-qwen3090-20260921/results/mechanism/qwen_gdn/gdn_int8_functional_residual_geometry_principle_extraction_v1_final_summary.json`](../../../../mechanism/qwen_gdn/gdn_int8_functional_residual_geometry_principle_extraction_v1_final_summary.json)
+- [`GDN-quantization-qwen3090-20260921/results/mechanism/qwen_gdn/gdn_int8_functional_orientation_low_rank_and_stability_audit_v1_final_summary.json`](../../../../mechanism/qwen_gdn/gdn_int8_functional_orientation_low_rank_and_stability_audit_v1_final_summary.json)

@@ -1,0 +1,686 @@
+# Codex任务：Qwen/GDN历史OLD Runtime真实GPU恢复验证 V1
+
+## 一、任务目标
+
+任务名称：
+
+`QWEN_GDN_HISTORICAL_RUNTIME_GPU_RECOVERY_V1`
+
+目标模型：Qwen3.5-9B / GDN。
+
+目标硬件：Qwen服务器，单张授权的RTX3090 24GB。
+
+本任务承接已完成的：
+
+`QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1`
+
+**核心目标：通过最小GPU实验，确认已经完成CPU恢复的历史OLD Runtime是否能够重新达到约13 token/s，并判断其自身的数学正确性和可重复性。**
+
+不要再次设计或优化Runtime。
+
+### 需要回答的四个问题
+
+1. 已恢复的OLD Runtime能否在真实9B模型上正确运行？
+2. 同一张GPU上，两次fresh process执行的GDN state、logits和cache是否一致？
+3. 在原历史128-token warmup + 128-token measurement窗口下，FP吞吐是否重新达到约13 TPS？
+4. 如果恢复成功，是否可以将其作为后续Group32/INT8科研实验的运行协议候选？
+
+注意：第四个问题仅评估协议可行性。本任务不运行Group32，也不自动授予INT8 GPU资格。
+
+---
+
+## 二、必须继承的最新冻结基线
+
+### 2.1 CPU恢复任务当前状态
+
+已完成任务：
+
+`QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1`
+
+终态：
+
+`CPU_ONLY_COMPLETE_GPU_NOT_AUTHORIZED`
+
+恢复模式：
+
+`HISTORICAL_PORT`
+
+已经完成：
+
+- 历史OLD源码定位。
+- 原Python数学与Cache路径恢复。
+- 历史执行环境配置恢复。
+- 隔离运行副本准备。
+- Tiny Qwen类的CPU数学检查。
+- CPU控制器与资源门禁回归。
+- 原CPU交付封存。
+- 独立GPU设备身份门禁修订。
+
+尚未完成：
+
+- 当前9B GPU数值资格。
+- 当前GPU fresh-process重复性。
+- 当前GPU TPS测量。
+- GPU真实显存峰记录。
+- 正式Runtime使用资格。
+
+不得将CPU恢复成功写成GPU恢复成功。
+
+### 2.2 最新控制修订具有强制优先级
+
+原CPU交付包含526个索引文件及4个外部锚点，合计530份核验资产。
+
+之后另有独立的设备控制修订包。
+
+**未来执行必须使用修订后的：**
+
+`EFFECTIVE_SOURCE_FREEZE.json`
+
+其中有效源码清单共407项：
+
+- 原不可变交付中的405项源码。
+- 本次独立控制修订的2项控制源码。
+
+必须完成：
+
+1. 定位原CPU封存包及独立控制修订包。
+2. 核验其manifest、SHA256与seal。
+3. 解析`EFFECTIVE_SOURCE_FREEZE.json`。
+4. 核对407项有效源码的身份。
+5. 在全新GPU执行root中构造隔离执行副本。
+6. 确保实际启动使用的是修订后的控制程序。
+
+禁止：
+
+- 使用旧版控制程序替代修订版本。
+- 在旧CPU交付目录直接启动GPU。
+- 原位修改旧CPU交付。
+- 跳过设备身份门禁。
+- 用旧SOURCE_FREEZE代替最新有效清单。
+- 因路径恢复困难而重新拼接未封存的运行器。
+
+如果407项源码身份无法完整闭合，立即停止GPU准入。
+
+---
+
+## 三、历史真实性能基线
+
+已有同卡固定输入短窗口结果：
+
+| 配置 | 历史FP吞吐 | 历史ms/token |
+|---|---:|---:|
+| OLD_FP | 13.742036038730332 | 72.76942057069391 |
+| NEW_STRICT_FP | 7.77671073754353 | 128.58906982000917 |
+
+这两个数值来自历史吞吐调和实验，不是本轮实测。
+
+本任务的工程目标：
+
+**恢复OLD_FP至至少约13 token/s。**
+
+历史FP使用：
+
+- BF16模型。
+- FP32 recurrent state。
+- 32层模型，其中24层GDN。
+- 相同冻结token序列。
+- 缓存位置128→256。
+- 128-token warmup。
+- 128-token无Profiler测量。
+
+必须以原历史执行manifest与benchmark源码确认实际窗口合同。
+
+不能把AIME自由生成的TPS当作同一种测量。
+
+特别注意：
+
+**13.742 TPS是FP速度，不是Hadamard INT8速度。**
+
+历史OLD_H+C128约9.064610 TPS，仅作背景参考。
+
+---
+
+# 四、阶段A：GPU启动前的CPU身份准入
+
+首先运行最新隔离候选的：
+
+- `--check`
+- `--print-env`
+- 必要的只读源码及依赖身份检查。
+
+优先复用前序已经核验的源码、模型和环境信息。
+
+不得重新进行一轮广泛Profiler调查。
+
+## A1. 冻结历史OLD执行配置
+
+已知历史OLD配置：
+
+| 参数 | 历史值 |
+|---|---|
+| Global deterministic | False |
+| Torch intraop threads | 24 |
+| Torch interop threads | 24 |
+| Matmul TF32 | False |
+| cuDNN TF32 | True |
+| cuDNN deterministic | False |
+| CUBLAS_WORKSPACE_CONFIG | unset |
+| OMP_NUM_THREADS | unset |
+| MKL_NUM_THREADS | unset |
+| CUDA_DEVICE_ORDER | unset |
+
+上述unset必须作为实际历史环境状态处理，而不是擅自替换为某个推测默认值。
+
+真实配置以封存manifest为准。
+
+OLD使用历史native GDN计算路径，包括原native chunk cumsum。
+
+不得：
+
+- 改成NEW_STRICT数值实现。
+- 关闭其他科学检查以提高速度。
+- 修改Attention/MLP实现。
+- 修改模型dtype。
+- 修改GDN recurrent state算法。
+- 修改模型权重。
+- 替换CUDA kernel。
+- 重新搜索cuBLAS配置。
+
+本任务只验证历史移植Runtime。
+
+## A2. 不可变模型与依赖身份
+
+必须核验：
+
+- 四份模型权重分片SHA。
+- 模型配置。
+- Tokenizer及其当前可核验身份。
+- PyTorch和CUDA环境。
+- 必要动态库身份。
+- 当前Runtime执行源码。
+- frozen token fixture。
+- 历史benchmark的实际计时程序。
+
+历史未保存完整的driver/cuBLAS/cuDNN二进制和动态库映射，必须保留`UNKNOWN`。
+
+不能用当前库SHA反向声称历史库逐字节相同。
+
+如果原历史二进制身份无法完整恢复，最终仍应使用`HISTORICAL_PORT`，而非`EXACT_HISTORICAL_REPLAY`。
+
+---
+
+# 五、阶段B：强制GPU设备身份安全门禁
+
+这是本任务最重要的新增工程要求。
+
+### B1. GPU授权
+
+默认：
+
+`ALLOW_GPU_RESTORE=NO`
+
+此Codex提示词本身不构成GPU授权。
+
+只有用户另行明确授权，并且实际控制器取得与本任务绑定的有效permit后，才允许进入GPU阶段。
+
+permit必须绑定：
+
+- 本次独立任务身份。
+- 实际授权GPU UUID。
+- 有效源码清单身份。
+- GPU预算。
+- 允许的执行root。
+- 有效授权范围。
+
+不得由Codex自行伪造permit、默认将NO改成YES，或借用其他任务的GPU授权。
+
+若缺少任何一个必要条件，只完成CPU准入和执行准备，最终保持`GPU_NOT_AUTHORIZED`。
+
+### B2. Torch import之前的设备检查
+
+必须使用最新修订的控制器。
+
+在以下动作之前：
+
+- Torch import。
+- CUDA seed设置。
+- 模型加载。
+- CUDA Context初始化。
+- 科学forward。
+
+首先完成：
+
+1. 冻结`libcuda`实际文件的SHA与bytes检查。
+2. 使用不创建CUDA Context的Driver API枚举。
+3. 确认可见CUDA设备数恰好为1。
+4. 确认逻辑Device 0映射到permit绑定的GPU UUID。
+5. 核对设备身份与预登记完全一致。
+
+如果设备数不是1、UUID不匹配或Driver映射证据不足：
+
+`FAIL_CLOSED_STOP`
+
+不得自动更换GPU或重新解释授权范围。
+
+历史修订目前仅通过FakeDriver/CPU模拟，**本任务必须取得真实Driver执行证据才能认为设备身份资格通过。**
+
+### B3. 实际进程NVML身份核验
+
+模型加载后的PRE/POST检查必须：
+
+- 读取本进程实际GPU UUID。
+- 确认本PID真实运行在授权设备上。
+- 拒绝同一PID出现在任何其他GPU UUID。
+- 记录own-PID显存使用。
+- 记录首次进程退出。
+- 记录首次资源释放观察。
+- 在清理阶段检查此PID涉及的全部UUID。
+
+如监控与实际进程不一致，不得继续科学运行。
+
+不得杀死其他用户进程。
+
+---
+
+# 六、阶段C：OLD Runtime真实9B数值资格
+
+这是本轮第一项GPU科学工作。
+
+先只测试FP。
+
+不得在这里混入Hadamard、Sym128、Group32或Dual-M。
+
+## C1. 两次32-token fresh process
+
+在同一张授权GPU上，分别启动两次独立Python进程。
+
+两次必须使用：
+
+- 同一模型。
+- 同一模型权重。
+- 同一输入token。
+- 同一seed。
+- 同一GPU UUID。
+- 同一历史OLD Runtime。
+- 同一dtype。
+- 同一模型和Cache初始化方式。
+
+每次从冻结的相同初始状态执行完整32-token真实模型forward。
+
+保存：
+
+1. 每token logits。
+2. 全部GDN recurrent state。
+3. 关键GDN计算中间状态。
+4. Cache内容和元数据。
+5. token/cursor身份。
+6. 非finite检查。
+7. 实际执行配置与依赖身份。
+8. GPU运行及资源记录。
+
+两条fresh轨迹应执行逐token、逐Tensor比较。
+
+至少报告：
+
+- `torch.equal`。
+- byte equality。
+- 最大绝对误差。
+- 最大相对误差。
+- 首次不一致token。
+- 首次不一致layer/head。
+- 不一致Tensor身份。
+
+不能只比较最终token的logits。
+
+### C2. 激活驱动FP64递推资格
+
+按原冻结CPU任务预登记的数学合同，使用真实模型执行时记录的Key、Gate、Beta及相关更新输入，在独立CPU FP64参考路径中复核GDN递推。
+
+要求：
+
+- 真实激活必须来自当前执行。
+- 不得使用随机生成的更新系数替代。
+- 不得使用简化公式替换原数学定义。
+- 不得事后修改已经冻结的数值容差。
+- 原生GPU状态应与参考满足预登记的对应数值资格。
+
+FP64参考是数学诊断，不表示GPU应与FP64逐字节相同。
+
+如果真实GDN数学检查不通过，必须保存首个差异并停止性能资格。
+
+### C3. 关于deterministic=False
+
+历史OLD使用`deterministic=False`。
+
+因此，需要特别警惕：
+
+**OLD能正常运行，不意味着OLD自身可逐字节重复。**
+
+如果两条fresh轨迹出现不一致：
+
+- 保存最早分歧。
+- 分析是否属于历史native计算的已知不确定性风险。
+- 不直接放宽资格。
+- 不自动改用NEW数值实现。
+- 不因吞吐可能较快而授予正式科研资格。
+
+如果本轮冻结的fresh一致性门禁失败，则停止可采用Runtime的性能晋级。
+
+可以报告历史移植环境能运行，但不符合当前严格可重复科研使用要求。
+
+---
+
+# 七、阶段D：恢复历史短窗口吞吐
+
+只有阶段C数学、数值和设备资格全部PASS，才能进入此阶段。
+
+**这是用户最关心的核心实验。**
+
+## D1. 原样执行历史benchmark
+
+每次运行：
+
+- 128-token warmup。
+- 128-token正式测量。
+- 固定输入token。
+- 固定缓存位置。
+- 单GPU。
+- 无Profiler。
+- 不增加逐token日志或Tensor hash。
+- 测量窗口外进行必要的CUDA同步。
+- 与原历史相同的计时方法。
+
+优先执行三次独立fresh测量。
+
+记录：
+
+- TPS。
+- ms/token。
+- 单次正式窗口wall。
+- 总运行墙钟。
+- 模型加载耗时。
+- GPU显存allocated/reserved峰值。
+- NVML owned-PID观测峰值。
+- 实际运行环境和设备身份。
+- 异常事件。
+
+不能把模型加载、初始化、warmup或写盘时间混入正式128-token窗口TPS。
+
+## D2. 性能判定
+
+历史基线：
+
+`13.742036038730332 TPS`
+
+本次目标：
+
+`RESTORED_FP_MEDIAN_TPS >= 13.0`
+
+只有合法完成的三次测量均有身份与资源证据时，才报告三次中位数作为完整性能验收。
+
+如果预算不足只完成1–2次，保留真实观测并标记部分测量，不能称完整三重复资格通过。
+
+如果中位TPS：
+
+- ≥13.0：达到预设工程速度目标。
+- 低于13.0但显著高于历史NEW参考：报告部分速度恢复，但不自动宣称统计显著。
+- 接近历史NEW约7.78：说明本轮尚未恢复历史高速运行表现。
+- 更低或波动异常：报告真实情况并止损。
+
+以上判断必须依赖当前实际数据，不能用历史13.742替代测量。
+
+如果旧Runtime没有恢复速度：
+
+**不要自动增加新的线程搜索、cuBLAS配置或代码修补。**
+
+## D3. NEW_STRICT可选对照
+
+只有OLD的三次合法测量完成，且剩余预算允许，才可执行一次当前NEW_STRICT短窗口参考。
+
+NEW参考必须：
+
+- 同一GPU。
+- 同一冻结输入和窗口。
+- 单独fresh process。
+- 独立环境身份。
+- 不改变原NEW数学。
+
+如果无法在预算内完成，则保持本轮NEW为`NOT_RUN`，引用历史7.776711 TPS作为背景即可。
+
+不能为了补测NEW挤占OLD的主要恢复验证预算。
+
+---
+
+# 八、严格GPU预算及资源止损
+
+使用历史CPU修订已冻结的预算：
+
+| 项目 | 上限 |
+|---|---:|
+| 可见且授权GPU | 1张 |
+| 总GPU硬上限 | 0.5 GPUh |
+| 总GPU墙钟硬上限 | 1800秒 |
+| 保护性停止 | 1650秒 |
+| 清理预留 | 150秒 |
+| 单dispatch上限 | 240秒 |
+
+任何单独执行单元不得超过冻结的240秒限制。
+
+预算必须包括GPU任务的实际模型加载、初始化、测试与清理占用，不允许只计算128-token计时窗口。
+
+每一个即将启动的单元必须先进行剩余预算准入判断。
+
+如果不能在保护停止点前合法完成该单元，不得启动。
+
+如果预算不足以完成三次性能测量，报告已经完成的合法部分，不得扩大时间上限。
+
+如出现：
+
+- GPU UUID不符合授权。
+- 驱动身份不一致。
+- 动态库身份异常。
+- 进程监控不一致。
+- Nonfinite。
+- Fresh重复性失败。
+- 数学资格失败。
+- 模型OOM。
+- 资源超限。
+
+立即`FAIL_CLOSED_STOP`。
+
+不得自动重试、切换设备、修改数值配置或启动额外GPU任务。
+
+### 资源计量
+
+资源账本必须采用append-only事件：
+
+- 首次dispatch。
+- 首次进程退出。
+- 首次own-PID GPU资源释放观察。
+- 完整退出与清理证明。
+
+如果只能获得轮询区间，精确物理GPUh应标为`UNRESOLVED`，并记录可证明的上下界。
+
+不得重现之前对已退出任务继续累计资源占用的控制器缺陷。
+
+---
+
+# 九、阶段E：后续INT8科研适用性评估
+
+本次只有FP GPU资格与吞吐恢复是主任务。
+
+不得自动把FP资格推广到INT8。
+
+如果OLD FP恢复成功，再执行CPU-only适配审计。
+
+至少分析：
+
+1. 历史H+C128的Codec注入和writeback位置。
+2. OLD与NEW首token QDQ时序差异。
+3. C128和未来C32的分组轴。
+4. Sym/Asym量化的scale与zero-point合同。
+5. 后续GDN kernel对QDQ状态的真实消费。
+6. 是否存在未量化高精度persistent shadow。
+7. 是否能在同一个恢复协议下重新建立匹配基线。
+
+特别注意已有差异：
+
+- OLD H首token不QDQ，历史窗口255次QDQ。
+- NEW H首tokenQDQ，历史窗口256次QDQ。
+- 旧AIME使用整段Prompt不量化Prefill。
+- FP32 Tensor中的post-QDQ数值不等于物理packed INT8。
+
+这些协议差异不能忽略。
+
+如果未来确实使用OLD移植协议研究Group32，则至少需要独立验证：
+
+- H+C128 Sym。
+- H+C32 Sym。
+- H+C32 Asym。
+
+这些实验必须使用相同的新冻结运行协议。
+
+不得直接复用NEW_STRICT下的历史Future-KL，形成跨协议Codec因果比较。
+
+本任务不启动以上INT8 GPU实验。
+
+---
+
+# 十、必须交付的文件
+
+新建独立GPU执行root：
+
+`QWEN_GDN_HISTORICAL_RUNTIME_GPU_RECOVERY_V1`
+
+建议文件：
+
+```text
+QWEN_GDN_HISTORICAL_RUNTIME_GPU_RECOVERY_V1/
+├── EXECUTION_PLAN.md
+├── EFFECTIVE_SOURCE_VERIFICATION.json
+├── RUNTIME_IDENTITY_AUDIT.md
+├── AUTHORIZATION_AND_PERMIT.json
+├── DRIVER_DEVICE_IDENTITY.json
+├── GPU_RESOURCE_ADMISSION.json
+├── NUMERICAL_CONTRACT.md
+├── qualification/
+│   ├── FP_32TOKEN_FRESH_A.json
+│   ├── FP_32TOKEN_FRESH_B.json
+│   ├── FRESH_PROCESS_PARITY.json
+│   ├── GDN_FP64_RECURRENCE_AUDIT.json
+│   └── GPU_NUMERICAL_DECISION.json
+├── benchmarks/
+│   ├── RESTORED_FP_BENCHMARK.csv
+│   ├── CURRENT_NEW_REFERENCE.csv
+│   └── PERFORMANCE_DECISION.json
+├── INT8_COMPATIBILITY_AUDIT.md
+├── RESOURCE_LEDGER.json
+├── RUNTIME_RESTORATION_DECISION.json
+├── FINAL_SCIENTIFIC_REPORT.md
+├── SHA256_MANIFEST.json
+└── FINAL_SEAL_RECEIPT.json
+```
+
+只创建实际执行产生的结果。
+
+没有授权或执行的GPU测量必须标记`NOT_RUN`，不能填历史数值冒充新测量。
+
+所有重要科学输出必须绑定：
+
+- 实际模型和权重身份。
+- 实际源码身份。
+- 407项有效源清单。
+- Driver和动态库身份。
+- GPU UUID。
+- 输入token SHA。
+- 数值合同。
+- 运行命令。
+- 数值及性能结果。
+- 资源事件。
+
+旧CPU seal和控制修订seal均必须保持不变。
+
+---
+
+# 十一、最终报告必须回答
+
+1. 使用的是否确实是最新407项有效源码清单？
+2. 真正的Driver/NVML设备身份检查是否通过？
+3. OLD移植Runtime是否能够执行真实Qwen3.5-9B FP？
+4. 两次32-token fresh process是否逐token、逐Tensor一致？
+5. 真实GDN递推与激活驱动FP64数学参考是否合格？
+6. 原历史128+128窗口下，当前实际FP TPS是多少？
+7. 当前吞吐是否达到约13 token/s？
+8. 如果没有达到，是数值资格失败、资源限制、环境身份问题，还是已经合法测得速度确实较慢？
+9. 现有证据能否允许恢复版用于后续新科研？
+10. 如果需要用于Group32，哪些GPU数值及persistent QDQ资格仍需单独完成？
+
+特别注意：
+
+即使FP达到13 TPS，也只能证明**本次历史移植Runtime在当前机器、当前窗口具有对应吞吐**。
+
+它不证明历史完整二进制已精确复现，也不证明Group32 INT8具有13 TPS，更不证明所有长程数值路径合格。
+
+---
+
+# 十二、最终状态分类
+
+使用以下分类：
+
+- `HISTORICAL_PORT_FP_QUALIFIED_SPEED_RECOVERED`：当前9B FP数值资格PASS，三次短窗中位≥13 TPS。
+- `HISTORICAL_PORT_FP_QUALIFIED_PARTIAL_SPEED`：FP数值PASS，但吞吐低于预设13 TPS目标。
+- `FP_NUMERICAL_QUALIFICATION_FAIL`：GDN数学、cache、fresh重复性或安全数值门禁失败。
+- `HISTORICAL_PORT_EXECUTION_FAIL`：移植环境无法合法运行。
+- `GPU_RESOURCE_OR_IDENTITY_FAIL`：GPU UUID、Driver、依赖、监控或资源门禁失败。
+- `PARTIAL_GPU_RESULTS_PRESERVED_AND_STOP`：部分执行合法完成，未满足完整终态资格。
+- `CPU_ONLY_COMPLETE_GPU_NOT_AUTHORIZED`：未获得GPU授权，只有CPU资格交付。
+- `FAIL_CLOSED_STOP`：触发禁止继续的前置或执行中门禁。
+
+FP性能恢复成功时，还必须明确标记：
+
+`INT8_GPU_QUALIFICATION=NOT_RUN`
+
+不能将FP成功自动升级成正式Group32 Runtime。
+
+---
+
+# 十三、实际执行要求
+
+请不要再生成一套泛泛的Runtime恢复计划。
+
+前序CPU任务已经完成，现有控制修订也已经完成。
+
+**本任务应直接消费前序CPU封存与最新修订，完成当前合法范围内的首次真实GPU恢复资格。**
+
+执行顺序：
+
+1. 定位并核验CPU交付及独立控制修订。
+2. 核验407项有效源码和全部必要身份。
+3. 建立全新独立执行root。
+4. 读取GPU授权和permit。
+5. 如果没有授权，完成CPU检查后STOP。
+6. 如果已有独立有效授权，严格执行真实Driver设备映射门禁。
+7. 通过后进行单GPU资源准入和NVML PID身份监控。
+8. 两次fresh 32-token FP数值资格。
+9. 激活驱动FP64递推资格。
+10. 数值全部PASS后，运行最多三次128+128 OLD FP吞吐测量。
+11. 预算允许时，补充一次NEW_STRICT短窗参考。
+12. 完成INT8兼容性CPU审计，不运行INT8 GPU。
+13. 形成完整的数值、性能、资源与科学决策。
+14. SHA封存所有新任务交付。
+
+### 明确禁止
+
+- 修改历史OLD数学。
+- 切换到其他GPU。
+- 放宽fresh byte parity。
+- 改变模型dtype。
+- 修改GDN recurrent update。
+- 使用新版数值实现伪装OLD。
+- 自动运行H+C128或Group32。
+- 自动开展32K/AIME。
+- 修改旧封存或热更新控制器。
+- 失败后不断修补/重试。
+- 为达到13 TPS扩大GPU预算。
+
+**最终目标不是进一步研究性能瓶颈，而是用一次严格、有限且可复核的GPU实验，判断你以前约13.7 TPS的Qwen/GDN运行能力是否已经在当前服务器上恢复，以及能否作为后续量化科研的Runtime基础。**

@@ -1,0 +1,1 @@
+Optional[dict[str, Union[int, str]]]

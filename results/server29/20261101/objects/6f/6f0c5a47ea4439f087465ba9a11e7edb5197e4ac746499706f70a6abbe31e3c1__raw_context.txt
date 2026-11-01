@@ -1,0 +1,862 @@
+src/main/java/org/wickedsource/docxstamper/api/DocxStamperException.java
+public class DocxStamperException extends RuntimeException {
+
+    public DocxStamperException(String message) {
+        super(message);
+    }
+
+    public DocxStamperException(String message, Throwable cause) {
+        super(message, cause);
+    }
+
+    public DocxStamperException(Throwable cause) {
+        super(cause);
+    }
+
+}
+src/main/java/org/wickedsource/docxstamper/api/typeresolver/TypeResolverRegistry.java
+public class TypeResolverRegistry {
+
+    private ITypeResolver defaultResolver;
+
+    private Map<Class<?>, ITypeResolver> typeResolversByType = new HashMap<>();
+
+    public TypeResolverRegistry(ITypeResolver defaultResolver) {
+        this.defaultResolver = defaultResolver;
+    }
+
+    public <T> void registerTypeResolver(Class<T> resolvedType, ITypeResolver resolver) {
+        typeResolversByType.put(resolvedType, resolver);
+    }
+
+    /**
+     * Gets the ITypeResolver that was registered for the specified type.
+     *
+     * @param type the class for which to find the ITypeResolver.
+     * @param <T>  the type resolved by the ITypeResolver.
+     * @return the ITypeResolver implementation that was earlier registered for the given class, or the default ITypeResolver
+     * if none is found.
+     */
+    public <T> ITypeResolver getResolverForType(Class<T> type) {
+        ITypeResolver resolver = typeResolversByType.get(type);
+        if (resolver == null) {
+            return defaultResolver;
+        } else {
+            return resolver;
+        }
+    }
+
+    /**
+     * Sets the default ITypeResolver that is used for classes that have no ITypeResolver registered.
+     *
+     * @param defaultResolver the resolver to use as default.
+     */
+    public void setDefaultResolver(ITypeResolver defaultResolver) {
+        this.defaultResolver = defaultResolver;
+    }
+
+    public ITypeResolver getDefaultResolver() {
+        return defaultResolver;
+    }
+}
+src/main/java/org/wickedsource/docxstamper/api/commentprocessor/ICommentProcessor.java
+public interface ICommentProcessor {
+
+    /**
+     * This method is called after all comments in the .docx template have been passed to the comment processor.
+     * All manipulations of the .docx document SHOULD BE done in this method. If certain manipulations are already done
+     * within in the custom methods of a comment processor, the ongoing iteration over the paragraphs in the document
+     * may be disturbed.
+     *
+     * @param document The word document that can be manipulated by using the DOCX4J api.
+     */
+    void commitChanges(WordprocessingMLPackage document);
+
+    /**
+     * Passes the paragraph that is currently being processed (i.e. the paragraph that is commented in the
+     * .docx template. This method is always called BEFORE the custom methods of the custom comment processor interface
+     * are called.
+     *
+     * @param coordinates coordinates of the currently processed paragraph within the template.
+     */
+    void setCurrentParagraphCoordinates(ParagraphCoordinates coordinates);
+
+
+    /**
+     * Passes the run that is currently being processed (i.e. the run that is commented in the
+     * .docx template. This method is always called BEFORE the custom methods of the custom comment processor interface
+     * are called.
+     *
+     * @param coordinates coordinates of the currently processed run within the template.
+     */
+    void setCurrentRunCoordinates(RunCoordinates coordinates);
+
+
+    /**
+     * Passes the comment range wrapper that is currently being processed
+     * (i.e. the start and end of comment that in the .docx template.
+     * This method is always called BEFORE the custom methods of the custom comment
+     * processor interface are called.
+     *
+     *  @param commentWrapper of the currently processed comment within the template.
+     */
+    void setCurrentCommentWrapper(CommentWrapper commentWrapper);
+
+    /**
+     * Resets all state in the comment processor so that it can be re-used in another stamping process.
+     */
+    void reset();
+
+}
+src/main/java/org/wickedsource/docxstamper/el/ExpressionResolver.java
+public class ExpressionResolver {
+
+    private static final ExpressionUtil expressionUtil = new ExpressionUtil();
+
+    private final EvaluationContextConfigurer evaluationContextConfigurer;
+
+    public ExpressionResolver() {
+        this.evaluationContextConfigurer = new NoOpEvaluationContextConfigurer();
+    }
+
+    public ExpressionResolver(EvaluationContextConfigurer evaluationContextConfigurer) {
+        this.evaluationContextConfigurer = evaluationContextConfigurer;
+    }
+
+    /**
+     * Runs the given expression against the given context object and returns the result of the evaluated expression.
+     *
+     * @param expressionString the expression to evaluate.
+     * @param contextRoot      the context object against which the expression is evaluated.
+     * @return the result of the evaluated expression.
+     */
+    public Object resolveExpression(String expressionString, Object contextRoot) {
+        if ((expressionString.startsWith("${") || expressionString.startsWith("#{")) && expressionString.endsWith("}")) {
+            expressionString = expressionUtil.stripExpression(expressionString);
+        }
+        ExpressionParser parser = new SpelExpressionParser();
+        StandardEvaluationContext evaluationContext = new StandardEvaluationContext(contextRoot);
+        evaluationContextConfigurer.configureEvaluationContext(evaluationContext);
+        Expression expression = parser.parseExpression(expressionString);
+        return expression.getValue(evaluationContext);
+    }
+
+}
+src/main/java/org/wickedsource/docxstamper/processor/replaceExpression/IReplaceWithProcessor.java
+public interface IReplaceWithProcessor {
+
+	/**
+	 * May be called to replace a single word inside a paragraph with an expression
+	 * defined in a comment. The comment must be applied to a single word for the
+	 * replacement to take effect!
+	 *
+	 * @param expression the expression to replace the text with
+	 */
+	void replaceWordWith(String expression);
+
+}
+src/main/java/org/wickedsource/docxstamper/processor/displayif/DisplayIfProcessor.java
+public class DisplayIfProcessor extends BaseCommentProcessor implements IDisplayIfProcessor {
+
+	private List<ParagraphCoordinates> paragraphsToBeRemoved = new ArrayList<>();
+
+	private List<TableCoordinates> tablesToBeRemoved = new ArrayList<>();
+
+	private List<TableRowCoordinates> tableRowsToBeRemoved = new ArrayList<>();
+
+	@Override
+	public void commitChanges(WordprocessingMLPackage document) {
+		ObjectDeleter deleter = new ObjectDeleter(document);
+		removeParagraphs(deleter);
+		removeTables(deleter);
+		removeTableRows(deleter);
+	}
+
+	@Override
+	public void reset() {
+		paragraphsToBeRemoved = new ArrayList<>();
+		tablesToBeRemoved = new ArrayList<>();
+		tableRowsToBeRemoved = new ArrayList<>();
+	}
+
+	private void removeParagraphs(ObjectDeleter deleter) {
+		for (ParagraphCoordinates pCoords : paragraphsToBeRemoved) {
+			deleter.deleteParagraph(pCoords);
+		}
+	}
+
+	private void removeTables(ObjectDeleter deleter) {
+		for (TableCoordinates tCoords : tablesToBeRemoved) {
+			deleter.deleteTable(tCoords);
+		}
+	}
+
+	private void removeTableRows(ObjectDeleter deleter) {
+		for (TableRowCoordinates rCoords : tableRowsToBeRemoved) {
+			deleter.deleteTableRow(rCoords);
+		}
+	}
+
+	@Override
+	public void displayParagraphIf(Boolean condition) {
+		if (!condition) {
+			ParagraphCoordinates coords = getCurrentParagraphCoordinates();
+			paragraphsToBeRemoved.add(coords);
+		}
+	}
+
+	@Override
+	public void displayTableIf(Boolean condition) {
+		if (!condition) {
+			ParagraphCoordinates pCoords = getCurrentParagraphCoordinates();
+			if (pCoords.getParentTableCellCoordinates() == null ||
+					pCoords.getParentTableCellCoordinates().getParentTableRowCoordinates() == null ||
+					pCoords.getParentTableCellCoordinates().getParentTableRowCoordinates().getParentTableCoordinates() == null) {
+				throw new CommentProcessingException("Paragraph is not within a table!", pCoords);
+			}
+			tablesToBeRemoved.add(pCoords.getParentTableCellCoordinates().getParentTableRowCoordinates().getParentTableCoordinates());
+		}
+	}
+
+	@Override
+	public void displayTableRowIf(Boolean condition) {
+		if (!condition) {
+			ParagraphCoordinates pCoords = getCurrentParagraphCoordinates();
+			if (pCoords.getParentTableCellCoordinates() == null ||
+					pCoords.getParentTableCellCoordinates().getParentTableRowCoordinates() == null) {
+				throw new CommentProcessingException("Paragraph is not within a table!", pCoords);
+			}
+			tableRowsToBeRemoved.add(pCoords.getParentTableCellCoordinates().getParentTableRowCoordinates());
+		}
+	}
+}
+src/main/java/org/wickedsource/docxstamper/replace/typeresolver/image/Image.java
+public class Image {
+
+    private byte[] imageBytes;
+
+    private String filename;
+
+    private String altText;
+
+    private Integer maxWidth;
+
+    /**
+     * @param in - content of the image as InputStream
+     */
+    public Image(InputStream in) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        IOUtils.copy(in, out);
+        this.imageBytes = out.toByteArray();
+    }
+
+    /**
+     * @param in - content of the image as InputStream
+     * @param maxWidth - max width of the image in twip
+     */
+    public Image(InputStream in, Integer maxWidth) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        IOUtils.copy(in, out);
+        this.imageBytes = out.toByteArray();
+        this.maxWidth = maxWidth;
+    }
+
+    /**
+     * @param imageBytes - content of the image as array of the bytes
+     */
+    public Image(byte[] imageBytes) {
+        this.imageBytes = imageBytes;
+    }
+
+    /**
+     * @param imageBytes - content of the image as array of the bytes
+     * @param maxWidth - max width of the image in twip
+     */
+    public Image(byte[] imageBytes, Integer maxWidth) {
+        this.imageBytes = imageBytes;
+        this.maxWidth = maxWidth;
+    }
+
+    public String getFilename() {
+        return filename;
+    }
+
+    public void setFilename(String filename) {
+        this.filename = filename;
+    }
+
+    public String getAltText() {
+        return altText;
+    }
+
+    public void setAltText(String altText) {
+        this.altText = altText;
+    }
+
+    public byte[] getImageBytes() {
+        return imageBytes;
+    }
+
+    public void setImageBytes(byte[] imageBytes) {
+        this.imageBytes = imageBytes;
+    }
+
+    /**
+     * @return max width of the image in twip, if it is specified, or null.
+     */
+    public Integer getMaxWidth() {
+        return maxWidth;
+    }
+}
+src/main/java/org/wickedsource/docxstamper/api/typeresolver/ITypeResolver.java
+public interface ITypeResolver<S, T> {
+
+    /**
+     * This method is called when a placeholder in the .docx template is to replaced by the result of an expression that
+     * was found in the .docx template. It creates an object of the DOCX4J api that is put in the place of the found
+     * expression.
+     *
+     * @param document         the word document that can be accessed via the DOCX4J api.
+     * @param expressionResult the result of an expression. Only objects of classes this type resolver is registered for
+     *                         within the TypeResolverRegistrey are passed into this method.
+     * @return an object of the DOCX4J api (usually of type org.docx4j.wml.R = "run of text") that will be put in the place of an
+     * expression found in the .docx document.
+     */
+    T resolve(WordprocessingMLPackage document, S expressionResult);
+
+}
+src/main/java/org/wickedsource/docxstamper/processor/CommentProcessorRegistry.java
+public class CommentProcessorRegistry {
+
+  private Logger logger = LoggerFactory.getLogger(CommentProcessorRegistry.class);
+
+  private Map<ICommentProcessor, Class<?>> commentProcessorInterfaces = new HashMap<>();
+
+  private List<ICommentProcessor> commentProcessors = new ArrayList<>();
+
+  private ExpressionResolver expressionResolver = new ExpressionResolver();
+
+  private ExpressionUtil expressionUtil = new ExpressionUtil();
+
+  private PlaceholderReplacer placeholderReplacer;
+
+  private boolean failOnInvalidExpression = true;
+
+  public CommentProcessorRegistry(PlaceholderReplacer placeholderReplacer) {
+    this.placeholderReplacer = placeholderReplacer;
+  }
+
+  public void setExpressionResolver(ExpressionResolver expressionResolver) {
+    this.expressionResolver = expressionResolver;
+  }
+
+  public void registerCommentProcessor(Class<?> interfaceClass,
+                                       ICommentProcessor commentProcessor) {
+    this.commentProcessorInterfaces.put(commentProcessor, interfaceClass);
+    this.commentProcessors.add(commentProcessor);
+  }
+
+  /**
+   * Lets each registered ICommentProcessor have a run on the specified docx
+   * document. At the end of the document the commit method is called for each
+   * ICommentProcessor. The ICommentProcessors are run in the order they were
+   * registered.
+   *
+   * @param document    the docx document over which to run the registered ICommentProcessors.
+   * @param proxyBuilder a builder for a proxy around the context root object to customize its interface
+   * @param <T>         type of the contextRoot object.
+   */
+  public <T> void runProcessors(final WordprocessingMLPackage document, final ProxyBuilder<T> proxyBuilder) {
+    final Map<BigInteger, CommentWrapper> comments = CommentUtil.getComments(document);
+    final List<CommentWrapper> proceedComments = new ArrayList<>();
+
+    CoordinatesWalker walker = new BaseCoordinatesWalker(document) {
+
+      @Override
+      protected void onParagraph(ParagraphCoordinates paragraphCoordinates) {
+        runProcessorsOnParagraphComment(document, comments, proxyBuilder, paragraphCoordinates)
+                .ifPresent(proceedComments::add);
+        runProcessorsOnInlineContent(proxyBuilder, paragraphCoordinates);
+      }
+
+      @Override
+      protected void onRun(RunCoordinates runCoordinates,
+                                     ParagraphCoordinates paragraphCoordinates) {
+        runProcessorsOnRunComment(document, comments, proxyBuilder, paragraphCoordinates, runCoordinates)
+                .ifPresent(proceedComments::add);
+      }
+
+    };
+    walker.walk();
+
+    for (ICommentProcessor processor : commentProcessors) {
+      processor.commitChanges(document);
+    }
+    for (CommentWrapper commentWrapper : proceedComments) {
+      CommentUtil.deleteComment(commentWrapper);
+    }
+
+  }
+
+  /**
+   * Finds all processor expressions within the specified paragraph and tries
+   * to evaluate it against all registered {@link ICommentProcessor}s.
+   *
+   * @param proxyBuilder         a builder for a proxy around the context root object to customize its interface
+   * @param paragraphCoordinates the paragraph to process.
+   * @param <T>                  type of the context root object
+   */
+  private <T> void runProcessorsOnInlineContent(ProxyBuilder<T> proxyBuilder,
+                                                ParagraphCoordinates paragraphCoordinates) {
+
+    ParagraphWrapper paragraph = new ParagraphWrapper(paragraphCoordinates.getParagraph());
+    List<String> processorExpressions = expressionUtil
+            .findProcessorExpressions(paragraph.getText());
+
+    for (String processorExpression : processorExpressions) {
+      String strippedExpression = expressionUtil.stripExpression(processorExpression);
+
+      for (final ICommentProcessor processor : commentProcessors) {
+        Class<?> commentProcessorInterface = commentProcessorInterfaces.get(processor);
+        proxyBuilder.withInterface(commentProcessorInterface, processor);
+        processor.setCurrentParagraphCoordinates(paragraphCoordinates);
+      }
+
+      try {
+        T contextRootProxy = proxyBuilder.build();
+        expressionResolver.resolveExpression(strippedExpression, contextRootProxy);
+        placeholderReplacer.replace(paragraph, processorExpression, null);
+        logger.debug(String.format(
+                "Processor expression '%s' has been successfully processed by a comment processor.",
+                processorExpression));
+      } catch (SpelEvaluationException | SpelParseException e) {
+        if (failOnInvalidExpression) {
+          throw new UnresolvedExpressionException(strippedExpression, e);
+        } else {
+          logger.warn(String.format(
+                  "Skipping processor expression '%s' because it can not be resolved by any comment processor. Reason: %s. Set log level to TRACE to view Stacktrace.",
+                  processorExpression, e.getMessage()));
+          logger.trace("Reason for skipping processor expression: ", e);
+        }
+      } catch (ProxyException e) {
+        throw new DocxStamperException("Could not create a proxy around context root object", e);
+      }
+    }
+  }
+
+
+  /**
+   * Takes the first comment on the specified paragraph and tries to evaluate
+   * the string within the comment against all registered
+   * {@link ICommentProcessor}s.
+   *
+   * @param document             the word document.
+   * @param comments             the comments within the document.
+   * @param proxyBuilder          a builder for a proxy around the context root object to customize its interface
+   * @param paragraphCoordinates the paragraph whose comments to evaluate.
+   * @param <T>                  the type of the context root object.
+   */
+  private <T> Optional<CommentWrapper> runProcessorsOnParagraphComment(final WordprocessingMLPackage document,
+                                                   final Map<BigInteger, CommentWrapper> comments, ProxyBuilder<T> proxyBuilder,
+                                                   ParagraphCoordinates paragraphCoordinates) {
+    Comments.Comment comment = CommentUtil.getCommentFor(paragraphCoordinates.getParagraph(), document);
+    return runCommentProcessors(document, comments, proxyBuilder, comment, paragraphCoordinates, null);
+  }
+
+  private <T> Optional<CommentWrapper> runProcessorsOnRunComment(final WordprocessingMLPackage document,
+                                                       final Map<BigInteger, CommentWrapper> comments, ProxyBuilder<T> proxyBuilder,
+                                                       ParagraphCoordinates paragraphCoordinates, RunCoordinates runCoordinates) {
+    Comments.Comment comment = CommentUtil.getCommentAround(runCoordinates.getRun(), document);
+    return runCommentProcessors(document, comments, proxyBuilder, comment, paragraphCoordinates, runCoordinates);
+  }
+
+  private <T> Optional<CommentWrapper> runCommentProcessors(final WordprocessingMLPackage document,
+                                                           final Map<BigInteger, CommentWrapper> comments, ProxyBuilder<T> proxyBuilder,
+                                                            Comments.Comment comment, ParagraphCoordinates paragraphCoordinates,
+                                                           RunCoordinates runCoordinates) {
+
+    CommentWrapper commentWrapper = Optional.ofNullable(comment)
+            .map(Comments.Comment::getId)
+            .map(comments::get)
+            .orElse(null);
+
+    if (Objects.isNull(comment) || Objects.isNull(commentWrapper)) {
+      // no comment to process
+      return Optional.empty();
+    }
+
+    String commentString = CommentUtil.getCommentString(comment);
+
+    for (final ICommentProcessor processor : commentProcessors) {
+      Class<?> commentProcessorInterface = commentProcessorInterfaces.get(processor);
+      proxyBuilder.withInterface(commentProcessorInterface, processor);
+      processor.setCurrentParagraphCoordinates(paragraphCoordinates);
+      processor.setCurrentRunCoordinates(runCoordinates);
+      processor.setCurrentCommentWrapper(commentWrapper);
+    }
+
+    try {
+      T contextRootProxy = proxyBuilder.build();
+      expressionResolver.resolveExpression(commentString, contextRootProxy);
+      comments.remove(comment.getId()); // guarantee one-time processing
+      logger.debug(
+              String.format("Comment '%s' has been successfully processed by a comment processor.",
+                      commentString));
+      return Optional.of(commentWrapper);
+    } catch (SpelEvaluationException | SpelParseException e) {
+      if (failOnInvalidExpression) {
+        throw new UnresolvedExpressionException(commentString, e);
+      } else {
+        logger.warn(String.format(
+                "Skipping comment expression '%s' because it can not be resolved by any comment processor. Reason: %s. Set log level to TRACE to view Stacktrace.",
+                commentString, e.getMessage()));
+        logger.trace("Reason for skipping comment: ", e);
+      }
+    } catch (ProxyException e) {
+      throw new DocxStamperException("Could not create a proxy around context root object", e);
+    }
+    return Optional.empty();
+  }
+
+  public boolean isFailOnInvalidExpression() {
+    return failOnInvalidExpression;
+  }
+
+  public void setFailOnInvalidExpression(boolean failOnInvalidExpression) {
+    this.failOnInvalidExpression = failOnInvalidExpression;
+  }
+
+  public void reset() {
+    for (ICommentProcessor processor : commentProcessors) {
+      processor.reset();
+    }
+  }
+}
+src/main/java/org/wickedsource/docxstamper/replace/typeresolver/DateResolver.java
+public class DateResolver extends AbstractToTextResolver<Date> {
+
+    private String formatString;
+
+    private DateFormat dateFormat;
+
+    /**
+     * Creates a new DateResolver.
+     *
+     * @param formatString the format to use for date formatting. See java.text.SimpleDateFormat.
+     */
+    public DateResolver(String formatString) {
+        this.formatString = formatString;
+        this.dateFormat = new SimpleDateFormat(formatString);
+    }
+
+    @Override
+    protected String resolveStringForObject(Date date) {
+        synchronized (dateFormat) {
+            return dateFormat.format(date);
+        }
+    }
+
+    public String getFormatString() {
+        return formatString;
+    }
+
+}
+src/main/java/org/wickedsource/docxstamper/replace/typeresolver/image/ImageResolver.java
+public class ImageResolver implements ITypeResolver {
+
+    private static Random random = new Random();
+
+    @Override
+    public R resolve(WordprocessingMLPackage document, Object image) {
+        try {
+            // TODO: adding the same image twice will put the image twice into the docx-zip file. make the second
+            //       addition of the same image a reference instead.
+            Image img = (Image) image;
+            return createRunWithImage(document, img.getImageBytes(), img.getFilename(), img.getAltText(), img.getMaxWidth());
+        } catch (Exception e) {
+            throw new DocxStamperException("Error while adding image to document!", e);
+        }
+    }
+
+    public static R createRunWithImage(WordprocessingMLPackage wordMLPackage, byte[] bytes, String filenameHint, String altText, Integer maxWidth) throws Exception {
+        BinaryPartAbstractImage imagePart = BinaryPartAbstractImage.createImagePart(wordMLPackage, bytes);
+
+        // creating random ids assuming they are unique
+        // id must not be too large, otherwise Word cannot open the document
+        int id1 = random.nextInt(100000);
+        int id2 = random.nextInt(100000);
+        if (filenameHint == null) {
+            filenameHint = "dummyFileName";
+        }
+        if (altText == null) {
+            altText = "dummyAltText";
+        }
+
+        Inline inline;
+        if (maxWidth == null) {
+            inline = imagePart.createImageInline(filenameHint, altText,
+                    id1, id2, false);
+        } else {
+            inline = imagePart.createImageInline(filenameHint, altText,
+                    id1, id2, false, maxWidth);
+        }
+
+        // Now add the inline in w:p/w:r/w:drawing
+        org.docx4j.wml.ObjectFactory factory = new org.docx4j.wml.ObjectFactory();
+        org.docx4j.wml.R run = factory.createR();
+        org.docx4j.wml.Drawing drawing = factory.createDrawing();
+        run.getContent().add(drawing);
+        drawing.getAnchorOrInline().add(inline);
+
+        return run;
+
+    }
+
+}
+src/main/java/org/wickedsource/docxstamper/replace/PlaceholderReplacer.java
+public class PlaceholderReplacer<T> {
+
+  private Logger logger = LoggerFactory.getLogger(PlaceholderReplacer.class);
+
+  private ExpressionUtil expressionUtil = new ExpressionUtil();
+
+  private ExpressionResolver expressionResolver = new ExpressionResolver();
+
+  private TypeResolverRegistry typeResolverRegistry;
+
+  private String lineBreakPlaceholder;
+
+  private boolean leaveEmptyOnExpressionError = false;
+
+  private boolean replaceNullValues = false;
+
+  public PlaceholderReplacer(TypeResolverRegistry typeResolverRegistry) {
+    this.typeResolverRegistry = typeResolverRegistry;
+  }
+
+  public PlaceholderReplacer(TypeResolverRegistry typeResolverRegistry, String lineBreakPlaceholder) {
+    this.typeResolverRegistry = typeResolverRegistry;
+    this.lineBreakPlaceholder = lineBreakPlaceholder;
+  }
+
+  public boolean isLeaveEmptyOnExpressionError() {
+    return leaveEmptyOnExpressionError;
+  }
+
+  public void setLeaveEmptyOnExpressionError(boolean leaveEmptyOnExpressionError) {
+    this.leaveEmptyOnExpressionError = leaveEmptyOnExpressionError;
+  }
+
+  public void setReplaceNullValues(boolean replaceNullValues) {
+    this.replaceNullValues = replaceNullValues;
+  }
+  
+  public void setExpressionResolver(ExpressionResolver expressionResolver) {
+    this.expressionResolver = expressionResolver;
+  }
+
+  /**
+   * Finds expressions in a document and resolves them against the specified context object. The expressions in the
+   * document are then replaced by the resolved values.
+   *
+   * @param document          the document in which to replace all expressions.
+   * @param proxyBuilder      builder for a proxy around the context root to customize its interface
+   */
+  public void resolveExpressions(final WordprocessingMLPackage document, ProxyBuilder<T> proxyBuilder) {
+    try {
+      final T expressionContext = proxyBuilder.build();
+      CoordinatesWalker walker = new BaseCoordinatesWalker(document) {
+        @Override
+        protected void onParagraph(ParagraphCoordinates paragraphCoordinates) {
+          resolveExpressionsForParagraph(paragraphCoordinates.getParagraph(), expressionContext, document);
+        }
+      };
+      walker.walk();
+    } catch (ProxyException e) {
+      throw new DocxStamperException("could not create proxy around context root!", e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  public void resolveExpressionsForParagraph(P p, T expressionContext, WordprocessingMLPackage document) {
+    ParagraphWrapper paragraphWrapper = new ParagraphWrapper(p);
+    List<String> placeholders = expressionUtil.findVariableExpressions(paragraphWrapper.getText());
+    for (String placeholder : placeholders) {
+      try {
+        Object replacement = expressionResolver.resolveExpression(placeholder, expressionContext);
+        if (replacement != null) {
+          ITypeResolver resolver = typeResolverRegistry.getResolverForType(replacement.getClass());
+          Object replacementObject = resolver.resolve(document, replacement);
+          replace(paragraphWrapper, placeholder, replacementObject);
+          logger.debug(String.format("Replaced expression '%s' with value provided by TypeResolver %s", placeholder, resolver.getClass()));
+        } else if(replaceNullValues) {
+            ITypeResolver resolver = typeResolverRegistry.getDefaultResolver();
+            Object replacementObject = resolver.resolve(document, replacement);
+            replace(paragraphWrapper, placeholder, replacementObject);
+            logger.debug(String.format("Replaced expression '%s' with value provided by TypeResolver %s", placeholder, resolver.getClass()));
+        }
+      } catch (SpelEvaluationException | SpelParseException e) {
+        logger.warn(String.format(
+                "Expression %s could not be resolved against context root of type %s. Reason: %s. Set log level to TRACE to view Stacktrace.",
+                placeholder, expressionContext.getClass(), e.getMessage()));
+        logger.trace("Reason for skipping expression:", e);
+
+        if(isLeaveEmptyOnExpressionError()) {
+          replace(paragraphWrapper,placeholder,null);
+        }
+      }
+    }
+    if (this.lineBreakPlaceholder != null) {
+      replaceLineBreaks(paragraphWrapper);
+    }
+  }
+
+  private void replaceLineBreaks(ParagraphWrapper paragraphWrapper) {
+    Br lineBreak = Context.getWmlObjectFactory().createBr();
+    R run = RunUtil.create(lineBreak);
+    while (paragraphWrapper.getText().contains(this.lineBreakPlaceholder)) {
+      replace(paragraphWrapper, this.lineBreakPlaceholder, run);
+    }
+  }
+
+  public void replace(ParagraphWrapper p, String placeholder, Object replacementObject) {
+    if (replacementObject == null) {
+      replacementObject = RunUtil.create("");
+    }
+    if (replacementObject instanceof R) {
+      RunUtil.applyParagraphStyle(p.getParagraph(), (R) replacementObject);
+    }
+    p.replace(placeholder, replacementObject);
+  }
+
+}
+src/main/java/org/wickedsource/docxstamper/proxy/ProxyBuilder.java
+public class ProxyBuilder<T> {
+
+  private T root;
+
+  private Map<Class<?>, Object> interfacesToImplementations = new HashMap<>();
+
+  /**
+   * Specifies the root object for the proxy that shall be enhanced.
+   *
+   * @param rootObject the root object.
+   * @return this builder for chaining.
+   */
+  public ProxyBuilder<T> withRoot(T rootObject) {
+    this.root = rootObject;
+    return this;
+  }
+
+  /**
+   * Specifies an interfaces and an implementation of an interface by which the root object
+   * shall be extended.
+   *
+   * @param interfaceClass the class of the interface
+   * @param interfaceImpl  an implementation of the interface
+   * @return this builder for chaining.
+   */
+  public ProxyBuilder<T> withInterface(Class<?> interfaceClass, Object interfaceImpl) {
+    this.interfacesToImplementations.put(interfaceClass, interfaceImpl);
+    return this;
+  }
+
+  /**
+   * Creates a proxy object out of the specified root object and the specified interfaces
+   * and implementations.
+   *
+   * @return a proxy object that is still of type T but additionally implements all specified
+   * interfaces.
+   * @throws ProxyException if the proxy could not be created.
+   */
+  public T build() throws ProxyException {
+
+    if (this.root == null) {
+      throw new IllegalArgumentException("root must not be null!");
+    }
+
+    if (this.interfacesToImplementations.isEmpty()) {
+      // nothing to proxy
+      return this.root;
+    }
+
+    try {
+      ProxyMethodHandler methodHandler = new ProxyMethodHandler(root,
+              interfacesToImplementations);
+      ProxyFactory proxyFactory = new ProxyFactory();
+      proxyFactory.setSuperclass(root.getClass());
+      proxyFactory.setInterfaces(interfacesToImplementations.keySet().toArray(new Class[]{}));
+      return (T) proxyFactory.create(new Class[0], new Object[0], methodHandler);
+    } catch (Exception e) {
+      throw new ProxyException(e);
+    }
+  }
+
+
+}
+src/main/java/org/wickedsource/docxstamper/processor/displayif/IDisplayIfProcessor.java
+public interface IDisplayIfProcessor {
+
+    /**
+     * May be called to delete the commented paragraph or not, depending on the given boolean condition.
+     *
+     * @param condition if true, the commented paragraph will remain in the document. If false, the commented paragraph
+     *                  will be deleted at stamping.
+     */
+    void displayParagraphIf(Boolean condition);
+
+    /**
+     * May be called to delete the table surrounding the commented paragraph, depending on the given boolean condition.
+     *
+     * @param condition if true, the table row surrounding the commented paragraph will remain in the document. If false, the table row
+     *                  will be deleted at stamping.
+     */
+    void displayTableRowIf(Boolean condition);
+
+    /**
+     * May be called to delete the table surrounding the commented paragraph, depending on the given boolean condition.
+     *
+     * @param condition if true, the table surrounding the commented paragraph will remain in the document. If false, the table
+     *                  will be deleted at stamping.
+     */
+    void displayTableIf(Boolean condition);
+
+}
+src/main/java/org/wickedsource/docxstamper/replace/typeresolver/FallbackResolver.java
+public class FallbackResolver extends AbstractToTextResolver<Object> {
+
+    @Override
+    protected String resolveStringForObject(Object object) {
+        if(object!=null)
+            return String.valueOf(object);
+        else
+            return "";
+    }
+
+}
+src/main/java/org/wickedsource/docxstamper/processor/replaceExpression/ReplaceWithProcessor.java
+public class ReplaceWithProcessor extends BaseCommentProcessor
+		implements IReplaceWithProcessor {
+
+	public ReplaceWithProcessor() {
+
+	}
+
+	@Override
+	public void commitChanges(WordprocessingMLPackage document) {
+	}
+
+	@Override
+	public void reset() {
+		// nothing to rest
+	}
+
+	@Override
+	public void replaceWordWith(String expression) {
+		if (this.getCurrentRunCoordinates() != null) {
+			RunUtil.setText(this.getCurrentRunCoordinates().getRun(), expression);
+		}
+
+	}
+
+}

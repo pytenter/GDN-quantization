@@ -1,0 +1,1 @@
+lambda _cls, root, transpose, bn, reference, transpose_reference, fused_conv_relu, fused_conv_bn, fused_conv_bn_relu, qat, relu_qat, bn_qat, bn_relu_qat, func, func_transpose: _tuple_new(_cls, (root, transpose, bn, reference, transpose_reference, fused_conv_relu, fused_conv_bn, fused_conv_bn_relu, qat, relu_qat, bn_qat, bn_relu_qat, func, func_transpose))

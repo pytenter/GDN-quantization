@@ -1,0 +1,15 @@
+{
+  "phase": "static_source_before_gpu",
+  "OUTPUT_VIEW_INPLACE_SIGNAL": "NOT_ESTABLISHED",
+  "wrapped_decoder_return": "modeling_qwen3_5.py:754-790 returns hidden_states after out-of-place residual + attention and residual + MLP",
+  "gdn_return": "modeling_qwen3_5.py:538-544 reshapes core output, out_proj, then returns projection output",
+  "internal_view_or_inplace_sites": [
+    {"source": "modeling_qwen3_5.py:461,473", "operation": "conv1d.weight.squeeze(1) view passed to causal convolution", "relation_to_failed_parent_storage": "candidate only, UNKNOWN"},
+    {"source": "modeling_qwen3_5.py:211-212,232", "operation": "conv state copy_ and weight.unsqueeze(1) inside causal convolution path", "relation_to_wrapped_decoder_return": "internal; not shown to mutate decoder returned output"},
+    {"source": "modeling_qwen3_5.py:297,375", "operation": "indexed assignment into internal attention temporaries", "relation_to_wrapped_decoder_return": "not established"},
+    {"source": "run_recurrent_dense.py:244-276,307-325", "operation": "internal recurrent state capture, QDQ and cache writeback assignment", "relation_to_wrapped_decoder_return": "separate branch; original semantics frozen"}
+  ],
+  "external_issue": "https://github.com/pytorch/pytorch/issues/181832 describes in-place mutation of an FSDP2 output view dropping a pre-backward hook; it is an analogy, not evidence that this Qwen path has the same mutation",
+  "failed_storage_owner": "UNKNOWN",
+  "production_operator_modified": false
+}

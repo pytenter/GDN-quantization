@@ -1,0 +1,644 @@
+# Codex任务：Qwen/GDN高速Runtime资格验证与等价优化 V1
+
+## 一、任务身份与最终目标
+
+任务名称：
+
+`QWEN_GDN_FAST_RUNTIME_QUALIFICATION_V1`
+
+目标模型：`Qwen3.5-9B / GDN`
+
+目标硬件：Qwen服务器，优先单张可独占RTX3090 24GB。
+
+### 最终目标
+
+建立一套后续Qwen/GDN科研实验可以长期使用的高速Runtime配置，尽可能提高模型吞吐，同时保持严格的科学可比性。
+
+需要回答：
+
+1. 为什么新版Runtime的吞吐只有约7.78 TPS，是否存在可安全消除的额外开销？
+2. 调整cuBLAS Workspace配置能否提高吞吐？
+3. PyTorch deterministic模式中的未初始化内存填充是否贡献了较大开销？能否安全优化？
+4. 是否能够在GDN数学、FP状态、logits、INT8 QDQ/writeback和确定性要求均不变的前提下提高速度？
+5. 如果无法获得逐字节等价，是否存在数值稳定、可重复、能够作为未来新实验独立协议的高速配置？
+6. 最终能否提供经过实际验证、具有明确使用边界的高速启动脚本？
+
+**不要预设任何候选一定能恢复旧版13.74 TPS。**
+
+本任务不是再进行一次宽泛的性能排查，而是利用已有根因调查成果，实施最小的、有因果验证的优化资格实验。
+
+### 严格要求
+
+- 先规划，后执行。
+- 优先使用已有Profiler和源码证据。
+- 不修改任何历史正式任务。
+- 不重跑AIME26或32K Future-KL。
+- 不训练模型或Rotation。
+- 不修改GDN recurrence数学。
+- 不修改INT8 Codec数学。
+- 不修改QDQ/writeback时机。
+- 不通过降低精度或减少模型计算量实现虚假加速。
+- 不使用SGLang。
+- 不允许直接关闭`deterministic=True`冒充等价优化。
+- 不允许把新的快配置直接用于历史科学结果的因果比较，除非证明完整协议等价。
+- 不进行无限循环的优化尝试。
+
+## 二、GPU授权
+
+默认：
+
+`ALLOW_GPU_DIAG=NO`
+
+在未获得用户针对本任务的明确GPU授权前，只允许CPU-only源码分析、历史Profile复核、测试脚本准备和实验预登记。
+
+本次用户要求生成Codex任务，并不自动代表授权使用GPU。
+
+优先复用已有任务中冻结的：
+
+`QWEN_GDN_RUNTIME_THROUGHPUT_ROOT_CAUSE_V1/qualification/GPU_DIAGNOSTIC_PREREGISTRATION.json`
+
+如果文件可访问，必须核验其原始身份和内容。若不可访问，报告缺失，不得仅根据本文概要声称已恢复完整预登记合同。
+
+现有cuBLAS验证任务预算：
+
+- 单GPU。
+- 最大1800秒 / 0.5 GPUh。
+- 1650秒保护停止。
+- 保留150秒用于清理和资源释放。
+- 任何身份、数值、资源资格失败立即停止。
+- 不允许自动重试或扩大预算。
+
+**如果需要研究第二项独立GPU优化假设，必须另建预登记与预算，并再次取得用户授权。不能把第二项偷偷合并进原cuBLAS资格任务。**
+
+---
+
+## 三、已有性能调查结果
+
+前序正式任务：
+
+`QWEN_GDN_RUNTIME_THROUGHPUT_ROOT_CAUSE_V1`
+
+终态：
+
+`DIRECTIONALLY_SUPPORTED_ONLY`
+
+没有确定唯一根因，也没有已经验证可采用的高速配置。
+
+### 3.1 无Profiler吞吐
+
+同一GPU、相同固定输入，128-token warmup和128-token正式测量，三次重复：
+
+| 配置 | TPS | ms/token |
+|---|---:|---:|
+| OLD_FP | 13.742036 | 72.769421 |
+| NEW_FP | 7.776711 | 128.589070 |
+| OLD_H+C128 | 9.064610 | 110.319143 |
+| NEW_H+C128 | 6.650598 | 150.362422 |
+
+NEW_FP较OLD_FP慢43.4093%。
+
+旧H与新H存在Prefill QDQ和缓存协议差异，不得据此认定Codec本身造成吞吐退化。
+
+### 3.2 Profiler关键证据
+
+每token均有249次`aten::mm`。
+
+| 指标 | OLD_FP | NEW_FP |
+|---|---:|---:|
+| mm CPU self | 7.076412ms | 55.827730ms |
+| mm开始至首次GPU launch | 6.807047ms | 55.391320ms |
+| 直接关联GPU GEMM活动 | 20.928374ms | 20.939048ms |
+
+249次mm调用几乎普遍出现主机侧开销增长，而不是少数异常调用。
+
+主要异常发生在第一次launch之前。
+
+具体内部根因仍然未知，不得将其直接认定为cuBLAS、线程数或Python调度问题。
+
+### 3.3 额外Kernel来源
+
+新版新增847个Kernel/token：
+
+- FP32 fill：451。
+- BF16 fill：271。
+- long fill：2。
+- finite检查组件：96。
+- bool all：25。
+- cat/and：2。
+
+合计847，计数已完整对账。
+
+其中724个与fill相关，但尚未证明全部由`fill_uninitialized_memory`开关引起，也未证明这些Kernel可以安全消除。
+
+### 3.4 已经排除或弱化的假设
+
+- 新版没有额外24次逐层CPU-GPU主机同步。
+- 两版本每token均有一次合并标量读取。
+- 稳态decode不重复执行补偿cumsum chunk。
+- 单独关闭global deterministic，NEW_FP仅提升至约7.997 TPS。
+- 单独将intraop threads设置为24，吞吐约7.656 TPS。
+- 不能把这两次单变量观察扩大解释成全部确定性/线程配置已经排除。
+
+### 3.5 新旧环境差异
+
+包括：
+
+- `torch.use_deterministic_algorithms(False → True)`。
+- intraop/interop线程24/24 → 1/1。
+- `CUBLAS_WORKSPACE_CONFIG` unset → `:4096:8`。
+- cuDNN TF32 True → False。
+- OMP/MKL unset → 1。
+
+两边matmul TF32均为False。
+
+本任务必须以当前NEW_STRICT为科学参考，而不是直接把OLD所有环境设置搬回来。
+
+---
+
+# 四、阶段A：CPU-only恢复Strict Runtime合同
+
+首先定位：
+
+1. OLD_FP真实执行源码及环境manifest。
+2. NEW_FP真实执行源码及环境manifest。
+3. 原根因分析任务的Profiler trace及归约结果。
+4. `GPU_DIAGNOSTIC_PREREGISTRATION.json`。
+5. GDN相关的确定性数值实现。
+6. GDN/H/C128/Dual-M的Runtime配置及QDQ/writeback接口。
+
+不得根据当前HEAD推断历史执行身份。
+
+需要恢复的严格合同包括：
+
+- 模型权重与tokenizer。
+- 模型配置与dtype。
+- GDN recurrent kernel身份。
+- FP32 recurrent-state计算方式。
+- deterministic设置。
+- TF32设置。
+- cuBLAS及cuDNN环境。
+- Python/PyTorch/CUDA/Transformers版本。
+- sampler或fixed-input执行方式。
+- seed与输入token。
+- state/cache读取及writeback顺序。
+- FP数值与量化数值的完整验证接口。
+
+输出：
+
+`STRICT_RUNTIME_CONTRACT.md`
+
+建立可核验的`STRICT_BASELINE`，用于后续候选逐token比较。
+
+任何无法恢复的历史信息应标记UNKNOWN，不允许使用推测的默认配置填补。
+
+---
+
+# 五、阶段B：首先验证cuBLAS Workspace配置
+
+这是当前最优先的GPU候选，且必须遵守已有预登记。
+
+## B1. 实验配置
+
+只比较新版Runtime内部：
+
+| 配置 | CUBLAS_WORKSPACE_CONFIG | 其他 |
+|---|---|---|
+| B0：STRICT | `:4096:8` | 原样保留 |
+| B1：CUBLAS_SMALL | `:16:8` | 与B0完全一致 |
+
+以下内容一律不变：
+
+- `deterministic=True`。
+- `TF32=False`。
+- 模型和权重。
+- GDN实现。
+- FP32 state。
+- 输入、seed和token。
+- safety checks。
+- fill开关。
+- CPU线程配置。
+- QDQ/writeback语义。
+
+环境变量必须在独立子进程启动时设置，且在导入PyTorch、创建cuBLAS handle或初始化CUDA之前生效。
+
+不得在同一个已经初始化CUDA的Python进程里修改环境变量，并声称这是有效的cuBLAS配置对照。
+
+不要预设`:16:8`更快，它可能反而更慢。
+
+## B2. 数值资格优先
+
+在进行吞吐测量前，必须比较：
+
+- 相同输入下FP logits。
+- 各层recurrent state。
+- 关键GDN中间状态。
+- 下一token输入与缓存。
+- finite/nonfinite。
+- fresh-process重复性。
+
+优先采用已有严格byte-level验证工具。
+
+要求：
+
+1. B0严格重复性PASS。
+2. B1自身fresh-process重复性PASS。
+3. B0与B1关键Tensor的逐字节相等资格PASS，才能声明严格协议等价。
+
+如果B0与B1存在任何非预期数值差异，立即保留差异位置、最大绝对/相对误差、来源身份和最早分歧token。
+
+**不得自行放宽已有严格数值阈值。**
+
+允许将可重复但不逐字节等价的配置记录为独立新数值协议候选，但不能标记为严格等价Fast Runtime，也不能直接使用历史科学基线。
+
+## B3. 性能资格
+
+只有数值资格通过，才进入可采用的性能比较。
+
+沿用原历史短窗：
+
+- 128-token warmup。
+- 128-token measurement。
+- 相同固定token序列。
+- 相同context/cache位置。
+- 同一GPU。
+- 单卡串行。
+- fresh process。
+- 计时窗口内部不增加逐token同步和Profiler。
+- CUDA测量边界按原合同同步。
+
+在预算允许时完成三组匹配重复，记录：
+
+- TPS。
+- wall ms/token。
+- 单次完整运行时间。
+- 运行波动。
+- 显存allocated/reserved。
+- CPU/GPU实际Profile（如执行）。
+- 配置环境与完整身份。
+
+建议预登记有效提速门槛为相对B0中位TPS至少5%，同时要求改善超过观察到的运行波动。若原预登记已有不同标准，执行已冻结的原标准，不得事后替换。
+
+如果B1变慢、提升不稳定或没有达到实质阈值，记录负结果，不进行反复微调。
+
+## B4. 确认性能变化来源
+
+如果B1观察到可信提速，优先使用短栈Profiler分析：
+
+- `aten::mm`首次launch前区间。
+- 每token CPU调度时间。
+- CPU/GPU Kernel发射间隔。
+- GPU GEMM执行时间。
+- CPU-GPU同步数量。
+- Kernel总数。
+- 关键库调用栈。
+
+目标是判断性能改善是否确实对应cuBLAS配置影响。
+
+如果只有TPS改善而缺少内部根因证据，可以确认B1是当前环境下较快的合格配置，但不得声称已识别全部历史退化根因。
+
+---
+
+# 六、阶段C：调查deterministic fill的安全优化空间
+
+**该阶段是独立假设，不得修改前一阶段的冻结预登记合同。**
+
+PyTorch在deterministic模式下可能对未初始化的Tensor内存执行额外填充。
+
+官方说明：
+
+`torch.utils.deterministic.fill_uninitialized_memory`
+
+默认通常为True。
+
+只有能证明程序不会把未初始化内存作为输入时，关闭该保护才可能安全。
+
+## C1. 首先只做CPU源码审计
+
+调查新版额外Fill活动：
+
+- torch.empty。
+- torch.empty_like。
+- empty_strided。
+- resize_。
+- Tensor clone/reshape。
+- Attention相关临时Tensor。
+- GDN recurrent kernel缓冲。
+- 自定义CUDA/Triton/FLA算子的输出buffer。
+- CUDA Graph或其他重用缓冲（如存在）。
+
+逐类检查：
+
+1. 分配后是否对所有元素完整写入？
+2. 有没有分支只写入部分Tensor？
+3. 有没有越界、未覆盖区域或未初始化读取风险？
+4. 是否存在读写异步次序依赖？
+5. 是否存在masked read或部分写入的自定义Kernel？
+6. Fill来自哪些具体调用路径？
+7. 有多少Fill属于确定性未初始化内存保护？
+8. 关闭保护后哪些Tensor的安全性仍无法证明？
+
+形成：
+
+`UNINITIALIZED_MEMORY_SAFETY_AUDIT.md`
+
+每一种缓冲必须有源码证据和读写覆盖说明。
+
+特别注意：
+
+**仅仅观察关闭fill后输出相同，不能证明从未读取未初始化内存。**
+
+如果无法覆盖证明关键Tensor全写后读，则标记`FILL_OPT_SAFETY_UNPROVEN`。
+
+不得据此批准全局关闭填充。
+
+## C2. 候选方式
+
+仅在证明安全，并获得新的独立GPU授权后，才可在隔离的实验子进程中评估：
+
+```python
+torch.use_deterministic_algorithms(True)
+
+# 仅当完整写入先于读取的安全性已获得资格
+torch.utils.deterministic.fill_uninitialized_memory = False
+```
+
+保持原cuBLAS配置与其他STRICT参数不变，只改变fill这一变量。
+
+不能把该开关与cuBLAS优化同时改变，然后直接声称识别了各自的独立贡献。
+
+如果这项开关不能证明安全，应优先考虑在独立代码副本中定位和消除可证明冗余的Tensor分配/初始化，而不是绕过安全保护。
+
+任何最小局部优化都需重新执行完整数值及确定性资格，不能基于主观判断应用。
+
+## C3. GPU验证与停止
+
+本次不自动执行C2的GPU测试。
+
+如未来独立获批：
+
+- 单卡。
+- 单一变量。
+- 有限数值Canary。
+- 有限Profiler与吞吐对照。
+- 独立预算及seal。
+- 出现未初始化读取、数值差异、nonfinite或确定性失败立即停止。
+
+不得为了追求提速绕过安全诊断。
+
+---
+
+# 七、阶段D：验证对真实量化科研的适用性
+
+如果B1或未来C阶段产生严格等价且确实更快的候选，需要检查它是否能够用于真实INT8实验。
+
+FP路径通过不代表所有Codec都已通过。
+
+至少分别检查：
+
+### D1. FP State
+
+- 真实GDN state。
+- logits。
+- prefill与decode。
+- 确定性和新旧严格输出身份。
+
+### D2. Hadamard+C128
+
+- H128归一化与注入位置。
+- INT8 codes。
+- scales。
+- QDQ重建状态。
+- 下一token消费状态。
+- 逐token数值身份。
+
+### D3. Hadamard+Dual-M
+
+仅在原Codec可访问且预算允许时执行资格：
+
+- FP16 row/column scale。
+- Column LS。
+- final re-encode。
+- codes/scales。
+- persistent QDQ/writeback。
+- 后续GDN状态与logits。
+
+如果尚未测试某个Codec，必须标记为`NOT_QUALIFIED_FOR_THIS_CODEC`，不得将FP性能和等价结论自动推广。
+
+不修改任何原Codec算法以适配新Runtime。
+
+Group32、Asymmetric INT8等未来新方法须在各自新实验内重新完成Codec资格，不允许自动继承C128验证结果。
+
+---
+
+# 八、两类高速Runtime的使用资格
+
+最终必须区分两种情况。
+
+## 类型A：FAST_STRICT_EQUIVALENT
+
+满足：
+
+1. Strict和Fast具有完整可核验源码与环境身份。
+2. GDN计算语义一致。
+3. 关键state和logits逐token严格byte-level parity。
+4. fresh-process确定性PASS。
+5. safety和资源门禁PASS。
+6. 有稳定且实质性的吞吐改善。
+7. 已注明具体适用的FP和INT8 Codec范围。
+
+这样的配置可以作为未来科学实验中的Strict等价优化候选。
+
+不得声称短程资格自动保证32K或81K长度下所有数值路径完全相同；需要依据未来正式任务范围完成相应数值资格。
+
+## 类型B：FAST_NEW_PROTOCOL_REPRODUCIBLE
+
+满足：
+
+1. 新协议自身稳定且可重复。
+2. 数学方法与量化语义没有被改变。
+3. 关键输出数值安全、finite。
+4. 性能收益可重复。
+5. 与原Strict的数值差异已清楚记录。
+6. 后续研究完全在同一个新协议下重建匹配基线。
+
+这种配置可用于新的独立探索或正式科学协议，但：
+
+- 不得直接替代旧Strict。
+- 不得与旧版Future-KL进行未经控制的Codec因果比较。
+- 不得将旧AIME正确率当作严格匹配基线。
+- 不得宣称byte-equivalent。
+
+如果连新协议自身重复性、数学正确性或内存安全都不能保证，则直接拒绝。
+
+---
+
+# 九、输出高速启动配置
+
+只有相应Runtime通过资格后，才允许生成可使用的高速启动入口。
+
+建议：
+
+```text
+runtime_presets/
+├── strict_runtime.sh
+├── fast_validated_runtime.sh
+├── runtime_identity.json
+└── README.md
+```
+
+要求：
+
+- `strict_runtime.sh`保持冻结Strict配置。
+- `fast_validated_runtime.sh`只使用经过验证的参数。
+- 环境变量在启动独立Python进程前设置。
+- 自动检查配置与验证manifest身份。
+- 自动记录当前源码SHA和关键依赖版本。
+- 不允许悄悄回退为未验证的配置。
+- 对未获得资格的Codec直接拒绝以Fast模式启动。
+- 不自动进行GPU长程评测。
+- 未通过资格时不生成可执行的Fast正式启动脚本；只保存候选配置和未通过原因。
+
+此外，给出未来实验如何在以下两种配置之间选择：
+
+- Strict：用于复现历史结果。
+- Fast：用于经过验证的新实验。
+
+---
+
+# 十、科学结果与验收标准
+
+最终必须提交：
+
+| 比较 | STRICT | FAST候选 |
+|---|---|---|
+| FP TPS | 实测 | 实测或NOT_RUN |
+| H+C128 TPS | 实测或历史参考 | 实测或NOT_RUN |
+| H+Dual-M TPS | 实测或历史参考 | 实测或NOT_RUN |
+| mm CPU self | 实测或历史参考 | 实测或NOT_RUN |
+| 首次launch前CPU时间 | 实测或历史参考 | 实测或NOT_RUN |
+| Kernel/token | 实测或历史参考 | 实测或NOT_RUN |
+| logits parity | 基线 | PASS/FAIL/NOT_RUN |
+| state parity | 基线 | PASS/FAIL/NOT_RUN |
+| Codec parity | 按方法 | PASS/FAIL/NOT_RUN |
+| fresh-process determinism | 按配置 | PASS/FAIL/NOT_RUN |
+
+不能把历史测量和当前新测量无条件放在同一严格对照口径中；必须标明来源与环境差异。
+
+如果某候选比Strict快，却无法通过严格等价检查：
+
+- 保留性能发现。
+- 报告具体数值偏差。
+- 不批准其用于旧协议科学结果复现。
+- 只在符合类型B条件时作为独立新协议候选。
+
+如果没有任何合格优化，不得为了交付Fast脚本而降低标准。
+
+---
+
+# 十一、资源计量和实验封存
+
+新建独立任务root：
+
+`QWEN_GDN_FAST_RUNTIME_QUALIFICATION_V1`
+
+不修改：
+
+- 旧AIME正式root。
+- 旧吞吐诊断root。
+- 既有GPU ledger。
+- 任何旧seal。
+- 历史源码与已冻结Profiler。
+
+需要保留：
+
+- 新任务真实GPU dispatch事件。
+- 首次process exit时间。
+- 资源释放观察时间。
+- GPU占用与运行时长。
+- 尚未确定的真实GPUh上下界。
+- 运行参数和日志。
+- GPU显存峰。
+- 失败原因。
+
+禁止重新出现旧controller的重复覆盖exit timestamp、occupied_seconds问题。
+
+如果实际没有GPU dispatch：
+
+`NEW_GPUh=0`
+
+如果使用了GPU，却未能精确测定释放时刻：
+
+`EXACT_GPUh=UNRESOLVED`
+
+记录可证实的上下界，不能伪造精确成本或将未知写成0。
+
+---
+
+# 十二、交付文件
+
+至少生成：
+
+1. `EXECUTION_PLAN.md`：研究问题、优先级与执行门禁。
+2. `STRICT_RUNTIME_CONTRACT.md`：现有数值协议与源码身份。
+3. `HISTORICAL_EVIDENCE_REUSE.md`：复用此前性能证据，避免重复调查。
+4. `CUBLAS_CONFIG_QUALIFICATION.md`：新旧Workspace验证。
+5. `UNINITIALIZED_MEMORY_SAFETY_AUDIT.md`：Fill来源及全写后读安全性。
+6. `NUMERICAL_PARITY_RESULTS.json`：FP/State/Codec逐token资格。
+7. `PERFORMANCE_COMPARISON.csv`：合法新测量及来源。
+8. `FAST_RUNTIME_DECISION.json`：最终Fast配置资格及可用范围。
+9. `OPTIMIZATION_DIFF.md`：若存在优化，记录最小差异与影响。
+10. `RESOURCE_LEDGER.json`：本轮真实资源账本。
+11. `FINAL_SCIENTIFIC_REPORT.md`：最终结论及未解决问题。
+12. `SHA256_MANIFEST.json`与`FINAL_SEAL_RECEIPT.json`：源码、结果和资产身份。
+
+没有实际执行对应实验时，结果必须为NOT_RUN，不能创建虚假的测量值。
+
+---
+
+# 十三、执行顺序
+
+按照以下顺序执行，不要只输出未来方案。
+
+**Step 1：** 找到历史吞吐分析源码、Profiler与预登记文件，恢复严格配置身份。
+
+**Step 2：** 完成CPU-only调用路径和Fill安全审计，确认哪些历史结论已经闭合，哪些仍未知。
+
+**Step 3：** 完成cuBLAS单变量实验脚本、资格检查及独立子进程执行入口。
+
+**Step 4：** 检查本次是否获得明确GPU授权。
+
+- 若`ALLOW_GPU_DIAG=NO`，立即停止GPU部分，交付完整CPU审计、可执行但未运行的资格方案和所有已完成结果。
+- 若用户明确授权、设置YES且资源门禁PASS，执行已预登记的cuBLAS短程单变量实验。
+- 如果预登记文件缺失或无法核验，GPU部分保持NOT_RUN。
+
+**Step 5：** 如果cuBLAS实验获得正向收益并通过数值资格，完成必要的Codec适用性测试；资源不足则封存未完成资格，不扩大预算。
+
+**Step 6：** 如果cuBLAS没有产生有效收益，保留负结果；Fill优化仅推进到CPU安全性审计和独立GPU资格设计，不自动启动第二组GPU试错。
+
+**Step 7：** 根据实际证据生成Strict/Fast启动配置；若没有合格Fast配置，只交付Strict及候选失败原因。
+
+**Step 8：** 输出完整性能、数值、资源、源码身份与科学边界报告，封存全部新任务资产。
+
+禁止在失败后自动增加：
+
+- 新cuBLAS配置。
+- 更多线程数搜索。
+- 新的TF32设置。
+- 新的随机种子。
+- 更大Profiler窗口。
+- 更多GPU时长。
+- 非等价数学替换。
+
+## 十四、最终决策分类
+
+使用以下状态：
+
+- `FAST_STRICT_EQUIVALENT_VALIDATED`：性能提高，严格数值等价并通过适用范围资格。
+- `FAST_NEW_PROTOCOL_REPRODUCIBLE`：有稳定高速新协议，但不等价于历史Strict，需要新基线。
+- `FAST_CANDIDATE_NO_BENEFIT`：候选没有可信吞吐改善。
+- `FAST_CANDIDATE_NUMERICAL_FAIL`：候选数值或确定性资格失败。
+- `FAST_CANDIDATE_SAFETY_UNPROVEN`：内存安全或其他关键资格未证明。
+- `CPU_ONLY_COMPLETE_GPU_NOT_AUTHORIZED`：仅完成CPU工作，GPU未授权。
+- `FAIL_CLOSED_STOP`：身份、环境、资源或执行门禁失败。
+
+**最终要求：在不牺牲Qwen/GDN科研正确性与可复现性的前提下，尽可能建立一套经过严格验证、可以长期复用的较高吞吐Runtime；如果现有候选不成立，就明确保留负结果，不通过反复修改工程配置制造速度收益。**

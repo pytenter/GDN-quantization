@@ -1,0 +1,477 @@
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/linkers/CustomParamToMaterial.java
+@ExtensionMethod({jme3_ext_xbuf.ext.PrimitiveExt.class})
+@Slf4j
+public class CustomParamToMaterial implements Linker{
+
+	@Override
+	public boolean doLink(RelationsMerger loader,RefData data, Logger log) {
+		CustomParamList op1=getRef1(data,CustomParamList.class,log);
+		Material op2=getRef2(data,Material.class,log);
+		if(op1==null||op2==null) return false;
+		for(CustomParam p:op1.getParamsList())merge(loader,p,op2);
+		return true;
+	}
+
+	protected Material merge(RelationsMerger loader,CustomParam p, Material dst) {
+		String name=p.getName();
+		System.err.println("set ....." + name);
+		switch(p.getValueCase()){
+			case VBOOL:
+				dst.setBoolean(name,p.getVbool());
+				break;
+			case VCOLOR:
+				dst.setColor(name,p.getVcolor().toJME());
+				break;
+			case VFLOAT:
+				dst.setFloat(name,p.getVfloat());
+				break;
+			case VINT:
+				dst.setInt(name,p.getVint());
+				break;
+			case VMAT4:
+				dst.setMatrix4(name,p.getVmat4().toJME());
+				break;
+			case VQUAT:
+				Quaternion q = p.getVquat().toJME();
+				dst.setVector4(name,new Vector4f(q.getX(), q.getY(), q.getZ(), q.getW()));
+				break;
+			case VTEXTURE:
+				dst.setTexture(name,loader.getMatMerger().getValue(p.getVtexture()));
+				break;
+			case VVEC2:
+				dst.setVector2(name,p.getVvec2().toJME());
+				break;
+			case VVEC3:
+				dst.setVector3(name,p.getVvec3().toJME());
+				break;
+			case VVEC4:
+				dst.setVector4(name,p.getVvec4().toJME());
+				break;
+			default:
+				log.warn("Material doesn't support parameter : {} of type {}",name,p.getValueCase().name());
+		}
+		return dst;
+	}
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/Merger.java
+public interface Merger{
+	public void apply(Data src, Node root, XbufContext context,Logger log);
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/linkers/CustomParamToSpatial.java
+@ExtensionMethod({jme3_ext_xbuf.ext.PrimitiveExt.class})
+@Slf4j
+public class CustomParamToSpatial implements Linker{
+
+	@Override
+	public boolean doLink(RelationsMerger loader,RefData data, Logger log) {
+		CustomParamList op1=getRef1(data,CustomParamList.class,log);
+		Spatial op2=getRef2(data,Spatial.class,log);
+		if(op1==null||op2==null) return false;
+		for(CustomParam p:op1.getParamsList())merge(loader,p,op2);
+		return true;
+	}
+
+	protected Spatial merge(RelationsMerger loader,CustomParam p, Spatial dst) {
+		String name=p.getName();
+		switch(p.getValueCase()){
+			case VALUE_NOT_SET:
+				dst.setUserData(name,null);
+				break;
+			case VBOOL:
+				dst.setUserData(name,p.getVbool());
+				break;
+			case VCOLOR:
+				dst.setUserData(name,p.getVcolor().toJME());
+				break;
+			case VFLOAT:
+				dst.setUserData(name,p.getVfloat());
+				break;
+			case VINT:
+				dst.setUserData(name,p.getVint());
+				break;
+			case VMAT4:
+				dst.setUserData(name,p.getVmat4().toJME());
+				break;
+			case VQUAT:
+				dst.setUserData(name,p.getVquat().toJME());
+				break;
+			case VSTRING:
+				dst.setUserData(name,p.getVstring());
+				break;
+			case VTEXTURE:
+				dst.setUserData(name,loader.getMatMerger().getValue(p.getVtexture()));
+				break;
+			case VVEC2:
+				dst.setUserData(name,p.getVvec2().toJME());
+				break;
+			case VVEC3:
+				dst.setUserData(name,p.getVvec3().toJME());
+				break;
+			case VVEC4:
+				dst.setUserData(name,p.getVvec4().toJME());
+				break;
+			default:
+				log.warn("Material doesn't support parameter : {} of type {}",name,p.getValueCase().name());
+		}
+		return dst;
+	}
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/linkers/MaterialToGeometry.java
+public class MaterialToGeometry  implements Linker {
+
+	@Override
+	public boolean doLink(RelationsMerger loader, RefData data, Logger log) {
+		Material op1=getRef1(data,Material.class,log);
+		Geometry op2=getRef2(data,Geometry.class,log);
+		if(op1==null||op2==null) return false;
+		if(op2.getControl(SkeletonControl.class)!=null){
+			op1=op1.clone();
+//			data.context.put("G~"+data.ref1+"~cloned~"+System.currentTimeMillis(),op1,data.ref1);
+//		}else{
+//			String refusage="G~usage~"+data.ref1;
+//			int n=(int)Optional.ofNullable(data.context.get(refusage)).orElse(0);
+//			data.context.put(refusage,n++);
+		}
+		op2.setMaterial(op1);
+		return true;
+	}
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/linkers/AnimationToSpatial.java
+public class AnimationToSpatial implements Linker{
+	@Override
+	public boolean doLink(RelationsMerger loader,RefData data, Logger log) {
+		XbufAnimation op1=getRef1(data,XbufAnimation.class,log);
+		Spatial op2=getRef2(data,Spatial.class,log);
+		if(op1==null||op2==null)return false;
+		AnimControl c=op2.getControl(AnimControl.class);
+		if(c==null){
+			SkeletonControl sc=op2.getControl(SkeletonControl.class);
+			c=sc!=null?new AnimControl(sc.getSkeleton()):new AnimControl();
+			op2.addControl(c);
+		}
+		c.addAnim(op1.toJME(c.getSkeleton()));
+		return true;
+	}
+
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/linkers/NodeToNode.java
+public class NodeToNode implements Linker{
+
+	@Override
+	public boolean doLink(RelationsMerger loader, RefData data, Logger log) {
+		Node op1=getRef1(data,Node.class,log);
+		Node op2=getRef2(data,Node.class,log);
+		if(op1==null||op2==null) return false;
+		op1.attachChild(op2);
+		return true;
+	}
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/linkers/GeometryToNode.java
+public class GeometryToNode implements Linker{
+
+	@Override
+	public boolean doLink(RelationsMerger loader, RefData data, Logger log) {
+		Geometry op1=getRef1(data,Geometry.class,log);
+		Node op2=getRef2(data,Node.class,log);
+		if(op1==null||op2==null) return false;
+
+		// If already attached, clone geom, and add it to the context. Create also a link from the original one, this is used for other relations. (material for instance)
+		if(op1.getParent()!=null){
+			op1=op1.clone(false);
+			data.context.put("G~"+data.ref1+"~cloned~"+System.currentTimeMillis(),op1,data.ref1);
+		}
+		op2.attachChild(op1);
+
+		return true;
+	}
+
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/RefData.java
+@AllArgsConstructor
+public class RefData {
+	public String ref1,ref2;
+	public Data src;
+	public Node root;
+	public XbufContext context;
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/linkers/SkeletonToSpatial.java
+@ExtensionMethod({jme3_ext_xbuf.ext.AnimControlExt.class})
+public class SkeletonToSpatial implements Linker{
+	// see http://hub.jmonkeyengine.org/t/skeletoncontrol-or-animcontrol-to-host-skeleton/31478/4
+
+	@Override
+	public boolean doLink(RelationsMerger loader, RefData data, Logger log) {
+		Object op1=getRef1(data,Geometry.class,log);
+		Object op2=getRef2(data,Skeleton.class,log);
+
+		if(op1==null||op2==null){
+			op2=getRef1(data,Skeleton.class,log);
+			op1=getRef2(data,Node.class,log);
+		}
+
+		if(op1==null||op2==null) return false;
+		Spatial v=(Spatial)op1;
+		Skeleton sk=(Skeleton)op2;
+
+		// TODO: update skel w/o remove
+		v.removeControl(SkeletonControl.class);
+
+		SkeletonControl skc=new SkeletonControl(sk);
+		v.addControl(skc);
+
+		boolean atLeastOne=false;
+		for(int i=0;i<v.getNumControls();i++){
+			Control c=v.getControl(i);
+			if( c instanceof AnimControl) {
+				atLeastOne=true;
+				((AnimControl)c).setSkeleton(sk);
+			}
+		}
+
+		// always add AnimControl else NPE when SkeletonControl.clone
+		if(!atLeastOne)v.addControl(new AnimControl(sk));
+
+		cloneMatWhenNeeded((Spatial)op1,data,log);
+		return true;
+	}
+
+	private void cloneMatWhenNeeded(Spatial op2, RefData data, Logger log) {
+		op2.depthFirstTraversal(s -> {
+			if(s instanceof Geometry){
+				Material m=((Geometry)s).getMaterial();
+				String matref=data.context.idOf(m);
+				if(matref==null){ // should never happen!
+					log.error("Mat is not referred?");
+					return;
+				}
+//				String refusage="G~usage~"+matref;
+//				int n=(int)Optional.ofNullable(data.context.get(refusage)).orElse(0);
+//				if(n>1){
+					Material clone=m.clone();
+//					data.context.put("G~"+matref+"~cloned~"+System.currentTimeMillis(),clone,matref);
+					s.setMaterial(clone);
+//				}
+			}
+		});
+	}
+
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/linkers/LightToGeometry.java
+public class LightToGeometry implements Linker{
+
+	@Override
+	public boolean doLink(RelationsMerger loader, RefData data, Logger log) {
+		Light op1=getRef1(data,Light.class,log);
+		Spatial op2=getRef2(data,Spatial.class,log);
+		if(op1==null||op2==null) return false;
+		if(op2 instanceof Geometry)	log.warn("Do you really want to add this light to a Geometry? [{}]",data.ref1);
+
+		if(data.context.getSettings().useLightControls()){
+			XbufLightControl xbuflc=new XbufLightControl();
+			xbuflc.setLight(op1);
+			op2.addControl(xbuflc);
+			data.root.addLight(op1);
+		}else{
+			op2.addLight(op1);
+		}
+
+		return true;
+	}
+
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/linkers/PhysicsToSpatial.java
+@Slf4j
+@ExtensionMethod({jme3_ext_xbuf.ext.PrimitiveExt.class})
+public class PhysicsToSpatial implements Linker{
+
+	@Override
+	public boolean doLink(RelationsMerger rloader, RefData data, Logger log) {
+		if(loadRB(rloader,data,log)) return true;
+		return false;
+	}
+
+	protected boolean loadRB(RelationsMerger rloader, RefData data, Logger log) {
+		RigidBody op1=getRef1(data,RigidBody.class,log);
+		Spatial op2=getRef2(data,Spatial.class,log);
+		if(op1==null||op2==null) return false;
+		PhysicsLoader<?,?> loader=data.context.getSettings().getPhysicsLoader();
+		if(loader!=null){
+			Savable pc=loader.load(data.context.getSettings(),op2,op1);
+			log.debug("Load rigidbody {}",data.ref1);
+			if(pc!=null&&pc instanceof Control){
+				op2.addControl((Control)pc);
+				String linkRef="G~slink4phy~"+System.currentTimeMillis()+"~"+data.ref1;
+				data.context.put(linkRef,op2,data.ref1);
+				applyCTs(op2,data.ref1,data.context,data.root);
+			}
+		}
+		return true;
+	}
+
+	protected void applyCTs(Spatial phy1S, String phy1Ref, XbufContext ctx, Node root) {
+		Collection<Constraint> constraints=ctx.get("G~constraints");
+		if(constraints!=null){
+			for(byte i=0;i<2;i++){
+//				for(Constraint c:constraints){
+				for(Iterator<Constraint> c_i=constraints.iterator();c_i.hasNext();){
+					Constraint c=c_i.next();
+					if(!(i==0?c.getARef():c.getBRef()).equals(phy1Ref)) continue;
+					String phy2Ref=i==1?c.getARef():c.getBRef();
+					if(ctx.get(phy2Ref)==null){
+						log.debug("Found constraint element {}, second element is missing... skip...",phy1Ref);
+						continue;
+					}
+					log.debug("Found constraint elements {} - {}",phy1Ref,phy2Ref);
+
+					List<String> linked=ctx.linkedRefs(phy2Ref);
+					for(String l:linked){
+						if(l.startsWith("G~slink4phy~")){
+							Spatial phy2S=ctx.get(l);
+							Spatial a, b;
+							if(i==1){// Reorder
+								a=phy2S;
+								b=phy1S;
+							}else{
+								a=phy1S;
+								b=phy2S;
+							}
+							applyCT(c,a,b,ctx,root);
+							// Remove consumed constraint (Good idea??)
+							c_i.remove();
+							break;
+						}
+					}
+				}
+			}
+		}else{
+			log.debug("Constraints map not found.");
+		}
+	}
+
+	protected void applyCT(Constraint ct, Spatial a, Spatial b, XbufContext ctx, Node root) {
+		// Parse constraint
+		ConstraintData ct_data=null;
+		if(ct.hasGeneric()){
+			ConstraintGeneric xbuf_generic_ct=ct.getGeneric();
+
+			GenericConstraint generic_ct=new GenericConstraint();
+			generic_ct.pivotA=xbuf_generic_ct.getPivotA().toJME();
+			generic_ct.pivotB=xbuf_generic_ct.getPivotB().toJME();
+			generic_ct.pivotA=xbuf_generic_ct.getPivotA().toJME();
+
+			generic_ct.upperAngularLimit=xbuf_generic_ct.getUpperAngularLimit().toJME();
+			generic_ct.lowerAngularLimit=xbuf_generic_ct.getLowerAngularLimit().toJME();
+
+			generic_ct.upperLinearLimit=xbuf_generic_ct.getUpperLinearLimit().toJME();
+			generic_ct.lowerLinearLimit=xbuf_generic_ct.getLowerLinearLimit().toJME();
+			generic_ct.disableCollisionsBetweenLinkedNodes=xbuf_generic_ct.getDisableCollisions();
+			ct_data=generic_ct;
+		} // else if ... [Only one type.]
+
+
+		if(ct_data==null){
+			log.warn("Constraint {} not supported",ct);
+			return;
+		}
+		try{
+			log.debug("Store constraint {} [{}-{}] in scene",ct_data,a,b);
+			Spatial constraint_node=XbufPhysicsLoader.storeConstraintInScene(ctx.getSettings(),a,b,ct_data);
+			root.attachChild(constraint_node);
+		}catch(Exception e){
+			e.printStackTrace();
+		}
+	}
+
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/mergers/relations/Linker.java
+public interface Linker{
+	public boolean doLink(RelationsMerger loader,RefData data, Logger log);
+
+
+}
+jme3_xbuf_loader/src/main/java/jme3_ext_xbuf/XbufContext.java
+@SuppressWarnings("unchecked")
+public class XbufContext {
+//	public Logger log=LoggerFactory.getLogger("Xbuf");
+	private Map<String,Object> storage=new HashMap<String,Object> ();
+	private Map<String,List<String>> links=new HashMap<String,List<String>>();
+	private XbufKey settings=new XbufKey("default");
+
+	public synchronized void setSettings(XbufKey s){
+		settings=s;
+	}
+
+	public synchronized XbufKey getSettings(){
+		return settings;
+	}
+
+	public synchronized <T> T get(String ref){
+		return (T)storage.get(ref);
+	}
+
+
+	public synchronized String idOf(Object val){
+		for(Entry<String,Object> entry:storage.entrySet()){
+			if(entry.getValue()==val)return entry.getKey();
+		}
+		return null;
+	}
+
+	public synchronized <T> T put(String ref,Object val){
+		T t=(T)storage.put(ref,val);
+		return t;
+	}
+
+	public synchronized <T> T put(String ref,Object val,String link_to){
+		T out=put(ref,val);
+		linkedRefs(link_to).add(ref);
+		return out;
+	}
+
+
+	public synchronized <T> T removeWithLinks(String ref){
+		List<String> ls=links.get(ref);
+		T out= (T)storage.remove(ref);
+		for(String l:ls)remove(l);
+		return out;
+	}
+
+	public synchronized <T> T remove(String ref){
+		links.remove(ref);
+		return (T) storage.remove(ref);
+	}
+
+	public synchronized List<String> linkedRefs(String ref) {
+		List<String> linked=links.get(ref);
+		if(linked==null){
+			linked=new LinkedList<String>();
+			links.put(ref,linked);
+		}
+		return linked;
+	}
+
+
+	public synchronized String toString(){
+		StringBuilder sb=new StringBuilder();
+		LinkedList<String> ignore=new LinkedList<String>();
+		storage.forEach((k,v)->{
+			if(!ignore.contains(k)){
+				sb.append("$ ").append(k).append(" = ").append(v.getClass()).append("(").append(v.hashCode()).append(")\n");
+				List<String> linked =linkedRefs(k);
+				for(String l:linked){
+					v=get(l);
+					sb.append("$ ----| ").append(l).append(" = ").append(v.getClass()).append("(");
+					try{
+						sb.append(v.toString());
+					}catch(Throwable t){
+						sb.append(v.hashCode());
+					}
+					sb.append(")\n");
+				}
+				ignore.addAll(linked);
+			}
+		});
+		return sb.toString();
+	}
+
+}

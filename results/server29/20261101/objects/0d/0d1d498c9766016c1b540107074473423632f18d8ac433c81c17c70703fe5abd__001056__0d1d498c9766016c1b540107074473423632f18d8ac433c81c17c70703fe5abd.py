@@ -1,0 +1,1 @@
+lambda _cls, out0, out1: _tuple_new(_cls, (out0, out1))

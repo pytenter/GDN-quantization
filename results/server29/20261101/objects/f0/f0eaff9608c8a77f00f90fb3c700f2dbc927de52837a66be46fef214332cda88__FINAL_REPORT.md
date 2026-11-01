@@ -1,0 +1,44 @@
+本文件为 CPU 阶段最终报告及必需控制修订，状态 **CPU_ONLY_COMPLETE_GPU_NOT_AUTHORIZED**。没有当前 GPU TPS、9B GPU 数值资格或正式可用 Runtime。恢复模式为 **HISTORICAL_PORT**，不能宣称历史二进制精确复现。
+
+原 CPU 交付已独立封存：526 个索引文件，连同四个外部锚点共530个文件，Mac、.55 与 .29 的逐文件 SHA/bytes/名册一致。本修订是独立补充包，保留原 seal，后续执行必须使用本修订的有效407源清单：405个源取自原不可变交付，两份控制源取自本修订。不得使用旧控制程序绕过修订，也不得原位热改旧交付。
+
+修订仅强化未来设备身份门禁：获得新的明确授权和有效 permit 后，在 Torch import、CUDA seed、模型加载及科学 forward 前，检查冻结 libcuda 的 SHA/bytes，使用不创建 context 的 Driver 枚举核实可见设备数恰为1、逻辑0对应授权 UUID；不符合则拒绝。模型加载后的 PRE/POST 还必须观察本进程真实 NVML UUID；监控拒绝本 PID 出现在任何其他 UUID，清理释放检查覆盖该 PID 的全部 UUID。Driver 映射是未来待实际检验条件，目前只有 FakeDriver/CPU 模拟通过，不能宣称当前驱动映射 PASS。当前没有调用真实 Driver/NVML、GPU 初始化或 dispatch。
+
+数学、codec、GDN、cache 更新、seed、dtype、阈值、固定名单、窗口、预算和历史 benchmark 均未改变。新增控制门禁及原控制回归已 CPU 检验，独立审查与有效源码闭包核验见本包 qualification/、analysis/final_review/ 和 EFFECTIVE_SOURCE_FREEZE.json。它们没有授予 GPU 或正式科研使用资格。
+
+下文保留并完整回答原六问；其中原 SOURCE_FREEZE 指基础封存包。本修订 EFFECTIVE_SOURCE_FREEZE.json 为未来独立执行的必需有效清单。历史数据和 CPU 科学结论不因设备控制修订而改变。
+
+---
+
+当前状态为 **CPU_ONLY_COMPLETE_GPU_NOT_AUTHORIZED**。已恢复历史OLD源码与短窗口执行协议的隔离候选，模式 **HISTORICAL_PORT**；尚未验证当前9B GPU数学、fresh重复性或13TPS性能恢复。当前ALLOW_GPU_RESTORE=NO，本任务没有GPU查询、初始化或dispatch。
+
+| 对照项 | 本轮OLD恢复候选 | NEW_STRICT参考 |
+|---|---|---|
+| 当前TPS / ms-token | NOT_RUN | 本轮NOT_RUN |
+| 历史短窗口FP中位TPS | 13.742036038730332（历史OLD） | 7.77671073754353（历史NEW） |
+| 历史中位ms/token | 72.76942057069391 | 128.58906982000917 |
+| 当前9B FP logits/GDN state | NOT_RUN | 本轮NOT_RUN |
+| 当前GPU fresh重复性 | NOT_RUN | 本轮NOT_RUN |
+| 当前显存峰 | NOT_RUN | 本轮NOT_RUN |
+| Runtime身份 | 原源码rawSHA已核验；当前依赖绑定；历史完整二进制UNKNOWN | 已有封存协议只读参考 |
+
+六个问题逐项回答：
+
+1. **历史13.742 TPS的真实OLD是否成功恢复？** 原始执行入口与完整Python数学/Cache路径已经定位并隔离复制；当前性能恢复未验证，不能写成功恢复到13TPS。13.742来自调和任务的三次OLD_FP固定短窗中位，不是原AIME自由生成或INT8吞吐。
+2. **缺失什么？** 历史完整driver/cuBLAS/cuDNN实际动态库字节与maps、全部optional/fused物理分派、完整旧AIME权重/Tokenizer原始SHA及逐token数值字节参考未保留；实际OLD目录common的原路径历史pin也有范围缺口，当前SHA与canonical相同。历史调和同卡UUID、输入、32层、24GDN、FP32state、原runner和benchmark源码可恢复。当前四权重分片freshSHA匹配调和共同checkpoint，不能倒补原AIME缺口。
+3. **当前服务器同窗实测多少TPS？** 本轮没有执行GPU，答案是NOT_RUN；不拿13.742或7.777填当前实测栏。RESTORED_FP_BENCHMARK.csv没有合法行，故未制造空科学CSV，另有状态JSON和清楚标记的历史参考CSV。
+4. **数学与重复性是否可接受？** 真实tiny Qwen类的FP32/BF16 CPU检查通过，包括native GDN、Attention、MLP、Cache、FP64小例、state消费；观察器和控制器CPU回归通过。它们不能替代9B GPU两fresh，也不是32K/81K稳定性证明。OLD保留native chunk cumsum，但装饰器物理分派历史证据不足，不能仅unwrap文件名断言所有实际kernel。当前GPU数学/自身重复性仍NOT_RUN。
+5. **能用于后续Hadamard/Group32 Sym/Asym吗？** 有源码和协议上的接入基础；目前仅候选，未批准正式GPU科研。C128的QDQ写回点有现成代码，C32 Sym/Asym的轴/scale/zero-point/时序与数值还需独立冻结及资格；没有继承FP或历史H吞吐。当前连FP_GPU资格也未取得，不能提前用FP_ONLY_QUALIFIED标签。
+6. **哪些要重建同协议基线？** 未来FP Native、H+C128 Sym、H+C32 Sym、H+C32 Asym都应在同一恢复协议、模型/输入、旋转、prefill/GDN更新、QDQ注入、Cache生命周期、sampling及Future-KL评分器下重新匹配。历史NEW_STRICT Future-KL、旧AIME与不同OLD预热谱系只作引用，不能代入新匹配比较。
+
+关键恢复事实：历史OLD实际deterministic=False、24/24线程、matmulTF32=False、cuDNN TF32=True/cuDNN deterministic=False；CUBLAS/OMP/MKL/CUDA_DEVICE_ORDER实际unset，来自当次ENV，不是默认值猜测。原runner本身未显式设置这些开关，新控制器仅为新隔离协议显式复现已记录状态，未改NEW。当前CPU导入观察到相同有效值，但尚无本轮GPU环境证明。Torch/CUDA版本相同不能证明历史二进制相同；pip/conda组件并存，未来实际库选择需按前后maps/SHA核验。
+
+隔离副本保留432逻辑copy记录、430物理copy；194个原路径SHA分目录canonical条目独立。Mac的历史路径投影有两组同字节大小写别名，已显式记录，并以canonical副本避免丢源；关键runner/common没有别名。原source 201项及24份复制执行证据已核验，CPU工具错误/审计修正历史保留。没有覆盖历史环境或修改历史结果、源码、seal、账本。
+
+OLD matched H首token不QDQ，共255次；NEW从首tokenQDQ共256次；原AIME又是整段prompt不量化prefill。C128持久cache是FP32 QDQ载体，不是packed INT8。这些差异禁止跨协议混KL。有限性、短prefix重现与代码同AST也不能代替所有未初始化读/长程安全证明；没有关闭fill或删安全检查。
+
+准备好的GPU程序仍被拒绝执行：单卡GPU0原UUID，最大0.5GPUh/1800秒、保护1650、单dispatch240、清理预留150；先两fresh各32token完整数值/cache byte及实际激活驱动FP64递推，再优先三次历史128+128 FP无Profiler测量，最后预算许可才一次NEW短窗。不得改阈值、换卡、重复前缀、自动扩预算或按结果搜索。32prefix、256性能窗与未来32K/81K/INT8分开标记。当前授权JSON与ROOT都为NO，直接CLI YES也会在任何GPU query前拒绝。
+
+仅生成 historical_runtime_candidate.sh 的--help/--check/--print-env CPU入口；没有正式可用Runtime启动器。新的GPU阶段须另有明确人类授权并建立独立执行身份，保留本CPU seal。本任务没有自动启动AIME、Group32、长Future-KL、训练、四卡运行或新的定时跟进。
+
+全部八种状态逐项见RUNTIME_RESTORATION_DECISION.json；本轮只适用CPU_ONLY_COMPLETE_GPU_NOT_AUTHORIZED，不将CPU准备冒称HISTORICAL_PORT_QUALIFIED或恢复速度成功。SOURCE_FREEZE绑定准备程序和事前合同，SHA256_MANIFEST与FINAL_SEAL_RECEIPT绑定本轮交付；历史不变证明范围另列，不伪称检查了整台服务器所有资产。

@@ -1,0 +1,21 @@
+{
+  "conclusion": "POTENTIAL_ISSUES_ONLY; no H1 student or H4 execution, so no causal attribution",
+  "conv_weight_views": {
+    "observation": "linear attention forward passes self.conv1d.weight.squeeze(1) into a functional convolution path rather than calling conv1d.forward",
+    "runtime_verified": false,
+    "source": "/data/zypan/transformers-qwen35/src/transformers/models/qwen3_5/modeling_qwen3_5.py:461",
+    "status": "POTENTIAL_EXTERNAL_PARAMETER_ACCESS"
+  },
+  "embedding_lm_head": {
+    "observation": "Qwen declares tied lm_head/embedding weights; ZeRO auto handling not individually proven",
+    "status": "UNDETERMINED"
+  },
+  "registration_applied": false,
+  "rotation_bank": {
+    "observation": "patch calls self.bank.layer(layer).matrix() directly, outside CayleyDenseRotation.forward; bank was ZeRO-managed but separate from engine.module",
+    "runtime_verified": false,
+    "source": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/QWEN_RECURRENT_DENSE_C5_C6_V1/run_recurrent_dense.py:255",
+    "status": "POTENTIAL_EXTERNAL_PARAMETER_ACCESS"
+  },
+  "scope": "read-only static audit; H1 stopped before student forward; H4 not run"
+}

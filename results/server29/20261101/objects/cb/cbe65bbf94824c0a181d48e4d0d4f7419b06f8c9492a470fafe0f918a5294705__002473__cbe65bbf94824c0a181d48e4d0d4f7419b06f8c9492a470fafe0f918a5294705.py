@@ -1,0 +1,20 @@
+def __create_fn__(_type_fw_compiler, _type_bw_compiler, _type_partition_fn, _type_decompositions, _type_num_params_buffers, _type_aot_id, _type_keep_inference_input_mutations, _type_is_export, _type_no_tangents, _type_dynamic_shapes, _type_aot_autograd_arg_pos_to_source, _type_static_input_indices, _type_inference_compiler, _type_enable_log, _type_pre_dispatch, _type_cache_info, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_is_export, _dflt_no_tangents, _dflt_dynamic_shapes, _dflt_aot_autograd_arg_pos_to_source, _dflt_static_input_indices, _dflt_inference_compiler, _dflt_enable_log, _dflt_pre_dispatch, _dflt_cache_info, _return_type):
+ def __init__(self,fw_compiler:_type_fw_compiler,bw_compiler:_type_bw_compiler,partition_fn:_type_partition_fn,decompositions:_type_decompositions,num_params_buffers:_type_num_params_buffers,aot_id:_type_aot_id,keep_inference_input_mutations:_type_keep_inference_input_mutations,is_export:_type_is_export=_dflt_is_export,no_tangents:_type_no_tangents=_dflt_no_tangents,dynamic_shapes:_type_dynamic_shapes=_dflt_dynamic_shapes,aot_autograd_arg_pos_to_source:_type_aot_autograd_arg_pos_to_source=_dflt_aot_autograd_arg_pos_to_source,static_input_indices:_type_static_input_indices=_dflt_static_input_indices,inference_compiler:_type_inference_compiler=_dflt_inference_compiler,enable_log:_type_enable_log=_dflt_enable_log,pre_dispatch:_type_pre_dispatch=_dflt_pre_dispatch,cache_info:_type_cache_info=_dflt_cache_info)->_return_type:
+  self.fw_compiler=fw_compiler
+  self.bw_compiler=bw_compiler
+  self.partition_fn=partition_fn
+  self.decompositions=decompositions
+  self.num_params_buffers=num_params_buffers
+  self.aot_id=aot_id
+  self.keep_inference_input_mutations=keep_inference_input_mutations
+  self.is_export=is_export
+  self.no_tangents=no_tangents
+  self.dynamic_shapes=dynamic_shapes
+  self.aot_autograd_arg_pos_to_source=aot_autograd_arg_pos_to_source
+  self.static_input_indices=static_input_indices
+  self.inference_compiler=inference_compiler
+  self.enable_log=enable_log
+  self.pre_dispatch=pre_dispatch
+  self.cache_info=cache_info
+  self.__post_init__()
+ return __init__

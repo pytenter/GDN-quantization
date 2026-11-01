@@ -1,0 +1,26 @@
+GENERATION_IMPLEMENTATION = C. custom recurrent/KDA decode + manual token sampling
+File: /data/zypan/repos/GDN-quantization/experiments/ling/run_ling_kda_aime24_int8_rc_end_to_end_smoke_v1.py
+Git branch/head from run protocol: research-sync-2026-09-02 / 2842db12c873a98c23b23d4aad32dc552edd25f2
+Current git branch/head: research-sync-2026-09-02 / 2842db12c873a98c23b23d4aad32dc552edd25f2
+Current git status: ?? docs/superpowers/
+?? experiments/ling/run_ling_kda_aime24_int8_rc_end_to_end_smoke_v1.py
+?? reports/ling/ling_kda_aime24_int8_rc_end_to_end_smoke_v1.md
+?? results/ling/ling_kda_aime24_int8_rc_end_to_end_smoke_v1_final_summary.json
+?? runs/
+?? tests/
+
+Key line evidence:
+267-271 prompt_for wraps raw problem with "Solve the following math problem... Solution:"
+274-278 render_prompt uses tokenizer.apply_chat_template([{role:user, content:user}], tokenize=False, add_generation_prompt=True)
+377-390 top_p_sample implements temperature and top_p; no top_k branch exists
+393-401 stop_token_ids includes tokenizer.eos_token_id plus <|im_end|>, <|endoftext|>, <|end_of_sentence|>
+612-712 generate_one is a custom AR loop; it calls model(**enc,use_cache=True), then model(input_ids=cur,past_key_values=past,use_cache=True)
+650-676 EOS stop check: after appending sampled token, break if int(cur.item()) in stop_ids
+681 decode uses tokenizer.decode(tokens, skip_special_tokens=True)
+683 truncated is true when len(tokens)>=max_new_tokens and final token is not in stop_ids
+
+GENERATION_IMPLEMENTATION = C. custom recurrent/KDA decode + manual token sampling
+EOS_STOP_IMPLEMENTED = YES
+EOS_ID_USED_BY_HARNESS = tokenizer.eos_token_id plus extra stop ids
+MODEL_EOS_ID = 156895
+EOS_MATCH = YES, by local config and stop_token_ids source

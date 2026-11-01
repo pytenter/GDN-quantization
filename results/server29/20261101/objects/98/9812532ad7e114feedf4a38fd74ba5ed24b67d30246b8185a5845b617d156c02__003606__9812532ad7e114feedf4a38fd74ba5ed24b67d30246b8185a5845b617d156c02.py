@@ -1,0 +1,1 @@
+str | tuple[str, Mapping[str, bool]]

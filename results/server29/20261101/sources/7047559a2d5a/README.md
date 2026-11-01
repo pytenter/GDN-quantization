@@ -1,0 +1,50 @@
+# qwen_hadamard_dual_axis_direct_32k_pilot_v1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/qwen_hadamard_dual_axis_direct_32k_pilot_v1`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis_scripts/FINAL_REPORT_SOURCE_FREEZE.json`](../../objects/f5/f58af010857972a9ab4f0b8be2c1d63d6714f67a48057bf432ab1ce8af2fc9da__FINAL_REPORT_SOURCE_FREEZE.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/inherited_initial/analysis_scripts/FINAL_REPORT_SOURCE_FREEZE.json`](../../objects/f5/f58af010857972a9ab4f0b8be2c1d63d6714f67a48057bf432ab1ce8af2fc9da__FINAL_REPORT_SOURCE_FREEZE.json)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/FINAL_STATUS.json`](../../objects/2e/2ee9e768fbafe1fb34de30ffe77150c0c6a2d45636f02bb22c48c54e30df577a__FINAL_STATUS.json)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/preregistration.json`](../../objects/54/544da3293e5f819cbfa4953ed8381e30126342dfd47ebd52bfbcde77ea04fb5b__preregistration.json)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/GATE_STATUS_FINAL.json`](../../objects/3e/3e4636819d983884be0b2f61c41763131e95e39bfe70d47b845c9b0446e99ccb__GATE_STATUS_FINAL.json)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/FINAL_SCIENTIFIC_REPORT.md`](../../objects/b6/b61bc2517a1921bd75171ba39aee49487f86e9575ea68d47b657f3d9107c9f8c__FINAL_SCIENTIFIC_REPORT.md)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/FINAL_STATUS.json`](../../objects/41/41d7d5151dd8419d190037e7dd22fce8b680183ea0152391ef2c922b9991bf6b__FINAL_STATUS.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/window_results.csv`](../../objects/df/df8d601d221c503cb00fc24435a1d197bfe49af1fc42485055fe8353d57395fc__window_results.csv)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/science_results.csv`](../../objects/0b/0bad60352bf8dba02617f262fe5828d033ed76870bbf7edcd912d63554df5d0c__science_results.csv)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis_scripts/finalize_report.py`](../../objects/62/627e18124348ef08d9a810975120028ae2722b86e0adf66a1b3f7ac12e9a98eb__qualified_diagnostics.py)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/preregistration.json`](../../objects/54/544da3293e5f819cbfa4953ed8381e30126342dfd47ebd52bfbcde77ea04fb5b__preregistration.json)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/documents/doc_01/score_positions.json`](../../objects/a9/a977991267d51eb61549060c7509b9b7b1282422903aad77046e896392209afc__score_positions.json)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/documents/doc_02/score_positions.json`](../../objects/b0/b048d3707d37b563f2f65d98e8d031c18cea8de9bfde250be16a8ccda5e95d84__score_positions.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/GATE_STATUS_FINAL.json`](../../objects/e4/e4df72c824c7737985948fdf95e6be68117e76e9e9e420b352b79a01e7a54836__GATE_STATUS_FINAL.json)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis_scripts/postprocess_scores.py`](../../objects/0f/0f12d5c3d7d8a2ba29bec6f97235d8d4b267e8e09be8ea50ad3c047b013a1e5f__postprocess_scores.py)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/FINAL_SCIENTIFIC_REPORT.md`](../../objects/98/9836e774899d489498ff1d96efc65db7816ea8680ccbb9aeb77ed9a5f99abb3d__FINAL_SCIENTIFIC_REPORT.md)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis/FINAL_DEPENDENCY_VERIFICATION.json`](../../objects/05/056ba92830d5bad789c5b8827ef8ee84450c4a1efa173da01fbd64beed57638d__FINAL_DEPENDENCY_VERIFICATION.json)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis_scripts/final_dependency_verify.py`](../../objects/98/984e523fd22d31952e2f9862b8829dd5ae6681829aa998b467cac2161a65b078__final_dependency_verify.py)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/FINAL_CONTINUATION_REPORT.md`](../../objects/d1/d11d70de754371419e4c9c5b51cf99dc4472def4a161143c5c786bdefda5e0db__FINAL_CONTINUATION_REPORT.md)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis/CHECKPOINT_SCORE_PERSISTENCE_CPU.json`](../../objects/ff/ff003bec81603c9a9f1c89ce57d1238d0ad0dcd9d9f8594814dd61772aa4b76b__CHECKPOINT_SCORE_PERSISTENCE_CPU.json)
+- [`experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis_scripts/finalize_report_selftest.json`](../../objects/4c/4c3deda8e1aa9c60db0d97db41ea4812c7ec71fe45e3a45bdea1437c9c4dbf00__finalize_report_selftest.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis/score_rows_doc1_A.json`](../../objects/d4/d45ce9ddd124a8fc34b4e0c3786539953b64ee42ecaf68c5612262e878e2cdb8__score_rows_doc1_A.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis/score_rows_doc1_D.json`](../../objects/c4/c497b545c485ebd84cd153bcd50f3f6b7c72a132c57cdc4fe436fde567b9d1c7__score_rows_doc1_D.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis/score_rows_doc2_A.json`](../../objects/53/53e1369dd6e5b4b24c6a7366201f98b8eee1fc3ef6328ec9d9e8f031d22e7589__score_rows_doc2_A.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis/score_rows_doc2_D.json`](../../objects/c1/c1c33d087b5f73a10a3abb8d5cd0c4846d39d7a76e16cd86b07903cd7fbcf0d7__score_rows_doc2_D.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis_scripts/finalize_report.py`](../../objects/62/627e18124348ef08d9a810975120028ae2722b86e0adf66a1b3f7ac12e9a98eb__qualified_diagnostics.py)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/inherited_initial/FINAL_STATUS.json`](../../objects/2e/2ee9e768fbafe1fb34de30ffe77150c0c6a2d45636f02bb22c48c54e30df577a__FINAL_STATUS.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/documents/doc_01/score_positions.json`](../../objects/a9/a977991267d51eb61549060c7509b9b7b1282422903aad77046e896392209afc__score_positions.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/documents/doc_02/score_positions.json`](../../objects/b0/b048d3707d37b563f2f65d98e8d031c18cea8de9bfde250be16a8ccda5e95d84__score_positions.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis_scripts/postprocess_scores.py`](../../objects/0f/0f12d5c3d7d8a2ba29bec6f97235d8d4b267e8e09be8ea50ad3c047b013a1e5f__postprocess_scores.py)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/inherited_initial/preregistration.json`](../../objects/54/544da3293e5f819cbfa4953ed8381e30126342dfd47ebd52bfbcde77ea04fb5b__preregistration.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/inherited_initial/GATE_STATUS_FINAL.json`](../../objects/3e/3e4636819d983884be0b2f61c41763131e95e39bfe70d47b845c9b0446e99ccb__GATE_STATUS_FINAL.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis/SCORE_ARTIFACT_VERIFICATION.json`](../../objects/fd/fd8e5eb0b78fd94dca4e8cf3082ac5d7238077dd0ab8a7527b499f634e82bed7__SCORE_ARTIFACT_VERIFICATION.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis/FINAL_DEPENDENCY_VERIFICATION.json`](../../objects/5f/5f75999b1bcb320ef5205f88ef58a79a5d50e5a220a692ef7d4caca63b9e5f0e__FINAL_DEPENDENCY_VERIFICATION.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/analysis_scripts/final_dependency_verify.py`](../../objects/98/984e523fd22d31952e2f9862b8829dd5ae6681829aa998b467cac2161a65b078__final_dependency_verify.py)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/inherited_initial/FINAL_SCIENTIFIC_REPORT.md`](../../objects/b6/b61bc2517a1921bd75171ba39aee49487f86e9575ea68d47b657f3d9107c9f8c__FINAL_SCIENTIFIC_REPORT.md)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/inherited_initial/analysis_scripts/finalize_report.py`](../../objects/62/627e18124348ef08d9a810975120028ae2722b86e0adf66a1b3f7ac12e9a98eb__qualified_diagnostics.py)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/inherited_initial/documents/doc_01/score_positions.json`](../../objects/a9/a977991267d51eb61549060c7509b9b7b1282422903aad77046e896392209afc__score_positions.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/inherited_initial/documents/doc_02/score_positions.json`](../../objects/b0/b048d3707d37b563f2f65d98e8d031c18cea8de9bfde250be16a8ccda5e95d84__score_positions.json)
+- [`continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1/inherited_initial/analysis_scripts/postprocess_scores.py`](../../objects/0f/0f12d5c3d7d8a2ba29bec6f97235d8d4b267e8e09be8ea50ad3c047b013a1e5f__postprocess_scores.py)

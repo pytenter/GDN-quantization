@@ -1,0 +1,1 @@
+lambda _cls, frame_dict, fn_name, orig_fn, new_fn: _tuple_new(_cls, (frame_dict, fn_name, orig_fn, new_fn))

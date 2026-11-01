@@ -1,0 +1,6 @@
+def __create_fn__(_type_tensor_state, _type_zero_dim_tensor_state, _type_non_tensor_state, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_tensor_state, _dflt_zero_dim_tensor_state, _dflt_non_tensor_state, _return_type):
+ def __init__(self,tensor_state:_type_tensor_state=_HAS_DEFAULT_FACTORY,zero_dim_tensor_state:_type_zero_dim_tensor_state=_HAS_DEFAULT_FACTORY,non_tensor_state:_type_non_tensor_state=_HAS_DEFAULT_FACTORY)->_return_type:
+  self.tensor_state=_dflt_tensor_state() if tensor_state is _HAS_DEFAULT_FACTORY else tensor_state
+  self.zero_dim_tensor_state=_dflt_zero_dim_tensor_state() if zero_dim_tensor_state is _HAS_DEFAULT_FACTORY else zero_dim_tensor_state
+  self.non_tensor_state=_dflt_non_tensor_state() if non_tensor_state is _HAS_DEFAULT_FACTORY else non_tensor_state
+ return __init__

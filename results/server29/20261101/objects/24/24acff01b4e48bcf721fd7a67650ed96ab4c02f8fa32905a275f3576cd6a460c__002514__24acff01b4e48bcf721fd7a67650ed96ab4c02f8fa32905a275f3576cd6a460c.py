@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(compiled_fw={self.compiled_fw!r}, compiled_bw={self.compiled_bw!r}, aot_joint_graph_str={self.aot_joint_graph_str!r}, aot_forward_graph_str={self.aot_forward_graph_str!r}, aot_backward_graph_str={self.aot_backward_graph_str!r}, runtime_metadata={self.runtime_metadata!r}, dispatch_wrappers={self.dispatch_wrappers!r}, maybe_subclass_meta={self.maybe_subclass_meta!r}, num_fw_outs_saved_for_bw={self.num_fw_outs_saved_for_bw!r}, indices_of_inps_to_detach={self.indices_of_inps_to_detach!r}, forward_time_taken_ns={self.forward_time_taken_ns!r}, backward_time_taken_ns={self.backward_time_taken_ns!r})"
+ return __repr__

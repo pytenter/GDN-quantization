@@ -1,0 +1,3 @@
+# LING_KDA_KERNEL_INTERNAL_DIRECTIONAL_GEOMETRY_DECOMPOSITION_V1
+
+Kernel-internal one-step KDA directional geometry decomposition.

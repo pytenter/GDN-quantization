@@ -1,0 +1,341 @@
+# LING_KDA_ROTATION_DUAL_AXIS_STABLE_RECOVERY_V1
+
+你是我的 Ling/KDA 科研执行负责人。
+
+**任务目标：让 Ling/KDA 恢复稳定、可验证的科学执行能力，并在资格通过后完成已经规划的 Rotation × Dual-M 实验。**
+
+本次禁止继续采用“遇到一个报错就修一个报错、再运行、再修补”的开发方式。
+
+不要重新发明 KDA 数学核心，不要建立新的庞大Clean-Room框架。采用最小、完整、经过回归测试的执行层，解决已经明确的系统性问题。
+
+## 0. 实验身份和权限
+
+```text
+TASK = LING_KDA_ROTATION_DUAL_AXIS_STABLE_RECOVERY_V1
+
+SCIENTIFIC_PROTOCOL =
+  LING_KDA_ROTATION_DUAL_AXIS_FUNCTIONAL_V1
+
+GPU_AUTHORIZATION = YES
+# 仅在用户明确提交此任务给Codex时生效
+
+GPU_COUNT = 1
+GPU_TYPE = RTX3090_24GB
+MAX_TOTAL_SCIENTIFIC_GPUH = 16.0
+HISTORICAL_GPUH = 1.2779262566580696
+```
+
+新恢复执行不得重置原科学任务16 GPUh预算。所有新增GPU占用与已有用量累计比较，剩余额度以实际账本计算。
+
+已有科学协议保持：
+
+- Ling-3.0-tiny/KDA
+- 六篇原预注册文档
+- FP_NATIVE、H_R128、H_DUAL_M、L6_R128、L6_DUAL_M
+- 每条8448 consumed tokens
+- 8192-token完整自身历史 + 256-token连续评分
+- 157184词表（必须与实际冻结模型身份复核）
+- 每个student每token persistent INT8 QDQ/writeback
+- Primary为全词表FP32 KL(FP_NATIVE||student)
+
+保留原科学协议、所有历史STOP和seal。
+
+如果原6篇文档身份已经冻结，继续使用原样本，不重新挑选、重排或替换。
+
+创建独立worktree和输出目录；原证据只读。
+
+## 1. 第一步：一次性完成失败审计
+
+先读取原实验的完整证据，而不是立即修改代码。
+
+已确认的首失败：
+
+`OWN_PARENT_FRESH64_EXACT_MISMATCH`
+
+其中，8256-token Parent参考快照持有活动dict/list引用；Parent继续运行至8448，导致原参考快照的计数及proof被污染。
+
+CPU复核已经确认这一引用缺陷。
+
+但Fresh的logits、cache、audit和RNG独立数值hash未完整保存，真实数值是否一致仍然UNKNOWN。
+
+因此需要将问题分成两个层次：
+
+A. 已确认的参考快照生命周期错误。
+
+B. 尚未确定是否存在的真实GPU数值差异。
+
+不允许因为修复A，就自动把B宣布PASS。
+
+同一轮审计还需覆盖：
+- checkpoint cursor与RNG身份
+- observer/QDQ计数在指定cursor的冻结
+- fresh过程实际比较哪些字段
+- 证据采集会不会改变科学状态
+- source/kernel/dtype/rotation身份
+- 各历史GPU停止属于资源冲突、资源余量不足还是监测不一致
+
+不要把历史不同故障合并成一个虚构的根因。
+
+## 2. 一次性修正证据层
+
+严格保留Frozen Scientific Core：
+
+- 原KDA recurrence
+- FLA数学kernel
+- H、L6冻结旋转
+- R128和Dual-M量化数学
+- 每token QDQ/writeback
+- 模型权重和dtype
+- KL评分函数与原始数值合同
+
+只允许修改新执行控制层和证据采集/比较层。
+
+建立统一Immutable Evidence Snapshot机制：
+
+在token8256采集Parent证据时，立即形成完全独立的值快照：
+
+- Tensor生成独立CPU副本
+- dict/list递归快照
+- 保存dtype、shape、cursor
+- 保存完整规定的数值字段
+- 对规范化内容计算SHA
+- 原子写盘，之后禁止修改
+
+Parent从8256继续至8448后，8256快照字节必须完全不变。
+
+Parent/Fresh逐token、逐字段比较，不再只依赖最终整个dict是否相等。
+
+必须独立保存并核对：
+- logits
+- recurrent cache
+- QDQ codes及writeback
+- observer/audit
+- CPU/CUDA RNG
+- 规定的进度计数和proof
+- checkpoint身份
+
+不得为了让比较通过而忽略原本要求一致的字段。
+
+## 3. CPU-only完整回归
+
+在GPU运行前完成全部CPU测试。
+
+必须覆盖：
+
+1. 原快照引用污染复现。
+2. 新快照在Parent继续执行后保持不可变。
+3. 8256 Parent和Fresh在同一cursor的字段正确配对。
+4. 人为篡改logits/cache/audit/RNG能够分别检测。
+5. 不完整证据无法被错误判为PASS。
+6. checkpoint恢复不重复计算已保存评分位置。
+7. CPU/GPU资源监测记录格式的离线解析与错误分类。
+8. 最终报告生成器不会将时间字典误当资源快照。
+9. GPU worker异常退出、SSH断连、checkpoint损坏时保留首失败。
+10. 科学数学源码字节保持不变。
+
+所有测试集中运行一次，并生成完整回归报告。
+
+不允许只用一个deepcopy单元测试替代系统验收。
+
+如果CPU回归FAIL，在本次有界修复范围内解决；若问题要求修改FLA或KDA数学核心，则STOP。
+
+## 4. 运行架构必须简化
+
+建立三个明确边界：
+
+Scientific Worker：
+只执行模型、QDQ和科学评分。
+
+Minimal Coordinator：
+负责单GPU独占、启动、checkpoint、资源安全、任务生命周期。
+
+Offline Verifier：
+在CPU端校验冻结证据、KL结果、SHA及报告。
+
+减少重复launcher、重复resource wrapper、隐式全局对象和多层可变状态。
+
+必须证明控制层不会改变数值执行路径。
+
+使用固定Python解释器、环境、kernel profile及模型身份。
+
+GPU资格必须采用实际选中的同一UUID，不能从GPU6历史PASS推断另一张GPU exact PASS。
+
+资源监测保持真实安全要求，不能直接删除PID检查或降低原2GiB显存余量门槛。
+
+对采样接口返回的不一致证据保留UNKNOWN，不伪称外部抢卡。
+
+## 5. 一次综合GPU资格
+
+CPU回归全部PASS后，才允许GPU运行。
+
+本阶段新增GPU预算原则上不超过2.5 GPUh，并始终计入原16 GPUh累计上限。
+
+使用独立canary，不使用六篇正式科学样本调试。
+
+先执行H/L6免量化坐标正确性检查，确认其与FP_NATIVE的数学和数值关系，不假定普通对角gate与任意正交旋转可交换。
+
+然后实际验证：
+
+```text
+FP_NATIVE       parent + fresh64
+H_R128          parent + fresh64
+H_DUAL_M        parent + fresh64
+L6_R128         parent + fresh64
+L6_DUAL_M       parent + fresh64
+```
+
+在同一已资格GPU上：
+
+- parent从token0运行至8192并生成合法checkpoint
+- parent继续至8256，冻结不可变参考
+- fresh从同一个8192 checkpoint恢复并运行64token
+- 逐token核对logits/cache/QDQ/audit/RNG
+- parent可以继续至8448，但不能改变8256证据
+- 检查8448实际显存和吞吐
+- 核实所有量化student的下一token使用量化写回状态
+
+FP和四个student必须全部满足对应冻结资格合同。
+
+禁止把仅有工程PASS而数值UNKNOWN的条件标成PASS。
+
+对真正的数值FAIL：
+保存第一个差异及独立数值证据，停止，不自动进入反复GPU调试。
+
+对资源FAIL：
+保存实际显存、NVML、设备和worker身份，停止，不静默更换GPU。
+
+如果这次完整资格通过：
+
+`LING_RUNTIME_STABLE_QUALIFIED`
+
+这只是可靠执行资格，不是正式科学结论。
+
+## 6. 正式实验的启动判据
+
+只有以下条件全部满足才运行30条正式轨迹：
+
+- CPU回归全部通过
+- 实际免量化数学资格通过
+- FP及四个student数值资格通过
+- QDQ/writeback与next-kernel消费通过
+- 8448-token资源资格通过
+- 原六篇文档和评分协议身份通过
+- GPU预算预测可完成全部30条
+- Qwen任务不会占用本任务GPU
+- CUDA、模型及checkpoint身份没有变化
+
+必须使用真实资格吞吐预测完整成本，包括加载、checkpoint、评分和IO。
+
+若剩余GPUh不足，则停止并报告，不擅自增加预算或缩短序列。
+
+## 7. 正式科学执行
+
+在条件全部满足时，按冻结文档和条件顺序运行：
+
+```text
+6 documents × 5 conditions = 30 trajectories
+
+Each trajectory:
+  8448 consumed tokens
+
+Evaluation:
+  256 full-vocabulary FP32 KL positions
+  t = 8192,...,8447
+```
+
+每个student从token0形成自己的persistent QDQ历史。
+
+不得共享不匹配的cache、使用FP高精度历史替代student state，或修改量化器参数。
+
+科学Primary：
+
+```text
+Delta_L6 =
+  KL(L6_R128) - KL(L6_DUAL_M)
+```
+
+关键Secondary：
+
+```text
+Delta_H =
+  KL(H_R128) - KL(H_DUAL_M)
+
+Interaction = Delta_L6 - Delta_H
+
+LearnedGain_DualM =
+  KL(H_DUAL_M) - KL(L6_DUAL_M)
+```
+
+按文档报告原始完整精度、算术分辨率、正负方向、mean、median及未分辨数量。
+
+不得把256个评分位置当作256个独立文档。
+
+不能用前一篇结果修改后续输入、矩阵或codec。
+
+完成第一篇五条件后，形成独立的中间科学回执并继续冻结计划。若出现核心数值或资源失败，则STOP，不修改已完成的科学结果。
+
+## 8. 与Qwen任务并行的资源纪律
+
+Qwen当前主要任务为：
+
+`QWEN_GDN_C6R_DUAL_M_INTERACTION_REUSE_5DOC_V1`
+
+两个任务应使用：
+- 独立Codex会话
+- 独立worktree
+- 独立输出目录与checkpoint
+- 独立GPU预算账本
+- 明确GPU UUID
+
+若实际存在两张可独占GPU，可以各自使用一张。
+
+若只有一张可用，GPU执行必须分时，不能同时加载两个几乎占满24GB的模型。
+
+无论哪种情况，两条线的CPU准备、结果分析、文档和代码审计均可并行。
+
+本任务不得自动启动、修改或终止Qwen作业。
+
+## 9. 最终交付
+
+至少生成：
+
+- ROOT_CAUSE_AND_ARCHITECTURE_AUDIT.md
+- IMMUTABLE_EVIDENCE_TESTS.json
+- CPU_REGRESSION_RESULTS.json
+- SOURCE_DIFF_AUDIT.json
+- GPU_QUALIFICATION.json
+- GPU_RESOURCE_LEDGER.json
+- FROZEN_PROTOCOL_VERIFICATION.json
+- SCIENCE_RESULTS.csv/json（仅真实完成时）
+- INTERACTION_RESULTS.csv（仅真实完成时）
+- FIRST_FAILURE.json（如发生）
+- FINAL_SCIENTIFIC_REPORT.md
+- SHA256_MANIFEST.json
+
+区分：
+
+- CPU_RELIABILITY_QUALIFIED
+- GPU_NUMERICAL_QUALIFIED
+- COMPLETE_SCIENTIFIC_RESULT
+- INCOMPLETE
+- FAIL_CLOSED_STOP
+
+原STOP和seal不得覆盖。
+
+最终必须回答：
+
+1. 原证据快照缺陷是否已系统性解决？
+2. 五条件真实fresh64是否全部数值PASS？
+3. 是否完成第一篇五条件科学结果？
+4. 六篇30条是否全部完成？
+5. Dual-M是否改善L6的Future-KL？
+6. Rotation × Codec交互是否为正？
+7. H与L6在Dual-M下哪个更优？
+8. 实际GPUh、显存和性能如何？
+9. 还有哪些未建立的科学结论？
+
+**任务结束后停止，不自动创建新的Ling实验，不训练L8/L9，不运行AIME，不扩展32K，不自动git push。**
+
+核心验收目标：
+
+不是“某个assertion终于PASS”，而是 **Ling能够通过一次可信的数值资格流程，完成可复现的真实Future-KL科学实验**。

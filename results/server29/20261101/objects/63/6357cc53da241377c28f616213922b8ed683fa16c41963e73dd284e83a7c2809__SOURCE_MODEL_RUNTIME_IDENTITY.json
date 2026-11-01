@@ -1,0 +1,40 @@
+{
+  "status": "LOCAL_SOURCE_AUDIT_COMPLETE_FRESH_REMOTE_ADMISSION_REQUIRED",
+  "parent_source_freeze_sha256": "fb034cd68a0b94d511db7559042aba56d12c5b6875a6a23adee79a112eca5172",
+  "native_architecture_sha256": "90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a",
+  "canonical_h128_sha256": "4be73decd604b9139d4dfbaed82a2e03cf40e353b4359837cf8eeeacc2aa3883",
+  "sym32_codec_sha256": "110a3e928ffe9d81fa2db6fcfb0fecdfd39bd478dde7e41dc9d9209807c731de",
+  "sampler_sha256": "9ff56d00b6b2dbaf9be3c3186bd30be8d3b9cc9d9b580a680316bcc8c01247dd",
+  "scorer_sha256": "fa5dd904c7d1887df4b8c23613f37b8d438ea494cb72607b89be8e07d55a343b",
+  "model_identity_sha256": "57848555b16ec5598cc37bedd7abd8720b1fb43bd5582cce2f9b40ad1bc7862f",
+  "native_graph": {
+    "layers": 32,
+    "GDN_layers": 24,
+    "key_heads": 16,
+    "value_recurrent_heads": 32,
+    "key_dim": 128,
+    "value_dim": 128,
+    "head_sharing": "repeat_interleave2 adjacent recurrent heads consume same q/k",
+    "precedence": [
+      "projection",
+      "depthwise causal convolution+activation",
+      "reshape",
+      "head replication",
+      "QK L2 normalization in native dtype",
+      "orthogonal transform in FP32",
+      "native float32 recurrence with head-scalar exp(g) and beta",
+      "query scale1/sqrt128",
+      "readout",
+      "BF16 core output",
+      "native gated RMSNorm and output projection"
+    ],
+    "transform_injection": "immediately before native torch GDN helpers, after convolution/head expansion/QK normalization; never before conv or norm",
+    "native_state": "B,H_recurrent,Key128,Value128",
+    "alpha": "exp(g), head scalar; update alpha*S then delta=beta*(v-k.T@alpha*S)",
+    "P1": "same original H transform; P only inside QDQ",
+    "C1_S3": "same per-layer/per-recurrent-head A=U@H; no persistent P coordinate",
+    "H_to_A": "H.T@U.T@H on column vectors; direct native->A used; no extra H"
+  },
+  "historical_P0": "old Q2 immutable rows; available29/30 at request; protocol/input/model comparison before matched analysis; no P0 rerun",
+  "not_new_gpu_proof": true
+}

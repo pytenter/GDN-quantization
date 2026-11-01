@@ -1,0 +1,1 @@
+lambda _cls, chunks, content_length: _tuple_new(_cls, (chunks, content_length))

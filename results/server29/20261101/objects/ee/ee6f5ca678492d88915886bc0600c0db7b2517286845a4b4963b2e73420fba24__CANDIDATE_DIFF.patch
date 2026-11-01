@@ -1,0 +1,11 @@
+--- V2_FROZEN/src/hmmt_adapters.py
++++ V3_CPU_CANDIDATE/src/hmmt_adapters.py
+@@ -165,7 +165,7 @@
+         for layer,state in self.states.items():
+             assert bool(torch.isfinite(state).all())
+             inventory.append(dict(layer=layer,shape=list(state.shape),dtype=str(state.dtype),nbytes=state.numel()*state.element_size()))
+-        return dict(implementation='PINNED_NATIVE_FP32_STATE',layers=list(self.layers),helper_calls=self.calls,
++        return dict(implementation='PINNED_NATIVE_FP32_STATE',layers=list(self.layers),helper_calls={str(k):v for k,v in self.calls.items()},
+                     native_state_inventory=inventory,recurrent_state_nbytes=sum(x['nbytes'] for x in inventory),
+                     state_quantization_calls=0,key_quantization_calls=0,buffer_payload_bytes=0,buffer_capacity_bytes=0,
+                     rotation='H128_VALIDATION_ONLY' if self.rotation else None,rotation_matrix_nbytes=0 if self.h128 is None else self.h128.numel()*self.h128.element_size(),

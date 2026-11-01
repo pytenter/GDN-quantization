@@ -1,0 +1,1 @@
+lambda _cls, percent, secsleft, power_plugged: _tuple_new(_cls, (percent, secsleft, power_plugged))

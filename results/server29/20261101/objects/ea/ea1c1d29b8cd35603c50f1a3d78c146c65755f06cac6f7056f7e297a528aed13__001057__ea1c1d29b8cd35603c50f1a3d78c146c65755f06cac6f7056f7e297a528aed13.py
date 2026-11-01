@@ -1,0 +1,1 @@
+lambda _cls, out, save_mean, save_invstd: _tuple_new(_cls, (out, save_mean, save_invstd))

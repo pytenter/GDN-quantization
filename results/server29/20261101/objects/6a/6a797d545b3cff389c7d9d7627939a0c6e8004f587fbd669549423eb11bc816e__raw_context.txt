@@ -1,0 +1,2204 @@
+RMS/Astrometry/ApplyAstrometry.py
+def photometryFit(px_intens_list, radius_list, catalog_mags, fixed_vignetting=None):
+    """ Fit the photometry on given data.
+
+    Arguments:
+        px_intens_list: [list] A list of sums of pixel intensities.
+        radius_list: [list] A list of raddia from the focal plane centre (px).
+        catalog_mags: [list] A list of corresponding catalog magnitudes of stars.
+    Keyword arguments:
+        fixed_vignetting: [float] Fixed vignetting coefficient. None by default, in which case it will be
+            computed.
+    Return:
+        (photom_offset, fit_stddev, fit_resid):
+            photom_params: [list]
+                - photom_offset: [float] The photometric offset.
+                - vignetting_coeff: [float] Vignetting coefficient (rad/px).
+            fit_stddev: [float] The standard deviation of the fit.
+            fit_resid: [float] Magnitude fit residuals.
+    """
+
+    # Fit a line to the star data, where only the intercept has to be estimated
+    p0 = [10.0, 0.0]
+    res = scipy.optimize.minimize(photomLineMinimize, p0, args=(np.array(px_intens_list), \
+        np.array(radius_list), np.array(catalog_mags), fixed_vignetting), method='Nelder-Mead')
+    photom_offset, vignetting_coeff = res.x
+
+    # Handle the vignetting coeff
+    vignetting_coeff = np.abs(vignetting_coeff)
+    if fixed_vignetting is not None:
+        vignetting_coeff = fixed_vignetting
+
+    photom_params = (photom_offset, vignetting_coeff)
+
+    # Calculate the standard deviation
+    fit_resids = np.array(catalog_mags) - photomLine((np.array(px_intens_list), np.array(radius_list)), \
+        *photom_params)
+    fit_stddev = np.std(fit_resids)
+
+    return photom_params, fit_stddev, fit_resids
+RMS/Formats/Platepar.py
+def getCatalogStarsImagePositions(catalog_stars, jd, platepar):
+    """ Get image positions of catalog stars using the current platepar values.
+    Arguments:
+        catalog_stars: [2D list] A list of (ra, dec, mag) pairs of catalog stars.
+        jd: [float] Julian date for transformation.
+        platepar: [Platepar]
+    Return:
+        (x_array, y_array mag_catalog): [tuple of ndarrays] X, Y positons and magnitudes of stars on the
+            image.
+    """
+
+    ra_catalog, dec_catalog, mag_catalog = catalog_stars.T
+
+    # Convert star RA, Dec to image coordinates
+    x_array, y_array = RMS.Astrometry.ApplyAstrometry.raDecToXYPP(ra_catalog, dec_catalog, jd, platepar)
+
+    return x_array, y_array, mag_catalog
+RMS/Formats/StarCatalog.py
+def readBSC(file_path, file_name, years_from_J2000=0):
+def loadGaiaCatalog(dir_path, file_name, lim_mag=None):
+def readStarCatalog(dir_path, file_name, lim_mag=None, mag_band_ratios=None):
+            RA = np.fromfile(fid, dtype=float_64d, count=1)[0]
+RMS/Astrometry/ApplyAstrometry.py
+def raDecToXYPP(RA_data, dec_data, jd, platepar):
+    """ Converts RA, Dec to image coordinates, but the platepar is given instead of individual parameters.
+    Arguments:
+        RA: [ndarray] Array of right ascensions (degrees).
+        dec: [ndarray] Array of declinations (degrees).
+        jd: [float] Julian date.
+        platepar: [Platepar structure] Astrometry parameters.
+    Return:
+        (x, y): [tuple of ndarrays] Image X and Y coordinates.
+    """
+
+    # Use the cythonized funtion insted of the Python function
+    X_data, Y_data = cyraDecToXY(RA_data, dec_data, float(jd), float(platepar.lat), float(platepar.lon),
+        float(platepar.X_res), float(platepar.Y_res), float(platepar.Ho), float(platepar.RA_d), \
+        float(platepar.dec_d), float(platepar.pos_angle_ref), platepar.F_scale, platepar.x_poly_rev, \
+        platepar.y_poly_rev, unicode(platepar.distortion_type), refraction=platepar.refraction, \
+        equal_aspect=platepar.equal_aspect, force_distortion_centre=platepar.force_distortion_centre, \
+        asymmetry_corr=platepar.asymmetry_corr)
+
+    return X_data, Y_data
+RMS/Astrometry/ApplyAstrometry.py
+def extinctionCorrectionTrueToApparent(catalog_mags, ra_data, dec_data, jd, platepar):
+    """ Compute apparent magnitudes by applying extinction correction to catalog magnitudes. 
+
+    Arguments:
+        catalog_mags: [list] A list of catalog magnitudes.
+        ra_data: [list] A list of catalog right ascensions (J2000) in degrees.
+        dec_data: [list] A list of catalog declinations (J2000) in degrees.
+        jd: [float] Julian date.
+        platepar: [Platepar object]
+
+    Return:
+        corrected_catalog_mags: [list] Extinction corrected catalog magnitudes.
+
+    """
+
+
+    ### Compute star elevations above the horizon (epoch of date, true) ###
+
+    # Compute elevation above the horizon
+    elevation_data = []
+    for ra, dec in zip(ra_data, dec_data):
+
+        # Precess to epoch of date
+        ra, dec = equatorialCoordPrecession(J2000_JD.days, jd, np.radians(ra), np.radians(dec))
+
+        # Compute elevation
+        _, elev = raDec2AltAz(np.degrees(ra), np.degrees(dec), jd, platepar.lat, platepar.lon)
+
+        if elev < 0:
+            elev = 0
+
+        elevation_data.append(elev)
+
+    ### ###
+
+    # Correct catalog magnitudes for extinction
+    extinction_correction = atmosphericExtinctionCorrection(np.array(elevation_data), platepar.elev) \
+        - atmosphericExtinctionCorrection(90, platepar.elev)
+    corrected_catalog_mags = np.array(catalog_mags) + platepar.extinction_scale*extinction_correction
+
+    return corrected_catalog_mags
+RMS/Routines/Image.py
+    USING_SCIPY_IMREAD = True
+    USING_SCIPY_IMREAD = False
+def loadRaw(img_path):
+def loadImage(img_path, flatten=-1):
+def saveImage(img_path, img, add_timestamp=False):
+def binImage(img, bin_factor, method='avg'):
+def thresholdImg(img, avepixel, stdpixel, k1, j1, ff=False, mask=None, mask_ave_bright=True):
+def thresholdFF(ff, k1, j1, mask=None, mask_ave_bright=False):
+def gammaCorrection(intensity, gamma, bp=0, wp=255):
+def applyBrightnessAndContrast(img, brightness, contrast):
+def adjustLevels(img_array, minv, gamma, maxv, nbits=None, scaleto8bits=False):
+    def __init__(self, flat_img, dark=None):
+    def applyDark(self, dark):
+    def computeAverage(self):
+    def fixValues(self):
+    def binFlat(self, binning_factor, binning_method):
+def loadFlat(dir_path, file_name, dtype=None, byteswap=False, dark=None):
+def applyFlat(img, flat_struct):
+def loadDark(dir_path, file_name, dtype=None, byteswap=False):
+def applyDark(img, dark_img):
+def deinterlaceOdd(img):
+def deinterlaceEven(img):
+def blendLighten(arr1, arr2):
+def deinterlaceBlend(img):
+def fillCircle(photom_mask, x_cent, y_cent, radius):
+def thickLine(img_h, img_w, x_cent, y_cent, length, rotation, radius):
+class FlatStruct(object):
+RMS/Astrometry/Conversions.py
+def JD2HourAngle(jd):
+    """ Convert the given Julian date to hour angle.
+    Arguments:
+        jd: [float] Julian date.
+    Return:
+        hour_angle: [float] Hour angle (deg).
+    """
+
+    T = (jd - 2451545)/36525.0
+    hour_angle = 280.46061837 + 360.98564736629*(jd - 2451545.0) + 0.000387933*T**2 \
+                 - (T**3)/38710000.0
+
+    return hour_angle
+RMS/Astrometry/ApplyAstrometry.py
+def correctVignetting(px_sum, radius, vignetting_coeff):
+    """ Given a pixel sum, radius from focal plane centre and the vignetting coefficient, correct the pixel
+        sum for the vignetting effect.
+    Arguments:
+        px_sum: [float] Pixel sum.
+        radius: [float] Radius (px) from focal plane centre.
+        vignetting_coeff: [float] Vignetting coefficient (rad/px).
+    Return:
+        px_sum_corr: [float] Corrected pixel sum.
+    """
+
+    # Make sure the vignetting coefficient is a number
+    if vignetting_coeff is None:
+        vignetting_coeff = 0.0
+
+    return px_sum/(np.cos(vignetting_coeff*radius)**4)
+RMS/Astrometry/ApplyAstrometry.py
+def getFOVSelectionRadius(platepar):
+    """ Get a radius around the centre of the FOV which includes the FOV, but excludes stars outside the FOV.
+    Arguments:
+        platepar: [Platepar instance]
+
+    Return:
+        fov_radius: [float] Radius in degrees.
+    """
+
+    # Construct poinits on the middle of every side of the image
+    x_data = np.array([0, platepar.X_res, platepar.X_res,              0, platepar.X_res/2.0])
+    y_data = np.array([0, platepar.Y_res,              0, platepar.Y_res, platepar.Y_res/2.0])
+    time_data = np.array(len(x_data)*[jd2Date(platepar.JD)])
+    level_data = np.ones(len(x_data))
+
+    # Compute RA/Dec of the points
+    _, ra_data, dec_data, _ = xyToRaDecPP(time_data, x_data, y_data, level_data, platepar, \
+        extinction_correction=False)
+
+    ra1, ra2, ra3, ra4, ra_mid = ra_data
+    dec1, dec2, dec3, dec4, dec_mid = dec_data
+
+    # Angular separation between the centre of the FOV and corners
+    ul_sep = np.degrees(angularSeparation(np.radians(ra1), np.radians(dec1), np.radians(ra_mid), np.radians(dec_mid)))
+    lr_sep = np.degrees(angularSeparation(np.radians(ra2), np.radians(dec2), np.radians(ra_mid), np.radians(dec_mid)))
+    ur_sep = np.degrees(angularSeparation(np.radians(ra3), np.radians(dec3), np.radians(ra_mid), np.radians(dec_mid)))
+    ll_sep = np.degrees(angularSeparation(np.radians(ra4), np.radians(dec4), np.radians(ra_mid), np.radians(dec_mid)))
+
+    # Take the average radius
+    fov_radius = np.mean([ul_sep, lr_sep, ur_sep, ll_sep])
+
+    return fov_radius
+RMS/Astrometry/ApplyAstrometry.py
+def rotationWrtHorizonToPosAngle(platepar, rot_angle):
+    """ Given the rotation angle w.r.t horizon, numerically compute the position angle.
+
+    Arguments:
+        pletepar: [Platepar object] Input platepar.
+        rot_angle: [float] The rotation angle w.r.t. horizon (deg)>
+    Return:
+        pos_angle: [float] Position angle (deg).
+    """
+
+    platepar = copy.deepcopy(platepar)
+    rot_angle = rot_angle%360
+
+
+    def _rotAngleResidual(params, rot_angle):
+
+        # Set the given position angle to the platepar
+        platepar.pos_angle_ref = params[0]
+
+        # Compute the rotation angle with the given guess of the position angle
+        rot_angle_computed = rotationWrtHorizon(platepar)%360
+
+        # Compute the deviation between computed and desired angle
+        return 180 - abs(abs(rot_angle - rot_angle_computed) - 180)
+
+
+
+    # Numerically find the position angle
+    res = scipy.optimize.minimize(_rotAngleResidual, [platepar.pos_angle_ref], args=(rot_angle), \
+        method='Nelder-Mead')
+
+
+    return res.x[0]%360
+RMS/Pickling.py
+def savePickle(obj, dir_path, file_name):
+    """ Dump the given object into a file using Python 'pickling'. The file can be loaded into Python
+        ('unpickled') afterwards for further use.
+
+    Arguments:
+    	obj: [object] Object which will be pickled.
+        dir_path: [str] Path of the directory where the pickle file will be stored.
+        file_name: [str] Name of the file where the object will be stored.
+
+    """
+
+    mkdirP(dir_path)
+
+    with open(os.path.join(dir_path, file_name), 'wb') as f:
+        pickle.dump(obj, f, protocol=2)
+RMS/Astrometry/ApplyAstrometry.py
+def rotationWrtStandard(platepar):
+    """ Given the platepar, compute the rotation from the celestial meridian passing through the centre of
+        the FOV.
+
+    Arguments:
+        pletepar: [Platepar object] Input platepar.
+    Return:
+        rot_angle: [float] Rotation from the meridian (degrees).
+    """
+
+    # Image coordiantes of the center
+    img_mid_w = platepar.X_res/2
+    img_mid_h = platepar.Y_res/2
+
+    # Image coordinate slighty right of the centre
+    img_up_w = img_mid_w + 10
+    img_up_h = img_mid_h
+
+    # Compute ra/dec
+    _, ra, dec, _ = xyToRaDecPP(2*[jd2Date(platepar.JD)], [img_mid_w, img_up_w], [img_mid_h, img_up_h], \
+        2*[1], platepar)
+    ra_mid = ra[0]
+    dec_mid = dec[0]
+    ra_up = ra[1]
+    dec_up = dec[1]
+
+    # Compute the equatorial orientation
+    rot_angle = np.degrees(np.arctan2(np.radians(dec_mid) - np.radians(dec_up), \
+        np.radians(ra_mid) - np.radians(ra_up)))
+
+    # Wrap output to 0-360 range
+    rot_angle = rot_angle%360
+
+    return rot_angle
+RMS/Math.py
+def angularSeparation(ra1, dec1, ra2, dec2):
+    """ Calculates the angle between two points on a sphere. 
+    
+    Arguments:
+        ra1: [float] Right ascension 1 (radians).
+        dec1: [float] Declination 1 (radians).
+        ra2: [float] Right ascension 2 (radians).
+        dec2: [float] Declination 2 (radians).
+
+    Return:
+        [float] Angle between two coordinates (radians).
+    """
+
+    # Classical method
+    return np.arccos(np.sin(dec1)*np.sin(dec2) + np.cos(dec1)*np.cos(dec2)*np.cos(ra2 - ra1))
+
+    # # Compute the angular separation using the haversine formula
+    # #   Source: https://idlastro.gsfc.nasa.gov/ftp/pro/astro/gcirc.pro
+    # deldec2 = (dec2 - dec1)/2.0
+    # delra2 =  (ra2 - ra1)/2.0
+    # sindis = np.sqrt(np.sin(deldec2)*np.sin(deldec2) \
+    #     + np.cos(dec1)*np.cos(dec2)*np.sin(delra2)*np.sin(delra2))
+    # dis = 2.0*np.arcsin(sindis) 
+
+    # return dis
+RMS/Formats/Platepar.py
+class Platepar(object):
+    def __init__(self, distortion_type="poly3+radial"):
+        """ Astrometric and photometric calibration plate parameters. Several distortion types are supported.
+
+        Arguments:
+            file_name: [string] Path to the platepar file.
+        Keyword arguments:
+            distortion_type: [str] Distortion type. It can be one of the following:
+                - "poly3+radial" - 3rd order polynomial fit including a single radial term
+                - "poly3+radial3" - 3rd order polynomial fit including two radial terms (r + r^3)
+                - "radial3-all" - 3rd order radial distortion, all powers
+                - "radial4-all" - 4rd order radial distortion, all powers
+                - "radial5-all" - 5rd order radial distortion, all powers
+                - "radial3-odd" - 3rd order radial distortion, only odd powers
+                - "radial5-odd" - 5th order radial distortion, only odd powers
+                - "radial7-odd" - 7th order radial distortion, only odd powers
+                - "radial9-odd" - 7th order radial distortion, only odd powers
+
+        Return:
+            self: [object] Instance of this class with loaded platepar parameters.
+        """
+
+        self.version = 2
+
+        # Set the distortion type
+        self.distortion_type = distortion_type
+        self.setDistortionType(self.distortion_type)
+
+
+
+        # Station coordinates
+        self.lat = self.lon = self.elev = 0
+
+        # Reference time and date
+        self.time = 0
+        self.JD = 2451545.0
+
+        # UT correction
+        self.UT_corr = 0
+
+        self.Ho = 0
+        self.X_res = 1280
+        self.Y_res = 720
+
+        self.fov_h = 88
+        self.fov_v = 45
+
+        # FOV centre
+        self.RA_d = 0
+        self.dec_d = 0
+        self.pos_angle_ref = 0
+        self.rotation_from_horiz = 0
+
+        self.az_centre = 0
+        self.alt_centre = 0
+
+        # FOV scale (px/deg)
+        self.F_scale = 1.0
+
+        # Refraction on/off
+        self.refraction = True
+
+        # If the calibration was done without then refraction and points on the sky are measured, then they 
+        #   need to be corrected for refraction. WARNING: This should not be used if the distortion model 
+        #   itself compensates for the refraction (e.g. the polynomial model)
+        self.measurement_apparent_to_true_refraction = False
+
+        # Equal aspect (X and Y scales are equal) - used ONLY for radial distortion
+        self.equal_aspect = True
+
+        # Force distortion centre to image centre
+        self.force_distortion_centre = False
+
+        # Asymmetry correction - used ONLY for radial distortion
+        self.asymmetry_corr = False
+
+        # Photometry calibration
+        self.mag_0 = -2.5
+        self.mag_lev = 1.0
+        self.mag_lev_stddev = 0.0
+        self.gamma = 1.0
+        self.vignetting_coeff = 0.001
+        self.vignetting_fixed = True
+
+        # Extinction correction scaling
+        self.extinction_scale = 0.6
+
+        self.station_code = "None"
+
+        self.star_list = None
+
+        # Flag to indicate that the platepar was refined with CheckFit
+        self.auto_check_fit_refined = False
+
+        # Flag to indicate that the platepar was successfuly auto recalibrated on an individual FF files
+        self.auto_recalibrated = False
+
+        # Init the distortion parameters
+        self.resetDistortionParameters()
+
+
+    def resetDistortionParameters(self, preserve_centre=False):
+        """ Set the distortion parameters to zero.
+
+        Keyword arguments:
+            preserve_centre: [bool] Don't reset the distortion centre. False by default, in which case it will
+                be reset.
+        """
+
+        # Store the distortion centre if it needs to be preserved
+        if preserve_centre:
+
+            # Preserve centre for the radial distortion
+            if self.distortion_type.startswith("radial"):
+
+                # Note that the radial distortion parameters are kept in the X poly array
+                x_centre_fwd, y_centre_fwd = self.x_poly_fwd[0], self.x_poly_fwd[1]
+                x_centre_rev, y_centre_rev = self.x_poly_rev[0], self.x_poly_rev[1]
+
+            else:
+
+                # Preserve centre for the polynomial distortion
+                x_centre_fwd, x_centre_rev = self.x_poly_fwd[0], self.x_poly_rev[0]
+                y_centre_fwd, y_centre_rev = self.y_poly_fwd[0], self.y_poly_rev[0]
+
+
+        # Reset distortion fit (forward and reverse)
+        self.x_poly_fwd = np.zeros(shape=(self.poly_length,), dtype=np.float64)
+        self.y_poly_fwd = np.zeros(shape=(self.poly_length,), dtype=np.float64)
+        self.x_poly_rev = np.zeros(shape=(self.poly_length,), dtype=np.float64)
+        self.y_poly_rev = np.zeros(shape=(self.poly_length,), dtype=np.float64)
+
+
+
+        # Preserve the image centre
+        if preserve_centre:
+
+            # Preserve centre for the radial distortion
+            if self.distortion_type.startswith("radial") and (not self.force_distortion_centre):
+
+                # Note that the radial distortion parameters are kept in the X poly array
+                self.x_poly_fwd[0], self.x_poly_fwd[1] = x_centre_fwd, y_centre_fwd
+                self.x_poly_rev[0], self.x_poly_rev[1] = x_centre_rev, y_centre_rev
+
+            else:
+
+                # Preserve centre for the polynomial distortion
+                self.x_poly_fwd[0], self.x_poly_rev[0] = x_centre_fwd, x_centre_rev
+                self.y_poly_fwd[0], self.y_poly_rev[0] = y_centre_fwd, y_centre_rev
+
+
+        # Reset the image centre
+        else:
+            # Set the first coeffs to 0.5, as that is the real centre of the FOV
+            self.x_poly_fwd[0] = 0.5
+            self.y_poly_fwd[0] = 0.5
+            self.x_poly_rev[0] = 0.5
+            self.y_poly_rev[0] = 0.5
+
+            # If the distortion is radial, set the second X parameter to 0.5, as x_poly[1] is used for the Y
+            #   offset in the radial models
+            if self.distortion_type.startswith("radial"):
+                self.x_poly_fwd[0] /= self.X_res/2
+                self.x_poly_rev[0] /= self.X_res/2
+                self.x_poly_fwd[1] = 0.5/(self.Y_res/2)
+                self.x_poly_rev[1] = 0.5/(self.Y_res/2)
+
+                # If the distortion center is forced to the center of the image, reset all parameters to zero
+                if self.force_distortion_centre:
+                    self.x_poly_fwd *= 0
+                    self.x_poly_rev *= 0
+
+
+
+        self.x_poly = self.x_poly_fwd
+        self.y_poly = self.y_poly_fwd
+
+
+
+    def setDistortionType(self, distortion_type, reset_params=True):
+        """ Sets the distortion type. """
+
+        # List of distortion types
+        self.distortion_type_list = [
+            "poly3+radial", \
+            "poly3+radial3", \
+            "poly3+radial5", \
+            "radial3-all", \
+            "radial4-all", \
+            "radial5-all", \
+            "radial3-odd", \
+            "radial5-odd", \
+            "radial7-odd", \
+            "radial9-odd", \
+            ]
+
+        # Lenghts of full polynomials, (including distortion center, aspect, and asymmetry correction for 
+        #   radial distortions)
+        self.distortion_type_poly_length = [
+            12, 13, 14, 7, 8, 9, 6, 7, 8, 9
+        ]
+
+        # Set the length of the distortion polynomial depending on the distortion type
+        if distortion_type in self.distortion_type_list:
+
+            # If the new distortion type (poly vs radial) is different from the old, reset the parameters
+            if (distortion_type[:4] != self.distortion_type[:4]):
+                reset_params = True
+
+            # If the all vs odd only radial powers type is changed, reset the distortion
+            if distortion_type.startswith("radial"):
+                if (distortion_type[-3:] != self.distortion_type[-3:]):
+                    reset_params = True
+
+            
+            self.distortion_type = distortion_type
+
+            # Get the polynomial length
+            self.poly_length = self.distortion_type_poly_length[self.distortion_type_list.index(distortion_type)]
+
+
+            # Remove distortion center for radial distortions if it's not used
+            if distortion_type.startswith("radial"):
+                if self.force_distortion_centre:
+                    self.poly_length -= 2
+
+            # Remove aspect parameter for radial distortions if it's not used
+            if distortion_type.startswith("radial"):
+                if self.equal_aspect:
+                    self.poly_length -= 1
+
+            # Remove asymmetry correction parameters for radial distortions if they are not used
+            if distortion_type.startswith("radial"):
+                if not self.asymmetry_corr:
+                    self.poly_length -= 2
+
+
+
+        else:
+            raise ValueError("The distortion type is not recognized: {:s}".format(self.distortion_type))
+
+
+        # Reset distortion parameters
+        if reset_params:
+            self.resetDistortionParameters()
+
+
+        # Set the correct polynomial size
+        self.padDictParams()
+
+
+    def addVignettingCoeff(self, use_flat):
+        """ Add a vignetting coeff to the platepar if it doesn't have one.
+
+        Arguments:
+            use_flat: [bool] Is the flat used or not.
+        """
+
+        # Add a vignetting coefficient if it's not set
+        if self.vignetting_coeff is None:
+
+            # Only add it if a flat is not used
+            if use_flat:
+                self.vignetting_coeff = 0.0
+
+            else:
+
+                # Use 0.001 rad/px as the default coefficeint, as that's the one for 3.6 mm f/0.95 and 16 mm
+                #   f/1.0 lenses. The vignetting coeff is dependent on the resolution, the default value of
+                #   0.001 rad/px is for 720p.
+                self.vignetting_coeff = 0.001*np.hypot(1280, 720)/np.hypot(self.X_res, self.Y_res)
+
+
+    def fitPointing(self, jd, img_stars, catalog_stars, fixed_scale=False):
+        """ Fit pointing parameters to the list of star image and celectial catalog coordinates.
+        At least 4 stars are needed to fit the rigid body parameters.
+        
+        New parameters are saved to the given object (self).
+
+        Arguments:
+            jd: [float] Julian date of the image.
+            img_stars: [list] A list of (x, y, intensity_sum) entires for every star.
+            catalog_stars: [list] A list of (ra, dec, mag) entries for every star (degrees).
+
+        Keyword arguments:
+            fixed_scale: [bool] Keep the scale fixed. False by default.
+            
+        """
+
+
+        def _calcImageResidualsAstro(params, platepar, jd, catalog_stars, img_stars):
+            """ Calculates the differences between the stars on the image and catalog stars in image
+                coordinates with the given astrometrical solution.
+            """
+
+            # Extract fitting parameters
+            ra_ref, dec_ref, pos_angle_ref = params[:3]
+            if not fixed_scale:
+                F_scale = params[3]
+
+            img_x, img_y, _ = img_stars.T
+
+            pp_copy = copy.deepcopy(platepar)
+
+            # Assign guessed parameters
+            pp_copy.RA_d = ra_ref
+            pp_copy.dec_d = dec_ref
+            pp_copy.pos_angle_ref = pos_angle_ref
+
+            if not fixed_scale:
+                pp_copy.F_scale = abs(F_scale)
+
+
+            # Get image coordinates of catalog stars
+            catalog_x, catalog_y, catalog_mag = getCatalogStarsImagePositions(catalog_stars, jd, pp_copy)
+
+            # Calculate the sum of squared distances between image stars and catalog stars
+            dist_sum = np.sum((catalog_x - img_x)**2 + (catalog_y - img_y)**2)
+
+            return dist_sum
+
+
+        def _calcSkyResidualsAstro(params, platepar, jd, catalog_stars, img_stars):
+            """ Calculates the differences between the stars on the image and catalog stars in sky
+                coordinates with the given astrometrical solution.
+            """
+
+            # Extract fitting parameters
+            ra_ref, dec_ref, pos_angle_ref = params[:3]
+            if not fixed_scale:
+                F_scale = params[3]
+
+            img_x, img_y, _ = img_stars.T
+
+            pp_copy = copy.deepcopy(platepar)
+
+            # Assign guessed parameters
+            pp_copy.RA_d = ra_ref
+            pp_copy.dec_d = dec_ref
+            pp_copy.pos_angle_ref = pos_angle_ref
+
+            if not fixed_scale:
+                pp_copy.F_scale = abs(F_scale)
+
+                
+
+            img_x, img_y, _ = img_stars.T
+
+            # Get image coordinates of catalog stars
+            ra_array, dec_array = getPairedStarsSkyPositions(img_x, img_y, jd, pp_copy)
+
+            ra_catalog, dec_catalog, _ = catalog_stars.T
+
+            # Compute the sum of the angular separation
+            separation_sum = np.sum(angularSeparation(np.radians(ra_array), np.radians(dec_array), \
+                np.radians(ra_catalog), np.radians(dec_catalog))**2)
+
+
+            return separation_sum
+
+
+        # Initial parameters for the astrometric fit
+        p0 = [self.RA_d, self.dec_d, self.pos_angle_ref]
+
+        # Add fitting scale if not fixed
+        if not fixed_scale:
+            p0 += [abs(self.F_scale)]
+
+
+        # Fit the astrometric parameters using the reverse transform for reference        
+        res = scipy.optimize.minimize(_calcImageResidualsAstro, p0, \
+            args=(self, jd, catalog_stars, img_stars), method='SLSQP')
+
+        # # Fit the astrometric parameters using the forward transform for reference
+        #   WARNING: USING THIS MAKES THE FIT UNSTABLE
+        # res = scipy.optimize.minimize(_calcSkyResidualsAstro, p0, args=(self, jd, \
+        #     catalog_stars, img_stars), method='Nelder-Mead')
+
+        # Update fitted astrometric parameters
+        self.RA_d, self.dec_d, self.pos_angle_ref = res.x[:3]
+        if not fixed_scale:
+            self.F_scale = res.x[3]
+
+
+        # Force scale to be positive
+        self.F_scale = abs(self.F_scale)
+        
+        
+        # Update alt/az of pointing
+        self.updateRefAltAz()
+
+
+
+
+    def fitAstrometry(self, jd, img_stars, catalog_stars, first_platepar_fit=False, fit_only_pointing=False,
+        fixed_scale=False):
+        """ Fit astrometric parameters to the list of star image and celectial catalog coordinates.
+        At least 4 stars are needed to fit the rigid body parameters.
+        
+        New parameters are saved to the given object (self).
+
+        Arguments:
+            jd: [float] Julian date of the image.
+            img_stars: [list] A list of (x, y, intensity_sum) entires for every star.
+            catalog_stars: [list] A list of (ra, dec, mag) entries for every star (degrees).
+
+        Keyword arguments:
+            first_platepar_fit: [bool] Fit a platepar from scratch. False by default.
+            fit_only_pointing: [bool] Only fit the pointing parameters, and not distortion.
+            fixed_scale: [bool] Keep the scale fixed. False by default.
+
+        """
+
+
+
+        def _calcImageResidualsDistortion(params, platepar, jd, catalog_stars, img_stars, dimension):
+            """ Calculates the differences between the stars on the image and catalog stars in image
+                coordinates with the given astrometrical solution.
+            Arguments:
+                ...
+                dimension: [str] 'x' for X polynomial fit, 'y' for Y polynomial fit
+            """
+
+            # Set distortion parameters
+            pp_copy = copy.deepcopy(platepar)
+
+            if (dimension == 'x') or (dimension == 'radial'):
+                pp_copy.x_poly_rev = params
+                pp_copy.y_poly_rev = np.zeros(platepar.poly_length)
+
+            else:
+                pp_copy.x_poly_rev = np.zeros(platepar.poly_length)
+                pp_copy.y_poly_rev = params
+
+
+            img_x, img_y, _ = img_stars.T
+
+
+            # Get image coordinates of catalog stars
+            catalog_x, catalog_y, catalog_mag = getCatalogStarsImagePositions(catalog_stars, jd, pp_copy)
+
+
+            # Calculate the sum of squared distances between image stars and catalog stars, per every
+            #   dimension
+            if dimension == 'x':
+                dist_sum = np.sum((catalog_x - img_x)**2)
+
+            elif dimension == 'y':
+                dist_sum = np.sum((catalog_y - img_y)**2)
+
+            # Minimization for the radial distortion
+            else:
+
+                # Compute the image fit error
+                dist_sum = np.sum((catalog_x - img_x)**2 + (catalog_y - img_y)**2)
+
+
+            return dist_sum
+
+
+        # Modify the residuals function so that it takes a list of arguments
+        def _calcImageResidualsDistortionListArguments(params, *args, **kwargs):
+            return [_calcImageResidualsDistortion(param_line, *args, **kwargs) for param_line in params]
+
+
+        def _calcSkyResidualsDistortion(params, platepar, jd, catalog_stars, img_stars, dimension):
+            """ Calculates the differences between the stars on the image and catalog stars in sky
+                coordinates with the given astrometrical solution.
+            Arguments:
+                ...
+                dimension: [str] 'x' for X polynomial fit, 'y' for Y polynomial fit
+            """
+
+            pp_copy = copy.deepcopy(platepar)
+
+            if (dimension == 'x') or (dimension == 'radial'):
+                pp_copy.x_poly_fwd = params
+
+            else:
+                pp_copy.y_poly_fwd = params
+
+
+            img_x, img_y, _ = img_stars.T
+
+            # Get image coordinates of catalog stars
+            ra_array, dec_array = getPairedStarsSkyPositions(img_x, img_y, jd, pp_copy)
+
+            ra_catalog, dec_catalog, _ = catalog_stars.T
+
+            # Compute the sum of the angular separation
+            separation_sum = np.sum(angularSeparation(np.radians(ra_array), np.radians(dec_array), \
+                np.radians(ra_catalog), np.radians(dec_catalog))**2)
+
+            return separation_sum
+
+
+        # Modify the residuals function so that it takes a list of arguments
+        def _calcSkyResidualsDistortionListArguments(params, *args, **kwargs):
+            return [_calcSkyResidualsDistortion(param_line, *args, **kwargs) for param_line in params]
+
+
+
+        def _calcImageResidualsAstroAndDistortionRadial(params, platepar, jd, catalog_stars, img_stars):
+            """ Calculates the differences between the stars on the image and catalog stars in image
+                coordinates with the given astrometrical solution. Pointing and distortion paramters are used
+                in the fit.
+
+            Arguments:
+                ...
+                dimension: [str] 'x' for X polynomial fit, 'y' for Y polynomial fit
+            """
+
+            # Set distortion parameters
+            pp_copy = copy.deepcopy(platepar)
+
+            
+            # Unpack pointing parameters and assign to the copy of platepar used for the fit
+            ra_ref, dec_ref, pos_angle_ref, F_scale = params[:4]
+
+            pp_copy = copy.deepcopy(platepar)
+
+            # Unnormalize the pointing parameters
+            pp_copy.RA_d = (360*ra_ref)%(360)
+            pp_copy.dec_d = -90 + (90*dec_ref + 90)%(180.000001)
+            pp_copy.pos_angle_ref = (360*pos_angle_ref)%(360)
+            pp_copy.F_scale = abs(F_scale)
+
+
+            # Assign distortion parameters
+            pp_copy.x_poly_rev = params[4:]
+
+
+            img_x, img_y, _ = img_stars.T
+
+            # Get image coordinates of catalog stars
+            catalog_x, catalog_y, catalog_mag = getCatalogStarsImagePositions(catalog_stars, jd, pp_copy)
+
+
+            # Calculate the sum of squared distances between image stars and catalog stars
+            dist_sum = np.sum((catalog_x - img_x)**2 + (catalog_y - img_y)**2)
+
+
+            return dist_sum
+
+
+        def _calcSkyResidualsAstroAndDistortionRadial(params, platepar, jd, catalog_stars, img_stars):
+            """ Calculates the differences between the stars on the image and catalog stars in celestial
+                coordinates with the given astrometrical solution. Pointing and distortion paramters are used
+                in the fit.
+    
+            """
+
+            # Set distortion parameters
+            pp_copy = copy.deepcopy(platepar)
+
+            
+            # Unpack pointing parameters and assign to the copy of platepar used for the fit
+            ra_ref, dec_ref, pos_angle_ref, F_scale = params[:4]
+
+            pp_copy = copy.deepcopy(platepar)
+
+            # Unnormalize the pointing parameters
+            pp_copy.RA_d = (360*ra_ref)%(360)
+            pp_copy.dec_d = -90 + (90*dec_ref + 90)%(180.000001)
+            pp_copy.pos_angle_ref = (360*pos_angle_ref)%(360)
+            pp_copy.F_scale = abs(F_scale)
+
+
+            # Assign distortion parameters
+            pp_copy.x_poly_fwd = params[4:]
+
+
+            img_x, img_y, _ = img_stars.T
+
+            # Get image coordinates of catalog stars
+            ra_array, dec_array = getPairedStarsSkyPositions(img_x, img_y, jd, pp_copy)
+
+            ra_catalog, dec_catalog, _ = catalog_stars.T
+
+            # Compute the sum of the angular separation
+            separation_sum = np.sum(angularSeparation(np.radians(ra_array), np.radians(dec_array), \
+                np.radians(ra_catalog), np.radians(dec_catalog))**2)
+
+
+            return separation_sum
+
+
+        # print('ASTRO', _calcImageResidualsAstro([self.RA_d, self.dec_d,
+        #     self.pos_angle_ref, self.F_scale],  catalog_stars, img_stars))
+
+        # print('DIS_X', _calcImageResidualsDistortion(self.x_poly_rev,  catalog_stars, \
+        #     img_stars, 'x'))
+
+        # print('DIS_Y', _calcImageResidualsDistortion(self.y_poly_rev,  catalog_stars, \
+        #     img_stars, 'y'))
+
+
+
+        ### ASTROMETRIC PARAMETERS FIT ###
+
+        # Fit the pointing parameters (RA, Dec, rotation, scale)
+        #   Only do the fit for the polynomial distortion model, or the first time if the radial distortion
+        #   is used
+        if self.distortion_type.startswith("poly") \
+            or (not self.distortion_type.startswith("poly") and first_platepar_fit) or fit_only_pointing:
+
+            self.fitPointing(jd, img_stars, catalog_stars, fixed_scale=fixed_scale)
+
+        ### ###
+
+
+
+        ### DISTORTION FIT ###
+
+        # Fit the polynomial distortion parameters if there are enough picked stars
+        min_fit_stars = self.poly_length + 1
+
+        if (len(img_stars) >= min_fit_stars) and (not fit_only_pointing):
+
+            # Fit the polynomial distortion
+            if self.distortion_type.startswith("poly"):
+
+
+                ### REVERSE MAPPING FIT ###
+
+                # Fit distortion parameters in X direction, reverse mapping
+                res = scipy.optimize.minimize(_calcImageResidualsDistortion, self.x_poly_rev, \
+                    args=(self, jd, catalog_stars, img_stars, 'x'), method='Nelder-Mead', \
+                    options={'maxiter': 10000, 'adaptive': True})
+
+                # Exctact fitted X polynomial
+                self.x_poly_rev = res.x
+
+                # Fit distortion parameters in Y direction, reverse mapping
+                res = scipy.optimize.minimize(_calcImageResidualsDistortion, self.y_poly_rev, \
+                    args=(self, jd, catalog_stars, img_stars, 'y'), method='Nelder-Mead', \
+                    options={'maxiter': 10000, 'adaptive': True})
+
+                # Extract fitted Y polynomial
+                self.y_poly_rev = res.x
+
+
+                ### ###
+
+
+                # If this is the first fit of the distortion, set the forward parametrs to be equal to the reverse
+                if first_platepar_fit:
+
+                    self.x_poly_fwd = np.array(self.x_poly_rev)
+                    self.y_poly_fwd = np.array(self.y_poly_rev)
+
+
+
+                ### FORWARD MAPPING FIT ###
+
+                # Fit distortion parameters in X direction, forward mapping
+                res = scipy.optimize.minimize(_calcSkyResidualsDistortion, self.x_poly_fwd, \
+                    args=(self, jd, catalog_stars, img_stars, 'x'), method='Nelder-Mead', \
+                    options={'maxiter': 10000, 'adaptive': True})
+
+                # Extract fitted X polynomial
+                self.x_poly_fwd = res.x
+
+
+                # Fit distortion parameters in Y direction, forward mapping
+                res = scipy.optimize.minimize(_calcSkyResidualsDistortion, self.y_poly_fwd, \
+                    args=(self, jd, catalog_stars, img_stars, 'y'), method='Nelder-Mead', \
+                    options={'maxiter': 10000, 'adaptive': True})
+
+                # IMPORTANT NOTE - the X polynomial is used to store the fit paramters
+                self.y_poly_fwd = res.x
+
+
+                ### ###
+
+
+            # Fit radial distortion (+ pointing)
+            else:
+
+
+                ### FORWARD MAPPING FIT ###
+
+
+                # # Fit the radial distortion - the X polynomial is used to store the fit paramters
+                # res = scipy.optimize.minimize(_calcSkyResidualsDistortion, self.x_poly_fwd, \
+                #     args=(self, jd, catalog_stars, img_stars, 'radial'), method='Nelder-Mead', \
+                #     options={'maxiter': 10000, 'adaptive': True})
+
+
+                # # Extract distortion parameters, IMPORTANT NOTE - the X polynomial is used to store the 
+                # #   fit paramters
+                # self.x_poly_fwd = res.x
+
+
+
+                # Fitting the pointing direction below! - if used, it should be put BEFORE the reverse fit!
+                # Initial parameters for the pointing and distortion fit (normalize to the 0-1 range)
+                p0  = [self.RA_d/360, self.dec_d/90, self.pos_angle_ref/360, abs(self.F_scale)]
+                p0 += self.x_poly_fwd.tolist()
+
+                # Fit the radial distortion - the X polynomial is used to store the fit paramters
+                res = scipy.optimize.minimize(_calcSkyResidualsAstroAndDistortionRadial, p0, \
+                    args=(self, jd, catalog_stars, img_stars), method='Nelder-Mead', \
+                    options={'maxiter': 10000, 'adaptive': True})
+
+                # Update fitted astrometric parameters (Unnormalize the pointing parameters)
+                ra_ref, dec_ref, pos_angle_ref, F_scale = res.x[:4]
+                self.RA_d = (360*ra_ref)%(360)
+                self.dec_d = -90 + (90*dec_ref + 90)%(180.000001)
+                self.pos_angle_ref = (360*pos_angle_ref)%(360)
+                self.F_scale = abs(F_scale)
+
+                self.updateRefAltAz()
+
+
+                # Extract distortion parameters, IMPORTANT NOTE - the X polynomial is used to store the 
+                #   fit paramters
+                self.x_poly_fwd = res.x[4:]
+
+                ### ###
+
+
+                # If this is the first fit of the distortion, set the forward parametrs to be equal to the reverse
+                if first_platepar_fit:
+                    self.x_poly_rev = np.array(self.x_poly_fwd)
+
+
+                ### REVERSE MAPPING FIT ###
+
+
+                # # Initial parameters for the pointing and distortion fit (normalize to the 0-1 range)
+                # p0  = [self.RA_d/360.0, self.dec_d/90.0, self.pos_angle_ref/360.0, abs(self.F_scale)]
+                # p0 += self.x_poly_rev.tolist()
+
+
+                # # Fit the radial distortion - the X polynomial is used to store the fit paramters
+                # res = scipy.optimize.minimize(_calcImageResidualsAstroAndDistortionRadial, p0, \
+                #     args=(self, jd, catalog_stars, img_stars), method='Nelder-Mead', \
+                #     options={'maxiter': 10000, 'adaptive': True})
+
+
+                # # Update fitted astrometric parameters (Unnormalize the pointing parameters)
+                # ra_ref, dec_ref, pos_angle_ref, F_scale = res.x[:4]
+                # self.RA_d = (360*ra_ref)%(360)
+                # self.dec_d = -90 + (90*dec_ref + 90)%(180.000001)
+                # self.pos_angle_ref = (360*pos_angle_ref)%(360)
+                # self.F_scale = abs(F_scale)
+
+                # # Compute reference Alt/Az to apparent coordinates, epoch of date
+                # self.updateRefAltAz()
+
+
+                # # Extract distortion parameters, IMPORTANT NOTE - the X polynomial is used to store the 
+                # #   fit paramters
+                # self.x_poly_rev = res.x[4:]
+
+
+
+                ## Distortion-only fit below!
+
+                # Fit the radial distortion - the X polynomial is used to store the fit paramters
+                res = scipy.optimize.minimize(_calcImageResidualsDistortion, self.x_poly_rev, \
+                    args=(self, jd, catalog_stars, img_stars, 'radial'), method='Nelder-Mead', \
+                    options={'maxiter': 10000, 'adaptive': True})
+
+
+                # Extract distortion parameters, IMPORTANT NOTE - the X polynomial is used to store the 
+                #   fit paramters
+                self.x_poly_rev = res.x
+
+
+                ### ###
+
+
+
+
+        else:
+            if (len(img_stars) < min_fit_stars):
+                print('Too few stars to fit the distortion, only the astrometric parameters where fitted!')
+
+
+        # Set the list of stars used for the fit to the platepar
+        fit_star_list = []
+        for img_coords, cat_coords in zip(img_stars, catalog_stars):
+
+            # Store time, image coordinate x, y, intensity, catalog ra, dec, mag
+            fit_star_list.append([jd] + img_coords.tolist() + cat_coords.tolist())
+
+
+        self.star_list = fit_star_list
+
+
+        # Set the flag to indicate that the platepar was manually fitted
+        self.auto_check_fit_refined = False
+        self.auto_recalibrated = False
+
+        ### ###
+
+
+    def parseLine(self, f):
+        """ Read next line, split the line and convert parameters to float.
+        @param f: [file handle] file we want to read
+        @return (a1, a2, ...): [tuple of floats] parsed data from the line
+        """
+
+        return map(float, f.readline().split())
+
+
+    def padDictParams(self):
+        """ Update the array length if an old platepar version was loaded which was shorter/longer. """
+
+        # Extend the array if it's too short
+        if self.x_poly_fwd.shape[0] < self.poly_length:
+            self.x_poly_fwd = np.pad(self.x_poly_fwd, (0, self.poly_length - self.x_poly_fwd.shape[0]), \
+                'constant', constant_values=0)
+            self.x_poly_rev = np.pad(self.x_poly_rev, (0, self.poly_length - self.x_poly_rev.shape[0]), \
+                'constant', constant_values=0)
+            self.y_poly_fwd = np.pad(self.y_poly_fwd, (0, self.poly_length - self.y_poly_fwd.shape[0]), \
+                'constant', constant_values=0)
+            self.y_poly_rev = np.pad(self.y_poly_rev, (0, self.poly_length - self.y_poly_rev.shape[0]), \
+                'constant', constant_values=0)
+
+
+        # Cut the array if it's too long
+        if self.x_poly_fwd.shape[0] > self.poly_length:
+            self.x_poly_fwd = self.x_poly_fwd[:self.poly_length]
+            self.x_poly_rev = self.x_poly_rev[:self.poly_length]
+            self.y_poly_fwd = self.y_poly_fwd[:self.poly_length]
+            self.y_poly_rev = self.y_poly_rev[:self.poly_length]
+
+
+    def loadFromDict(self, platepar_dict, use_flat=None):
+        """ Load the platepar from a dictionary. """
+
+        # Parse JSON into an object with attributes corresponding to dict keys
+        self.__dict__ = platepar_dict
+
+        # Add the version if it was not in the platepar (v1 platepars didn't have a version)
+        if not 'version' in self.__dict__:
+            self.version = 1
+
+
+        # If the refraction was not used for the fit, assume it is disabled
+        if not 'refraction' in self.__dict__:
+            self.refraction = False
+
+
+        # If the measurement correction for refraction (if it was not taken into account during calibration)
+        #   is not present, assume it's false
+        if not 'measurement_apparent_to_true_refraction' in self.__dict__:
+            self.measurement_apparent_to_true_refraction = False
+
+
+        # Add equal aspect
+        if not 'equal_aspect' in self.__dict__:
+            self.equal_aspect = False
+
+
+        # Add asymmetry correction
+        if not 'asymmetry_corr' in self.__dict__:
+            self.asymmetry_corr = False
+
+
+        # Add forcing distortion centre to image center
+        if not 'force_distortion_centre' in self.__dict__:
+            self.force_distortion_centre = False
+
+
+        # Add the distortion type if not present (assume it's the polynomal type with the radial term)
+        if not 'distortion_type' in self.__dict__:
+
+            # Check if the variable with the typo was used and correct it
+            if 'distortion_type' in self.__dict__:
+                self.distortion_type = self.distortion_type
+                del self.distortion_type
+
+            # Otherwise, assume the polynomial type
+            else:
+                self.distortion_type = "poly3+radial"
+
+        # Add UT correction if it was not in the platepar
+        if not 'UT_corr' in self.__dict__:
+            self.UT_corr = 0
+
+        # Add the gamma if it was not in the platepar
+        if not 'gamma' in self.__dict__:
+            self.gamma = 1.0
+
+        # Add the vignetting coefficient if it was not in the platepar
+        if not 'vignetting_coeff' in self.__dict__:
+            self.vignetting_coeff = None
+
+            # Add the default vignetting coeff
+            self.addVignettingCoeff(use_flat=use_flat)
+
+        # Add keeping the vignetting coefficient fixed
+        if not 'vignetting_fixed' in self.__dict__:
+            self.vignetting_fixed = False
+
+        # Add extinction scale
+        if not 'extinction_scale' in self.__dict__:
+            self.extinction_scale = 1.0
+
+        # Add the list of calibration stars if it was not in the platepar
+        if not 'star_list' in self.__dict__:
+            self.star_list = []
+
+        # If v1 only the backward distortion coeffs were fitted, so use load them for both forward and
+        #   reverse if nothing else is available
+        if not 'x_poly_fwd' in self.__dict__:
+
+            self.x_poly_fwd = np.array(self.x_poly)
+            self.x_poly_rev = np.array(self.x_poly)
+            self.y_poly_fwd = np.array(self.y_poly)
+            self.y_poly_rev = np.array(self.y_poly)
+
+
+        # Convert lists to numpy arrays
+        self.x_poly_fwd = np.array(self.x_poly_fwd)
+        self.x_poly_rev = np.array(self.x_poly_rev)
+        self.y_poly_fwd = np.array(self.y_poly_fwd)
+        self.y_poly_rev = np.array(self.y_poly_rev)
+
+
+        # Set the distortion type
+        self.setDistortionType(self.distortion_type, reset_params=False)
+
+
+        # Set polynomial parameters used by the old code
+        self.x_poly = self.x_poly_fwd
+        self.y_poly = self.y_poly_fwd
+
+
+        # Add rotation from horizontal
+        if not 'rotation_from_horiz' in self.__dict__:
+            self.rotation_from_horiz = RMS.Astrometry.ApplyAstrometry.rotationWrtHorizon(self)
+
+        # Calculate the datetime
+        self.time = jd2Date(self.JD, dt_obj=True)
+
+
+
+
+    def read(self, file_name, fmt=None, use_flat=None):
+        """ Read the platepar.
+
+        Arguments:
+            file_name: [str] Path and the name of the platepar to read.
+        Keyword arguments:
+            fmt: [str] Format of the platepar file. 'json' for JSON format and 'txt' for the usual CMN textual
+                format.
+            use_flat: [bool] Indicates wheter a flat is used or not. None by default.
+        Return:
+            fmt: [str]
+        """
+
+
+        # Check if platepar exists
+        if not os.path.isfile(file_name):
+            return False
+
+
+        # Determine the type of the platepar if it is not given
+        if fmt is None:
+
+            with open(file_name) as f:
+                data = " ".join(f.readlines())
+
+                # Try parsing the file as JSON
+                try:
+                    json.loads(data)
+                    fmt = 'json'
+
+                except:
+                    fmt = 'txt'
+
+
+        # Load the file as JSON
+        if fmt == 'json':
+
+            # Load the JSON file
+            with open(file_name) as f:
+                data = " ".join(f.readlines())
+
+            # Load the platepar from the JSON dictionary
+            self.loadFromDict(json.loads(data), use_flat=use_flat)
+
+
+
+
+        # Load the file as TXT (old CMN format)
+        else:
+
+            with open(file_name) as f:
+
+                self.UT_corr = 0
+                self.gamma = 1.0
+                self.star_list = []
+
+                # Parse latitude, longitude, elevation
+                self.lon, self.lat, self.elev = self.parseLine(f)
+
+                # Parse date and time as int
+                D, M, Y, h, m, s = map(int, f.readline().split())
+
+                # Calculate the datetime of the platepar time
+                self.time = datetime.datetime(Y, M, D, h, m, s)
+
+                # Convert time to JD
+                self.JD = date2JD(Y, M, D, h, m, s)
+
+                # Calculate the reference hour angle
+                T = (self.JD - 2451545.0)/36525.0
+                self.Ho = (280.46061837 + 360.98564736629*(self.JD - 2451545.0) + 0.000387933*T**2 - \
+                    T**3/38710000.0)%360
+
+                # Parse camera parameters
+                self.X_res, self.Y_res, self.focal_length = self.parseLine(f)
+
+                # Parse the right ascension of the image centre
+                self.RA_d, self.RA_H, self.RA_M, self.RA_S = self.parseLine(f)
+
+                # Parse the declination of the image centre
+                self.dec_d, self.dec_D, self.dec_M, self.dec_S = self.parseLine(f)
+
+                # Parse the rotation parameter
+                self.pos_angle_ref = self.parseLine(f)[0]
+
+                # Parse the image scale (convert from arcsec/px to px/deg)
+                self.F_scale = self.parseLine(f)[0]
+                self.F_scale = 3600/self.F_scale
+
+                # Load magnitude slope parameters
+                self.mag_0, self.mag_lev = self.parseLine(f)
+
+                # Load X axis polynomial parameters
+                self.x_poly_fwd = self.x_poly_rev = np.zeros(shape=(self.poly_length,), dtype=np.float64)
+                for i in range(self.poly_length):
+                    self.x_poly_fwd[i] = self.x_poly_fwd[i] = self.parseLine(f)[0]
+
+                # Load Y axis polynomial parameters
+                self.y_poly_fwd = self.y_poly_rev = np.zeros(shape=(self.poly_length,), dtype=np.float64)
+                for i in range(self.poly_length):
+                    self.y_poly_fwd[i] = self.y_poly_rev[i] = self.parseLine(f)[0]
+
+                # Read station code
+                self.station_code = f.readline().replace('\r', '').replace('\n', '')
+
+
+        # Add a default vignetting coefficient if it already doesn't exist
+        self.addVignettingCoeff(use_flat)
+
+        return fmt
+
+
+    def jsonStr(self):
+        """ Returns the JSON representation of the platepar as a string. """
+
+        # Make a copy of the platepar object, which will be modified for writing
+        self2 = copy.deepcopy(self)
+
+        # Convert numpy arrays to list, which can be serialized
+        self2.x_poly_fwd = self.x_poly_fwd.tolist()
+        self2.x_poly_rev = self.x_poly_rev.tolist()
+        self2.y_poly_fwd = self.y_poly_fwd.tolist()
+        self2.y_poly_rev = self.y_poly_rev.tolist()
+        del self2.time
+
+        # For compatibility with old procedures, write the forward distortion parameters as x, y
+        self2.x_poly = self.x_poly_fwd.tolist()
+        self2.y_poly = self.y_poly_fwd.tolist()
+
+        out_str = json.dumps(self2, default=lambda o: o.__dict__, indent=4, sort_keys=True)
+
+        return out_str
+
+
+    def write(self, file_path, fmt=None, fov=None, ret_written=False):
+        """ Write platepar to file.
+
+        Arguments:
+            file_path: [str] Path and the name of the platepar to write.
+        Keyword arguments:
+            fmt: [str] Format of the platepar file. 'json' for JSON format and 'txt' for the usual CMN textual
+                format. The format is JSON by default.
+            fov: [tuple] Tuple of horizontal and vertical FOV size in degree. None by default.
+            ret_written: [bool] If True, the JSON string of the platepar instead of writing it to disk.
+        Return:
+            fmt: [str] Platepar format.
+        """
+
+        # If the FOV size was given, store it
+        if fov is not None:
+            self.fov_h, self.fov_v = fov
+
+
+        # Set JSON to be the defualt format
+        if fmt is None:
+            fmt = 'json'
+
+
+        # If the format is JSON, write a JSON file
+        if fmt == 'json':
+
+            out_str = self.jsonStr()
+
+            with open(file_path, 'w') as f:
+                f.write(out_str)
+
+            if ret_written:
+                return fmt, out_str
+
+
+        # Old CMN format
+        else:
+
+            with open(file_path, 'w') as f:
+
+                # Write geo coords
+                f.write('{:9.6f} {:9.6f} {:04d}\n'.format(self.lon, self.lat, int(self.elev)))
+
+                # Calculate reference time from reference JD
+                Y, M, D, h, m, s, ms = list(map(int, jd2Date(self.JD)))
+
+                # Write the reference time
+                f.write('{:02d} {:02d} {:04d} {:02d} {:02d} {:02d}\n'.format(D, M, Y, h, m, s))
+
+                # Write resolution and focal length
+                f.write('{:d} {:d} {:f}\n'.format(int(self.X_res), int(self.Y_res), self.focal_length))
+
+                # Write reference RA
+                self.RA_H = int(self.RA_d/15)
+                self.RA_M = int((self.RA_d/15 - self.RA_H)*60)
+                self.RA_S = int(((self.RA_d/15 - self.RA_H)*60 - self.RA_M)*60)
+
+                f.write("{:7.3f} {:02d} {:02d} {:02d}\n".format(self.RA_d, self.RA_H, self.RA_M, self.RA_S))
+
+                # Write reference Dec
+                self.dec_D = int(self.dec_d)
+                self.dec_M = int((self.dec_d - self.dec_D)*60)
+                self.dec_S = int(((self.dec_d - self.dec_D)*60 - self.dec_M)*60)
+
+                f.write("{:+7.3f} {:02d} {:02d} {:02d}\n".format(self.dec_d, self.dec_D, self.dec_M, self.dec_S))
+
+                # Write rotation parameter
+                f.write('{:<7.3f}\n'.format(self.pos_angle_ref))
+
+                # Write F scale
+                f.write('{:<5.1f}\n'.format(3600/self.F_scale))
+
+                # Write magnitude fit
+                f.write("{:.3f} {:.3f}\n".format(self.mag_0, self.mag_lev))
+
+                # Write X distortion polynomial
+                for x_elem in self.x_poly_fwd:
+                    f.write('{:+E}\n'.format(x_elem))
+
+                # Write y distortion polynomial
+                for y_elem in self.y_poly_fwd:
+                    f.write('{:+E}\n'.format(y_elem))
+
+                # Write station code
+                f.write(str(self.station_code) + '\n')
+
+            if ret_written:
+                with open(file_path) as f:
+                    out_str = "\n".join(f.readlines())
+
+                return fmt, out_str
+
+
+        return fmt
+
+
+    def updateRefAltAz(self):
+        """ Update the reference apparent azimuth and altitude from the reference RA and Dec. """
+
+        # Compute reference Alt/Az to apparent coordinates, epoch of date
+        az_centre, alt_centre = cyTrueRaDec2ApparentAltAz( \
+            np.radians(self.RA_d), np.radians(self.dec_d), self.JD, \
+            np.radians(self.lat), np.radians(self.lon), self.refraction)
+        self.az_centre, self.alt_centre = np.degrees(az_centre), np.degrees(alt_centre)
+
+        # Update the rotation wrt horizon
+        self.rotation_from_horiz = RMS.Astrometry.ApplyAstrometry.rotationWrtHorizon(self)
+
+
+    def updateRefRADec(self, skip_rot_update=False, preserve_rotation=False):
+        """ Update the reference RA and Dec (true in J2000) from Alt/Az (apparent in epoch of date). """
+
+        if (not skip_rot_update) and (not preserve_rotation):
+
+            # Save the current rotation w.r.t horizon value
+            self.rotation_from_horiz = RMS.Astrometry.ApplyAstrometry.rotationWrtHorizon(self)
+
+
+        # Convert the reference apparent Alt/Az in the epoch of date to true RA/Dec in J2000
+        ra, dec = cyApparentAltAz2TrueRADec(\
+            np.radians(self.az_centre), np.radians(self.alt_centre), self.JD, \
+            np.radians(self.lat), np.radians(self.lon), self.refraction)
+
+
+        # Assign the computed RA/Dec to platepar
+        self.RA_d = np.degrees(ra)
+        self.dec_d = np.degrees(dec)
+
+
+        if not skip_rot_update:
+
+            # Update the position angle so that the rotation wrt horizon doesn't change
+            self.pos_angle_ref = RMS.Astrometry.ApplyAstrometry.rotationWrtHorizonToPosAngle(self, \
+                self.rotation_from_horiz)
+
+
+    def switchToGroundPicks(self):
+        """ Switch the reference pointing so that points on the ground may be correctly measured. """
+
+        # If the refraction was on, turn if off and correct the centre
+        if self.refraction:
+            
+            self.refraction = False
+
+            # Preserve the reference elevation of the pointing as the apparent pointing
+            # self.alt_centre = np.degrees(pyRefractionTrueToApparent(np.radians(self.alt_centre)))
+
+            self.updateRefRADec(preserve_rotation=True)
+
+
+
+    def __repr__(self):
+
+        # Compute alt/az pointing
+        azim, elev = trueRaDec2ApparentAltAz(self.RA_d, self.dec_d, self.JD, self.lat, self.lon, \
+            refraction=self.refraction)
+
+        out_str  = "Platepar\n"
+        out_str += "--------\n"
+        out_str += "Camera info:\n"
+        out_str += "    Lat (+N)  = {:+11.6f} deg\n".format(self.lat)
+        out_str += "    Lon (+E)  = {:+11.6f} deg\n".format(self.lon)
+        out_str += "    Ele (MSL) = {:11.2f} m\n".format(self.elev)
+        out_str += "    FOV       = {:6.2f} x {:6.2f} deg\n".format(*RMS.Astrometry.ApplyAstrometry.computeFOVSize(self))
+        out_str += "    Img res   = {:6d} x {:6d} px\n".format(self.X_res, self.Y_res)
+        out_str += "Reference pointing - equatorial (J2000):\n"
+        out_str += "    JD      = {:.10f} \n".format(self.JD)
+        out_str += "    RA      = {:11.6f} deg\n".format(self.RA_d)
+        out_str += "    Dec     = {:+11.6f} deg\n".format(self.dec_d)
+        out_str += "    Pos ang = {:.6f} deg\n".format(self.pos_angle_ref)
+        out_str += "    Pix scl = {:.2f} arcmin/px\n".format(60/self.F_scale)
+        out_str += "Reference pointing - apparent azimuthal (date):\n"
+        out_str += "    Azim    = {:.6f} deg (+E of N)\n".format(azim)
+        out_str += "    Alt     = {:.6f} deg\n".format(elev)
+        out_str += "    Rot/hor = {:.6f} deg\n".format(RMS.Astrometry.ApplyAstrometry.rotationWrtHorizon(self))
+        out_str += "Distortion:\n"
+        out_str += "    Type = {:s}\n".format(self.distortion_type)
+
+        # If the polynomial is used, the X axis parameters are stored in x_poly, otherwise radials paramters
+        #   are used
+        if self.distortion_type.startswith("poly"):
+            out_str += "    Distortion coeffs (polynomial):\n"
+            dist_string = "X"
+
+            # Poly parameters for printing (needed for radial which will be modified)
+            x_poly_fwd_print = self.x_poly_fwd
+            x_poly_rev_print = self.x_poly_rev
+
+        # Radial coefficients
+        else:
+            out_str += "    Distortion coeffs (radial):\n"
+
+            out_str += "           "
+            if not self.force_distortion_centre:
+                out_str += " x0 (px),  y0 (px), "
+
+            if not self.equal_aspect:
+                out_str += "aspect-1, "
+
+            if self.asymmetry_corr:
+                out_str += "      a1, a2 (deg), "
+
+            out_str +="      k1,       k2,       k3,       k4\n"
+            
+            dist_string = ""
+
+
+
+            x_poly_fwd_print = np.array(self.x_poly_fwd)
+            x_poly_rev_print = np.array(self.x_poly_rev)
+
+            if not self.force_distortion_centre:
+
+                # Report x0 and y0 in px (unnormalize and wrap)
+                x_poly_fwd_print[0] *= self.X_res/2
+                x_poly_fwd_print[1] *= self.Y_res/2
+                x_poly_rev_print[0] *= self.X_res/2
+                x_poly_rev_print[1] *= self.Y_res/2
+                x_poly_fwd_print[0] = -self.X_res/2.0 + (x_poly_fwd_print[0] + self.X_res/2.0)%self.X_res
+                x_poly_fwd_print[1] = -self.Y_res/2.0 + (x_poly_fwd_print[1] + self.Y_res/2.0)%self.Y_res
+                x_poly_rev_print[0] = -self.X_res/2.0 + (x_poly_rev_print[0] + self.X_res/2.0)%self.X_res
+                x_poly_rev_print[1] = -self.Y_res/2.0 + (x_poly_rev_print[1] + self.Y_res/2.0)%self.Y_res
+
+            
+            # Convert the asymmetry correction parameter to degrees
+            if self.asymmetry_corr:
+                asym_ang_index = 4
+                
+                if self.force_distortion_centre:
+                    asym_ang_index -= 2
+
+                if self.equal_aspect:
+                    asym_ang_index -= 1
+
+                x_poly_fwd_print[asym_ang_index] = np.degrees((2*np.pi*x_poly_fwd_print[asym_ang_index]) \
+                    %(2*np.pi))
+                x_poly_rev_print[asym_ang_index] = np.degrees((2*np.pi*x_poly_rev_print[asym_ang_index]) \
+                    %(2*np.pi))
+
+
+
+
+        out_str += "img2sky {:s} = {:s}\n".format(dist_string, ", ".join(["{:+8.3f}".format(c) \
+            if abs(c) > 10e-4 else "{:+8.1e}".format(c) for c in x_poly_fwd_print]))
+        out_str += "sky2img {:s} = {:s}\n".format(dist_string, ", ".join(["{:+8.3f}".format(c) \
+            if abs(c) > 10e-4 else "{:+8.1e}".format(c) for c in x_poly_rev_print]))
+
+        # Only print the rest if the polynomial fit is used
+        if self.distortion_type.startswith("poly"):
+            out_str += "img2sky Y = {:s}\n".format(", ".join(["{:+8.3f}".format(c) \
+                if abs(c) > 10e-4 else "{:+8.1e}".format(c) for c in self.y_poly_fwd]))
+            out_str += "sky2img Y = {:s}\n".format(", ".join(["{:+8.3f}".format(c) \
+                if abs(c) > 10e-4 else "{:+8.1e}".format(c) for c in self.y_poly_rev]))
+
+        return out_str
+RMS/Astrometry/Conversions.py
+def date2JD(year, month, day, hour, minute, second, millisecond=0, UT_corr=0.0):
+    """ Convert date and time to Julian Date with epoch J2000.0.
+    @param year: [int] year
+    @param month: [int] month
+    @param day: [int] day of the date
+    @param hour: [int] hours
+    @param minute: [int] minutes
+    @param second: [int] seconds
+    @param millisecond: [int] milliseconds (optional)
+    @param UT_corr: [float] UT correction in hours (difference from local time to UT)
+    @return :[float] julian date, epoch 2000.0
+    """
+
+    # Convert all input arguments to integer (except milliseconds)
+    year, month, day, hour, minute, second = map(int, (year, month, day, hour, minute, second))
+
+    # Create datetime object of current time
+    dt = datetime(year, month, day, hour, minute, second, int(millisecond*1000))
+
+    # Calculate Julian date
+    julian = dt - JULIAN_EPOCH + J2000_JD - timedelta(hours=UT_corr)
+
+    # Convert seconds to day fractions
+    return julian.days + (julian.seconds + julian.microseconds/1000000.0)/86400.0
+RMS/Formats/FrameInterface.py
+def detectInputType(input_path, config, beginning_time=None, fps=None, skip_ff_dir=False, detection=False,
+    use_fr_files=False):
+    """ Given the folder of a file, detect the input format.
+
+    Arguments:
+        input_path: [str] Input directory path (e.g. dir with FF files or path to a video file).
+        config: [Config Struct]
+
+    Keyword arguments:
+        beginning_time: [datetime] Datetime of the video beginning. Optional, only can be given for
+            video input formats.
+        fps: [float] Frames per second, used only when images in a folder are used. If it's not given,
+            it will be read from the config file.
+        skip_ff_dir: [bool] Skip the input type where there are multiple FFs in the same directory. False
+            by default. This is only used for ManualReduction.
+        detection: [bool] Indicates that the input is used for detection. False by default. This will
+                control whether the binning is applied or not. No effect on FF image handle.
+        use_fr_files: [bool] Include FR files together with FF files. False by default, only used in SkyFit.
+
+    """
+    
+
+    if os.path.isdir(input_path):
+
+        # Detect input type if a directory is given
+        img_handle = detectInputTypeFolder(input_path, config, beginning_time=beginning_time, fps=fps, \
+            skip_ff_dir=skip_ff_dir, detection=detection, use_fr_files=use_fr_files)
+        
+    else:
+        # Detect input type if a path to a file is given
+        img_handle = detectInputTypeFile(input_path, config, beginning_time=beginning_time, fps=fps, \
+            detection=fps)
+
+    return img_handle
+RMS/Pickling.py
+def loadPickle(dir_path, file_name):
+    """ Loads pickle file.
+	
+	Arguments:
+		dir_path: [str] Path of the directory where the pickle file will be stored.
+        file_name: [str] Name of the file where the object will be stored.
+
+    """
+
+    with open(os.path.join(dir_path, file_name), 'rb') as f:
+
+        # Try loading the Pickle file
+
+        try:
+            # Python 2
+            if sys.version_info[0] < 3:
+                return pickle.load(f)
+
+            # Python 3
+            else:
+                return pickle.load(f, encoding='latin1')
+
+        except (IOError, EOFError, TypeError, KeyError):
+            
+            print('The pickle file was corruped and could not be loaded:', os.path.join(dir_path, file_name))
+            return None
+RMS/Astrometry/ApplyAstrometry.py
+def rotationWrtStandardToPosAngle(platepar, rot_angle):
+    """ Given the rotation angle w.r.t horizon, numerically compute the position angle.
+
+    Arguments:
+        pletepar: [Platepar object] Input platepar.
+        rot_angle: [float] The rotation angle w.r.t. horizon (deg)>
+    Return:
+        pos_angle: [float] Position angle (deg).
+    """
+
+    platepar = copy.deepcopy(platepar)
+    rot_angle = rot_angle%360
+
+
+    def _rotAngleResidual(params, rot_angle):
+
+        # Set the given position angle to the platepar
+        platepar.pos_angle_ref = params[0]
+
+        # Compute the rotation angle with the given guess of the position angle
+        rot_angle_computed = rotationWrtStandard(platepar)%360
+
+        # Compute the deviation between computed and desired angle
+        return 180 - abs(abs(rot_angle - rot_angle_computed) - 180)
+
+
+
+    # Numerically find the position angle
+    res = scipy.optimize.minimize(_rotAngleResidual, [platepar.pos_angle_ref], args=(rot_angle), \
+        method='Nelder-Mead')
+
+
+    return res.x[0]%360
+RMS/Astrometry/ApplyAstrometry.py
+def photomLine(input_params, photom_offset, vignetting_coeff):
+    """ Line used for photometry, the slope is fixed to -2.5, only the photometric offset is given.
+
+    Arguments:
+        input_params: [tuple]
+            - px_sum: [float] sum of pixel intensities.
+            - radius: [float] Radius from the centre of the focal plane to the centroid.
+        photom_offset: [float] The photometric offet.
+        vignetting_coeff: [float] Vignetting coefficient (rad/px).
+    Return:
+        [float] Magnitude.
+    """
+
+    px_sum, radius = input_params
+
+    # Apply the vignetting correction and compute the LSP
+    lsp = np.log10(correctVignetting(px_sum, radius, vignetting_coeff))
+
+    # The slope is fixed to -2.5, this comes from the definition of magnitude
+    return -2.5*lsp + photom_offset
+RMS/Misc.py
+def openFileDialog(dir_path, initialfile, title, mpl, filetypes=()):
+    """ Open the file dialog and close it properly, depending on the backend used. 
+    
+    Arguments:
+        dir_path: [str] Initial path of the directory.
+        initialfile: [str] Initial file to load.
+        title: [str] Title of the file dialog window.
+        mpl: [matplotlib instance] Instace of matplotlib import which is used to determine the used backend.
+        filetypes: [list of tuples] A tuple with file type pairs to filter (label, pattern)
+
+    Return:
+        file_name: [str] Path to the chosen file.
+    """
+
+    root = tkinter.Tk()
+    root.withdraw()
+    root.update()
+
+    # Open the file dialog
+    file_name = filedialog.askopenfilename(initialdir=dir_path,
+        initialfile=initialfile, title=title, filetypes=filetypes)
+    root.update()
+
+    if (mpl.get_backend() != 'TkAgg') and (mpl.get_backend() != 'WXAgg'):
+        root.quit()
+    else:
+        root.destroy()
+
+
+    return file_name
+RMS/Misc.py
+def decimalDegreesToSexHours(val):
+    """ Convert a value in decimal degrees DDD.ddd into the sexadecimal format in hours, HH, MM, SS.ss.
+    
+    Arguments:
+        val: [float] Value in decimal degrees
+
+    Return:
+        (hh, mm, ss):
+            - hh [int] Hours
+            - mm [int] Minutes
+            - ss [float] Seconds
+    """
+
+    val = val/15.0
+
+    sign = np.sign(val)
+    val = abs(val)
+    hh = int(val)
+    mm = int((val - hh)*60)
+    ss = ((val - hh)*60 - mm)*60
+
+    return sign, hh, mm, ss
+RMS/Astrometry/AstrometryNetNova.py
+def novaAstrometryNetSolve(ff_file_path=None, img=None, x_data=None, y_data=None, fov_w_range=None,
+    api_key=None):
+    """ Find an astrometric solution of X, Y image coordinates of stars detected on an image using the 
+        nova.astrometry.net service.
+
+    Keyword arguments:
+        ff_file_path: [str] Path to the FF file to load.
+        img: [ndarray] Numpy array containing image data.
+        x_data: [list] A list of star x image coordiantes.
+        y_data: [list] A list of star y image coordiantes
+        fov_w_range: [2 element tuple] A tuple of scale_lower and scale_upper, i.e. the estimate of the 
+            width of the FOV in degrees.
+        api_key: [str] nova.astrometry.net user API key. None by default, in which case the default API
+            key will be used.
+
+    Return:
+        (ra, dec, orientation, scale, fov_w, fov_h): [tuple of floats] All in degrees, scale in px/deg.
+    """
+
+
+    def _printWebLink(stat, first_status=None):
+
+        if first_status is not None:
+            if not len(stat.get("user_images", "")):
+                stat = first_status
+
+        if len(stat.get("user_images", "")):
+            print("Link to web page: http://nova.astrometry.net/user_images/{:d}".format(stat.get("user_images", "")[0]))
+
+
+    # Read the FF file, if given
+    if ff_file_path is not None:
+        
+        # Read the FF file
+        ff = readFF(*os.path.split(cml_args.file_path[0]))
+
+        img = ff.avepixel
+
+    else:
+        file_handle = None
+
+
+    # Convert an image to a file handle
+    if img is not None:
+
+        # Save the avepixel as a memory file
+        file_handle = BytesIO()
+        pil_img = Image.fromarray(img.T)
+
+        # Save image to memory as JPG
+        pil_img.save(file_handle, format='JPEG')
+        img_data = file_handle.getvalue()
+
+        # Upload the image to imgur
+        image_url = imgurUpload('skyfit_image.jpg', image_data=img_data)
+
+
+
+    c = Client()
+
+    # Log in to nova.astrometry.net
+    if api_key is None:
+        api_key = API_KEY
+
+    c.login(api_key)
+
+    # Add keyword arguments
+    kwargs = {}
+    kwargs['publicly_visible'] = 'y'
+    kwargs['crpix_center'] = True
+    kwargs['tweak_order'] = 3
+
+    # Add the scale to keyword arguments, if given
+    if fov_w_range is not None:
+        scale_lower, scale_upper = fov_w_range
+        kwargs['scale_lower'] = scale_lower
+        kwargs['scale_upper'] = scale_upper
+
+
+    # Upload image or the list of stars
+    if file_handle is not None:
+        upres = c.url_upload(image_url, **kwargs)
+
+    elif x_data is not None:
+        upres = c.upload(x=x_data, y=y_data, **kwargs)
+
+    else:
+        print('No input given to the funtion!')
+
+
+    if upres is None:
+        print('Upload failed!')
+        return None
+
+    stat = upres['status']
+    if stat != 'success':
+        
+        print('Upload failed: status', stat)
+        print(upres)
+
+        return False
+
+    # Submission ID
+    sub_id = upres['subid']
+
+    # Wait until the plate is solved
+    solution_tries = 20
+    tries = 0
+    while True:
+
+        # Limit the number of checking if the field is solved, so the script does not get stuck
+        if tries > solution_tries:
+            _printWebLink(stat)
+            return None
+        
+        stat = c.sub_status(sub_id, justdict=True)
+        print('Got status:', stat)
+
+        if stat is not None:
+
+            jobs = stat.get('jobs', [])
+            
+            if len(jobs):
+
+                for j in jobs:
+                    if j is not None:
+                        break
+
+                if j is not None:
+                    print('Selecting job id', j)
+                    solved_id = j
+                    break
+
+        time.sleep(5)
+
+        tries += 1
+
+
+    first_status = copy.deepcopy(stat)
+
+    # Get results
+    get_results_tries = 10
+    get_solution_tries = 30
+    results_tries = 0
+    solution_tries = 0
+    while True:
+
+        # Limit the number of tries of getting the results, so the script does not get stuck
+        if results_tries > get_results_tries:
+            print('Too many tries in getting the results!')
+            _printWebLink(stat, first_status=first_status)
+            return None
+
+        if solution_tries > get_solution_tries:
+            print('Waiting too long for the solution!')
+            _printWebLink(stat, first_status=first_status)
+            return None
+
+        # Get the job status
+        stat = c.job_status(solved_id, justdict=True)
+
+        # Check if the solution is done
+        if stat.get('status','') in ['success']:
+            
+            # Get the calibration
+            result = c.send_request('jobs/%s/calibration' % solved_id)
+            print(result)
+            break
+
+        elif stat.get('status','') in ['failure']:
+            print('Failed to find a solution!')
+
+            _printWebLink(stat, first_status=first_status)
+
+            return None
+
+        # Wait until the job is solved
+        elif stat.get('status','') in ['solving']:
+            print('Solving... Try {:d}/{:d}'.format(solution_tries, get_solution_tries))
+            time.sleep(5)
+            solution_tries += 1
+            continue
+
+        # Print other error messages
+        else:
+            time.sleep(5)
+            print('Got job status:', stat)
+            results_tries += 1
+
+
+    # RA/Dec of centre
+    ra = result['ra']
+    dec = result['dec']
+
+    # Orientation +E of N
+    orientation = result['orientation']
+
+    # Image scale in px/deg
+    scale = 3600/result['pixscale']
+
+    # FOV in deg
+    fov_w = result['width_arcsec']/3600
+    fov_h = result['height_arcsec']/3600
+
+    return ra, dec, orientation, scale, fov_w, fov_h
+RMS/Astrometry/ApplyAstrometry.py
+def computeFOVSize(platepar):
+    """ Computes the size of the FOV in deg from the given platepar.
+
+    Arguments:
+        platepar: [Platepar instance]
+    Return:
+        fov_h: [float] Horizontal FOV in degrees.
+        fov_v: [float] Vertical FOV in degrees.
+    """
+
+    # Construct poinits on the middle of every side of the image
+    x_data = np.array([               0,  platepar.X_res,  platepar.X_res/2, platepar.X_res/2, platepar.X_res/2.0])
+    y_data = np.array([platepar.Y_res/2, platepar.Y_res/2,                0, platepar.Y_res,   platepar.Y_res/2.0])
+    time_data = np.array(len(x_data)*[jd2Date(platepar.JD)])
+    level_data = np.ones(len(x_data))
+
+    # Compute RA/Dec of the points
+    _, ra_data, dec_data, _ = xyToRaDecPP(time_data, x_data, y_data, level_data, platepar, \
+        extinction_correction=False)
+
+    ra1, ra2, ra3, ra4, ra_mid = ra_data
+    dec1, dec2, dec3, dec4, dec_mid = dec_data
+
+    # Compute horizontal FOV
+    fov_hl = np.degrees(angularSeparation(np.radians(ra1), np.radians(dec1), np.radians(ra_mid), \
+        np.radians(dec_mid)))
+    fov_hr = np.degrees(angularSeparation(np.radians(ra2), np.radians(dec2), np.radians(ra_mid), \
+        np.radians(dec_mid)))
+    fov_h = fov_hl + fov_hr
+
+    # Compute vertical FOV
+    fov_vu = np.degrees(angularSeparation(np.radians(ra3), np.radians(dec3), np.radians(ra_mid), \
+        np.radians(dec_mid)))
+    fov_vd = np.degrees(angularSeparation(np.radians(ra4), np.radians(dec4), np.radians(ra_mid), \
+        np.radians(dec_mid)))
+    fov_v = fov_vu + fov_vd
+
+    return fov_h, fov_v
+RMS/Astrometry/ApplyAstrometry.py
+def rotationWrtHorizon(platepar):
+    """ Given the platepar, compute the rotation of the FOV with respect to the horizon.
+
+    Arguments:
+        pletepar: [Platepar object] Input platepar.
+    Return:
+        rot_angle: [float] Rotation w.r.t. horizon (degrees).
+    """
+
+    # Image coordiantes of the center
+    img_mid_w = platepar.X_res/2
+    img_mid_h = platepar.Y_res/2
+
+    # Image coordinate slighty right of the center (horizontal)
+    img_up_w = img_mid_w + 10
+    img_up_h = img_mid_h
+
+    # Compute apparent alt/az in the epoch of date from X,Y
+    jd_arr, ra_arr, dec_arr, _ = xyToRaDecPP(2*[jd2Date(platepar.JD)], [img_mid_w, img_up_w], \
+        [img_mid_h, img_up_h], [1, 1], platepar, extinction_correction=False)
+    azim_mid, alt_mid = cyTrueRaDec2ApparentAltAz(np.radians(ra_arr[0]), np.radians(dec_arr[0]), jd_arr[0], \
+        np.radians(platepar.lat), np.radians(platepar.lon), platepar.refraction)
+    azim_up, alt_up = cyTrueRaDec2ApparentAltAz(np.radians(ra_arr[1]), np.radians(dec_arr[1]), jd_arr[1], \
+        np.radians(platepar.lat), np.radians(platepar.lon), platepar.refraction)
+
+    # Compute the rotation wrt horizon (deg)
+    rot_angle = np.degrees(np.arctan2(alt_up - alt_mid, azim_up - azim_mid))
+
+    # Wrap output to <-180, 180] range
+    if rot_angle > 180:
+        rot_angle -= 360
+
+    return rot_angle
+RMS/Astrometry/ApplyAstrometry.py
+def xyToRaDecPP(time_data, X_data, Y_data, level_data, platepar, extinction_correction=True, \
+    measurement=False):
+    """ Converts image XY to RA,Dec, but it takes a platepar instead of individual parameters. 
+
+    Arguments:
+        time_data: [2D ndarray] Numpy array containing time tuples of each data point (year, month, day,
+            hour, minute, second, millisecond).
+        X_data: [ndarray] 1D numpy array containing the image X component.
+        Y_data: [ndarray] 1D numpy array containing the image Y component.
+        level_data: [ndarray] Levels of the meteor centroid.
+        platepar: [Platepar structure] Astrometry parameters.
+
+    Keyword arguments:
+        extinction_correction: [bool] Apply extinction correction. True by default. False is set to prevent 
+            infinite recursion in extinctionCorrectionApparentToTrue when set to True.
+        measurement: [bool] Indicates if the given images values are image measurements. Used for correcting
+            celestial coordinates for refraction if the refraction was not taken into account during
+            plate fitting.
+
+    Return:
+        (JD_data, RA_data, dec_data, magnitude_data): [tuple of ndarrays]
+            JD_data: [ndarray] Julian date of each data point.
+            RA_data: [ndarray] Right ascension of each point (deg).
+            dec_data: [ndarray] Declination of each point (deg).
+            magnitude_data: [ndarray] Array of meteor's lightcurve apparent magnitudes.
+    """
+
+
+    # Convert time to Julian date
+    JD_data = np.array([date2JD(*time_data_entry) for time_data_entry in time_data], dtype=np.float64)
+
+    # Convert x,y to RA/Dec using a fast cython function
+    RA_data, dec_data = cyXYToRADec(JD_data, np.array(X_data, dtype=np.float64), \
+        np.array(Y_data, dtype=np.float64), float(platepar.lat), float(platepar.lon), float(platepar.X_res), \
+        float(platepar.Y_res), float(platepar.Ho), float(platepar.RA_d), float(platepar.dec_d), \
+        float(platepar.pos_angle_ref), float(platepar.F_scale), platepar.x_poly_fwd, platepar.y_poly_fwd, \
+        unicode(platepar.distortion_type), refraction=platepar.refraction, \
+        equal_aspect=platepar.equal_aspect, force_distortion_centre=platepar.force_distortion_centre, \
+        asymmetry_corr=platepar.asymmetry_corr)
+
+    # Correct the coordinates for refraction if it wasn't taken into account during the astrometry calibration
+    #   procedure
+    if (not platepar.refraction) and measurement and platepar.measurement_apparent_to_true_refraction:
+        for i, entry in enumerate(zip(JD_data, RA_data, dec_data)):
+            jd, ra, dec = entry
+            ra, dec = eqRefractionApparentToTrue(np.radians(ra), np.radians(dec), jd, \
+                np.radians(platepar.lat), np.radians(platepar.lon))
+
+            RA_data[i] = np.degrees(ra)
+            dec_data[i] = np.degrees(dec)
+            
+
+    # Compute radiia from image centre
+    radius_arr = np.hypot(np.array(X_data) - platepar.X_res/2, np.array(Y_data) - platepar.Y_res/2)
+
+    # Calculate magnitudes
+    magnitude_data = calculateMagnitudes(level_data, radius_arr, platepar.mag_lev, platepar.vignetting_coeff)
+
+
+    # Extinction correction
+    if extinction_correction:
+        magnitude_data = extinctionCorrectionApparentToTrue(magnitude_data, X_data, Y_data, JD_data[0], \
+            platepar)
+
+
+    return JD_data, RA_data, dec_data, magnitude_data

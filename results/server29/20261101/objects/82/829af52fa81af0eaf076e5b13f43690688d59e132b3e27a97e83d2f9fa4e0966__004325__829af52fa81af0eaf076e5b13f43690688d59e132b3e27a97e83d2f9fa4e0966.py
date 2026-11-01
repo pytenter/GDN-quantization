@@ -1,0 +1,1 @@
+lambda _cls, total, used, free, percent, sin, sout: _tuple_new(_cls, (total, used, free, percent, sin, sout))

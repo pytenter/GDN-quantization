@@ -1,0 +1,2380 @@
+es.alrocar.poiproxy/src/test/java/es/alrocar/jpe/parser/csv/CSVParser.java
+public class CSVParser extends DefaultJPEParser {
+
+	@Override
+	public ArrayList<JTSFeature> parse(String contentFile,
+			DescribeService service, LocalFilter filter) {
+
+		CsvReader csvReader = createReader(contentFile, service);
+		boolean hasPassedFilter = false;
+		try {
+			csvReader.readHeaders();
+			setCurrentFeatureType(service);
+			fc = (ArrayList<JTSFeature>) contentHandler
+					.startFeatureCollection();
+			JTSFeature feature;
+			Point point;
+			String element;
+			while (csvReader.readRecord()) {
+				hasPassedFilter = false;
+				feature = (JTSFeature) contentHandler.startFeature();
+				point = (Point) contentHandler.startPoint();
+
+				for (String destProp : this.currentFeatureType.getElements()
+						.keySet()) {
+					element = csvReader.get(this.currentFeatureType
+							.getElements().get(destProp).getInput());
+					if (filter == null) {
+						hasPassedFilter = true;
+					} else {
+						hasPassedFilter = hasPassedFilter
+								|| filter.apply(element);
+					}
+
+					addAttribute(element, feature, destProp);
+				}
+
+				setLatitude(Utils.formatNumber(
+						csvReader.get(this.currentFeatureType.getLat()),
+						service.getDecimalSeparator(),
+						service.getNumberSeparator()), point);
+				setLongitude(Utils.formatNumber(
+						csvReader.get(this.currentFeatureType.getLon()),
+						service.getDecimalSeparator(),
+						service.getNumberSeparator()), point);
+
+				contentHandler.addPointToFeature(feature, contentHandler
+						.endPoint(point, service.getSRS(),
+								DescribeService.DEFAULT_SRS));
+				if (hasPassedFilter) {
+					fillCategories(feature, service);
+					fillService(feature, service);
+					contentHandler.addFeatureToCollection(fc, feature);
+				}
+			}
+
+			return (ArrayList) fc;
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return null;
+		}
+	}
+
+	private CsvReader createReader(String contentFile, DescribeService service) {
+		InputStream is = new ByteArrayInputStream(contentFile.getBytes());
+
+		CsvReader csvReader = new CsvReader(is, service.getCsvSeparator()
+				.toCharArray()[0], Charset.forName(service.getEncoding()));
+		return csvReader;
+	}
+
+	@Override
+	public String getFormat() {
+		return JPEParserFormatEnum.CSV.format;
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/poiproxy/configuration/DescribeService.java
+public class DescribeService {
+
+	private final static Logger logger = LoggerFactory
+			.getLogger(DescribeService.class);
+
+	public static final String CATEGORY_SEPARATOR = ",";
+
+	public final static String SEARCH_TYPE = "search";
+	public final static String BROWSE_TYPE = "browse";
+	private static final String DEFAULT_ENCODING = "UTF-8";
+	public static final String DEFAULT_SRS = "EPSG:4326";
+
+	private String apiKey;
+	private HashMap<String, RequestType> requestTypes = new HashMap<String, RequestType>();
+	private HashMap<String, FeatureType> featureTypes = new HashMap<String, FeatureType>();
+	private List<String> categories = new ArrayList<String>();
+
+	private String format;
+	private String csvSeparator;
+	private String encoding;
+	private String numberSeparator;
+	private String decimalSeparator;
+	private String compression;
+	private String contentFile;
+	private boolean useLocalFilter = false;
+	private String SRS = DEFAULT_SRS;
+
+	private String type = BROWSE_TYPE;
+
+	private String id;
+
+	/**
+	 * 
+	 * @return The apiKey
+	 */
+	public String getApiKey() {
+		return apiKey;
+	}
+
+	/**
+	 * Sets the apiKey
+	 * 
+	 * @param apiKey
+	 */
+	public void setApiKey(String apiKey) {
+		this.apiKey = apiKey;
+	}
+
+	/**
+	 * The current type selected to parse a file, one of {@link #SEARCH_TYPE} or
+	 * {@link #BROWSE_TYPE}
+	 * 
+	 * @return
+	 */
+	public String getType() {
+		return type;
+	}
+
+	/**
+	 * The current type depending on the request made by {@link POIProxy} one of
+	 * {@link #SEARCH_TYPE} or {@link #BROWSE_TYPE}
+	 * 
+	 * @param type
+	 */
+	public void setType(String type) {
+		this.type = type;
+	}
+
+	/**
+	 * The format of the source response of the service to parse.
+	 * 
+	 * @return {@link JPEParser#FORMAT_JSON} or {@link JPEParser#FORMAT_XML}
+	 */
+	public String getFormat() {
+		return format;
+	}
+
+	/**
+	 * Sets the format of the source response of the service to parse
+	 * 
+	 * @param format
+	 *            {@link JPEParser#FORMAT_JSON} or {@link JPEParser#FORMAT_XML}
+	 */
+	public void setFormat(String format) {
+		this.format = format;
+	}
+
+	/**
+	 * A map of {@link #BROWSE_TYPE}, {@link #SEARCH_TYPE} with
+	 * {@link RequestType}
+	 * 
+	 * @return
+	 */
+	public HashMap<String, RequestType> getRequestTypes() {
+		return requestTypes;
+	}
+
+	/**
+	 * sets the request types
+	 * 
+	 * @param requestTypes
+	 *            A map of {@link #BROWSE_TYPE}, {@link #SEARCH_TYPE} with
+	 *            {@link RequestType}
+	 */
+	public void setRequestTypes(HashMap<String, RequestType> requestTypes) {
+		this.requestTypes = requestTypes;
+	}
+
+	/**
+	 * A map of {@link #BROWSE_TYPE}, {@link #SEARCH_TYPE} with
+	 * {@link FeatureType}
+	 * 
+	 * @return
+	 */
+	public HashMap<String, FeatureType> getFeatureTypes() {
+		return featureTypes;
+	}
+
+	/**
+	 * sets the feature types
+	 * 
+	 * @param featureTypes
+	 *            A map of {@link #BROWSE_TYPE}, {@link #SEARCH_TYPE} with
+	 *            {@link FeatureType}
+	 */
+	public void setFeatureTypes(HashMap<String, FeatureType> featureTypes) {
+		this.featureTypes = featureTypes;
+	}
+
+	/**
+	 * returns the URL to request given an array of optional params. Usually if
+	 * optionalParam contains a {@link Param} of type {@link Param#QUERY} then
+	 * this method will return the url of the {@link RequestType} of type
+	 * {@link DescribeService#SEARCH_TYPE} otherwise will return the url of
+	 * {@link DescribeService#BROWSE_TYPE}
+	 * 
+	 * @param optionalParam
+	 *            An array of {@link Param}
+	 * @return The url to request
+	 */
+	public String getRequestForParam(List<Param> optionalParam) {
+		if (optionalParam == null) {
+			this.setType(DescribeService.BROWSE_TYPE);
+			return getRequestTypes().get(DescribeService.BROWSE_TYPE).getUrl();
+		}
+
+		if (optionalParam.size() == 0) {
+			this.setType(DescribeService.BROWSE_TYPE);
+			return getRequestTypes().get(DescribeService.BROWSE_TYPE).getUrl();
+		}
+
+		for (Param optParam : optionalParam) {
+			if (optParam.getType() == Param.QUERY) {
+				this.setType(DescribeService.SEARCH_TYPE);
+				return getRequestTypes().get(DescribeService.SEARCH_TYPE)
+						.getUrl();
+			}
+		}
+
+		this.setType(DescribeService.BROWSE_TYPE);
+		return getRequestTypes().get(DescribeService.BROWSE_TYPE).getUrl();
+	}
+
+	/**
+	 * Gets the column separator if the format is
+	 * {@link JPEParserFormatEnum#CSV}
+	 * 
+	 * @return
+	 */
+	public String getCsvSeparator() {
+		return csvSeparator;
+	}
+
+	/**
+	 * Sets the column separator if the format is
+	 * {@link JPEParserFormatEnum#CSV}
+	 * 
+	 * @return
+	 */
+	public void setCsvSeparator(String csvSeparator) {
+		this.csvSeparator = csvSeparator;
+	}
+
+	/**
+	 * Gets the encoding of the result document of the service. This is
+	 * specially usefull for CSV
+	 * 
+	 * @return
+	 */
+	public String getEncoding() {
+		if (encoding == null) {
+			return DEFAULT_ENCODING;
+		}
+		return encoding;
+	}
+
+	/**
+	 * Sets the encoding of the result document of the service. This is
+	 * specially usefull for CSV
+	 * 
+	 * @param encoding
+	 */
+	public void setEncoding(String encoding) {
+		this.encoding = encoding;
+	}
+
+	/**
+	 * Gets the number separator. This is useful for CSV resources
+	 * 
+	 * @return
+	 */
+	public String getNumberSeparator() {
+		return numberSeparator;
+	}
+
+	/**
+	 * Sets the number separator. This is useful for CSV resources
+	 * 
+	 * @param numberSeparator
+	 */
+	public void setNumberSeparator(String numberSeparator) {
+		this.numberSeparator = numberSeparator;
+	}
+
+	/**
+	 * Gets the decimal separator. This is useful for CSV resources
+	 * 
+	 * @return
+	 */
+	public String getDecimalSeparator() {
+		return decimalSeparator;
+	}
+
+	/**
+	 * Sets the decimal separator. This is useful for CSV resources
+	 * 
+	 * @param decimalSeparator
+	 */
+	public void setDecimalSeparator(String decimalSeparator) {
+		this.decimalSeparator = decimalSeparator;
+	}
+
+	/**
+	 * Indicates the compression format of the resource
+	 * 
+	 * @return @see {@link CompressionEnum}
+	 */
+	public String getCompression() {
+		return compression;
+	}
+
+	/**
+	 * Sets the compression format of the resource
+	 * 
+	 * @see {@link CompressionEnum}
+	 */
+	public void setCompression(String compression) {
+		this.compression = compression;
+	}
+
+	/**
+	 * This is used when the {@link #compression} is used. Gets the file name of
+	 * the file compressed
+	 * 
+	 * @return
+	 */
+	public String getContentFile() {
+		return contentFile;
+	}
+
+	/**
+	 * This is used when the {@link #compression} is used. Sets the file name of
+	 * the file compressed
+	 * 
+	 * @param contentFile
+	 */
+	public void setContentFile(String contentFile) {
+		this.contentFile = contentFile;
+	}
+
+	/**
+	 * Gets the array of categories configured in the {@link DescribeService}
+	 * document
+	 * 
+	 * @return
+	 */
+	public List<String> getCategories() {
+		return categories;
+	}
+
+	/**
+	 * Sets the array of categories configured in the {@link DescribeService}
+	 * document
+	 * 
+	 * @param categories
+	 */
+	public void setCategories(List<String> categories) {
+		this.categories = categories;
+	}
+
+	/**
+	 * Check if the category is in the {@link #categories} supported by the
+	 * service
+	 * 
+	 * @param category
+	 * @return
+	 */
+	public boolean containsCategory(String category) {
+		if (this.categories == null || this.categories.isEmpty()) {
+			return false;
+		}
+
+		for (String cat : categories) {
+			if (category.compareToIgnoreCase(cat) == 0) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Gets the SRS (EPSG code) of the origin service
+	 * 
+	 * @return
+	 */
+	public String getSRS() {
+		if (SRS == null) {
+			return DEFAULT_SRS;
+		}
+		return SRS;
+	}
+
+	/**
+	 * Sets the SRS (EPSG code) of the origin service
+	 * 
+	 * @param sRS
+	 */
+	public void setSRS(String sRS) {
+		SRS = sRS;
+	}
+
+	/**
+	 * Concatenates the categories as a String separated by
+	 * {@link DescribeService#CATEGORY_SEPARATOR}
+	 * 
+	 * @return
+	 */
+	public String getCategoriesAsString() {
+		List<String> categories = getCategories();
+		String categoriesStr = "";
+		if (categories != null && !categories.isEmpty()) {
+			categoriesStr = StringUtils.join(categories.toArray(),
+					CATEGORY_SEPARATOR);
+		}
+
+		return categoriesStr;
+	}
+
+	/**
+	 * Sets the identifier of the service
+	 * 
+	 * @param id
+	 */
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	/**
+	 * Gets the identifier of the service
+	 * 
+	 * @param id
+	 */
+	public String getId() {
+		return this.id;
+	}
+
+	/**
+	 * Converts a comma separated list of categories into a {@link List}
+	 * 
+	 * @param categoriesList
+	 * @return
+	 */
+	public static List<String> categoriesFromString(String categoriesList) {
+		List<String> result = new ArrayList<String>();
+		try {
+			if (categoriesList != null) {
+				String[] categories = categoriesList
+						.split(DescribeService.CATEGORY_SEPARATOR);
+				if (categories != null && categories.length != 0) {
+					for (String cat : categories) {
+						result.add(cat);
+					}
+				}
+			}
+		} catch (Exception ignore) {
+			logger.warn("DescribeService", ignore);
+		}
+
+		return result;
+	}
+
+	/**
+	 * When the data comes from a static file such a CSV, if this is set to True
+	 * then the {@link Param#QUERY} is used to filter the data in memory
+	 * 
+	 * @return
+	 */
+	public boolean isUseLocalFilter() {
+		return useLocalFilter;
+	}
+
+	/**
+	 * When the data comes from a static file such a CSV, if this is set to True
+	 * then the {@link Param#QUERY} is used to filter the data in memory
+	 * 
+	 * @param useLocalFilter
+	 */
+	public void setUseLocalFilter(boolean useLocalFilter) {
+		this.useLocalFilter = useLocalFilter;
+	}
+
+	/**
+	 * 
+	 * @param optionalParams
+	 * @return
+	 */
+	public LocalFilter getLocalFilter(List<Param> optionalParams) {
+		LocalFilter localFilter = null;
+		if (isUseLocalFilter()) {
+			localFilter = LocalFilter.fromOptionalParams(optionalParams);
+		}
+		return localFilter;
+	}
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/poiproxy/configuration/Param.java
+public class Param {
+
+	public static String QUERY = "query";
+	public static String APIKEY = "apiKey";
+	public static String SERVICE = "service";
+	public static String X = "x";
+	public static String Y = "y";
+	public static String Z = "z";
+	public static String MINX = "minX";
+	public static String MINY = "minY";
+	public static String MAXX = "maxX";
+	public static String MAXY = "maxY";
+	public static String LON = "lon";
+	public static String LAT = "lat";
+	public static String DIST = "dist";
+	public static String CALLBACK = "callback";
+
+	private String type;
+	private String value;
+
+	/**
+	 * Constructor
+	 * 
+	 * @param type
+	 * 
+	 *            {@value #QUERY} {@value #SERVICE} {@value #X} {@value #Y}
+	 *            {@value #Z} {@value #MINX} {@value #MINY} {@value #MAXX}
+	 *            {@value #MAXY} {@value #LON} {@value #LAT} {@value #DIST}
+	 *            {@value #CALLBACK} {@value #APIKEY}
+	 * @param value
+	 */
+	public Param(String type, String value) {
+		this.type = type;
+		this.value = value;
+	}
+
+	public String getType() {
+		return type;
+	}
+
+	public void setType(String type) {
+		this.type = type;
+	}
+
+	public String getValue() {
+		return value;
+	}
+
+	public void setValue(String value) {
+		this.value = value;
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/jpe/writer/GeoJSONWriter.java
+public class GeoJSONWriter {
+
+	public String write(ArrayList<JTSFeature> features) throws JSONException,
+			BaseException {
+
+		String result = null;
+		JSONObject featureCollection = new JSONObject();
+		featureCollection.put("type", "featureCollection");
+
+		JSONArray featuresJSON = new JSONArray();
+		JSONObject featureJSON;
+		JSONObject point;
+		JSONObject properties;
+		JSONArray coords;
+
+		for (JTSFeature feature : features) {
+			featureJSON = new JSONObject();
+			point = new JSONObject();
+			properties = new JSONObject();
+			coords = new JSONArray();
+
+			featureJSON.put("type", "Feature");
+
+			point.put("type", "Point");
+			coords.add(feature.getGeometry().getGeometry().getCoordinate().x);
+			coords.add(feature.getGeometry().getGeometry().getCoordinate().y);
+			point.put("coordinates", coords);
+
+			Set keys = feature.getAttributes().keySet();
+
+			Iterator it = keys.iterator();
+
+			String key;
+			while (it.hasNext()) {
+				key = it.next().toString();
+				properties.put(key, feature.getAttribute(key).value);
+			}
+
+			featureJSON.put("geometry", point);
+			featureJSON.put("properties", properties);
+
+			featuresJSON.add(featureJSON);
+		}
+
+		featureCollection.put("features", featuresJSON);
+
+		result = featureCollection.toString();
+		return result;
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/poiproxy/configuration/ServiceParams.java
+public class ServiceParams {
+
+	public static final String MINX = "__MINX__";
+	public static final String MAXX = "__MAXX__";
+	public static final String MINY = "__MINY__";
+	public static final String MAXY = "__MAXY__";
+
+	public static final String LON = "__LON__";
+	public static final String LAT = "__LAT__";
+	public static final String DIST = "__DIST__";
+	public static final String DISTKM = "__DISTKM__";
+
+	public static final String KEY = "__KEY__";
+	public static final String FORMAT = "__FORMAT__";
+
+	public static final String QUERY = "__QUERY__";
+
+	private HashMap<String, String> params = new HashMap<String, String>();
+	private static HashMap<String, String> optParams = new HashMap<String, String>();
+
+	static {
+		optParams.put(Param.QUERY, QUERY);
+		optParams.put(Param.APIKEY, KEY);
+	}
+
+	public void putParam(String param, String value) {
+		this.params.put(param, value);
+	}
+
+	public String getValueForParam(String param) {
+		return this.params.get(param);
+	}
+
+	public HashMap<String, String> getParams() {
+		return this.params;
+	}
+
+	public String getServiceParamFromURLParam(String urlParam) {
+		return optParams.get(urlParam);
+	}
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/poiproxy/exceptions/POIProxyException.java
+public class POIProxyException extends Exception {
+
+	public POIProxyException(Exception e) {
+		super(e);
+	}
+
+	public POIProxyException(String message) {
+		super(message);
+	}
+
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 2939834647936208410L;
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/jpe/parser/json/JSONJPEParser.java
+public class JSONJPEParser extends JPEParser {
+
+	private JPEContentHandler contentHandler = new MiniJPEContentHandler();
+	private MiniJPEWriterHandler writerHandler = new MiniJPEWriterHandler();
+	private JSONParser parser = new JSONParser();
+	private JSONSimpleContentHandler simpleContentHandler = new JSONSimpleContentHandler();
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public ArrayList<JTSFeature> parse(String json, DescribeService service,
+			LocalFilter filter) {
+		simpleContentHandler.setJPEParseContentHandler(contentHandler);
+		simpleContentHandler.setJPEWriteContentHandler(writerHandler);
+		simpleContentHandler.setDescribeService(service);
+		simpleContentHandler.setLocalFilter(filter);
+
+		try {
+			parser.parse(json, simpleContentHandler);
+		} catch (ParseException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return null;
+		}
+
+		return simpleContentHandler.getResult();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public String getGeoJSON() {
+		if (writerHandler != null) {
+			return writerHandler.getGeoJSON();
+		}
+
+		return null;
+	}
+
+	@Override
+	public String getFormat() {
+		return JPEParserFormatEnum.JSON.format;
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/utils/CompressionEnum.java
+public enum CompressionEnum {
+
+	ZIP("zip");
+
+	public String format;
+
+	private CompressionEnum(String format) {
+		this.format = format;
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/jpe/parser/exceptions/NoParserRegisteredException.java
+public class NoParserRegisteredException extends BaseException {
+
+	public NoParserRegisteredException(Throwable cause) {
+		super(cause);
+		// TODO Auto-generated constructor stub
+	}
+
+	public NoParserRegisteredException(String message) {
+		super(message);
+		// TODO Auto-generated constructor stub
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/poiproxy/proxy/utiles/Calculator.java
+public class Calculator {
+
+	private static final double DEFAULT_THRESHOLD = Math.pow(10, (-10));
+
+	public static final double DEGREES_PER_RADIAN = 180.0 / Math.PI;
+	public static final double MERCATOR_EARTH_RADIUS = 6378137.0;
+	public static final double MERCATOR_METERS_PER_EQUATOR_DEGREE = Math.PI
+			* MERCATOR_EARTH_RADIUS / 180.0;
+
+	// public static Rectangle2D WORLD_MERCATOR = new Rectangle2D.Double(
+	// -Math.PI*Calculator.MERCATOR_EARTH_RADIUS,
+	// -Math.PI*Calculator.MERCATOR_EARTH_RADIUS,
+	// 2 * Math.PI*Calculator.MERCATOR_EARTH_RADIUS,
+	// 2 * Math.PI*Calculator.MERCATOR_EARTH_RADIUS);
+
+	public static double latLonDist(double lon1, double lat1, double lon2,
+			double lat2) {
+
+		double[] aux;
+		try {
+			aux = PIGbsl(lon1, lat1, lon2, lat2, Ellipsoid.WGS84);
+		} catch (Exception e) {
+			// Calculator.debugThis(true, "Error while getting dist: " +
+			// e.getMessage(), logger);
+			return Double.MAX_VALUE;
+		}
+		return aux[2];
+	}
+
+	public static double[] PIGbsl(double lon1_, double lat1_, double lon2_,
+			double lat2_, Ellipsoid elip) throws Exception {
+		return PIGbsl(lon1_, lat1_, lon2_, lat2_, elip, DEFAULT_THRESHOLD);
+	}
+
+	/**
+	 * geodetic Direct Problem. This method returns the distance between two
+	 * points on the elipsoide. Calculate the geodetic line between the two
+	 * points.
+	 * 
+	 * @param lon1_
+	 *            longitude of the initial point
+	 * @param lat1_
+	 *            latitude of the initial point
+	 * @param lon2_
+	 *            longitude of the final point
+	 * @param lat2_
+	 *            latitude of the final point
+	 * @param elip
+	 *            Elipsoide
+	 * @return azimut1, azimut2, distance in meters
+	 * @throws Exception
+	 */
+	public static double[] PIGbsl(double lon1_, double lat1_, double lon2_,
+			double lat2_, Ellipsoid elip, double threshold) throws Exception {
+
+		double _lon1 = lon1_;
+		double _lon2 = lon2_;
+		double _lat1 = lat1_;
+		double _lat2 = lat2_;
+
+		if (lon1_ == 0)
+			_lon1 = 0.0000001;
+		if (lon2_ == 0)
+			_lon2 = 0.0000001;
+		if (lat1_ == 0)
+			_lat1 = 0.0000001;
+		if (lat2_ == 0)
+			_lat2 = 0.0000001;
+
+		// ------------------------
+
+		_lon1 = _lon1 * Math.PI / 180.0;
+		_lat1 = _lat1 * Math.PI / 180.0;
+		_lon2 = _lon2 * Math.PI / 180.0;
+		_lat2 = _lat2 * Math.PI / 180.0;
+
+		double a = elip.getA();
+		double b = elip.getB();
+		double e2 = elip.getPe2();
+		double e4 = Math.pow(e2, b);
+		double se = elip.getSe();
+
+		/* sphere latitudes */
+		double u1 = Math.atan(b / a * Math.tan(_lat1));
+		double u2 = Math.atan(b / a * Math.tan(_lat2));
+
+		/* initial data */
+		double il = _lon2 - _lon1;
+		double wt = il;
+		double mas = (u1 + u2) / 2;
+		double men = (u1 - u2) / 2;
+		int flag = 0;
+
+		double w2;
+		double g1;
+		double g2;
+		double a12 = 0.0;
+		double a21 = 0.0;
+
+		double M = 0.0;
+		double m = 0.0;
+		double sig = 0.0;
+		double t11;
+		double t12;
+		double t1;
+		double t2;
+		double w;
+
+		/* iteration process */
+		int ITERATIONS = 100;
+
+		for (int i = 0; i < ITERATIONS; i++) {
+			w2 = wt / 2;
+			g1 = Math.cos(men) / (Math.sin(mas) * Math.tan(w2));
+			g2 = Math.sin(men) / (Math.cos(mas) * Math.tan(w2));
+			a12 = Math.atan(g1) + Math.atan(g2);
+			a21 = Math.atan(g2) - Math.atan(g1) + Math.PI;
+
+			while (a12 <= 0) {
+				a12 += 2 * Math.PI;
+			}
+			while (a12 >= 2 * Math.PI) {
+				a12 -= 2 * Math.PI;
+			}
+			while (a21 <= 0) {
+				a21 += 2 * Math.PI;
+			}
+			while (a21 >= 2 * Math.PI) {
+				a21 -= 2 * Math.PI;
+			}
+
+			M = Math.atan((Math.tan(u1)) / (Math.cos(a12)));
+			m = Math.acos((Math.sin(u1)) / (Math.sin(M)));
+			sig = Math.acos(Math.sin(u1) * Math.sin(u2) + Math.cos(u1)
+					* Math.cos(u2) * Math.cos(wt));
+			t11 = e2 / 8;
+			t12 = e2 * Math.pow(Math.cos(m), 2) / 16;
+			t1 = (e2 * Math.sin(m) * sig * (0.5 + t11 - t12));
+			t2 = e4
+					* Math.sin(m)
+					* (Math.pow(Math.cos(m), 2) * Math.sin(sig) * Math.cos(2
+							* M + sig)) / 16;
+
+			/* Control del dominio del incremento de lon */
+
+			w = (il > 0) ? il + t1 + t2 : il - (t1 - t2);
+
+			/* Precision */
+			double condi = Math.abs(wt - w);
+			if (condi <= threshold) {
+				a21 = a21 + Math.PI;
+
+				/* Control dominio azimut */
+				if (a21 >= 2 * Math.PI) {
+					a21 -= 2 * Math.PI;
+				}
+
+				/* Calculo de la geod�sica */
+
+				double k = se * Math.cos(m);
+				double tA = 1 + (Math.pow(k, 2) / 4 - 3 * Math.pow(k, 4) / 64);
+				double tB = Math.pow(k, 2) / 4 - Math.pow(k, 4) / 16;
+				double tC = Math.pow(k, 4) / 128;
+				double s = tA * b * sig - tB * b * Math.sin(sig)
+						* Math.cos(2 * M + sig) - tC * b * Math.sin(2 * sig)
+						* Math.cos(4 * M + 2 * sig);
+
+				double[] result = { a12, a21, s };
+				return result;
+			} else {
+				wt = w;
+			}
+		}
+
+		// No convergence. It may be because coordinate points
+		// are equals or because they are at antipodes.
+		final double LEPS = 1E-10;
+		if (Math.abs(lon1_ - lon2_) <= LEPS && Math.abs(lat1_ - lat2_) <= LEPS) {
+			return new double[] { 0, 0, 0 }; // Coordinate points are equals
+		}
+		if (Math.abs(lat1_) <= LEPS && Math.abs(lat2_) <= LEPS) {
+			return new double[] { 0, Math.PI,
+					Math.abs(lon1_ - lon2_) * elip.getA() }; // Points are on
+																// the equator.
+		}
+
+		throw new Exception("No distance oould be calculated");
+	}
+
+	public static double[] mercator2geo(double x, double y) {
+
+		double false_lat_rad = y
+				/ (MERCATOR_METERS_PER_EQUATOR_DEGREE * DEGREES_PER_RADIAN);
+		double lat_rad = 2.0 * Math.atan(Math.exp(false_lat_rad)) - 0.5
+				* Math.PI;
+		double lat_deg = DEGREES_PER_RADIAN * lat_rad;
+		// double y = 0.5 *
+		// Math.atan(sinh(rlat));
+		// double y = Math.log(Math.tan(phi) + sec(phi));
+
+		double geo[] = { x / MERCATOR_METERS_PER_EQUATOR_DEGREE, lat_deg };
+		return geo;
+	}
+
+	// public static Rectangle2D mercator2geo(Rectangle2D r) {
+	//
+	// double minx = r.getMinX();
+	// double miny = r.getMinY();
+	// double[] geomin = mercator2geo(minx, miny);
+	// double maxx = r.getMaxX();
+	// double maxy = r.getMaxY();
+	// double[] geomax = mercator2geo(maxx, maxy);
+	//
+	// Rectangle2D resp = new Rectangle2D.Double(
+	// geomin[0],
+	// geomin[1],
+	// geomax[0] - geomin[0],
+	// geomax[1] - geomin[1]);
+	//
+	// return resp;
+	// }
+
+	public static double[] geo2mercator(double lon, double lat) {
+
+		double rlat = lat / DEGREES_PER_RADIAN;
+
+		double y = 0.5 * Math.log((1 + Math.sin(rlat)) / (1 - Math.sin(rlat)));
+		// double y = 0.5 *
+		// Math.atan(sinh(rlat));
+		// double y = Math.log(Math.tan(phi) + sec(phi));
+
+		double mer[] = { MERCATOR_METERS_PER_EQUATOR_DEGREE * lon,
+				MERCATOR_METERS_PER_EQUATOR_DEGREE * DEGREES_PER_RADIAN * y };
+		return mer;
+	}
+
+	// public static Rectangle2D mercatorExtent(int _x, int _y, int _z) {
+	//
+	// long nt = (long) Math.pow(2, _z);
+	// double tw = WORLD_MERCATOR.getWidth() / nt;
+	// double tminx = _x * tw - WORLD_MERCATOR.getWidth()/2.0;
+	// double tminy = WORLD_MERCATOR.getWidth()/2.0 - (_y+1) * tw;
+	// Rectangle2D ext = new Rectangle2D.Double(tminx, tminy, tw, tw);
+	// return ext;
+	// }
+	//
+	// public static String[] getTilePaths(Rectangle2D geoview, int z) {
+	//
+	// long nt = (long) Math.pow(2, z);
+	// double tw = WORLD_MERCATOR.getWidth() / nt;
+	//
+	// double[] merview_minxy = geo2mercator(geoview.getMinX(),
+	// geoview.getMinY());
+	// double[] merview_maxxy = geo2mercator(geoview.getMaxX(),
+	// geoview.getMaxY());
+	//
+	// double minxmargin = merview_minxy[0] + WORLD_MERCATOR.getWidth()/2.0;
+	// if (minxmargin < 0) minxmargin = 0;
+	// if (minxmargin > WORLD_MERCATOR.getWidth())
+	// minxmargin = WORLD_MERCATOR.getWidth();
+	//
+	// double maxxmargin = merview_maxxy[0] + WORLD_MERCATOR.getWidth()/2.0;
+	// if (maxxmargin < 0) maxxmargin = 0;
+	// if (maxxmargin > WORLD_MERCATOR.getWidth())
+	// maxxmargin = WORLD_MERCATOR.getWidth();
+	//
+	// double minyfromtop = WORLD_MERCATOR.getWidth()/2.0 - merview_maxxy[1];
+	// if (minyfromtop < 0) minyfromtop = 0;
+	// if (minyfromtop > WORLD_MERCATOR.getWidth())
+	// minyfromtop = WORLD_MERCATOR.getWidth();
+	//
+	// double maxyfromtop = WORLD_MERCATOR.getWidth()/2.0 - merview_minxy[0];
+	// if (maxyfromtop < 0) maxyfromtop = 0;
+	// if (maxyfromtop > WORLD_MERCATOR.getWidth())
+	// maxyfromtop = WORLD_MERCATOR.getWidth();
+	//
+	// long ntile_minx = (long) Math.floor(minxmargin / tw);
+	// long ntile_maxx = (long) Math.floor(maxxmargin / tw);
+	// long ntile_miny = (long) Math.floor(minyfromtop / tw);
+	// long ntile_maxy = (long) Math.floor(maxyfromtop / tw);
+	//
+	// long nx = 1 + ntile_maxx - ntile_minx;
+	// long ny = 1 + ntile_maxy - ntile_miny;
+	// String[] resp = new String[(int) (nx*ny)];
+	//
+	// String zstr = "" + z;
+	// int ind = 0;
+	// for (long j=ntile_miny; j<=ntile_maxy; j++) {
+	// for (long i=ntile_minx; i<=ntile_maxx; i++) {
+	// resp[ind++] = zstr + "/" + i + "/" + j;
+	// }
+	// }
+	// return resp;
+	// }
+	//
+	//
+	// public static void debugThis(boolean iserr, String str, Logger _logger) {
+	//
+	// if (!CreateTiles.debugMode) {
+	// return;
+	// }
+	//
+	// if (iserr) {
+	// System.err.println(str);
+	// _logger.error(str);
+	// } else {
+	// System.out.println(str);
+	// _logger.debug(str);
+	// }
+	//
+	//
+	// }
+	//
+	//
+	// public static Rectangle2D geo2mercator(Rectangle2D r) {
+	//
+	// if (r == null) {
+	// return null;
+	// }
+	//
+	// double minx = r.getMinX();
+	// double miny = r.getMinY();
+	// double[] geomin = geo2mercator(minx, miny);
+	// double maxx = r.getMaxX();
+	// double maxy = r.getMaxY();
+	// double[] geomax = geo2mercator(maxx, maxy);
+	//
+	// Rectangle2D resp = new Rectangle2D.Double(
+	// geomin[0],
+	// geomin[1],
+	// geomax[0] - geomin[0],
+	// geomax[1] - geomin[1]);
+	//
+	// return resp;
+	// }
+
+	public static String arrayToString(String[] arr) {
+		return arrayToString(arr, true);
+	}
+
+	public static String arrayToString(String[] arr, boolean brackets) {
+
+		int sz = arr.length;
+		if (sz == 0) {
+			return "";
+		}
+
+		String resp = brackets ? "[" : "";
+		for (int i = 0; i < (sz - 1); i++) {
+			resp = resp + arr[i] + ",";
+		}
+
+		resp = resp + arr[sz - 1] + (brackets ? "]" : "");
+		return resp;
+	}
+
+	private static DecimalFormat decimalFormat = new DecimalFormat();
+
+	static {
+		DecimalFormatSymbols dfs = new DecimalFormatSymbols();
+		dfs.setDecimalSeparator('.');
+		decimalFormat.setDecimalFormatSymbols(dfs);
+	}
+
+	public static String format(double v, int decpos) {
+		decimalFormat.setMaximumFractionDigits(decpos);
+		return decimalFormat.format(v);
+	}
+
+	// public static String getMinMax(Rectangle2D r, int decpos, String sepa) {
+	//
+	// if (r == null) {
+	// return "0" + sepa +"0" + sepa +"0" + sepa +"0";
+	// }
+	//
+	// String resp = format(r.getMinX(), decpos)
+	// + sepa
+	// + format(r.getMinY(), decpos)
+	// + sepa
+	// + format(r.getMaxX(), decpos)
+	// + sepa
+	// + format(r.getMaxY(), decpos);
+	// return resp;
+	// }
+
+	public static int getIndex(String[] arr, String str) {
+
+		if (arr == null || arr.length == 0 || str == null) {
+			return -1;
+		}
+
+		int len = arr.length;
+		for (int i = 0; i < len; i++) {
+			if (str.compareToIgnoreCase(arr[i]) == 0) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	// public static boolean hasFilesWithExtension(File folder, String ext) {
+	//
+	// if (folder.isDirectory()) {
+	// String[] ff = folder.list();
+	// for (int i=0; i<ff.length; i++) {
+	// if (ff[i].indexOf("." + ext) != -1) {
+	// return true;
+	// }
+	// }
+	// }
+	// return false;
+	//
+	// }
+
+	public static String replaceBadChars(String str, boolean b) {
+
+		if (str == null) {
+			return str;
+		}
+
+		String resp = str.replace("\"", "\\\"");
+		return resp;
+	}
+
+	// public static int whichZExplodesGeogDist(double d, double allowed_pixels)
+	// {
+	//
+	// if (d > (2*allowed_pixels)) {
+	// // fast ... d is BIG
+	// return 0;
+	// }
+	//
+	// int testz = 0;
+	// try {
+	// while ((TreeBuilder.TILE_SIZE * d * Math.pow(2.0, testz) / 360.0) <
+	// allowed_pixels) {
+	// testz++;
+	// }
+	// } catch (Throwable th) {
+	// Calculator.debugThis(true, "While doing WHICH Z: " + th.getMessage(),
+	// logger);
+	// Calculator.debugThis(false, "Z set to 20", logger);
+	// testz = 20;
+	// }
+	// return testz;
+	// }
+
+	public static String toString(Object v) {
+
+		if (v instanceof String) {
+			return (String) v;
+		} else {
+			return v.toString();
+		}
+	}
+
+	private static final double MIN_LAT = Math.toRadians(-90d); // -PI/2
+	private static final double MAX_LAT = Math.toRadians(90d); // PI/2
+	private static final double MIN_LON = Math.toRadians(-180d); // -PI
+	private static final double MAX_LON = Math.toRadians(180d); // PI
+
+	/**
+	 * 
+	 * @param lat
+	 *            latitude in degrees
+	 * @param lon
+	 *            longitude in degrees
+	 * @param distance
+	 *            Distance in meters
+	 * @return
+	 */
+	public static double[] boundingCoordinates(double lon, double lat,
+			double distance) {
+
+		double[] lonlat = fromDegrees(lon, lat);
+
+		if (distance < 0d)
+			throw new IllegalArgumentException();
+
+		// angular distance in radians on a great circle
+		double radDist = distance / MERCATOR_EARTH_RADIUS;
+
+		double minLat = lonlat[1] - radDist;
+		double maxLat = lonlat[1] + radDist;
+
+		double minLon, maxLon;
+		if (minLat > MIN_LAT && maxLat < MAX_LAT) {
+			double deltaLon = Math
+					.asin(Math.sin(radDist) / Math.cos(lonlat[1]));
+			minLon = lonlat[0] - deltaLon;
+			if (minLon < MIN_LON)
+				minLon += 2d * Math.PI;
+			maxLon = lonlat[0] + deltaLon;
+			if (maxLon > MAX_LON)
+				maxLon -= 2d * Math.PI;
+		} else {
+			// a pole is within the distance
+			minLat = Math.max(minLat, MIN_LAT);
+			maxLat = Math.min(maxLat, MAX_LAT);
+			minLon = MIN_LON;
+			maxLon = MAX_LON;
+		}
+
+		double[] minLonLat = fromRadians(minLon, minLat);
+		double[] maxLonLat = fromRadians(maxLon, maxLat);
+		return new double[] { minLonLat[0], minLonLat[1], maxLonLat[0],
+				maxLonLat[1] };
+	}
+
+	/**
+	 * @param latitude
+	 *            the latitude, in degrees.
+	 * @param longitude
+	 *            the longitude, in degrees.
+	 */
+	public static double[] fromDegrees(double longitude, double latitude) {
+		double radLat = Math.toRadians(latitude);
+		double radLon = Math.toRadians(longitude);
+
+		return new double[] { radLon, radLat };
+	}
+
+	/**
+	 * @param latitude
+	 *            the latitude, in radians.
+	 * @param longitude
+	 *            the longitude, in radians.
+	 */
+	public static double[] fromRadians(double longitude, double latitude) {
+		double degLat = Math.toDegrees(latitude);
+		double degLon = Math.toDegrees(longitude);
+
+		return new double[] { degLon, degLat };
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/jpe/parser/JPEParserManager.java
+public class JPEParserManager {
+
+	private static JPEParserManager instance;
+	private HashMap<String, JPEParser> registeredFormats = new HashMap<String, JPEParser>();
+
+	/**
+	 * A singleton
+	 * 
+	 * @return The {@link JPEParserManager} instance
+	 */
+	public static JPEParserManager getInstance() {
+		if (instance == null) {
+			instance = new JPEParserManager();
+		}
+
+		return instance;
+	}
+
+	/**
+	 * Registers a {@link JPEParser}
+	 * 
+	 * @param parser
+	 *            The {@link JPEParser}
+	 */
+	public void registerJPEParser(JPEParser parser) {
+		this.registeredFormats.put(parser.getFormat(), parser);
+	}
+
+	/**
+	 * Gets a {@link JPEParser} which {@link JPEParser#getFormat()} is equals to
+	 * the format
+	 * 
+	 * @param format
+	 *            The format to compare with {@link JPEParser#FORMAT_JSON} or
+	 *            {@link JPEParser#FORMAT_XML}
+	 * @return The {@link JPEParser}
+	 * @throws NoParserRegisteredException
+	 *             if no {@link JPEParser} with the format specified is
+	 *             registerd into the {@link JPEParserManager}
+	 */
+	public JPEParser getJPEParser(String format)
+			throws NoParserRegisteredException {
+		JPEParser parser = this.registeredFormats.get(format);
+
+		if (parser == null) {
+			throw new NoParserRegisteredException(
+					"No parser registered for format: " + format);
+		}
+
+		return parser;
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/poiproxy/geotools/GeotoolsUtils.java
+public class GeotoolsUtils {
+
+	static {
+		System.setProperty("org.geotools.referencing.forceXY", "true");
+	}
+
+	public static double[] transform(String from, String to, double[] xy) {
+		try {
+			if (from == null || to == null) {
+				return xy;
+			}
+			
+			if (from.compareToIgnoreCase("EPSG:4326") == 0) {
+				// E6 support
+				if (xy[0] > 181 || xy[0] < -181) {
+					xy[0] /= 1000000;
+				}
+				if (xy[1] > 91 || xy[1] < -91) {
+					xy[1] /= 1000000;
+				}
+			}
+
+			if (from.equals(to)) {
+				return xy;
+			}
+
+			CoordinateReferenceSystem from_crs = CRS.decode(from);
+
+			// The 'true' means:
+			// "I'm going to use the order (longitude, latitude)"
+			CoordinateReferenceSystem to_crs = CRS.decode(to, true);
+
+			// The 'false' means:
+			// "There will be an exception if Geotools doesn't know how to do it"
+			MathTransform transform1 = CRS.findMathTransform(from_crs, to_crs,
+					false);
+
+			DirectPosition2D from_point = new DirectPosition2D(xy[0], xy[1]);
+			DirectPosition2D to_point = new DirectPosition2D(0, 0);
+
+			transform1.transform(from_point, to_point);
+
+			return new double[] { to_point.x, to_point.y };
+
+		} catch (Exception exc) {
+			exc.printStackTrace();
+			return null;
+		}
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/utils/Unzip.java
+public class Unzip {
+
+	public void unzip(String unzipFolder, String filePath, boolean deleteZip)
+			throws POIProxyException {
+
+		File file = new File(filePath);
+		if (!file.exists()) {
+			throw new POIProxyException("The file does not exist: " + filePath);
+		}
+
+		try {
+			ZipFile zipFile = new ZipFile(file);
+			Enumeration<? extends ZipEntry> entries = zipFile.entries();
+			while (entries.hasMoreElements()) {
+				ZipEntry entry = entries.nextElement();
+				if (entry.isDirectory()) {
+					continue;
+				}
+
+				String fileName = unzipFolder + entry.getName();
+				File zf = new File(fileName);
+				// int append = 1;
+				if (zf.exists()) {
+					zf.delete();
+					zf.createNewFile();
+				}
+				FileOutputStream output = new FileOutputStream(zf);
+				BufferedInputStream input = new BufferedInputStream(
+						zipFile.getInputStream(entry));
+				int bytesRead;
+				while ((bytesRead = input.read()) != -1) {
+					output.write(bytesRead);
+				}
+
+				output.flush();
+				output.close();
+				input.close();
+			}
+			zipFile.close();
+		} catch (ZipException e) {
+			throw new POIProxyException(e);
+		} catch (IOException e) {
+			throw new POIProxyException(e);
+		}
+
+		// delete zip file
+		if (deleteZip) {
+			file.delete();
+		}
+	}
+}
+es.alrocar.poiproxy/src/main/java/es/alrocar/jpe/parser/kml/KMLParser.java
+@SuppressWarnings("deprecation")
+public class KMLParser extends DefaultJPEParser {
+
+	@SuppressWarnings({ "deprecation" })
+	@Override
+	public ArrayList<JTSFeature> parse(String contentFile,
+			DescribeService service, LocalFilter filter) {
+		InputStream inputStream = new ByteArrayInputStream(
+				contentFile.getBytes());
+
+		fc = (ArrayList<JTSFeature>) contentHandler.startFeatureCollection();
+		this.setCurrentFeatureType(service);
+
+		JTSFeature feature;
+		Point point;
+
+		StreamingParser parser;
+
+		try {
+			KMLConfiguration configuration = new KMLConfiguration();
+			parser = new StreamingParser(configuration, inputStream,
+					KML.Placemark);
+
+			@SuppressWarnings("unused")
+			SimpleFeature f = null;
+			boolean hasPassedFilter = false;
+			String element;
+			while ((f = (SimpleFeature) parser.parse()) != null) {
+				hasPassedFilter = false;
+				feature = (JTSFeature) contentHandler.startFeature();
+				point = (Point) contentHandler.startPoint();
+
+				for (String destProp : this.currentFeatureType.getElements()
+						.keySet()) {
+					element = this.currentFeatureType.getElements()
+							.get(destProp).getInput();
+					String attribute = (String) f.getAttribute(element);
+					if (attribute == null) {
+						Set<Entry<Object, Object>> data = f.getUserData()
+								.entrySet();
+						Iterator<Entry<Object, Object>> it = data.iterator();
+
+						while (it.hasNext()) {
+							try {
+								Entry<Object, Object> extendedData = it.next();
+								if (extendedData.getKey().equals(element)) {
+									attribute = extendedData.getValue()
+											.toString();
+									break;
+								} else {
+									String[] parts = extendedData.getValue()
+											.toString().split(",");
+									for (String part : parts) {
+										String[] aa = part.trim().split("=");
+										if (aa != null && aa.length == 2) {
+											if (aa[0].trim().indexOf(element) != -1) {
+												attribute = aa[1].trim();
+											}
+										}
+									}
+								}
+							} catch (Exception e) {
+								e.printStackTrace();
+							}
+						}
+					}
+
+					if (attribute != null) {
+						try {
+							if (filter == null) {
+								hasPassedFilter = true;
+							} else {
+								hasPassedFilter = hasPassedFilter
+										|| filter.apply(attribute);
+							}
+							addAttribute(service.encode(attribute), feature,
+									destProp);
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+					}
+				}
+				Geometry geom = (Geometry) f.getDefaultGeometry();
+				try {
+					this.setLatitude(geom.getCentroid().getY(), point);
+					this.setLongitude(geom.getCentroid().getX(), point);
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+
+				contentHandler.addPointToFeature(feature, contentHandler
+						.endPoint(point, service.getSRS(),
+								DescribeService.DEFAULT_SRS));
+				if (hasPassedFilter) {
+					fillCategories(feature, service);
+					fillService(feature, service);
+					contentHandler.addFeatureToCollection(fc, feature);
+				}
+			}
+		} catch (ParserConfigurationException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (SAXException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		return (ArrayList) fc;
+	}
+
+	@Override
+	public String getFormat() {
+		return JPEParserFormatEnum.KML.format;
+	}
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/poiproxy/configuration/ServiceConfigurationManager.java
+public class ServiceConfigurationManager {
+
+	public static String CONFIGURATION_DIR = "/var/lib/services";
+
+	private HashMap<String, String> registeredConfigurations = new HashMap<String, String>();
+	private HashMap<String, DescribeService> parsedConfigurations = new HashMap<String, DescribeService>();
+	private DescribeServiceParser parser = new DescribeServiceParser();
+	private DescribeServices services;
+
+	/**
+	 * A map of ids of the registered services
+	 * 
+	 * @return
+	 */
+	public HashMap<String, String> getRegisteredConfigurations() {
+		return registeredConfigurations;
+	}
+
+	/**
+	 * The constructor.
+	 * 
+	 * Internally calls {@link #loadConfiguration()}
+	 */
+	public ServiceConfigurationManager() {
+		this.loadConfiguration();
+	}
+
+	/**
+	 * Iterates the files at {@link #CONFIGURATION_DIR} and calls
+	 * {@link #registerServiceConfiguration(String, String)} for each file found
+	 * setting as the id of the service the file name
+	 */
+	public void loadConfiguration() {
+		System.out.println("CONFIGURATION_DIR: " + CONFIGURATION_DIR);
+		File f = new File(CONFIGURATION_DIR);
+
+		if (f.isDirectory()) {
+			String[] files = f.list();
+			for (String s : files) {
+				if (s.endsWith(".json")) {
+					System.out.println("Registering: " + s.toLowerCase());
+					this.registerServiceConfiguration(s.split(".json")[0], s);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Registers a new service into the library
+	 * 
+	 * @param id
+	 *            The id of the service
+	 * @param configFile
+	 *            The content of the json document describing the service
+	 */
+	public void registerServiceConfiguration(String id, String configFile) {
+		this.registeredConfigurations.put(id, configFile);
+	}
+
+	/**
+	 * Registers a new service into the library
+	 * 
+	 * @param id
+	 *            The id of the service
+	 * @param configFile
+	 *            The content of the json document describing the service
+	 * @param describeService
+	 *            The parsed {@link DescribeService}
+	 * @throws POIProxyException
+	 *             When any of the parameters is null
+	 */
+	public void registerServiceConfiguration(String id, String configFile,
+			DescribeService service) throws POIProxyException {
+		if (service == null || configFile == null || service.getId() == null) {
+			throw new POIProxyException("Null service configuration");
+		}
+
+		this.registeredConfigurations.put(id, configFile);
+		this.parsedConfigurations.put(id, service);
+
+		try {
+			this.save(id, configFile);
+		} catch (IOException e) {
+			throw new POIProxyException("Unable to write service configuration");
+		}
+	}
+
+	private void save(String id, String configFile) throws IOException {
+		FileUtils.writeStringToFile(new File(
+				ServiceConfigurationManager.CONFIGURATION_DIR + File.separator
+						+ id + ".json"), configFile);
+	}
+
+	/**
+	 * Returns a {@link DescribeService} given an id. If the service has not
+	 * been used previously, this method parses the json document describing the
+	 * service
+	 * 
+	 * @param id
+	 *            The id of the service. Usually the name of the json document
+	 * @return The {@link DescribeService}
+	 */
+	public DescribeService getServiceConfiguration(String id) {
+		// Buscar los servicios registrados
+		DescribeService service = this.parsedConfigurations.get(id);
+
+		if (service == null) {
+			String res = this.getServiceAsJSON(id);
+			service = parser.parse(res);
+			service.setId(id);
+			this.parsedConfigurations.put(id, service);
+		}
+
+		return service;
+	}
+
+	/**
+	 * Returns the content of the json document describing a service given its
+	 * id
+	 * 
+	 * @param id
+	 *            The id of the service. Usually the name of the json document
+	 * @return The content of the json document
+	 */
+	public String getServiceAsJSON(String id) {
+		String path = this.registeredConfigurations.get(id);
+
+		if (path == null) {
+			return null;
+		}
+
+		// cargar fichero de disco obtener el json y parsearlo
+		File f = new File(CONFIGURATION_DIR + File.separator + path);
+		FileInputStream fis = null;
+		InputStream in = null;
+		OutputStream out = null;
+		String res = null;
+		try {
+			fis = new FileInputStream(f);
+			in = new BufferedInputStream(fis, Constants.IO_BUFFER_SIZE);
+			final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
+			out = new BufferedOutputStream(dataStream, Constants.IO_BUFFER_SIZE);
+			byte[] b = new byte[8 * 1024];
+			int read;
+			while ((read = in.read(b)) != -1) {
+				out.write(b, 0, read);
+			}
+			out.flush();
+			res = new String(dataStream.toByteArray());
+
+		} catch (IOException e) {
+			e.printStackTrace();
+			return null;
+		} finally {
+			Constants.closeStream(fis);
+			Constants.closeStream(in);
+			Constants.closeStream(out);
+		}
+
+		return res;
+	}
+
+	/**
+	 * not used at the moment
+	 * 
+	 * @param url
+	 * @return
+	 */
+	public DescribeService getRemoteConfiguration(String url) {
+		// Descargar json de la url y parsearlo
+		return null;
+	}
+
+	/**
+	 * Iterates the registered configurations and returns a
+	 * {@link DescribeServices} instance
+	 * 
+	 * @return
+	 */
+	public DescribeServices getAvailableServices() {
+		if (services == null) {
+			Set<String> keys = this.getRegisteredConfigurations().keySet();
+
+			Iterator<String> it = keys.iterator();
+
+			String id = null;
+			services = new DescribeServices();
+			while (it.hasNext()) {
+				id = it.next();
+				services.put(id, this.getServiceConfiguration(id));
+			}
+		}
+
+		return services;
+	}
+
+	/**
+	 * list resources available from the classpath
+	 * 
+	 * @author stoughto
+	 * 
+	 */
+	public static class ResourceList {
+		/**
+		 * for all elements of java.class.path get a Collection of resources
+		 * Pattern pattern = Pattern.compile(".*"); gets all resources
+		 * 
+		 * @param pattern
+		 *            the pattern to match
+		 * @return the resources in the order they are found
+		 */
+		public static Collection<String> getResources(Pattern pattern) {
+			ArrayList<String> retval = new ArrayList<String>();
+			String classPath = System.getProperty("java.class.path", ".");
+			String[] classPathElements = classPath.split(":");
+			for (String element : classPathElements) {
+				retval.addAll(getResources(element, pattern));
+			}
+			return retval;
+		}
+
+		private static Collection<String> getResources(String element,
+				Pattern pattern) {
+			ArrayList<String> retval = new ArrayList<String>();
+			File file = new File(element);
+			if (file.isDirectory()) {
+				retval.addAll(getResourcesFromDirectory(file, pattern));
+			} else {
+				// retval.addAll(getResourcesFromJarFile(file, pattern));
+			}
+			return retval;
+		}
+
+		private static Collection<String> getResourcesFromDirectory(
+				File directory, Pattern pattern) {
+			ArrayList<String> retval = new ArrayList<String>();
+			File[] fileList = directory.listFiles();
+			for (File file : fileList) {
+				if (file.isDirectory()) {
+					retval.addAll(getResourcesFromDirectory(file, pattern));
+				} else {
+					try {
+						String fileName = file.getCanonicalPath();
+						boolean accept = pattern.matcher(fileName).matches();
+						if (accept) {
+							retval.add(fileName);
+						}
+					} catch (IOException e) {
+						throw new Error(e);
+					}
+				}
+			}
+			return retval;
+		}
+
+		/**
+		 * list the resources that match args[0]
+		 * 
+		 * @param args
+		 *            args[0] is the pattern to match, or list all resources if
+		 *            there are no args
+		 */
+		public static void main(String[] args) {
+			Pattern pattern;
+			if (args.length < 1) {
+				pattern = Pattern.compile(".json");
+			} else {
+				pattern = Pattern.compile(args[0]);
+			}
+			Collection<String> list = ResourceList.getResources(pattern);
+			for (String name : list) {
+				System.out.println(name);
+			}
+
+		}
+	}
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/utils/PropertyLocator.java
+public class PropertyLocator {
+
+	@PropertyParam(name = "APP.TEST")
+	public String test = null;
+
+	@PropertyParam(name = "APP.ENV")
+	public String env = null;
+
+	@PropertyParam(name = "APP.TMP")
+	public String tempFolder = "/tmp";
+
+	private final static String PROPERTIES = "poiproxy.properties";
+	private Properties poiProxyProperties;
+
+	private static PropertyLocator propertyLocator;
+
+	private PropertyLocator() {
+		init();
+	}
+
+	public static PropertyLocator getInstance() {
+		if (propertyLocator == null) {
+			propertyLocator = new PropertyLocator();
+		}
+
+		return propertyLocator;
+	}
+
+	private void init() {
+		Field[] fields = this.getClass().getDeclaredFields();
+
+		for (Field field : fields) {
+			field.setAccessible(true);
+
+			PropertyParam pParam = field.getAnnotation(PropertyParam.class);
+
+			if (pParam != null) {
+				try {
+					field.set(
+							this,
+							this.getAplicacionProperties().getProperty(
+									pParam.name()));
+
+				} catch (IllegalArgumentException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IllegalAccessException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (POIProxyException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+
+	/**
+	 * @NOT generated
+	 */
+	protected Properties getAplicacionProperties() throws POIProxyException {
+		if (poiProxyProperties == null) {
+			poiProxyProperties = getProperties(PROPERTIES);
+		}
+		return poiProxyProperties;
+	}
+
+	/**
+	 * @NOT generated
+	 */
+	protected Properties getProperties(String name) throws POIProxyException {
+		return PropertyLocator.cargarFicheroPropiedades(name);
+	}
+
+	public static Properties cargarFicheroPropiedades(String pStrNombre)
+			throws POIProxyException {
+		try {
+			Properties lObjProps = new Properties();
+			lObjProps.load(Thread.currentThread().getContextClassLoader()
+					.getResourceAsStream(pStrNombre));
+			return lObjProps;
+		} catch (IOException e) {
+			throw new POIProxyException(e);
+		}
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/poiproxy/configuration/DescribeServices.java
+public class DescribeServices {
+
+	private Map<String, DescribeService> services = new HashMap<String, DescribeService>();
+	private ObjectMapper mapper = new ObjectMapper();
+
+	public Map<String, DescribeService> getServices() {
+		return services;
+	}
+
+	public void setServices(Map<String, DescribeService> services) {
+		this.services.clear();
+		for (String key : services.keySet()) {
+			this.put(key, services.get(key));
+		}
+	}
+
+	public void put(String id, DescribeService service) {
+		service.setId(id);
+		services.put(id, service);
+	}
+
+	public String asJSON() throws JsonGenerationException,
+			JsonMappingException, IOException {
+		return mapper.defaultPrettyPrintingWriter().writeValueAsString(this);
+	}
+
+	public DescribeServices fromJSON(String src) throws JsonParseException,
+			JsonMappingException, IOException {
+		return mapper.readValue(src, DescribeServices.class);
+	}
+
+	/**
+	 * Iterates the {@link DescribeService} registered and returns a list of
+	 * available categories
+	 * 
+	 * @return
+	 */
+	public List<String> getCategories() {
+		Set<String> keySet = this.services.keySet();
+		Iterator<String> it = keySet.iterator();
+
+		List<String> categories = new ArrayList<String>();
+
+		DescribeService service;
+		while (it.hasNext()) {
+			service = this.services.get(it.next());
+			for (String category : service.getCategories()) {
+				if (!categories.contains(category)) {
+					categories.add(category);
+				}
+			}
+		}
+
+		return categories;
+	}
+
+	/**
+	 * Iterates the list of registered services and for those that support the
+	 * category passed as a parameter return their ID
+	 * 
+	 * @param category
+	 * @return
+	 */
+	public List<String> getServicesIDByCategory(String category) {
+		Set<String> servicesID = services.keySet();
+		Iterator<String> it = servicesID.iterator();
+		List<String> ids = new ArrayList<String>();
+
+		if (category == null) {
+			return ids;
+		}
+
+		String key;
+		while (it.hasNext()) {
+			key = it.next();
+			DescribeService service = services.get(key);
+			if (service.containsCategory(category)) {
+				ids.add(key);
+			}
+		}
+
+		return ids;
+	}
+
+	/**
+	 * Returns true if there is any service registered that supports the
+	 * category parameter
+	 * 
+	 * @param category
+	 * @return
+	 */
+	public boolean supportsCategory(String category) {
+		if (category == null) {
+			return false;
+		}
+
+		List<String> categories = this.getCategories();
+		for (String cat : categories) {
+			if (cat.compareToIgnoreCase(category) == 0) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/utils/Downloader.java
+public class Downloader {
+
+	private final static Logger logger = Logger.getLogger(Downloader.class);
+
+	private byte[] xmldata;
+	private DownloadListener listener;
+
+	public void downloadFromUrl(String mapURL, Cancellable cancellable)
+			throws Exception {
+		xmldata = null;
+		InputStream in = null;
+		OutputStream out = null;
+		BufferedInputStream bis = null;
+		if (mapURL == null)
+			throw new Exception("Error null url");
+		try {
+
+			long startTime = System.currentTimeMillis();
+			logger.debug("download starts");
+			logger.debug("download url:" + (mapURL));
+
+			in = new BufferedInputStream(openConnection(mapURL),
+					Constants.IO_BUFFER_SIZE);
+			final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
+			out = new BufferedOutputStream(dataStream, Constants.IO_BUFFER_SIZE);
+			byte[] b = new byte[8 * 1024];
+			int read;
+			int total = 0;
+			while ((read = in.read(b)) != -1) {
+				total += read;
+				out.write(b, 0, read);
+				if (listener != null) {
+					listener.onBytesDownloaded(read);
+				}
+				if (cancellable != null && cancellable.getCanceled()) {
+					logger.debug("Download cancelled");
+
+					return;
+				}
+
+				// System.gc();
+			}
+			out.flush();
+			xmldata = dataStream.toByteArray();
+
+		} catch (IOException e) {
+			logger.debug(e);
+			throw new Exception(e);
+		} finally {
+			Constants.closeStream(in);
+			Constants.closeStream(out);
+		}
+	}
+
+	public void downloadFromUrl(String mapURL, String fileName,
+			String downloadPath, Cancellable cancellable) throws Exception {
+		xmldata = null;
+		InputStream in = null;
+		OutputStream out = null;
+		BufferedInputStream bis = null;
+		if (mapURL == null)
+			throw new Exception("Error null url");
+		if (fileName == null)
+			throw new Exception("Error null name");
+		try {
+
+			File directory = new File(downloadPath);
+			if (!directory.exists()) {
+				directory.mkdirs();
+			}
+
+			File file = new File(downloadPath + fileName);
+			file.createNewFile();
+			long startTime = System.currentTimeMillis();
+			logger.debug("download starts");
+			logger.debug("download url:" + (mapURL));
+			logger.debug("downloading file:" + fileName);
+
+			in = new BufferedInputStream(openConnection(mapURL),
+					Constants.IO_BUFFER_SIZE);
+			final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
+			out = new BufferedOutputStream(dataStream, Constants.IO_BUFFER_SIZE);
+			byte[] b = new byte[8 * 1024];
+			int read;
+			int total = 0;
+			while ((read = in.read(b)) != -1) {
+				total += read;
+				out.write(b, 0, read);
+				if (listener != null) {
+					listener.onBytesDownloaded(read);
+				}
+				if (cancellable != null && cancellable.getCanceled()) {
+					logger.debug("Download cancelled");
+					file.delete();
+					return;
+				}
+
+				// System.gc();
+			}
+			out.flush();
+			xmldata = dataStream.toByteArray();
+
+			FileOutputStream fileout = new FileOutputStream(file);
+			fileout.write(xmldata);
+			fileout.close();
+			logger.debug("download ready in"
+					+ ((System.currentTimeMillis() - startTime) / 1000)
+					+ " sec");
+
+		} catch (IOException e) {
+			logger.debug(e);
+			throw new Exception(e);
+		} finally {
+			Constants.closeStream(in);
+			Constants.closeStream(out);
+		}
+	}
+
+	public void downloadFromUrlBigFile(String mapURL, String fileName,
+			String downloadPath, Cancellable cancellable) throws Exception {
+		InputStream in = null;
+		// OutputStream out = null;
+		BufferedInputStream bis = null;
+		if (mapURL == null)
+			throw new Exception("Error null url");
+		if (fileName == null)
+			throw new Exception("Error null name");
+		try {
+
+			File directory = new File(downloadPath);
+			if (!directory.exists()) {
+				directory.mkdirs();
+			}
+
+			File file = new File(downloadPath + fileName);
+			file.createNewFile();
+			long startTime = System.currentTimeMillis();
+			logger.debug("download starts");
+			logger.debug("download url:" + mapURL);
+			logger.debug("downloading file:" + fileName);
+
+			in = new BufferedInputStream(openConnection(mapURL),
+					Constants.IO_BUFFER_SIZE);
+			// final ByteArrayOutputStream dataStream = new
+			// ByteArrayOutputStream();
+			// out = new BufferedOutputStream(dataStream,
+			// Constants.IO_BUFFER_SIZE);
+			FileOutputStream fileout = new FileOutputStream(file);
+			byte[] b = new byte[8 * 1024];
+			int read;
+			int total = 0;
+			while ((read = in.read(b)) != -1) {
+				total += read;
+				fileout.write(b, 0, read);
+				fileout.flush();
+				if (listener != null) {
+					listener.onBytesDownloaded(read);
+				}
+				if (cancellable != null && cancellable.getCanceled()) {
+					logger.debug("Download cancelled");
+					file.delete();
+					return;
+				}
+
+				// System.gc();
+			}
+			// out.flush();
+			// xmldata = dataStream.toByteArray();
+
+			// fileout.write(xmldata);
+			fileout.close();
+			logger.debug("download ready in"
+					+ ((System.currentTimeMillis() - startTime) / 1000)
+					+ " sec");
+
+		} catch (IOException e) {
+			logger.debug(e);
+			throw new Exception(e);
+		} finally {
+			Constants.closeStream(in);
+			// Constants.closeStream(out);
+		}
+	}
+
+	public String openFile(String filePath) throws Exception {
+		if (filePath == null)
+			throw new Exception("Error null url");
+
+		try {
+			File file = new File(filePath);
+
+			if (!file.exists()) {
+				throw new Exception("File not exists");
+			}
+
+			BufferedReader reader = new BufferedReader(new FileReader(file));
+			String line = null;
+			StringBuilder stringBuilder = new StringBuilder();
+			String ls = System.getProperty("line.separator");
+
+			while ((line = reader.readLine()) != null) {
+				stringBuilder.append(line);
+				stringBuilder.append(ls);
+			}
+
+			return stringBuilder.toString();
+		} catch (IOException e) {
+			logger.debug(e);
+			throw new Exception(e);
+		} finally {
+
+		}
+	}
+
+	public byte[] getData() {
+		return xmldata;
+	}
+
+	public static InputStream openConnection(String query) throws IOException {
+		final URL url = new URL(query.replace(" ", "%20"));
+		URLConnection urlconnec = url.openConnection();
+		urlconnec.setConnectTimeout(15000);
+		urlconnec.setReadTimeout(15000);
+		return urlconnec.getInputStream();
+	}
+
+	public void setDownloadListener(DownloadListener listener) {
+		this.listener = listener;
+	}
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/jpe/parser/xml/XMLJPEParser.java
+public class XMLJPEParser extends JPEParser {
+
+	private JPEContentHandler contentHandler = new MiniJPEContentHandler();
+	private MiniJPEWriterHandler writerHandler = new MiniJPEWriterHandler();
+	private XMLSimpleContentHandler simpleContentHandler = new XMLSimpleContentHandler();
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public ArrayList<JTSFeature> parse(String xml, DescribeService service,
+			LocalFilter filter) {
+		simpleContentHandler.setJPEParseContentHandler(contentHandler);
+		simpleContentHandler.setJPEWriteContentHandler(writerHandler);
+		simpleContentHandler.setDescribeService(service);
+		simpleContentHandler.setLocalFilter(filter);
+
+		try {
+			XMLReader parser = org.xml.sax.helpers.XMLReaderFactory
+					.createXMLReader();
+
+			parser.setContentHandler(simpleContentHandler);
+			ByteArrayInputStream bi = new ByteArrayInputStream(
+					xml.getBytes(service.getEncoding()));
+			InputSource in = new InputSource();
+			in.setByteStream(bi);
+			in.setEncoding(service.getEncoding());
+			parser.parse(in);
+		} catch (SAXException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return null;
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return null;
+		}
+
+		return simpleContentHandler.getResult();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public String getGeoJSON() {
+		if (writerHandler != null) {
+			return writerHandler.getGeoJSON();
+		}
+
+		return null;
+	}
+
+	@Override
+	public String getFormat() {
+		return JPEParserFormatEnum.XML.format;
+	}
+
+}
+es.alrocar.poiproxy/src/test/java/es/alrocar/jpe/parser/JPEParser.java
+public abstract class JPEParser {
+	
+	public static final String CATEGORIES = "px_categories";
+	public static final String SERVICE = "px_service";
+
+	/**
+	 * Parses a contentFile using a {@link DescribeService} instance
+	 * 
+	 * @param contentFile
+	 *            The content of the file to parse into a String
+	 * @param service
+	 *            The DescribeService instance. THe
+	 *            {@link DescribeService#getFeatureTypes()} will be used to get
+	 *            some attributes to be parsed
+	 * @param localFilter
+	 *            A LocalFilter instance to perform a filter operation in the
+	 *            contentFile
+	 * @return An array of {@link JTSFeature}
+	 */
+	public abstract ArrayList<JTSFeature> parse(String contentFile,
+			DescribeService service, LocalFilter localFilter);
+
+	/**
+	 * The GeoJSON document corresponding to the array of {@link JTS} returned
+	 * by the {@link JPEParser#parse(String, DescribeService)} method
+	 * 
+	 * @return
+	 */
+	public abstract String getGeoJSON();
+
+	/**
+	 * The format that supports the parser
+	 * 
+	 * @return either {@link JPEParser#FORMAT_JSON} or
+	 *         {@link JPEParser#FORMAT_XML}
+	 */
+	public abstract String getFormat();
+
+	/**
+	 * Transform a pair of coordinates from a SRS to another expressed as EPSG
+	 * codes
+	 * 
+	 * @param from
+	 *            The EPSG code of the source SRS
+	 * @param to
+	 *            The EPSG code of the destination SRS
+	 * @param xy
+	 *            The pair of coordinates (x,y) or (lon,lat)
+	 * @return
+	 */
+	public double[] transform(String from, String to, double[] xy) {
+		return GeotoolsUtils.transform(from, to, xy);
+	}
+}

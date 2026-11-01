@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self.start_callbacks,self.end_callbacks,self._CompilationCallbackHandler__prevent_duplicate_callbacks,self._CompilationCallbackHandler__pending_callbacks_counter,self._CompilationCallbackHandler__pending_callbacks_counter_lock,)==(other.start_callbacks,other.end_callbacks,other._CompilationCallbackHandler__prevent_duplicate_callbacks,other._CompilationCallbackHandler__pending_callbacks_counter,other._CompilationCallbackHandler__pending_callbacks_counter_lock,)
+  return NotImplemented
+ return __eq__

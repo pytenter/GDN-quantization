@@ -1,0 +1,50 @@
+# qwen_gdn_asym_int4_group32_aime26_seed1_v1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/qwen_gdn_asym_int4_group32_aime26_seed1_v1`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`HANDOFF.md`](../../objects/0f/0f7be4d35ed9af8447d20075edfb4eecdb0f1f7b11a2f398c17946a6364bd024__HANDOFF.md)
+- [`EXECUTION_PLAN.md`](../../objects/85/8573dc125531bc0038ed6a776afb92b7c674b20e366a0fa9505315ea4ac41dc8__EXECUTION_PLAN.md)
+- [`SCORE_PASS_0.json`](../../objects/22/220bb9e106ed79154569cff059fd035f46e0208d17db05719b389bd0a190484b__FROZEN_V4_SCORES.json)
+- [`SCORE_PASS_1.json`](../../objects/22/220bb9e106ed79154569cff059fd035f46e0208d17db05719b389bd0a190484b__FROZEN_V4_SCORES.json)
+- [`FROZEN_V4_SCORES.json`](../../objects/22/220bb9e106ed79154569cff059fd035f46e0208d17db05719b389bd0a190484b__FROZEN_V4_SCORES.json)
+- [`FINALIZER_STARTED.json`](../../objects/e4/e485db4292881615dd6ef0279dc80b9395285194419402ba4ae09a5b63e8c713__FINALIZER_STARTED.json)
+- [`FINAL_TASK_STATUS.json`](../../objects/fc/fc0a50ec329384385281eeb5b00effcbbda49df92738e309d59e3ee67f088f6f__FINAL_TASK_STATUS.json)
+- [`FINAL_SEAL_RECEIPT.json`](../../objects/2e/2e54b548fae335c6bb306aa9c6951f38a5f7837cf8125ec84f0b8daddb8f34e5__FINAL_SEAL_RECEIPT.json)
+- [`src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`scripts/score_pass_cpu.py`](../../objects/30/3097e86ec8b34c7021ccd99ecde232606d218a6145acf8ddaa88302b553db1b9__score_pass_cpu.py)
+- [`AIME26_SEED1_PROTOCOL.json`](../../objects/9e/9ee13437e8cd883830d746b4adc7b18351bdfc3f95c3ff1493ba1f664656d03f__AIME26_SEED1_PROTOCOL.json)
+- [`FINAL_SCIENTIFIC_REPORT.md`](../../objects/0c/0c3faed767276d172df0fd5e0af4ca7945e1bc5145c3ea55e395ffe8edbf9a3e__FINAL_SCIENTIFIC_REPORT.md)
+- [`INT4_VS_INT8_COMPARISON.md`](../../objects/c6/c6d2fc7a6d2b8663f6c0e034940559043453ef3d00bfd85a4a711b2773915342__INT4_VS_INT8_COMPARISON.md)
+- [`AIME26_PROTOCOL_FREEZE.json`](../../objects/77/777d3a947eec5c29a45b15e89c8a9975384bbcbc979386e9e792f3345630e8b5__AIME26_PROTOCOL_FREEZE.json)
+- [`scripts/finalize_offline.py`](../../objects/84/84ec1da9431e0e8261469d8f92453e45820ea59c2ac043db41ed1f9a98ee4e94__finalize_offline.py)
+- [`protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`scripts/history_score_cpu.py`](../../objects/fa/facf54388b0b9ab141d21d17830b9a69a40f0a9d40dbaeb0bb9dcd3744e2a5c8__history_score_cpu.py)
+- [`RESOURCE_AND_COST_ESTIMATE.md`](../../objects/34/3436f1b2afbc80ffc8557b3f92b2b53073b79f879147b0032f6ac1f314e089bf__RESOURCE_AND_COST_ESTIMATE.md)
+- [`INT8_HISTORY_SCORE_PASS_0.json`](../../objects/69/6924630b28cd65f7e13dbeea4e0920a9ff521aa7a51cca0cf4b0a8f3c5e44cd0__INT8_HISTORY_SCORE_PASS_0.json)
+- [`INT8_HISTORY_SCORE_PASS_1.json`](../../objects/69/6924630b28cd65f7e13dbeea4e0920a9ff521aa7a51cca0cf4b0a8f3c5e44cd0__INT8_HISTORY_SCORE_PASS_0.json)
+- [`FINAL_ARCHIVE_VERIFICATION.json`](../../objects/87/878c386763ac80d6424a18765e9c78cce2d888e1158c0c8c157a03097037eefb__FINAL_ARCHIVE_VERIFICATION.json)
+- [`PER_PROBLEM_PAIRWISE_RESULTS.csv`](../../objects/f2/f27b8dad104c4cda53628cd04822b6a71ec09eaf6606168cc507b03960f85d13__PER_PROBLEM_PAIRWISE_RESULTS.csv)
+- [`INT4_INT8_MATCHED_PER_PROBLEM.csv`](../../objects/dc/dcbaa1f3672c679543a87e668cd2fb82a4d479d662b4d41e195e5c07fa41a4d6__INT4_INT8_MATCHED_PER_PROBLEM.csv)
+- [`INT4_CANONICAL_NUMERICAL_CONTRACT.md`](../../objects/09/09ab321ed2412d2fa9afac47b49e4d9d31572fdc65e0f0ed6ed7752670b2c8dc__INT4_CANONICAL_NUMERICAL_CONTRACT.md)
+- [`reuse/parent/src/protocol_binding.py`](../../objects/b4/b4d70ac7678554032536e5466f4ad3c09cd46cbff965326d9ef922df32c6e9d8__protocol_binding.py)
+- [`qualification/CPU_PASS_0/SUMMARY.json`](../../objects/89/89aa839b3fa53c59bebf094fcdf46af8f3ee1f785c478d7a6a34e96bd65f7c75__SUMMARY.json)
+- [`qualification/CPU_PASS_1/SUMMARY.json`](../../objects/89/89aa839b3fa53c59bebf094fcdf46af8f3ee1f785c478d7a6a34e96bd65f7c75__SUMMARY.json)
+- [`reuse/parent/scripts/score_pass_cpu.py`](../../objects/f0/f09a5ae8b2c0ab1409c4ffb52f4d56b32383731d1a96ec0e11d768fd2b74cb00__score_pass_cpu.py)
+- [`GENERATION_LENGTH_AND_RUNTIME_REPORT.md`](../../objects/d0/d074663823d2d7841a48e76fe9c74664690a8f48a93e633da9fdb0de635b606d__GENERATION_LENGTH_AND_RUNTIME_REPORT.md)
+- [`reuse/parent/AIME26_SEED1_PROTOCOL.json`](../../objects/9e/9ee13437e8cd883830d746b4adc7b18351bdfc3f95c3ff1493ba1f664656d03f__AIME26_SEED1_PROTOCOL.json)
+- [`analysis/FINAL_PRELAUNCH_CPU_REVIEW.json`](../../objects/fb/fbac023f85e731ea15c36cd3cb1c5041466436a6868634f2373b725b3da4c817__FINAL_PRELAUNCH_CPU_REVIEW.json)
+- [`analysis/FINAL_REMOTE_GPU_ADMISSION.json`](../../objects/67/672dc355576931f4fccd12caba3bbd6aa040892c8ef2ff0abb4ceaecc2486c00__FINAL_REMOTE_GPU_ADMISSION.json)
+- [`reuse/parent/scripts/finalize_offline.py`](../../objects/40/40e39f8a1429fe2061fef3c4978165a41bb4580279e8828357e3570ad12ce6dd__finalize_offline.py)
+- [`reuse/parent/protocol/aime26_scorer_v4.py`](../../../../../experiments/ling_kda/recurrent_training/LING_RECURRENT_DENSE_L6_L7_V1/scripts/aime26_scorer_v4.py)
+- [`reuse/parent/scripts/final_prelaunch_cpu.py`](../../objects/e1/e156300490cfd66a6481b3ece9d8df0b29073f440c4e0557b7d99dcfa479a83f__final_prelaunch_cpu.py)
+- [`inherited/group32/CODEC_NUMERICAL_CONTRACT.md`](../../objects/a6/a6324876f31be5e5b821400bc11c7dad5464f9efac1146806dc80a912d6608c4__CODEC_NUMERICAL_CONTRACT.md)
+- [`reuse/parent/FOUR_CODEC_NUMERICAL_CONTRACT.md`](../../objects/2b/2b38c449e8123e6071045473fce5d31460886ec2cb52316b5904cb8821d7fc29__FOUR_CODEC_NUMERICAL_CONTRACT.md)
+- [`reuse/parent/scripts/publish_final_execution.py`](../../objects/d3/d36f58126d46e5dbc52fb40a47b74272c9bbbf2ccebd447f5700f24d59259101__publish_final_execution.py)
+- [`inherited/group32/HISTORICAL_PORT_INT8_PROTOCOL.md`](../../objects/6f/6f98acc34722552ec253fc06b2f4da1b76aa53b203fb172b444eb3ac70cc3a32__HISTORICAL_PORT_INT8_PROTOCOL.md)
+- [`analysis/FINAL_SOURCE_DEPENDENCY_MODEL_RELEASE_AUDIT.json`](../../objects/61/61784523fd8259f082e2796450497dfa41b4e0e4b7eba7cfe225687716903147__FINAL_SOURCE_DEPENDENCY_MODEL_RELEASE_AUDIT.json)

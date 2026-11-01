@@ -1,0 +1,1 @@
+lambda _cls, msg, exception_type: _tuple_new(_cls, (msg, exception_type))

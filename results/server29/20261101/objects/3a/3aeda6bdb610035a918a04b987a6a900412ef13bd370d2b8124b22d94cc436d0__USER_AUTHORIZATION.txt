@@ -1,0 +1,688 @@
+# CODEX TASK — QWEN GDN V3 Minimal Repair, Exact Resume and Scientific Completion
+
+## 0. 任务目标
+
+当前实验：
+
+`QWEN_GDN_DETERMINISTIC_RECOVERY_TO_SCALE_DISCOVERY_V3`
+
+请先仔细阅读仓库中相关的实验协议、冻结配置、代码、日志、历史 STOP 记录和现有产物，理解整个 V3 实验的依赖关系，然后进行最小工程修复及精确断点恢复。
+
+**最终目标：在不改变任何已经冻结的科学定义、数值协议、实验对象或停止门禁的条件下，完成原先已授权但尚未完成的 V3 Discovery。**
+
+工作原则：
+
+- 先审计、再修复、再执行。
+- 优先修复已经证实的根因，不进行无关重构。
+- 优先复用能够证明有效的既有计算结果。
+- 不重复昂贵的 GPU 资格实验，除非有明确证据要求重跑。
+- 不为获得预期科研结论而修改科学协议。
+- 不以历史遗留的 16 GPUh 预算或 85% 显存占用预警作为用户授权的硬停止条件。
+- 不询问已经能够通过仓库、日志、配置或产物确定的问题。
+- 遇到新的实质性科学或数值失败时，严格执行原冻结 STOP 条件。
+
+允许完成本任务范围内的必要工程修复、CPU 审计、原授权 GPU 阶段恢复和最终封存。
+
+不允许启动任何新的科研方向或扩大实验范围。
+
+---
+
+## 1. 历史事实与不可修改的结论
+
+当前 V3 已确认：
+
+### 1.1 Numerical Closure
+
+`NUMERICAL_CLOSURE_STATUS = PASS`
+
+第一条 fixed-order FP32 路线：
+
+- 历史算子资格通过。
+- 8-token full-model relative L2 = 0.0011951210145。
+- 超过冻结阈值 0.001。
+- 失败证据必须永久保留。
+
+第二条预登记 FP32 Neumaier compensated 路线：
+
+- 完成 2/8/32/64/256-token full-model tests。
+- 总计 1110 个检查对象。
+- 全部与离线 FP64 scan 数学参考回转 FP32 后逐字节一致。
+- 三次 fresh process 一致。
+- 数值资格 PASS。
+
+`HISTORICAL_BITWISE_PARITY = FAIL`
+
+这是针对旧 CUDA native cumsum 的历史 bitwise parity 结果，不得删除、修改或重新解释为 PASS。
+
+禁止添加第三条数值路线，禁止更换数学参考，禁止放宽原冻结容差。
+
+### 1.2 Observer Parity
+
+S1/S2 observer 已经完成两次 fresh-process OFF/ON parity：
+
+- 主量化 codes 一致。
+- 完整 recurrent cache 一致。
+- Logits 一致。
+- Writeback 一致。
+- 下一 token 消费一致。
+
+`OBSERVER_PARITY = PASS`
+
+### 1.3 Track B Engineering Qualification
+
+Doc1 H/C6R 的 1024-token Track B 工程资格 PASS。
+
+历史记录：
+
+- Duration = 785.75 seconds。
+- Peak allocated = 17.101 GiB。
+- Peak reserved = 17.256 GiB。
+
+该资格阶段产生的分数不能混入正式科学面板排名。
+
+### 1.4 当前正式实验 STOP
+
+正式 Track B 四文档面板启动后，Doc3 在第一个模型 token forward 之前停止。
+
+故障位置：
+
+`scripts/scale_science.py:279`
+
+已确认原因：
+
+`Path.read_text()` 在文本读取时将 CRLF 归一化为 LF，导致新增 token 审核与冻结 token 不一致。
+
+只读诊断已经证明：
+
+- 原文档包含 4962 个 CRLF。
+- 原文档 SHA 未变化。
+- 冻结 token SHA 未变化。
+- 从原始字节 UTF-8 解码后，32768 个冻结 token 全部匹配。
+- 换行归一化后的第一个差异出现在 zero-based token index 32，271 vs 845。
+- Doc3 formal model forward = 0。
+
+这是已经定位的文本审核包装层工程缺陷。
+
+它不是已经证实的：
+
+- Frozen asset corruption。
+- Teacher pairing failure。
+- Model numerical failure。
+- S1/S2 scientific failure。
+
+历史 Track B STOP 必须保留。
+
+### 1.5 未完成科学阶段
+
+截至用户提供的历史报告：
+
+- Formal Track B：INCOMPLETE / FAIL_AND_STOP。
+- Track A 真实 8192 anchors：NOT_RUN。
+- Matched long G / E_future：NOT_RUN。
+- Surrogate Discovery：INCOMPLETE。
+
+以上为历史快照，不代表当前服务器实时状态。必须重新检查实际执行和后封存结果。
+
+---
+
+## 2. Phase 0 — Read-only Forensic Audit
+
+这是第一优先级。
+
+不要直接修改代码，不要立即启动 GPU。
+
+先定位：
+
+1. 当前真实 repo/worktree。
+2. V3 原始运行目录。
+3. 原 controller 和 worker 的运行状态。
+4. 历史 STOP 文件。
+5. Post-stop closure 文件。
+6. 原实验冻结配置。
+7. 数值闭环和 observer parity 证据。
+8. Track B、Track A、matched long 和 surrogate discovery 的执行依赖关系。
+9. 原始科学指标定义与结果存储格式。
+10. 原始 artifact manifest、checkpoint、resume 或调度机制。
+
+确认原控制器是否已经退出。
+
+如果旧进程仍在执行：
+
+- 不杀死现有进程。
+- 不修改其正在使用的代码或产物。
+- 不启动新的 GPU 任务。
+- 可以在独立干净工作树中准备补丁和 CPU-only 测试，但不得影响旧控制器。
+- 仅在原 controller 完整退出并完成资源及产物核对后恢复正式 GPU 执行。
+
+检查以下文件是否已经生成：
+
+- `POSTSTOP_EXECUTION_CLOSURE_001.json`
+- `POSTSTOP_REPORT_001.md`
+- `POSTSTOP_SHA256SUMS_001.txt`
+
+如果这些文件存在：
+
+- 检查内容是否完整。
+- 检查封存时间和所覆盖的执行范围。
+- 验证 SHA256。
+- 交叉核对 controller exit status 与 worker exit status。
+- 核查是否存在仍在写入、半成品或未封存的结果。
+
+如果后封存仍未完成，优先通过原定 CPU-only 流程完成封存。
+
+禁止将旧 `FINAL_REPORT.md` 和旧 `SHA256SUMS.txt` 误认为最终稳定封存。
+
+### 2.1 建立正式工作单元账本
+
+从实际配置和历史日志中恢复原始工作单元集合，不允许凭空推断需要运行的模型或实验组合。
+
+对每个工作单元记录：
+
+- Unit ID。
+- Document ID。
+- Model / Rotation / Quantizer identity。
+- Experiment arm。
+- Stage。
+- GPU assignment。
+- Required input/checkpoint identity。
+- Original code revision。
+- Frozen numerical contract。
+- 当前进程状态。
+- 输出产物路径。
+- Artifact SHA256。
+- Completion / failure / interruption status。
+- 是否有资格被复用。
+
+至少区分：
+
+`VALID_COMPLETE`
+
+`INCOMPLETE`
+
+`FAILED`
+
+`NOT_STARTED`
+
+`INVALID_OR_UNVERIFIABLE`
+
+正式工程资格数据必须与正式科学数据分开记录。
+
+不得仅根据“输出文件存在”或“CSV 有记录”就判定工作单元完成。
+
+只有具备完整结束证据、身份一致、校验通过、符合原协议的原子结果，才允许复用。
+
+对于无可验证完整产物的单元，应视为未完成，并由后续 resume 机制安全处理。
+
+---
+
+## 3. Phase 1 — 修复已经证实的根因
+
+只允许修复文本审核中的换行归一化问题。
+
+先阅读 `scripts/scale_science.py` 实际代码和相关调用链，确认错误发生的确切位置。
+
+采用最小等价修复，例如把：
+
+`Path(path).read_text(encoding="utf-8")`
+
+替换为：
+
+`Path(path).read_bytes().decode("utf-8")`
+
+注意：这是修复意图，不要求机械替换。如果实际代码形式不同，应依据调用链采用最小正确修改。
+
+必须保证：
+
+- 不进行 CRLF → LF 归一化。
+- 不进行 LF → CRLF 转换。
+- 不修改 Unicode normalization。
+- 不修改文档原始字节。
+- 不修改冻结 token。
+- 不修改 tokenizer 或其参数。
+- 不修改原有 collector。
+- 不修改 chunk-to-position teacher。
+- 不修改原始 C5/C6 baseline 计算路径。
+- 不修改 quantizer。
+- 不修改 rotation。
+- 不修改 recurrent state writeback。
+- 不修改 forward。
+- 不修改数值算法。
+- 不修改科学指标。
+- 不修改统计阈值。
+
+同时检查是否存在与该审核路径直接相关的第二处隐式换行归一化。
+
+如果存在，先确定它是否属于同一根因及同一修复边界；不要进行全仓库批量替换。
+
+### 3.1 修复范围证明
+
+输出修复前后最小 diff。
+
+证明变化只发生于文本审核读取路径。
+
+对未修改的关键计算模块进行源码身份或等价性审核。
+
+如果任何核心 numerical、forward、collector、metric 逻辑发生变化，必须停止，不得把这次修复当成 audit-only change。
+
+保留历史 STOP 原始记录。
+
+新修复使用独立 commit，并记录原始 revision 和修复 revision。
+
+不得使用破坏性 git reset、覆盖用户未提交改动或清理未知文件。
+
+如需隔离，优先建立干净工作树。
+
+---
+
+## 4. Phase 2 — CPU-only 修复资格认证
+
+这一步必须严格，但不需要重新消耗大量 GPU。
+
+### 4.1 Real Doc3 regression
+
+读取真实 Doc3 的原始字节。
+
+验证：
+
+- CRLF 数量与冻结诊断一致。
+- 文档 SHA256 与冻结资产一致。
+- Frozen token SHA256 一致。
+- 原始字节 UTF-8 解码后 tokenization 与全部 32768 个冻结 token 完全相同。
+- 第一个 token 到最后一个 token 均一致。
+- 不发生额外换行归一化。
+
+### 4.2 Synthetic regression
+
+增加小规模单元测试，覆盖：
+
+- 纯 LF。
+- 纯 CRLF。
+- 混合 LF / CRLF。
+- 没有最终换行的文本。
+- 多个连续空行。
+- 普通 UTF-8 非 ASCII 字符。
+
+验证审核层保留原始文本语义和换行字符，不改变输入。
+
+### 4.3 全部正式文档审核
+
+对所有冻结正式文档执行 CPU-only token 身份审核。
+
+必须验证：
+
+- Raw document SHA。
+- Frozen token SHA。
+- Token count。
+- Exact token IDs。
+- 原本的 document/chunk/position 关联关系。
+
+这里的审核只能验证或读取历史资产，不得重新生成或覆盖 frozen assets。
+
+### 4.4 数值资格的复用条件
+
+如果能够证明：
+
+1. 数值核心代码完全未改变；
+2. 数值测试配置未改变；
+3. Numerical closure 产物身份完整；
+4. Observer parity 产物身份完整；
+5. 新补丁仅修改 audit-only 路径；
+
+则复用已经完成的：
+
+- 1110-object numerical closure。
+- 三次 fresh-process determinism。
+- S1/S2 observer parity。
+
+**不要无理由重新运行上述昂贵资格实验。**
+
+如原冻结协议明确要求恢复时重新执行某个较小检查，则仅执行该必需检查，并报告原因。
+
+不得为了方便直接修改原资格文件中的 PASS/FAIL。
+
+---
+
+## 5. Phase 3 — 精确断点恢复规划
+
+完成上述门禁后，先生成一份机器可读的 resume plan。
+
+不要立即把整个四文档实验重新启动。
+
+从 Phase 0 建立的账本出发：
+
+### 5.1 对已完成工作单元
+
+只有状态为 `VALID_COMPLETE` 的单元才可以复用。
+
+逐一验证：
+
+- 输入身份。
+- 模型及 checkpoint 身份。
+- Rotation identity。
+- Quantizer identity。
+- Frozen metric identity。
+- Numerical contract。
+- Output completeness。
+- Artifact checksum。
+- Provenance。
+
+如果原代码 revision 与修复后的 revision 不一致，必须证明差异仅为审核读取逻辑，不改变该单元科学计算语义。
+
+### 5.2 对未完成工作单元
+
+只恢复：
+
+- Doc3 零 forward 的正式单元。
+- Doc1/2/4 中确实未完成或无有效完整产物的单元。
+- 原协议中尚未启动的后续授权阶段。
+
+不重新执行已通过完整身份验证的工作。
+
+不复用工程资格产生的 short score 作为正式面板结果。
+
+不复用旧数值协议下的科学测量。
+
+### 5.3 Resume 幂等性
+
+确保恢复命令重复调用时不会：
+
+- 重复调度已完成单元。
+- 覆盖旧结果。
+- 重复追加相同 token 的记录。
+- 混合不同 revision 的不兼容结果。
+- 把半成品标记成 COMPLETE。
+
+如果原调度器已有可靠 resume 机制，优先复用。
+
+如果没有，仅补充完成本次恢复所必需的最小机制。
+
+不要重写整个调度系统。
+
+正式启动前，运行 dry-run，输出：
+
+- Total expected units。
+- Reusable units。
+- Units requiring execution。
+- Units blocked。
+- Estimated GPU requirements。
+- Expected output storage requirements。
+- Exact resume command。
+
+检查各工作单元恰好被分类一次，不能遗漏，也不能重复。
+
+---
+
+## 6. Phase 4 — GPU 和磁盘资源检查
+
+使用服务器实时信息，而不是历史快照。
+
+检查：
+
+- GPU 型号及数量。
+- GPU 当前占用及进程所有者。
+- 可用显存。
+- CUDA/PyTorch/Triton/FLA 等实际环境。
+- `/data` 可用空间。
+- 当前 V3 产物大小。
+- 后续 Track A / matched long 的预计新增数据量。
+- 产物写入与临时文件所需空间。
+
+历史报告显示 `/data` 在 2026-10-12 11:23 有约 37.54 GiB 可用空间，但这不是当前实时值。
+
+不得假设它仍然成立。
+
+如剩余空间不足以安全完成下一阶段：
+
+- 先分析输出增长和临时文件规模。
+- 优先复用已有结果、避免重复保存。
+- 可以移除经验证可重新生成且明确属于本次运行的临时文件，但不能删除任何历史科学证据或未确认归属的文件。
+- 不得为了节省空间改变原冻结科学数据、metric 或 horizon。
+- 若仍不可行，停止并明确给出容量缺口和安全解决方案。
+
+显存同理，不得私自减少原实验的 horizon、样本数或改变 scientific protocol。
+
+资源门禁以真实物理可行性、原协议及实际资源所有权为准，不额外施加用户没有授权的行政预算限制。
+
+---
+
+## 7. Phase 5 — 恢复正式 Track B
+
+严格遵循原先冻结的四文档正式 Track B 协议。
+
+保持：
+
+- 原文档集合。
+- 原模型及 rotation。
+- 原量化路径。
+- 原 numerical contract。
+- 原 GPU 映射（除非原协议本身允许等价迁移）。
+- 原随机种子。
+- 原实验 horizon。
+- 原 metric。
+- 原数据与 token identity。
+- 原停止条件。
+
+先恢复缺失的正式 Track B 工作单元。
+
+同时复用验证通过的正式 Track B 已完成单元。
+
+完成后重新执行面板级完整性审核：
+
+1. 四文档覆盖完整。
+2. 每个预期单元恰好出现一次。
+3. 各模型/arm 的配对关系正确。
+4. 所有结果属于兼容的 frozen protocol。
+5. 正式结果中没有混入 qualification scores。
+6. 没有缺失 token、重复 token 或错误的 position identity。
+7. 所有结果具有完整 provenance 和 checksum。
+
+如果 Track B 未完整通过，不得启动依赖完整 Track B 的后续科学阶段。
+
+历史 `FAIL_AND_STOP` 继续保留；新的恢复执行结果记录在新 attempt 中，不覆盖历史。
+
+---
+
+## 8. Phase 6 — 继续原授权科学实验
+
+仅当正式 Track B 完整且通过所有门禁时，按照仓库中原先冻结的依赖关系继续：
+
+### Stage A：真实 8192 anchors
+
+运行原协议中的 Track A。
+
+不能用 1024-token short score 冒充真实 8192-anchor measurement。
+
+不能修改 anchor 定义或抽样位置。
+
+### Matched Long：G / E_future
+
+运行原计划中与 short surrogate 正确配对的 long-horizon measurements。
+
+保持原始匹配单位、reference model、teacher、cache evolution 和 measurement contract。
+
+特别禁止：
+
+- 将历史旧 G 与新 short score 直接拼接。
+- 使用不兼容的数值实现产生混合结果。
+- 使用不同 document/token/position identity 做伪配对。
+- 因计算代价调整长程测量的定义。
+
+### Surrogate Discovery
+
+使用完成后的真实 matched 数据，执行原冻结 surrogate discovery。
+
+严格使用原先定义的：
+
+- S1/S2 指标。
+- Primary metric。
+- Secondary metrics。
+- Baseline。
+- 统计比较方式。
+- Holdout/discovery 划分。
+- 停止规则。
+- 排名和增量计算方法。
+
+具体定义必须从冻结协议恢复，不允许自行发明。
+
+必须回答：
+
+1. S1/S2 是否具有可验证的长程预测信号？
+2. 相比原 baseline，是否存在可信的增量信息？
+3. 不同 document、rotation/model 与 anchor 上是否稳定？
+4. 是否只是 short-horizon 局部误差相关，而没有 future functional observability？
+5. 哪些结果只是 descriptive，哪些达到原协议预定的 confirmation 标准？
+
+禁止根据观察到的结果事后调节阈值、重新筛选指标或更改科学假设。
+
+如果原定 Discovery 无法支持结论，则如实报告 `NOT_CONFIRMED` 或原协议定义的对应状态。
+
+不要为了得到正面结果启动额外训练。
+
+---
+
+## 9. 严格实验边界
+
+本任务明确不授权：
+
+- C8 或其他新 rotation 的训练。
+- 额外的 learnable rotation objective。
+- AIME26 测评。
+- 自由生成。
+- S1/S2 gradient optimization。
+- 独立 full-model KL pilot。
+- 新的 long-horizon surrogate 定义。
+- 更改 G / E_future 的数学定义。
+- 更改数值容差。
+- 更改已经冻结的模型或数据。
+- 在没有事先定义比较规则的情况下补做结果筛选。
+
+若完整 Discovery 结束后出现新的科研问题，本轮只报告分析和建议，不直接开展下一代训练。
+
+---
+
+## 10. 工程错误处理原则
+
+我希望你高效解决问题，不要因为每个普通工程问题都反复暂停并请求用户确认。
+
+以下类型的问题，在能够证明不改变科学协议时，可以自行修复：
+
+- 明确定位的路径错误。
+- 审核层文本读取错误。
+- 非科学逻辑中的结果序列化错误。
+- 调度器的重复任务保护问题。
+- Artifact manifest 的非破坏性补全。
+- CPU-only 日志及状态检查缺陷。
+
+但每次修复都必须：
+
+1. 说明根因。
+2. 保留原始失败证据。
+3. 实施最小修改。
+4. 做对应回归测试。
+5. 证明修改没有越过科学边界。
+6. 用独立 commit 或清晰 patch 记录。
+
+以下情况必须 FAIL CLOSED：
+
+- Frozen asset identity 改变。
+- 数值契约不成立。
+- 不可解释的 model parity failure。
+- Scientific metric 定义发生变化。
+- 无法证明历史结果可复用。
+- 发现实际科学反例。
+- 原 protocol 的硬门禁失败。
+
+不要把工程误报称为科学失败，也不要把工程修复称为科学成功。
+
+---
+
+## 11. 最终交付要求
+
+请创建新的 V3 recovery 记录目录，命名应与已有运行产物兼容，并避免覆盖任何旧证据。
+
+至少输出：
+
+### A. Recovery Audit Report
+
+- 原始 STOP 原因。
+- 后封存结果。
+- 原 controller 最终状态。
+- 已完成/未完成工作单元账本。
+- 最小修复 diff。
+- 修复 commit。
+- 资产身份审核。
+- CPU-only 回归结果。
+
+### B. Execution Provenance
+
+- 已复用的工作单元。
+- 重新执行的工作单元。
+- 每个工作单元的 source revision。
+- 输入、模型、rotation、token identity。
+- Artifact SHA256。
+- GPUh、峰值显存、磁盘开销。
+- 失败和恢复历史。
+
+### C. Scientific Report
+
+逐阶段给出：
+
+- Numerical closure。
+- Historical bitwise parity。
+- Observer parity。
+- Track B。
+- Track A。
+- Matched long G / E_future。
+- Surrogate Discovery。
+
+必须区分工程资格、正式科学测量和统计结论。
+
+完整科学面板完成时，按原先的冻结协议输出比较结果。
+
+若仍未完成，不得生成虚假的完整结果 CSV、排名或增量结论。
+
+### D. Final Immutable Manifest
+
+生成新一轮 SHA256 manifest。
+
+不得覆盖：
+
+- 原 FINAL_REPORT.md。
+- 原 SHA256SUMS.txt。
+- 原 STOP 记录。
+- 原 POSTSTOP 文件。
+- 原始 numerical parity 结果。
+
+---
+
+## 12. 执行方式
+
+现在开始执行，而不是只给我一份计划。
+
+工作顺序：
+
+1. 检查服务器真实状态和历史产物。
+2. 构建准确的工作单元账本。
+3. 完成原 post-stop 封存核验。
+4. 在隔离环境中修复文本审核。
+5. CPU-only regression PASS。
+6. 审核最小 diff 与科学代码身份。
+7. 生成可验证 resume plan。
+8. 只启动缺失的正式 Track B 单元。
+9. 通过 Track B 完整性门禁。
+10. 按原协议继续 Track A、matched long 和 Discovery。
+11. 最终封存并生成科学报告。
+
+在遇到明确且可以安全修复的工程问题时，不要无意义地反复请求确认；但不得自行放宽科学、数值或资产身份门禁。
+
+**最重要的三个优先级：**
+
+第一，保留科研证据的真实性。
+
+第二，最大程度复用已经有效完成的计算，避免重复消耗 GPU。
+
+第三，真正完成原定 S1/S2 Discovery，得到可信的正面或负面科学结论。
+
+我不要求结果一定为正面，只要求实验严格、可复现、有效率。
+
+请从 Phase 0 的真实状态检查开始。

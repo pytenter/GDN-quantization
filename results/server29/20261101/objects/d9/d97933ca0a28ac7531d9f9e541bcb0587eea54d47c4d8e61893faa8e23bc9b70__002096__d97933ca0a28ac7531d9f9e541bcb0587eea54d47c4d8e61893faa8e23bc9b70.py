@@ -1,0 +1,5 @@
+def __create_fn__(_type_verbosity_level, _type_warnings_as_errors, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _dflt_verbosity_level, _dflt_warnings_as_errors, _return_type):
+ def __init__(self,verbosity_level:_type_verbosity_level=_dflt_verbosity_level,warnings_as_errors:_type_warnings_as_errors=_dflt_warnings_as_errors)->_return_type:
+  self.verbosity_level=verbosity_level
+  self.warnings_as_errors=warnings_as_errors
+ return __init__

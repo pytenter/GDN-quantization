@@ -1,0 +1,7 @@
+# Storage and backward lifecycle audit
+
+The parent traceback captures `c5_loss.backward()` on both ranks but exposes no failing Python model frame, FSDP frame or tensor identity. Therefore `FAILED_STORAGE_OWNER=UNKNOWN`; `linear_attn.conv1d.weight` is only a candidate based on `[8192,1,4]` checkpoint shape and Qwen source `squeeze(1)` → causal-convolution `unsqueeze(1)`.
+
+In a **passing** three-real-decoder N4, reshard=True graph, public module hooks on each rank counted 12 forward entries, 12 forward exits, 12 module backward-pre and 12 module backward-post events. The sharded conv-weight local storage remained nonzero (32,768 bytes) at outer boundaries; forward entry/registered hook observations also saw full 65,536-byte storage. The saved-tensor hook recorded 12 `[8192,1,4]` BF16 conv-weight views per rank, all with 65,536-byte storage at pack and unpack. No `[8192,1,1,4]` saved tensor was seen in that passing reduced graph.
+
+The public module hooks are **not** PyTorch FSDP's internal pre-backward unshard hooks. Their count does not establish internal hook count or first invalidation in the failed parent. `saved_tensors_hooks` and full-backward hooks may themselves perturb view/storage lifetime. No production operator or framework code was modified. Parent first invalid storage event, actual failed view/base and internal unshard behavior remain unknown. Raw traces are `analysis/lifecycle_stack3_N4_rank{0,1}.json`.

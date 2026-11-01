@@ -1,0 +1,1 @@
+lambda _cls, args, varargs, varkw, defaults, kwonlyargs, kwonlydefaults, annotations: _tuple_new(_cls, (args, varargs, varkw, defaults, kwonlyargs, kwonlydefaults, annotations))

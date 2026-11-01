@@ -1,0 +1,22 @@
+{
+  "task_id": "QWEN_GDN_DUAL_M_EQUIVALENT_SPEEDUP_V1",
+  "status": "RAW_DERIVED_ACTIVITY_CLASSIFICATION_DEFECT_IDENTIFIED",
+  "scope": "Independent read-only analysis correction only; no source hotpatch, numerical/source/math change or GPU retry.",
+  "affected_source_sha256": "0961d96bdafa92d6c3bca7d1980b74e9d70fe3aabff404417878ced20c7f1e41",
+  "evidence": {
+    "record": "execution/profile/records/FP_NATIVE_L128_R0.json",
+    "raw_scope_name": "REFERENCE/model_forward",
+    "CPU_scope_cpu_total_us": 25592761.328999985,
+    "CPU_scope_actual_device_children_us": 3591428.0960009964,
+    "GPU_user_annotation_same_name_device_total_us": 25831636.13600001,
+    "raw_derived_kernel_count_including_annotations": 455552,
+    "cudaLaunchKernel_call_count": 455296
+  },
+  "root_cause": "profile_rows filtered DeviceType.CUDA but retained gpu_user_annotation ranges. Thus its KERNEL_ACTIVITY classification and raw union are unsuitable as physical kernel count or true GPU active time. key_averages also contains CPU/GPU same-name annotations.",
+  "correction_rule": "Read SHA-bound Chrome trace categories; only cat kernel contributes physical kernel count; union of kernel/gpu_memcpy/gpu_memset excludes gpu_user_annotation. CPU semantic ranges select cat user_annotation and positive CPU interval; no nested-duration sum equals wall.",
+  "original_records_preserved": true,
+  "baseline_wall_and_QDQ_semantics_affected": false,
+  "GPU_optimization_candidates": 0,
+  "GPU_optimization_local_corrections": 0,
+  "new_GPU_dispatches_for_this_analysis_correction": 0
+}

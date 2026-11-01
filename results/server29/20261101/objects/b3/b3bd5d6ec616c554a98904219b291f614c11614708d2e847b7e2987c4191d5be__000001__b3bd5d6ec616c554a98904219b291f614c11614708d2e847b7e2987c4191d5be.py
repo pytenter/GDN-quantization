@@ -1,0 +1,1 @@
+lambda _cls, slope, intercept: _tuple_new(_cls, (slope, intercept))

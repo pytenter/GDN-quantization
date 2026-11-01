@@ -1,0 +1,118 @@
+{
+  "task_id": "QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1",
+  "status": "PASS",
+  "stage": "PRE_GPU_INDEPENDENT_FOUR_GPU_CONTROL_RESOURCE_REVIEW",
+  "created_UTC": "2026-10-16T02:41:24.615782+00:00",
+  "CPU_ONLY": true,
+  "GPU_work_performed": false,
+  "torch_imported": false,
+  "actual_GPU_qualification": "NOT_RUN",
+  "actual_scientific_scores_read_or_computed": false,
+  "source_sha256": {
+    "control/coordinator_4gpu.py": "c639f01f1ccfe9def75fd535ce05f5aab7d0683ffa27b6f8e391f5eb53b76b7f",
+    "control/worker_entry_4gpu.py": "7b017150183e6d9f3174e5274aad6253ee976a9b65426ee7766dfbdc75bc6bab"
+  },
+  "additional_bound_files_sha256": {
+    "RESOURCE_BUDGET_4GPU.json": "9c82785e3b7f93a043e9b3cb1b50d394166c0b11a08ecbeea01f114212288ba1",
+    "qualification_cpu/DEVICE_ADAPTER_CPU.json": "ace73c191248755aadaccb39fef031093f1d65a40ded8172df6011196449a96d",
+    "qualification_cpu/review_4gpu_controls.py": "032faad1e6255363f968c9ebbb5839cdf067d45f31756e65211d670275f0a212"
+  },
+  "scientific_core_source_sha256": {
+    "src/core.py": "aa338b8b83cde62b97c94fd205d1c62999f783e7ec3242cbb813dc877e01f575",
+    "src/codec.py": "ece859b901145c6d9d646b8befd01916037c9117ef4a80f7b801f27f79f8c23f",
+    "src/worker.py": "e04ec85092ee4f2207699366b2aaa61e1e71038e728c9234477b5b2c21794773",
+    "src/reducer.py": "7e94c95803acb7ae47f0e3ec44fa97faf7cc8d93c4ecc5791a56ea2cf305b84f"
+  },
+  "tests": {
+    "controller_selftest": {
+      "status": "PASS",
+      "scope": "CPU scheduler/budget algebra only; no SSH/NVML/Torch/model/GPU",
+      "actual_units": 23,
+      "canaries": 8,
+      "science": 15,
+      "frozen_same_card_doc_assignment": true,
+      "all_active_physical_occupancy_summed": true,
+      "active_elapsed_not_double_counted": true,
+      "monotone_same_condition_forecast": true,
+      "four_card_median_slowdown_raises_without_double_margin": true
+    },
+    "entry_selftest": {
+      "status": "PASS",
+      "scope": "Synthetic AST and Python function hook only; no Torch/model/CUDA/NVML",
+      "four_host_mappings_only_first_assertion_diff": true,
+      "main_call_hook_removed_before_main": true,
+      "original_checkpoint_called_once_under_host_lock": true
+    },
+    "independent_actual_scheduler_mock": {
+      "status": "PASS",
+      "CPU_ONLY": true,
+      "actual_scientific_data_read": false,
+      "torch_imported": false,
+      "GPU_work_performed": false,
+      "scenarios": [
+        {
+          "status": "PASS",
+          "scenario": "complete",
+          "final_status": "COMPLETE_AND_STOP",
+          "dispatched": 23,
+          "released": true,
+          "total_GPU_seconds": 23.0,
+          "signaled_phases": []
+        },
+        {
+          "status": "PASS",
+          "scenario": "lane_failure",
+          "final_status": "FAIL_AND_STOP",
+          "dispatched": 16,
+          "released": true,
+          "total_GPU_seconds": 16.0,
+          "signaled_phases": [
+            "science_doc1_H_C128",
+            "science_doc3_H_C128",
+            "science_doc4_H_C128"
+          ]
+        },
+        {
+          "status": "PASS",
+          "scenario": "release_unknown",
+          "final_status": "FAIL_AND_STOP",
+          "dispatched": 4,
+          "released": false,
+          "total_GPU_seconds": 94.0,
+          "signaled_phases": []
+        },
+        {
+          "status": "PASS",
+          "scenario": "final_query_failure",
+          "final_status": "FAIL_AND_STOP",
+          "dispatched": 23,
+          "released": false,
+          "total_GPU_seconds": 23.0,
+          "signaled_phases": []
+        }
+      ]
+    }
+  },
+  "reviewed_control_invariants": {
+    "registered_units": "Exactly8 qualification units+15 formal32K science units; no repeats or automatic resume",
+    "GPU_assignment": "doc1+5 onGPU0,doc2GPU1,doc3GPU2,doc4GPU3; all three arms for one doc stay on same physicalGPU",
+    "GPU_metadata": "Four exact UUID/type/capacity frozen in resource budget; each process exposes one physicalcard as logicalcuda0; original configure sole AST change is its physical CVD assertion; all seeds/strict/TF32/math/body unchanged",
+    "shared_budget": "Sum completed reservations plus every live card elapsed;24GPUh shared, never24/card; load/IO/checkpoint mutex wait/release all charged",
+    "forecast": "Each original same-condition slowest32K reservation*1.10; afterfresh max(this floor, oldworst*max4 OFF median/old OFF median), then observed full32K same-condition overrun may only raise; no repeated margin or scientific outcomes used",
+    "formal_admission": "All four sameGPU initial/fresh128, originalmemory gates, cross-GPU128 cache/logit/helper exact, and actual qualification+remaining15prediction+360IO+900exit <86400 required before science",
+    "failclosed": "Firstfailure/foreignprocess/resource/identity/watchdog/receipt failure stops later work; exact owned workers all signaled before waiting; active safe-stop reserves300seconds PER active GPU",
+    "release": "Unverified release remains false and accounted as lowerbound; final query failure downgradesCOMPLETE toFAIL while preserving completed workerPASS",
+    "checkpoint": "One task-global rollingCURRENT under flock around complete unchanged original checkpoint function; canary roots isolated; all retired version SHA/bytes cataloged; no cross-lane modelstate/prefix consumption",
+    "storage": "Distinct/data metadata/rollingCP and/tmp scores, space for15 fullscores+fourcanaryscores+onewrite, two fullCP+foursmallCP+reserves, dynamic checks; no oldasset deletion"
+  },
+  "planned_GPUh": 23.93742233718021,
+  "planning_is_not_a_proven_upper_bound": true,
+  "no_guarantee_of_completion_within_budget": true,
+  "unresolved_future_requirements": [
+    "Actual fourGPU device/free/process admission",
+    "Actual fourGPU initial/fresh128 and crossGPU parity",
+    "Actual fifteen complete32K trajectories and fixed384 full-vocab scoring",
+    "PostGPU current dependency identity, actual scientific classification and permanent29 archive seal"
+  ],
+  "historical_single_GPU_review_preserved": true
+}

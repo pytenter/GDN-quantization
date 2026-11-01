@@ -1,0 +1,741 @@
+format/src/main/java/io/github/duckasteroid/progress/base/format/ProgressFormat.java
+public interface ProgressFormat {
+  /**
+   * Given the monitor produce a string form.
+   *
+   * @param monitor the monitor to format
+   * @return the string format
+   */
+  String format(ProgressMonitor monitor);
+}
+format/src/main/java/io/github/duckasteroid/progress/base/format/elements/ProgressBar.java
+public static final char[] BAR_EQUALS = new char[] {'=', '>', ' '};
+format/src/main/java/io/github/duckasteroid/progress/base/format/elements/FormatElement.java
+public interface FormatElement {
+  /**
+   * Write the output of this format element to the string for the given
+   * monitor state.
+   *
+   * @param sb      the place to write output
+   * @param monitor the monitor to capture state from
+   */
+  void appendTo(StringBuilder sb, ProgressMonitor monitor);
+
+  /**
+   * Does this element produce any output for the given monitor.
+   *
+   * @param monitor the monitor to test for output
+   * @return true if calling {@link #appendTo(StringBuilder, ProgressMonitor)} would
+   *     result in output
+   */
+  default boolean hasContent(ProgressMonitor monitor) {
+    return true;
+  }
+
+  /**
+   * A kind of element that wraps another element.
+   */
+  interface Wrapping extends FormatElement {
+    void setWrapped(FormatElement element);
+
+    boolean isWrapping();
+  }
+}
+api/src/main/java/io/github/duckasteroid/progress/ProgressMonitor.java
+public interface ProgressMonitor extends Comparable<ProgressMonitor>, Closeable {
+  /**
+   * The parent monitor of this monitor (if any).
+   * @return the parent monitor or <code>null</code> if this is the root
+   */
+  ProgressMonitor getParent();
+
+  /**
+   * The path from this monitor to the root through all parent contexts in order leaf to root.
+   * @return a list of parent contexts (all the way to the root); an empty list if this is the
+   *         root.
+   */
+  List<ProgressMonitor> getContext();
+
+  /**
+   * The name of this task set by the {@link #getParent() parent} (if any).
+   * @return the task name (or empty String)
+   */
+  String getTaskName();
+
+  /**
+   * The last {@link #setStatus(String) notified} status.
+   * @return the task status (or empty String)
+   */
+  String getStatus();
+
+  /**
+   * Notify users (if possible) of the status of this task (without changing the fraction done).
+   * @param status The task status notification message
+   */
+  void setStatus(String status);
+
+  /**
+   * The "size" of this task - by default this is <code>1</code>.
+   * @return the "relative" size of this task
+   */
+  long getSize();
+
+  /**
+   * Modify the overall size of this task. If the current {@link #getWorkDone()} is already more
+   * than this then the monitor will also be marked {@link #isDone() done}.
+   * Changing the size of a "done" monitor has no effect, it remains done...
+   * The size cannot be modified to less than 1; the value defaults to this if out of range.
+   * Note: modifying the size of a subtask - does not influence the work it contributes to the
+   * parent task
+   * @param size the new size of this task
+   */
+  void setSize(long size);
+
+  /**
+   * The unit of work in this monitor (default empty).
+   * Sub tasks will inherit this unit.
+   * @return the unit as set in {@link #setUnit(String)}
+   */
+  String getUnit();
+
+  /**
+   * Modify the unit of this task, only new subtasks will pick up this unit.
+   * @param unit the new unit
+   */
+  void setUnit(String unit);
+
+  /**
+   * The current amount of work done. This is always a positive number or zero.
+   * It may be more than the size of this task (which simply means the task is done)
+   * @return the current amount of work done
+   */
+  long getWorkDone();
+
+  /**
+   * Log an amount of work and (optionally) update the status in a single operation.
+   * This operation has no effect if the monitor is {@linkplain #isDone() done} or
+   * {@linkplain #isCancelled() cancelled}.
+   * If this work takes the {@linkplain #getWorkDone() total work done} past the {@linkplain
+   * #getSize() size} then the monitor will be marked done.
+   * If the amount of work is less than zero, it will default to zero
+   * @param amount the amount of work done
+   * @param status a status message to set (if not <code>null</code>)
+   * @return the value of {@link #getWorkDone()} as a result of this new work
+   */
+  long worked(long amount, String status);
+
+  /**
+   * Log an amount of work with no (null) corresponding status update.
+   * This is the same as calling <code>worked(amount, null)</code>
+   * @see #worked(long, String)
+   * @param amount the amount of work done
+   * @return the value of {@link #getWorkDone()} as a result of this new work
+   */
+  long worked(long amount);
+
+  /**
+   * Called to set the work done to the size of the task (at this point in time).
+   * Subsequent modifications to {@link #getSize()} may alter this, but the progress will only be
+   * done once
+   */
+  void done();
+
+  /**
+   * Has the work reported completed (i.e. {@link #getWorkDone()} &gt;= {@link #getSize()}} )
+   * NOTE: This is a one time event, if the work done is ever &gt;= the size - subsequent
+   * increases in the size don't "undo" the monitor, it remains done.
+   * @return true if the work was complete/done
+   */
+  boolean isDone();
+
+  @Override
+  default void close() {
+    done();
+  }
+
+  /**
+   * Has the task being reported been cancelled. This is used as a signal between the class doing
+   * progress and the outside world that may wish it to stop before it is complete.
+   * The cancelled state has no appreciable impact on the rest of the workings of the monitor -
+   * it's for the receiver and the publisher of the progress to decide what to do with it.
+   * @return true if cancelled
+   */
+  boolean isCancelled();
+
+  /**
+   * Change the cancelled state of the task being monitored (and that of all sub-tasks).
+   * @see #isCancelled()
+   * @param cancelled the new cancelled state
+   */
+  void setCancelled(boolean cancelled);
+
+  /**
+   * Create a sub task of this - which when {@linkplain #isDone() done} equates to the given
+   * amount of work in this monitor.
+   * NOTE: The progress of the subtask is not reflected in this monitor until it is
+   * {@link #done()}, only then is the total work posted on this monitor.
+   * @param name the name of the sub task
+   * @param work the amount of work the new sub task will contribute to this monitor when done
+   * @return a new progress monitor for the sub task
+   * @throws IllegalStateException If this task is already {@link #isDone() done} or is
+   *                 {@link #isCancelled() cancelled}
+   */
+  ProgressMonitor newSubTask(String name, long work);
+
+  /**
+   * Create a sub task of this - which when {@link #isDone()} equates to a single (1) unit of work
+   * in this task.
+   * Equivalent to calling {@link #newSubTask(String, long)} with the given <code>name</code> and
+   * a <code>size = 1</code>
+   * @param name the name of the sub task
+   * @return a new progress monitor for the sub task
+   * @throws IllegalStateException If this task is already {@link #isDone() done} or is
+   *                 {@link #isCancelled() cancelled}
+   */
+  ProgressMonitor newSubTask(String name);
+
+  /**
+   * The {@link #getWorkDone()} as a fraction of the {@link #getSize()} for this task in the range
+   * 0 to 1.
+   * NOTE: This value can never be less than 0 or more than 1
+   * @return the fraction done
+   */
+  double getFractionDone();
+
+
+}
+format/src/main/java/io/github/duckasteroid/progress/base/format/elements/StringWrapper.java
+public class StringWrapper implements FormatElement {
+  private final transient String before;
+  private final transient String after;
+  private final transient FormatElement wrapped;
+
+  /**
+   * Create string wrapper segment.
+   * @param before the string before
+   * @param wrapped the wrapped element
+   * @param after the string after
+   */
+  public StringWrapper(String before, FormatElement wrapped, String after) {
+    this.before = before;
+    this.wrapped = wrapped;
+    this.after = after;
+  }
+
+  public static StringWrapper prefix(String prefix, FormatElement wrapped) {
+    return new StringWrapper(prefix, wrapped, "");
+  }
+
+  public static FormatElement wrap(String before, FormatElement wrap, String after) {
+    return new StringWrapper(before, wrap, after);
+  }
+
+  @Override
+  public void appendTo(StringBuilder sb, ProgressMonitor monitor) {
+    if (wrapped.hasContent(monitor)) {
+      sb.append(before);
+      wrapped.appendTo(sb, monitor);
+      sb.append(after);
+    }
+  }
+
+  @Override
+  public boolean hasContent(ProgressMonitor monitor) {
+    return wrapped.hasContent(monitor);
+  }
+}
+format/src/main/java/io/github/duckasteroid/progress/base/format/elements/Status.java
+public class Status implements FormatElement {
+  @Override
+  public void appendTo(StringBuilder sb, ProgressMonitor monitor) {
+    if (hasContent(monitor)) {
+      sb.append(Utils.sanitize(monitor.getStatus()));
+    }
+  }
+
+  @Override
+  public boolean hasContent(ProgressMonitor monitor) {
+    if (monitor == null) {
+      return false;
+    }
+
+    String status = monitor.getStatus();
+    return Utils.notEmpty(status);
+  }
+}
+format/src/main/java/io/github/duckasteroid/progress/base/format/elements/Percentage.java
+public class Percentage implements FormatElement {
+  @Override
+  public void appendTo(StringBuilder sb, ProgressMonitor monitor) {
+    int percent = Math.min((int) (100 * monitor.getFractionDone()), 100);
+    sb.append(String.format("%3d%%", percent));
+  }
+}
+console/src/main/java/io/github/duckasteroid/progress/console/Colourizer.java
+public class Colourizer implements FormatElement.Wrapping {
+  public static final String RESET_COLOR = "\033[0m";
+  private final transient String ansiColorCode;
+  private transient FormatElement wrapped;
+
+  public Colourizer(String ansiColorCode, FormatElement wrapped) {
+    this.ansiColorCode = ansiColorCode;
+    this.wrapped = wrapped;
+  }
+
+  public Colourizer(String ansiColorCode) {
+    this.ansiColorCode = ansiColorCode;
+  }
+
+  public static Colourizer wrap(FormatElement element, Color c) {
+    return new Colourizer(c.code, element);
+  }
+
+  @Override
+  public void setWrapped(FormatElement wrapped) {
+    this.wrapped = wrapped;
+  }
+
+  @Override
+  public boolean isWrapping() {
+    return wrapped != null;
+  }
+
+  @Override
+  public void appendTo(StringBuilder sb, ProgressMonitor monitor) {
+    if (wrapped != null) {
+      sb.append("\033[").append(ansiColorCode).append("m");
+      wrapped.appendTo(sb, monitor);
+      sb.append(RESET_COLOR);
+    }
+  }
+
+  public enum Color {
+    BLACK("30"), RED("31"), GREEN("32"), YELLOW("33"),
+    ;
+    private final String code;
+
+    Color(String code) {
+      this.code = code;
+    }
+
+    /**
+     * Parse the string form of the color enum.
+     * @param s string form of color
+     * @return an optional if parsed correctly (empty if not recognised)
+     */
+    public static Optional<Color> parse(String s) {
+      for (Color c : values()) {
+        if (c.name().equals(s)) {
+          return Optional.of(c);
+        }
+      }
+      return Optional.empty();
+    }
+
+    public String getCode() {
+      return code;
+    }
+  }
+}
+format/src/main/java/io/github/duckasteroid/progress/base/format/CompoundFormat.java
+public class CompoundFormat implements ProgressFormat {
+
+  public static CompoundFormat MAXIMAL = new CompoundFormat(new FormatElement[] {
+      new TaskName(), StaticString.CONDITIONAL_WHITESPACE,
+      new Spinner(Spinner.SPINNER_SLASHES), StaticString.WHITESPACE,
+      new Percentage(), StaticString.WHITESPACE,
+      StringWrapper.wrap("[", new ProgressBar(50, BAR_EQUALS), "]"), StaticString.WHITESPACE,
+      new Fraction(), StaticString.WHITESPACE,
+      StringWrapper.prefix("- ", new Status())
+  });
+  private final List<FormatElement> elements = new ArrayList<>(7); //NOPMD - method clash
+
+  public CompoundFormat(FormatElement... elements) {
+    this(Arrays.asList(elements));
+  }
+
+  public CompoundFormat(Collection<FormatElement> elements) {
+    this.elements.addAll(elements);
+  }
+
+  @SuppressWarnings("PMD.DataflowAnomalyAnalysis")
+  static List<FormatElement> parse(String config,
+                                   Map<String, Function<String, FormatElement>> helpers) {
+    LinkedList<FormatElement> result = new LinkedList<>();
+    StringTokenizer segments = new StringTokenizer(config, "%", true);
+
+    ParseState state = ParseState.TEXT;
+    int pos = 0;
+    while (segments.hasMoreTokens()) {
+      String s = segments.nextToken();
+      pos += s.length();
+      if ("%".equals(s)) {
+        if (state == ParseState.TEXT) {
+          state = ParseState.ENTITY;
+        } else {
+          state = ParseState.TEXT;
+        }
+        continue; // skip...
+      }
+
+      switch (state) {
+        default:
+        case TEXT:
+          FormatElement string = new StaticString(s);
+          add(string, result);
+          break;
+        case ENTITY:
+          String[] split = s.split(":");
+          Function<String, FormatElement> elementBuilder = helpers.get(split[0]);
+          FormatElement formatElement = elementBuilder.apply(split.length > 1 ? split[1] : "");
+          add(formatElement, result);
+          break;
+      }
+    }
+    return result;
+  }
+
+  public static CompoundFormat parse(String s) {
+    return new CompoundFormat(parse(s, FormatParser.loadParsers()));
+  }
+
+  private static void add(FormatElement formatElement, LinkedList<FormatElement> result) {
+    if (formatElement != null) {
+      if (result.size() > 0) {
+        FormatElement previous = result.getLast();
+        if (previous instanceof FormatElement.Wrapping) {
+          // already wrapping?
+          if (!((FormatElement.Wrapping) previous).isWrapping()) {
+            ((FormatElement.Wrapping) previous).setWrapped(formatElement);
+            return;
+          }
+        }
+      }
+      // add the
+      result.add(formatElement);
+    }
+  }
+
+  @Override
+  public String format(ProgressMonitor source) {
+    StringBuilder string = new StringBuilder();
+    for (FormatElement fe : elements) {
+      fe.appendTo(string, source);
+    }
+    return string.toString();
+  }
+
+  public List<FormatElement> elements() {
+    return Collections.unmodifiableList(elements);
+  }
+
+  private enum ParseState {
+    TEXT, ENTITY
+  }
+
+}
+console/src/main/java/io/github/duckasteroid/progress/console/ConsoleProgress.java
+public class ConsoleProgress implements ProgressMonitorListener {
+  public static final String CLEAR_LINE = "\033[2K";
+  public static final String CURSOR_UP_1 = "\033[1A";
+  public static final String CURSOR_DOWN_1 = "\033[1B";
+  public static final String ERASE_DOWN = "\033[J";
+
+  /**
+   * The target output stream for this.
+   */
+  private final transient PrintStream output;
+  /**
+   * Formatter to use for events.
+   */
+  private final transient ProgressFormat formatter;
+  /**
+   * Print all active monitors - or just the updated.
+   */
+  private final transient boolean multiline;
+
+  /**
+   * used to permit one thread at a time to update the console.
+   */
+  private transient Semaphore semaphore = new Semaphore(1, false);
+  /**
+   * A cache of the console commands required to erase the last output.
+   */
+  private transient StringBuilder eraser = new StringBuilder();
+
+  /**
+   * Create console progress.
+   * @param output the print stream to output to
+   * @param formatter the formatter used to write updates to output
+   * @param multiline should we print active monitor per line or just latest
+   */
+  public ConsoleProgress(PrintStream output, ProgressFormat formatter, boolean multiline) {
+    this.output = output;
+    this.formatter = formatter;
+    this.multiline = multiline;
+  }
+
+  /**
+   * Create a new console monitor for {@link System#out}.
+   * @param format format to use
+   * @param multiline should we print active monitor per line or just latest
+   * @return a new progress monitor configured to use ONLY the console
+   */
+  public static ProgressMonitor createConsoleMonitor(ProgressFormat format, boolean multiline) {
+    BaseProgressMonitor monitor = new BaseProgressMonitor();
+    monitor.addProgressMonitorListener(new ConsoleProgress(System.out, format, multiline));
+    return monitor;
+  }
+
+  @Override
+  public void logUpdate(final ProgressMonitorEvent event) {
+    // permits only one thread to update the console
+    // (or the formatting goes to hell)
+    if (semaphore.tryAcquire()) {
+      // only one thread in here at a time - any others concurrently are ignored
+      try {
+        outputToConsole(event);
+      } finally {
+        semaphore.release();
+      }
+    }
+  }
+
+  private void outputToConsole(ProgressMonitorEvent event) {
+    if (event.getType() != ProgressUpdateType.DONE) {
+      List<ProgressMonitor> toPrint;
+      // FIXME implement max depth... == 1?
+      if (multiline) {
+        toPrint = event.getRoot().getAllActive();
+      } else {
+        toPrint = Collections.singletonList(event.getSource());
+      }
+
+      // erase previous output
+      if (eraser.length() > 0) {
+        output.print(eraser.toString());
+        eraser = new StringBuilder(eraser.length());
+      }
+
+      // print each monitor on a new line
+      StringBuilder rewinder = new StringBuilder();
+      for (ProgressMonitor monitor : toPrint) { // NOPMD
+        String formatted = formatter.format(monitor);
+        output.println(formatted);
+        // build up a series of rewind commands to return the cursor
+        // for each line we print above
+        rewinder.append(CURSOR_UP_1);
+        eraser.append(CLEAR_LINE + CURSOR_DOWN_1);
+      }
+      eraser.append("\r" + rewinder.toString());
+
+      // rewind the current console
+      output.print(rewinder.toString());
+
+      output.flush();
+    }
+  }
+}
+client/src/main/java/io/github/duckasteroid/progress/ProgressMonitorFactory.java
+public class ProgressMonitorFactory {
+  private static final long DEFAULT_SIZE = 100;
+
+  private static final String FACTORY_DEBUG =
+      "io.github.duckasteroid.progress.ProgressMonitorFactory.debug";
+  private static final boolean DEFAULT_FACTORY_DEBUG = false;
+
+  private static List<ProgressMonitorListener> listeners = fromServiceLoader();
+
+
+  private static boolean debug = Configuration.getInstance().getBoolean(
+      FACTORY_DEBUG, DEFAULT_FACTORY_DEBUG);
+
+  private static List<ProgressMonitorListener> fromServiceLoader() {
+    ServiceLoader<ProgressMonitorListener> listenerServiceLoader =
+        ServiceLoader.load(ProgressMonitorListener.class);
+    List<ProgressMonitorListener> tmp =
+        listenerServiceLoader.stream().map(p -> p.get()).collect(Collectors.toList());
+    if (tmp.isEmpty() && debug) {
+      System.err.println("WARN: No ProgressMonitorListeners found via SPI");
+    }
+    return new CopyOnWriteArrayList<>(tmp);
+  }
+
+  public static void addListener(ProgressMonitorListener listener) {
+    listeners.add(listener);
+  }
+
+  public static void removeListener(ProgressMonitorListener listener) {
+    listeners.remove(listener);
+  }
+
+  public static void clearListeners() {
+    listeners.clear();
+  }
+
+  public static void resetListeners() {
+    listeners = fromServiceLoader();
+  }
+
+  /**
+   * Create a new progress monitor using system wide settings.
+   * @param name the name of the monitor
+   * @param size the amount of work in the new monitor
+   * @return the new monitor (never null)
+   */
+  public static final ProgressMonitor newMonitor(String name, long size) {
+    BaseProgressMonitor monitor = new BaseProgressMonitor(name, size, listeners);
+    ServiceLoader.load(ProgressMonitorListenerFactory.class).stream()
+        .map(ServiceLoader.Provider::get)
+        .map(fac -> fac.createProgressMonitorListener(name))
+        .forEach(monitor::addProgressMonitorListener);
+    return monitor;
+  }
+
+  /**
+   * Create a new progress monitor using system wide settings and a default size (100).
+   * @param name the name of the monitor
+   * @return the new monitor (never null)
+   */
+  public static final ProgressMonitor newMonitor(String name) {
+    return newMonitor(name, DEFAULT_SIZE);
+  }
+}
+format/src/main/java/io/github/duckasteroid/progress/base/format/elements/Fraction.java
+public class Fraction implements FormatElement {
+  @Override
+  public void appendTo(StringBuilder sb, ProgressMonitor monitor) {
+    final int chars = (int) Math.floor(Math.log10(monitor.getSize())) + 1;
+    sb.append(
+        String.format("%" + chars + "d/%" + chars + "d", monitor.getWorkDone(), monitor.getSize()));
+  }
+}
+format/src/main/java/io/github/duckasteroid/progress/base/format/elements/StaticString.java
+public class StaticString implements FormatElement {
+  public static final StaticString CONDITIONAL_WHITESPACE = new StaticString(" ", false);
+  public static final StaticString WHITESPACE = new StaticString(" ", true);
+  /**
+   * should this be printed even if empty.
+   */
+  private final transient boolean appendWhenEmpty;
+  private final transient String separator;
+
+  public StaticString(String separator) {
+    this(separator, true);
+  }
+
+  public StaticString(String separator, boolean appendWhenEmpty) {
+    this.separator = separator;
+    this.appendWhenEmpty = appendWhenEmpty;
+  }
+
+  @Override
+  public void appendTo(StringBuilder sb, ProgressMonitor monitor) {
+    if (sb.length() == 0 && !appendWhenEmpty) {
+      return;
+    }
+    sb.append(separator);
+  }
+}
+format/src/main/java/io/github/duckasteroid/progress/base/format/elements/Spinner.java
+public class Spinner implements FormatElement {
+  /**
+   * A char pattern that does a really boring spinner with slash chars.
+   */
+  public static final char[] SPINNER_SLASHES = new char[] {'-', '\\', '|', '/'};
+  private static final int MIN_SPIN_CHARS = 2;
+  /**
+   * a sequence of characters for the spinner - looped over.
+   */
+  private final transient char[] spinnerChars;
+  /**
+   * index for spinner updates.
+   */
+  private transient int spindex = 0;
+
+  /**
+   * Create a spinner.
+   * @param spinnerChars the characters to use for the spinner
+   */
+  public Spinner(char[] spinnerChars) {
+    if (spinnerChars == null) {
+      throw new IllegalArgumentException("Spinner chars cannot be null");
+    }
+    if (spinnerChars.length < MIN_SPIN_CHARS) {
+      throw new IllegalArgumentException("Spinner chars length must be 2 or more");
+    }
+
+    this.spinnerChars = spinnerChars;
+  }
+
+  @Override
+  public void appendTo(StringBuilder sb, ProgressMonitor monitor) {
+    sb.append(spinnerChars[spindex++]);
+    if (spindex >= spinnerChars.length) {
+      spindex = 0;
+    }
+  }
+}
+format/src/main/java/io/github/duckasteroid/progress/base/format/elements/ProgressBar.java
+public class ProgressBar implements FormatElement {
+  /**
+   * A bar pattern like this: <code>====&gt;   </code>.
+   */
+  public static final char[] BAR_EQUALS = new char[] {'=', '>', ' '};
+  private static final int MIN_WIDTH = 1;
+  private static final int MIN_BAR_CHARS = 3;
+
+  /**
+   * show a "fake" character progress bar using the first 3 chars from this array.
+   */
+  private final transient char[] barChars;
+  private final transient String fullBar;
+  private final transient String emptyBar;
+
+  /**
+   * how wide (in characters) to make the formatted message.
+   */
+  private final transient int width;
+
+  /**
+   * Create progress bar component.
+   * @param width the width of the progress bar in chars
+   * @param barChars the characters to use to paint the bar
+   */
+  public ProgressBar(int width, char[] barChars) {
+    if (width <= MIN_WIDTH) {
+      throw new IllegalArgumentException("Width must be > 1");
+    }
+    this.width = width;
+    this.barChars = barChars;
+    if (barChars != null) {
+      if (barChars.length >= MIN_BAR_CHARS) {
+        // create full length strings for the bar to avoid doing on every progress update
+        char[] tmp = new char[width];
+        Arrays.fill(tmp, barChars[0]);
+        fullBar = new String(tmp);
+        Arrays.fill(tmp, barChars[2]);
+        emptyBar = new String(tmp);
+      } else {
+        throw new IllegalArgumentException("Bar chars should contain 4 chars");
+      }
+    } else {
+      throw new IllegalArgumentException("Bar chars should not be null");
+    }
+  }
+
+  @Override
+  public void appendTo(StringBuilder sb, ProgressMonitor monitor) {
+    int percent = Math.max(0, (int) (monitor.getWorkDone() * width / monitor.getSize()));
+    sb.append(fullBar.substring(width - percent))
+        .append(barChars[1])
+        .append(emptyBar.substring(percent));
+  }
+}
+format/src/main/java/io/github/duckasteroid/progress/base/format/elements/TaskName.java
+public class TaskName implements FormatElement {
+  @Override
+  public void appendTo(StringBuilder sb, ProgressMonitor monitor) {
+    sb.append(Utils.sanitize(monitor.getTaskName()));
+  }
+}

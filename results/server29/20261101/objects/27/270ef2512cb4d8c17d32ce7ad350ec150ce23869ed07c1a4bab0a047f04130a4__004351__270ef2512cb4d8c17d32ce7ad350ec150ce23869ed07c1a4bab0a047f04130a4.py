@@ -1,0 +1,1 @@
+lambda _cls, read_count, write_count, read_bytes, write_bytes, read_time, write_time, read_merged_count, write_merged_count, busy_time: _tuple_new(_cls, (read_count, write_count, read_bytes, write_bytes, read_time, write_time, read_merged_count, write_merged_count, busy_time))

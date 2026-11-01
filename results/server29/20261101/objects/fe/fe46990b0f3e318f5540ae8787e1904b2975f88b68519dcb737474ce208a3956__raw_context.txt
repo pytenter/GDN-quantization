@@ -1,0 +1,713 @@
+blinkpy/auth.py
+class TokenRefreshFailed(Exception):
+    """Class to throw failed refresh exception."""
+blinkpy/helpers/constants.py
+DEFAULT_MOTION_INTERVAL = 1
+blinkpy/auth.py
+class LoginError(Exception):
+    """Class to throw failed login exception."""
+blinkpy/helpers/constants.py
+MIN_THROTTLE_TIME = 2
+blinkpy/helpers/util.py
+_LOGGER = logging.getLogger(__name__)
+def json_load(file_name):
+def json_save(data, file_name):
+def gen_uid(size, uid_format=False):
+def time_to_seconds(timestamp):
+def get_time(time_to_convert=None):
+def merge_dicts(dict_a, dict_b):
+def prompt_login_data(data):
+def validate_login_data(data):
+    def __init__(self, errcode):
+    def __init__(self, region_id):
+    def __init__(self, seconds=10):
+    def __call__(self, method):
+        def throttle_method():
+        def wrapper(*args, **kwargs):
+class BlinkException(Exception):
+class BlinkAuthenticationException(BlinkException):
+class BlinkURLHandler:
+class Throttle:
+blinkpy/helpers/constants.py
+DEFAULT_REFRESH = 30
+blinkpy/helpers/constants.py
+TIMEOUT_MEDIA = 90
+blinkpy/sync_module.py
+class BlinkSyncModule:
+    """Class to initialize sync module."""
+
+    def __init__(self, blink, network_name, network_id, camera_list):
+        """
+        Initialize Blink sync module.
+
+        :param blink: Blink class instantiation
+        """
+        self.blink = blink
+        self.network_id = network_id
+        self.region_id = blink.auth.region_id
+        self.name = network_name
+        self.serial = None
+        self.status = "offline"
+        self.sync_id = None
+        self.host = None
+        self.summary = None
+        self.network_info = None
+        self.events = []
+        self.cameras = CaseInsensitiveDict({})
+        self.motion_interval = blink.motion_interval
+        self.motion = {}
+        self.last_record = {}
+        self.camera_list = camera_list
+        self.available = False
+
+    @property
+    def attributes(self):
+        """Return sync attributes."""
+        attr = {
+            "name": self.name,
+            "id": self.sync_id,
+            "network_id": self.network_id,
+            "serial": self.serial,
+            "status": self.status,
+            "region_id": self.region_id,
+        }
+        return attr
+
+    @property
+    def urls(self):
+        """Return device urls."""
+        return self.blink.urls
+
+    @property
+    def online(self):
+        """Return boolean system online status."""
+        try:
+            return ONLINE[self.status]
+        except KeyError:
+            _LOGGER.error("Unknown sync module status %s", self.status)
+            self.available = False
+            return False
+
+    @property
+    def arm(self):
+        """Return status of sync module: armed/disarmed."""
+        try:
+            return self.network_info["network"]["armed"]
+        except (KeyError, TypeError):
+            self.available = False
+            return None
+
+    @arm.setter
+    def arm(self, value):
+        """Arm or disarm camera."""
+        if value:
+            return api.request_system_arm(self.blink, self.network_id)
+        return api.request_system_disarm(self.blink, self.network_id)
+
+    def start(self):
+        """Initialize the system."""
+        response = self.sync_initialize()
+        if not response:
+            return False
+
+        try:
+            self.sync_id = self.summary["id"]
+            self.serial = self.summary["serial"]
+            self.status = self.summary["status"]
+        except KeyError:
+            _LOGGER.error("Could not extract some sync module info: %s", response)
+
+        is_ok = self.get_network_info()
+        self.check_new_videos()
+
+        if not is_ok or not self.update_cameras():
+            return False
+        self.available = True
+        return True
+
+    def sync_initialize(self):
+        """Initialize a sync module."""
+        response = api.request_syncmodule(self.blink, self.network_id)
+        try:
+            self.summary = response["syncmodule"]
+            self.network_id = self.summary["network_id"]
+        except (TypeError, KeyError):
+            _LOGGER.error(
+                "Could not retrieve sync module information with response: %s", response
+            )
+            return False
+        return response
+
+    def update_cameras(self, camera_type=BlinkCamera):
+        """Update cameras from server."""
+        try:
+            for camera_config in self.camera_list:
+                if "name" not in camera_config:
+                    break
+                blink_camera_type = camera_config.get("type", "")
+                name = camera_config["name"]
+                self.motion[name] = False
+                owl_info = self.get_owl_info(name)
+                lotus_info = self.get_lotus_info(name)
+                if blink_camera_type == "mini":
+                    camera_type = BlinkCameraMini
+                if blink_camera_type == "lotus":
+                    camera_type = BlinkDoorbell
+                self.cameras[name] = camera_type(self)
+                camera_info = self.get_camera_info(
+                    camera_config["id"], owl_info=owl_info, lotus_info=lotus_info
+                )
+                self.cameras[name].update(camera_info, force_cache=True, force=True)
+
+        except KeyError:
+            _LOGGER.error("Could not create camera instances for %s", self.name)
+            return False
+        return True
+
+    def get_owl_info(self, name):
+        """Extract owl information."""
+        try:
+            for owl in self.blink.homescreen["owls"]:
+                if owl["name"] == name:
+                    return owl
+        except (TypeError, KeyError):
+            pass
+        return None
+
+    def get_lotus_info(self, name):
+        """Extract lotus information."""
+        try:
+            for doorbell in self.blink.homescreen["doorbells"]:
+                if doorbell["name"] == name:
+                    return doorbell
+        except (TypeError, KeyError):
+            pass
+        return None
+
+    def get_events(self, **kwargs):
+        """Retrieve events from server."""
+        force = kwargs.pop("force", False)
+        response = api.request_sync_events(self.blink, self.network_id, force=force)
+        try:
+            return response["event"]
+        except (TypeError, KeyError):
+            _LOGGER.error("Could not extract events: %s", response)
+            return False
+
+    def get_camera_info(self, camera_id, **kwargs):
+        """Retrieve camera information."""
+        owl = kwargs.get("owl_info", None)
+        if owl is not None:
+            return owl
+        lotus = kwargs.get("lotus_info", None)
+        if lotus is not None:
+            return lotus
+        response = api.request_camera_info(self.blink, self.network_id, camera_id)
+        try:
+            return response["camera"][0]
+        except (TypeError, KeyError):
+            _LOGGER.error("Could not extract camera info: %s", response)
+            return {}
+
+    def get_network_info(self):
+        """Retrieve network status."""
+        self.network_info = api.request_network_update(self.blink, self.network_id)
+        try:
+            if self.network_info["network"]["sync_module_error"]:
+                raise KeyError
+        except (TypeError, KeyError):
+            self.available = False
+            return False
+        return True
+
+    def refresh(self, force_cache=False):
+        """Get all blink cameras and pulls their most recent status."""
+        if not self.get_network_info():
+            return
+        self.check_new_videos()
+        for camera_name in self.cameras.keys():
+            camera_id = self.cameras[camera_name].camera_id
+            camera_info = self.get_camera_info(
+                camera_id,
+                owl_info=self.get_owl_info(camera_name),
+                lotus_info=self.get_lotus_info(camera_name),
+            )
+            self.cameras[camera_name].update(camera_info, force_cache=force_cache)
+        self.available = True
+
+    def check_new_videos(self):
+        """Check if new videos since last refresh."""
+        try:
+            interval = self.blink.last_refresh - self.motion_interval * 60
+        except TypeError:
+            # This is the first start, so refresh hasn't happened yet.
+            # No need to check for motion.
+            return False
+
+        resp = api.request_videos(self.blink, time=interval, page=1)
+
+        for camera in self.cameras.keys():
+            self.motion[camera] = False
+
+        try:
+            info = resp["media"]
+        except (KeyError, TypeError):
+            _LOGGER.warning("Could not check for motion. Response: %s", resp)
+            return False
+
+        for entry in info:
+            try:
+                name = entry["device_name"]
+                clip = entry["media"]
+                timestamp = entry["created_at"]
+                if self.check_new_video_time(timestamp):
+                    self.motion[name] = True and self.arm
+                    self.last_record[name] = {"clip": clip, "time": timestamp}
+            except KeyError:
+                _LOGGER.debug("No new videos since last refresh.")
+
+        return True
+
+    def check_new_video_time(self, timestamp):
+        """Check if video has timestamp since last refresh."""
+        return time_to_seconds(timestamp) > self.blink.last_refresh
+blinkpy/api.py
+_LOGGER = logging.getLogger(__name__)
+MIN_THROTTLE_TIME = 5
+def request_login(
+    auth, url, login_data, is_retry=False,
+):
+def request_verify(auth, blink, verify_key):
+def request_logout(blink):
+def request_networks(blink):
+def request_network_update(blink, network):
+def request_user(blink):
+def request_network_status(blink, network):
+def request_syncmodule(blink, network):
+def request_system_arm(blink, network):
+def request_system_disarm(blink, network):
+def request_command_status(blink, network, command_id):
+def request_homescreen(blink):
+def request_sync_events(blink, network):
+def request_new_image(blink, network, camera_id):
+def request_new_video(blink, network, camera_id):
+def request_video_count(blink):
+def request_videos(blink, time=None, page=0):
+def request_cameras(blink, network):
+def request_camera_info(blink, network, camera_id):
+def request_camera_usage(blink):
+def request_camera_liveview(blink, network, camera_id):
+def request_camera_sensors(blink, network, camera_id):
+def request_motion_detection_enable(blink, network, camera_id):
+def request_motion_detection_disable(blink, network, camera_id):
+def http_get(blink, url, stream=False, json=True, is_retry=False, timeout=TIMEOUT):
+def http_post(blink, url, is_retry=False, data=None, json=True, timeout=TIMEOUT):
+blinkpy/auth.py
+class Auth:
+    """Class to handle login communication."""
+
+    def __init__(self, login_data=None, no_prompt=False):
+        """
+        Initialize auth handler.
+
+        :param login_data: dictionary for login data
+                           must contain the following:
+                             - username
+                             - password
+        :param no_prompt: Should any user input prompts
+                          be supressed? True/FALSE
+        """
+        if login_data is None:
+            login_data = {}
+        self.data = login_data
+        self.token = login_data.get("token", None)
+        self.host = login_data.get("host", None)
+        self.region_id = login_data.get("region_id", None)
+        self.client_id = login_data.get("client_id", None)
+        self.account_id = login_data.get("account_id", None)
+        self.login_response = None
+        self.is_errored = False
+        self.no_prompt = no_prompt
+        self.session = self.create_session()
+
+    @property
+    def login_attributes(self):
+        """Return a dictionary of login attributes."""
+        self.data["token"] = self.token
+        self.data["host"] = self.host
+        self.data["region_id"] = self.region_id
+        self.data["client_id"] = self.client_id
+        self.data["account_id"] = self.account_id
+        return self.data
+
+    @property
+    def header(self):
+        """Return authorization header."""
+        if self.token is None:
+            return None
+        return {
+            "TOKEN_AUTH": self.token,
+            "user-agent": DEFAULT_USER_AGENT,
+            "content-type": "application/json",
+        }
+
+    def create_session(self, opts=None):
+        """Create a session for blink communication."""
+        if opts is None:
+            opts = {}
+        backoff = opts.get("backoff", 1)
+        retries = opts.get("retries", 3)
+        retry_list = opts.get("retry_list", [429, 500, 502, 503, 504])
+        sess = Session()
+        assert_status_hook = [
+            lambda response, *args, **kwargs: response.raise_for_status()
+        ]
+        sess.hooks["response"] = assert_status_hook
+        retry = Retry(
+            total=retries, backoff_factor=backoff, status_forcelist=retry_list
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        sess.mount("https://", adapter)
+        sess.mount("http://", adapter)
+        sess.get = partial(sess.get, timeout=TIMEOUT)
+        return sess
+
+    def prepare_request(self, url, headers, data, reqtype):
+        """Prepare a request."""
+        req = Request(reqtype.upper(), url, headers=headers, data=data)
+        return req.prepare()
+
+    def validate_login(self):
+        """Check login information and prompt if not available."""
+        self.data["username"] = self.data.get("username", None)
+        self.data["password"] = self.data.get("password", None)
+        if not self.no_prompt:
+            self.data = util.prompt_login_data(self.data)
+
+        self.data = util.validate_login_data(self.data)
+
+    def login(self, login_url=LOGIN_ENDPOINT):
+        """Attempt login to blink servers."""
+        self.validate_login()
+        _LOGGER.info("Attempting login with %s", login_url)
+        response = api.request_login(self, login_url, self.data, is_retry=False,)
+        try:
+            if response.status_code == 200:
+                return response.json()
+            raise LoginError
+        except AttributeError as error:
+            raise LoginError from error
+
+    def logout(self, blink):
+        """Log out."""
+        return api.request_logout(blink)
+
+    def refresh_token(self):
+        """Refresh auth token."""
+        self.is_errored = True
+        try:
+            _LOGGER.info("Token expired, attempting automatic refresh.")
+            self.login_response = self.login()
+            self.extract_login_info()
+            self.is_errored = False
+        except LoginError as error:
+            _LOGGER.error("Login endpoint failed. Try again later.")
+            raise TokenRefreshFailed from error
+        except (TypeError, KeyError) as error:
+            _LOGGER.error("Malformed login response: %s", self.login_response)
+            raise TokenRefreshFailed from error
+        return True
+
+    def extract_login_info(self):
+        """Extract login info from login response."""
+        self.region_id = self.login_response["account"]["tier"]
+        self.host = f"{self.region_id}.{BLINK_URL}"
+        self.token = self.login_response["auth"]["token"]
+        self.client_id = self.login_response["account"]["client_id"]
+        self.account_id = self.login_response["account"]["account_id"]
+
+    def startup(self):
+        """Initialize tokens for communication."""
+        self.validate_login()
+        if None in self.login_attributes.values():
+            self.refresh_token()
+
+    def validate_response(self, response, json_resp):
+        """Check for valid response."""
+        if not json_resp:
+            self.is_errored = False
+            return response
+        self.is_errored = True
+        try:
+            if response.status_code in [101, 401]:
+                raise UnauthorizedError
+            if response.status_code == 404:
+                raise exceptions.ConnectionError
+            json_data = response.json()
+        except KeyError:
+            pass
+        except (AttributeError, ValueError) as error:
+            raise BlinkBadResponse from error
+
+        self.is_errored = False
+        return json_data
+
+    def query(
+        self,
+        url=None,
+        data=None,
+        headers=None,
+        reqtype="get",
+        stream=False,
+        json_resp=True,
+        is_retry=False,
+        timeout=TIMEOUT,
+    ):
+        """
+        Perform server requests.
+
+        :param url: URL to perform request
+        :param data: Data to send
+        :param headers: Headers to send
+        :param reqtype: Can be 'get' or 'post' (default: 'get')
+        :param stream: Stream response? True/FALSE
+        :param json_resp: Return JSON response? TRUE/False
+        :param is_retry: Is this part of a re-auth attempt? True/FALSE
+        """
+        req = self.prepare_request(url, headers, data, reqtype)
+        try:
+            response = self.session.send(req, stream=stream, timeout=timeout)
+            return self.validate_response(response, json_resp)
+        except (exceptions.ConnectionError, exceptions.Timeout):
+            _LOGGER.error(
+                "Connection error. Endpoint %s possibly down or throttled.", url,
+            )
+        except BlinkBadResponse:
+            code = None
+            reason = None
+            try:
+                code = response.status_code
+                reason = response.reason
+            except AttributeError:
+                pass
+            _LOGGER.error(
+                "Expected json response from %s, but received: %s: %s",
+                url,
+                code,
+                reason,
+            )
+        except UnauthorizedError:
+            try:
+                if not is_retry:
+                    self.refresh_token()
+                    return self.query(
+                        url=url,
+                        data=data,
+                        headers=self.header,
+                        reqtype=reqtype,
+                        stream=stream,
+                        json_resp=json_resp,
+                        is_retry=True,
+                        timeout=timeout,
+                    )
+                _LOGGER.error("Unable to access %s after token refresh.", url)
+            except TokenRefreshFailed:
+                _LOGGER.error("Unable to refresh token.")
+        return None
+
+    def send_auth_key(self, blink, key):
+        """Send 2FA key to blink servers."""
+        if key is not None:
+            response = api.request_verify(self, blink, key)
+            try:
+                json_resp = response.json()
+                blink.available = json_resp["valid"]
+                if not json_resp["valid"]:
+                    _LOGGER.error("%s", json_resp["message"])
+                    return False
+            except (KeyError, TypeError):
+                _LOGGER.error("Did not receive valid response from server.")
+                return False
+        return True
+
+    def check_key_required(self):
+        """Check if 2FA key is required."""
+        try:
+            if self.login_response["account"]["client_verification_required"]:
+                return True
+        except (KeyError, TypeError):
+            pass
+        return False
+blinkpy/sync_module.py
+class BlinkOwl(BlinkSyncModule):
+    """Representation of a sync-less device."""
+
+    def __init__(self, blink, name, network_id, response):
+        """Initialize a sync-less object."""
+        cameras = [{"name": name, "id": response["id"]}]
+        super().__init__(blink, name, network_id, cameras)
+        self.sync_id = response["id"]
+        self.serial = response["serial"]
+        self.status = response["enabled"]
+        if not self.serial:
+            self.serial = f"{network_id}-{self.sync_id}"
+
+    def sync_initialize(self):
+        """Initialize a sync-less module."""
+        self.summary = {
+            "id": self.sync_id,
+            "name": self.name,
+            "serial": self.serial,
+            "status": self.status,
+            "onboarded": True,
+            "account_id": self.blink.account_id,
+            "network_id": self.network_id,
+        }
+        return self.summary
+
+    def update_cameras(self, camera_type=BlinkCameraMini):
+        """Update sync-less cameras."""
+        return super().update_cameras(camera_type=BlinkCameraMini)
+
+    def get_camera_info(self, camera_id, **kwargs):
+        """Retrieve camera information."""
+        try:
+            for owl in self.blink.homescreen["owls"]:
+                if owl["name"] == self.name:
+                    self.status = owl["enabled"]
+                    return owl
+        except (TypeError, KeyError):
+            pass
+        return None
+
+    def get_network_info(self):
+        """Get network info for sync-less module."""
+        return True
+
+    @property
+    def network_info(self):
+        """Format owl response to resemble sync module."""
+        return {
+            "network": {
+                "id": self.network_id,
+                "name": self.name,
+                "armed": self.status,
+                "sync_module_error": False,
+                "account_id": self.blink.account_id,
+            }
+        }
+
+    @network_info.setter
+    def network_info(self, value):
+        """Set network_info property."""
+blinkpy/helpers/constants.py
+MAJOR_VERSION = 0
+MINOR_VERSION = 19
+PATCH_VERSION = "0.rc0"
+REQUIRED_PYTHON_VER = (3, 6, 0)
+PROJECT_NAME = "blinkpy"
+PROJECT_PACKAGE_NAME = "blinkpy"
+PROJECT_LICENSE = "MIT"
+PROJECT_AUTHOR = "Kevin Fronczak"
+PROJECT_COPYRIGHT = f" 2017, {PROJECT_AUTHOR}"
+PROJECT_URL = "https://github.com/fronzbot/blinkpy"
+PROJECT_EMAIL = "kfronczak@gmail.com"
+PROJECT_DESCRIPTION = "A Blink camera Python library " "running on Python 3."
+PROJECT_LONG_DESCRIPTION = (
+    "blinkpy is an open-source "
+    "unofficial API for the Blink Camera "
+    "system with the intention for easy "
+    "integration into various home "
+    "automation platforms."
+)
+    PROJECT_LONG_DESCRIPTION = open("README.rst").read()
+PROJECT_CLASSIFIERS = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Home Automation",
+]
+PROJECT_GITHUB_USERNAME = "fronzbot"
+PROJECT_GITHUB_REPOSITORY = "blinkpy"
+PYPI_URL = f"https://pypi.python.org/pypi/{PROJECT_PACKAGE_NAME}"
+BLINK_URL = "immedia-semi.com"
+DEFAULT_URL = f"rest-prod.{BLINK_URL}"
+BASE_URL = f"https://{DEFAULT_URL}"
+LOGIN_ENDPOINT = f"{BASE_URL}/api/v5/account/login"
+ONLINE = {"online": True, "offline": False}
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36"
+DEVICE_ID = "Blinkpy"
+TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+DEFAULT_MOTION_INTERVAL = 1
+DEFAULT_REFRESH = 30
+MIN_THROTTLE_TIME = 2
+SIZE_NOTIFICATION_KEY = 152
+SIZE_UID = 16
+TIMEOUT = 10
+TIMEOUT_MEDIA = 90
+blinkpy/sync_module.py
+class BlinkLotus(BlinkSyncModule):
+    """Representation of a sync-less device."""
+
+    def __init__(self, blink, name, network_id, response):
+        """Initialize a sync-less object."""
+        cameras = [{"name": name, "id": response["id"]}]
+        super().__init__(blink, name, network_id, cameras)
+        self.sync_id = response["id"]
+        self.serial = response["serial"]
+        self.status = response["enabled"]
+        if not self.serial:
+            self.serial = f"{network_id}-{self.sync_id}"
+
+    def sync_initialize(self):
+        """Initialize a sync-less module."""
+        self.summary = {
+            "id": self.sync_id,
+            "name": self.name,
+            "serial": self.serial,
+            "status": self.status,
+            "onboarded": True,
+            "account_id": self.blink.account_id,
+            "network_id": self.network_id,
+        }
+        return self.summary
+
+    def update_cameras(self, camera_type=BlinkDoorbell):
+        """Update sync-less cameras."""
+        return super().update_cameras(camera_type=BlinkDoorbell)
+
+    def get_camera_info(self, camera_id, **kwargs):
+        """Retrieve camera information."""
+        try:
+            for doorbell in self.blink.homescreen["doorbells"]:
+                if doorbell["name"] == self.name:
+                    self.status = doorbell["enabled"]
+                    return doorbell
+        except (TypeError, KeyError):
+            pass
+        return None
+
+    def get_network_info(self):
+        """Get network info for sync-less module."""
+        return True
+
+    @property
+    def network_info(self):
+        """Format lotus response to resemble sync module."""
+        return {
+            "network": {
+                "id": self.network_id,
+                "name": self.name,
+                "armed": self.status,
+                "sync_module_error": False,
+                "account_id": self.blink.account_id,
+            }
+        }
+
+    @network_info.setter
+    def network_info(self, value):
+        """Set network_info property."""

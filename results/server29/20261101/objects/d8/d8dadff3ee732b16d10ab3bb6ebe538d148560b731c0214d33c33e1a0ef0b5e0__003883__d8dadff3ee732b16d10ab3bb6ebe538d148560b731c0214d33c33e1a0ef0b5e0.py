@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self.id,self.author,self.sha,self.created_at,self.last_modified,self.private,self.disabled,self.downloads,self.downloads_all_time,self.gated,self.gguf,self.inference,self.inference_provider_mapping,self.likes,self.library_name,self.tags,self.pipeline_tag,self.mask_token,self.card_data,self.widget_data,self.model_index,self.config,self.transformers_info,self.trending_score,self.siblings,self.spaces,self.safetensors,self.security_repo_status,self.xet_enabled,)==(other.id,other.author,other.sha,other.created_at,other.last_modified,other.private,other.disabled,other.downloads,other.downloads_all_time,other.gated,other.gguf,other.inference,other.inference_provider_mapping,other.likes,other.library_name,other.tags,other.pipeline_tag,other.mask_token,other.card_data,other.widget_data,other.model_index,other.config,other.transformers_info,other.trending_score,other.siblings,other.spaces,other.safetensors,other.security_repo_status,other.xet_enabled,)
+  return NotImplemented
+ return __eq__

@@ -1,0 +1,50 @@
+# reports
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/reports`
+
+原结构化状态：**UNKNOWN**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`gdn_state_shape.md`](../../objects/6b/6b9e63476b50492c2767e86fe4b0aa7d9af7dd73270d84573bb8c2fdcb997eeb__gdn_state_shape.md)
+- [`qwen35_architecture.md`](../../objects/f2/f229cca691e581cdb9fb19a273ce4840acb33f74e87a2da3c4d6ac357817f3f1__qwen35_architecture.md)
+- [`qwen35_model_location.md`](../../objects/c9/c990532231c7b776e42f3e2aa7b6681318de03e5ce543bed7a45abbc77310ded__qwen35_model_location.md)
+- [`gdn_insight_discovery_v1.md`](../../objects/19/19e2799c8fc149cce53ba8299f797e3c3c84a324a413e69af1fe40d95b523779__gdn_insight_discovery_v1.md)
+- [`qwen35_transformers_diagnosis.md`](../../objects/04/04a00faab00b8c9049d11c3ee8b2dd290dd5b093bb90e55cb1516e27109e65ff__qwen35_transformers_diagnosis.md)
+- [`gdn_insight_discovery_v1_smoke.md`](../../objects/39/399e986311a4db5469337b428e86efe52b19be340a733d74d41da6b9c33967c8__gdn_insight_discovery_v1_smoke.md)
+- [`gdn_int8_row_e2e_completion_v1.md`](../../../../../reports/orientation/gdn_int8_row_e2e_completion_v1.md)
+- [`gdn_int8_axis_geometry_rescue_v1.md`](../../../../../reports/orientation/gdn_int8_axis_geometry_rescue_v1.md)
+- [`gdn_multi_timescale_stability_v1.md`](../../objects/a1/a1aabc07bf4f99f5efd59f0b13b3aca7d2a607690cc074db8111756eaecf4007__gdn_multi_timescale_stability_v1.md)
+- [`gdn_state_change_preservation_v1.md`](../../objects/2e/2e5aba1c65e75d9551adb21077f7d94d50346a0607be71966a16e052b5a0910b__gdn_state_change_preservation_v1.md)
+- [`gdn_end2end_bit_axis_screening_v1.md`](../../objects/82/8256482bc7b22130c4c5f504a81b9f2d723195e1bd797ad7be1d8a1da79427b9__gdn_end2end_bit_axis_screening_v1.md)
+- [`gdn_protocol_consistency_audit_v1.md`](../../objects/ad/ad154bd8a69d3d86a19a7b69a6b42dfaf01d99cc02df3993f14667f4b3daf676__gdn_protocol_consistency_audit_v1.md)
+- [`qwen35_transformers_compatibility.md`](../../objects/88/88005d2891e08db5d1520ecb6d171a12ebf368c616d42dc0e117341ec906eae2__qwen35_transformers_compatibility.md)
+- [`gdn_state_sensitivity_structure_v1.md`](../../objects/94/9473042a393dd2c7a5cc3c9685f17add8383b58906333a2701a31c2e070f50e3__gdn_state_sensitivity_structure_v1.md)
+- [`gdn_canonical_evidence_rebaseline_v1.md`](../../objects/af/af42984c834d00e8c5c27d955f43402d4a1ed83cf6a6b2ac24bce6eedca45885__gdn_canonical_evidence_rebaseline_v1.md)
+- [`gdn_dynamic_sensitivity_validation_v1.md`](../../objects/b1/b11b9b575f46a99f39bc707116e51061481572e3cdf557bae9873b48d38257aa__gdn_dynamic_sensitivity_validation_v1.md)
+- [`gdn_long_horizon_failure_mechanism_v1.md`](../../objects/99/9907acb4c256afb31d3e88669fe2a9544ae04c8e1c92c5932832c3c9b8987134__gdn_long_horizon_failure_mechanism_v1.md)
+- [`gdn_int8_repeated_accumulation_formal_v1.md`](../../../../../reports/propagation/gdn_int8_repeated_accumulation_formal_v1.md)
+- [`gdn_state_sensitivity_structure_v1_smoke.md`](../../objects/df/dff64479c47f695159adc38caff1a90b8ffbd15bab42169731f77b54a5b3a727__gdn_state_sensitivity_structure_v1_smoke.md)
+- [`gdn_int8_effective_update_metric_audit_v1.md`](../../../../../reports/effective_update/gdn_int8_effective_update_metric_audit_v1.md)
+- [`gdn_int8_readout_aware_propagation_audit_v1.md`](../../../../../reports/propagation/gdn_int8_readout_aware_propagation_audit_v1.md)
+- [`gdn_int8_single_pulse_residual_propagation_v1.md`](../../../../../reports/propagation/gdn_int8_single_pulse_residual_propagation_v1.md)
+- [`gdn_int8_orientation_state_change_mechanism_v1.md`](../../../../../reports/orientation/gdn_int8_orientation_state_change_mechanism_v1.md)
+- [`gdn_int8_headwise_s8_subset_robustness_audit_v1.md`](../../../../../reports/propagation/gdn_int8_headwise_s8_subset_robustness_audit_v1.md)
+- [`gdn_int8_orientation_trajectory_source_audit_v1.md`](../../objects/f5/f5a28f53bef67a9e8b279ef1b25da3e2465e402106d57397c2ab6744e6622697__gdn_int8_orientation_trajectory_source_audit_v1.md)
+- [`gdn_int8_residual_direction_sensitivity_panel_v1.md`](../../../../../reports/propagation/gdn_int8_residual_direction_sensitivity_panel_v1.md)
+- [`gdn_native_core_output_replay_semantics_audit_v1.md`](../../../../../reports/causal_intervention/gdn_native_core_output_replay_semantics_audit_v1.md)
+- [`gdn_int8_residual_geometry_causal_intervention_v1.md`](../../../../../reports/causal_intervention/gdn_int8_residual_geometry_causal_intervention_v1.md)
+- [`gdn_int8_residual_strength_causal_intervention_v1.md`](../../objects/e7/e74d3f62064777769505ac94284f17881f1f56e592ff0f70656a649cbe684301__gdn_int8_residual_strength_causal_intervention_v1.md)
+- [`gdn_int8_repeated_residual_accumulation_cadence_v1.md`](../../objects/d7/d7b920d7d82c33573f99308dcfbb7e503486fe9bea2b7e1cddf71d5a900dc0a8__gdn_int8_repeated_residual_accumulation_cadence_v1.md)
+- [`gdn_int8_kspace_compute_invariant_rotation_audit_v1.md`](../../../../../reports/orientation/gdn_int8_kspace_compute_invariant_rotation_audit_v1.md)
+- [`gdn_int8_effective_update_small_prompt_validation_v1.md`](../../objects/78/78768fd8ea7df772763e524fe72d347e83d3cd966e10a5512bdbe50e90c6ace7__gdn_int8_effective_update_small_prompt_validation_v1.md)
+- [`gdn_int8_r128_c128_operator_aligned_residual_audit_v1.md`](../../../../../reports/causal_intervention/gdn_int8_r128_c128_operator_aligned_residual_audit_v1.md)
+- [`gdn_int8_r128_c128_future_key_addressability_causal_v1.md`](../../../../../reports/causal_intervention/gdn_int8_r128_c128_future_key_addressability_causal_v1.md)
+- [`gdn_int8_r128_c128_natural_residual_norm_swap_causal_v1.md`](../../../../../reports/causal_intervention/gdn_int8_r128_c128_natural_residual_norm_swap_causal_v1.md)
+- [`gdn_int8_same_norm_fast_multihead_composition_screen_v1.md`](../../../../../reports/propagation/gdn_int8_same_norm_fast_multihead_composition_screen_v1.md)
+- [`gdn_int8_same_norm_operator_update_transduction_causal_v1.md`](../../objects/85/850ef6eee2b8da441bb4949d4ea0ca554ad265ead217b1289fc9b759e1bc04d1__gdn_int8_same_norm_operator_update_transduction_causal_v1.md)
+- [`gdn_int8_vspace_source_to_temporal_accumulation_formal_v1.md`](../../../../../reports/propagation/gdn_int8_vspace_source_to_temporal_accumulation_formal_v1.md)
+- [`propagation/gdn_int8_out_proj_functional_direction_causal_v1.md`](../../../../../reports/mechanism/gdn_int8_out_proj_functional_direction_causal_v1.md)
+- [`gdn_int8_r128_c128_frozen_observability_path_decomposition_v1.md`](../../../../../reports/propagation/gdn_int8_r128_c128_frozen_observability_path_decomposition_v1.md)

@@ -1,0 +1,8 @@
+def __create_fn__(_type_input_dtype_with_constraints, _type_output_dtype_with_constraints, _type_weight_dtype_with_constraints, _type_bias_dtype, _type_is_dynamic, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,input_dtype_with_constraints:_type_input_dtype_with_constraints,output_dtype_with_constraints:_type_output_dtype_with_constraints,weight_dtype_with_constraints:_type_weight_dtype_with_constraints,bias_dtype:_type_bias_dtype,is_dynamic:_type_is_dynamic)->_return_type:
+  self.input_dtype_with_constraints=input_dtype_with_constraints
+  self.output_dtype_with_constraints=output_dtype_with_constraints
+  self.weight_dtype_with_constraints=weight_dtype_with_constraints
+  self.bias_dtype=bias_dtype
+  self.is_dynamic=is_dynamic
+ return __init__

@@ -1,0 +1,5 @@
+# Load-only gate review
+
+The two-rank load-only run completed, but its original `PARAMETER_SHARDING_GATE` field was a diagnostic parser false negative. The parser expected the literal substring `Shard`; PyTorch 2.5.1 serialized each DTensor placement as `S(0)`. The original rank JSON files and combined JSON are preserved unchanged.
+
+Independent review of those files finds **427 of 427** model parameters on each rank with placement `S(0)`. Every local parameter has exactly half its logical elements: 4,476,901,632 local of 8,953,803,264 logical. Thus the corrected parameter-sharding gate is **PASS**; this is not a model or numerical failure, and the model was not rerun for this correction. Both trainable-parameter and load-memory gates also pass. Each rank had 8,957,748,224 CUDA bytes allocated after sharding and rotation initialization, down from 17,907,635,200 bytes immediately before sharding. Reserved allocator memory remained high after the load-only run; future forward tests must measure actual allocated/reserved/peak and may release unused cache without changing semantics.

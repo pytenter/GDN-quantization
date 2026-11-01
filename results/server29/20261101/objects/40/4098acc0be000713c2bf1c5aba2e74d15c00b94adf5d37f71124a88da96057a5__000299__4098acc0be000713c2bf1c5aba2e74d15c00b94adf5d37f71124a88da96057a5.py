@@ -1,0 +1,1 @@
+lambda _cls, enable, throw_on_early_termination, is_first_joinable: _tuple_new(_cls, (enable, throw_on_early_termination, is_first_joinable))

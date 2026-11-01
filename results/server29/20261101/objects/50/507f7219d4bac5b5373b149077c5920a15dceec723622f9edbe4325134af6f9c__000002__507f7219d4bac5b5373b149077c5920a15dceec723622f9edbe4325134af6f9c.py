@@ -1,0 +1,1 @@
+lambda _cls, system, node, release, version, machine: _tuple_new(_cls, (system, node, release, version, machine))

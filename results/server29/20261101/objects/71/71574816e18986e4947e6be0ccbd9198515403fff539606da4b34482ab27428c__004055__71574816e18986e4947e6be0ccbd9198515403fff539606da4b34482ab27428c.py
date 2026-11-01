@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(compute_environment={self.compute_environment!r}, distributed_type={self.distributed_type!r}, mixed_precision={self.mixed_precision!r}, use_cpu={self.use_cpu!r}, debug={self.debug!r}, ec2_instance_type={self.ec2_instance_type!r}, iam_role_name={self.iam_role_name!r}, image_uri={self.image_uri!r}, profile={self.profile!r}, region={self.region!r}, num_machines={self.num_machines!r}, gpu_ids={self.gpu_ids!r}, base_job_name={self.base_job_name!r}, pytorch_version={self.pytorch_version!r}, transformers_version={self.transformers_version!r}, py_version={self.py_version!r}, sagemaker_inputs_file={self.sagemaker_inputs_file!r}, sagemaker_metrics_file={self.sagemaker_metrics_file!r}, additional_args={self.additional_args!r}, dynamo_config={self.dynamo_config!r}, enable_cpu_affinity={self.enable_cpu_affinity!r})"
+ return __repr__

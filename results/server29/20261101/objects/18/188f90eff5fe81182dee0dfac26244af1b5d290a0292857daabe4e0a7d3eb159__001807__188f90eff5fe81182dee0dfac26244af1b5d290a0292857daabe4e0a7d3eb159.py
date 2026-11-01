@@ -1,0 +1,1 @@
+lambda _cls, in_shard, offset_in_shard, numel_in_shard, intra_param_start_idx, intra_param_end_idx: _tuple_new(_cls, (in_shard, offset_in_shard, numel_in_shard, intra_param_start_idx, intra_param_end_idx))

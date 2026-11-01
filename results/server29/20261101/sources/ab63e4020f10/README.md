@@ -1,0 +1,50 @@
+# qwen_gdn_fast_runtime_qualification_v1
+
+原始相对目录：`server55_zypan_backup_20261029_87e45424/restored/analyses/qwen_gdn_fast_runtime_qualification_v1`
+
+原结构化状态：**FAILED_OR_REJECTED**，声明范围以 [SUMMARY.json](SUMMARY.json) 为准；UNKNOWN 不等于失败或完成。
+
+[全部文件、SHA和未上传原因](artifacts.jsonl.gz)
+
+## 可直接定位的关键文件
+
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu0/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu1/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu2/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu3/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/gpu0/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/gpu1/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/gpu2/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/gpu3/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/independent_delivery/final_delivery/parent_cpu/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/independent_delivery/final_delivery/audits/final_review/FINAL_REPORT_INDEPENDENT_REVIEW.json`](../../objects/4c/4c7c452259ab5389baa49e4dcf1d6452465b404790688e278d55ba7793054fd3__FINAL_REPORT_INDEPENDENT_REVIEW.json)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/independent_delivery/final_delivery/parent_cpu/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/independent_delivery/final_delivery/remote_evidence/gpu0/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/independent_delivery/final_delivery/remote_evidence/gpu1/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/independent_delivery/final_delivery/remote_evidence/gpu2/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/independent_delivery/final_delivery/remote_evidence/gpu3/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/independent_delivery/final_delivery/remote_evidence/run/gpu0/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/independent_delivery/final_delivery/remote_evidence/run/gpu1/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/independent_delivery/final_delivery/remote_evidence/run/gpu2/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/independent_delivery/final_delivery/remote_evidence/run/gpu3/evidence/previous/ROOTCAUSE_FINAL_REPORT.md`](../../objects/82/82c274918836900b0b49d7bb231c9ceaa6e3b0ac81a6e6c20912364d0db268d6__ROOTCAUSE_FINAL_REPORT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu0/EXECUTION_PLAN.md`](../../objects/d7/d7309a04e8afbacd6579c0d334e9f329f717d385d076ca253b0ebc73d98fea86__EXECUTION_PLAN.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu1/EXECUTION_PLAN.md`](../../objects/d7/d7309a04e8afbacd6579c0d334e9f329f717d385d076ca253b0ebc73d98fea86__EXECUTION_PLAN.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu2/EXECUTION_PLAN.md`](../../objects/d7/d7309a04e8afbacd6579c0d334e9f329f717d385d076ca253b0ebc73d98fea86__EXECUTION_PLAN.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu3/EXECUTION_PLAN.md`](../../objects/d7/d7309a04e8afbacd6579c0d334e9f329f717d385d076ca253b0ebc73d98fea86__EXECUTION_PLAN.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/GPU_EXECUTION_AMENDMENT.md`](../../objects/0c/0cbffddefabfa0d26887d7d3c8814770c018808d2f561f6173f9f27c17ae5245__GPU_EXECUTION_AMENDMENT.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/gpu0/EXECUTION_PLAN.md`](../../objects/d7/d7309a04e8afbacd6579c0d334e9f329f717d385d076ca253b0ebc73d98fea86__EXECUTION_PLAN.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/gpu1/EXECUTION_PLAN.md`](../../objects/d7/d7309a04e8afbacd6579c0d334e9f329f717d385d076ca253b0ebc73d98fea86__EXECUTION_PLAN.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/gpu2/EXECUTION_PLAN.md`](../../objects/d7/d7309a04e8afbacd6579c0d334e9f329f717d385d076ca253b0ebc73d98fea86__EXECUTION_PLAN.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/gpu3/EXECUTION_PLAN.md`](../../objects/d7/d7309a04e8afbacd6579c0d334e9f329f717d385d076ca253b0ebc73d98fea86__EXECUTION_PLAN.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu0/runtime_presets/README.md`](../../objects/f5/f5446f2c4a99066e7575b308a4c3be4d51fc90ce3631d84134d68bd367da0001__README.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu1/runtime_presets/README.md`](../../objects/f5/f5446f2c4a99066e7575b308a4c3be4d51fc90ce3631d84134d68bd367da0001__README.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu2/runtime_presets/README.md`](../../objects/f5/f5446f2c4a99066e7575b308a4c3be4d51fc90ce3631d84134d68bd367da0001__README.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu3/runtime_presets/README.md`](../../objects/f5/f5446f2c4a99066e7575b308a4c3be4d51fc90ce3631d84134d68bd367da0001__README.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu0/GPU_EXECUTION_AMENDMENT.md`](../../objects/0c/0cbffddefabfa0d26887d7d3c8814770c018808d2f561f6173f9f27c17ae5245__GPU_EXECUTION_AMENDMENT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu1/GPU_EXECUTION_AMENDMENT.md`](../../objects/0c/0cbffddefabfa0d26887d7d3c8814770c018808d2f561f6173f9f27c17ae5245__GPU_EXECUTION_AMENDMENT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu2/GPU_EXECUTION_AMENDMENT.md`](../../objects/0c/0cbffddefabfa0d26887d7d3c8814770c018808d2f561f6173f9f27c17ae5245__GPU_EXECUTION_AMENDMENT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu3/GPU_EXECUTION_AMENDMENT.md`](../../objects/0c/0cbffddefabfa0d26887d7d3c8814770c018808d2f561f6173f9f27c17ae5245__GPU_EXECUTION_AMENDMENT.md)
+- [`gpu_runs/CUBLAS_4GPU_REPAIR_20261019_V1/GPU_EXECUTION_AMENDMENT.md`](../../objects/42/4227121693e763cddeadf7f0adb018ceb013c4bf0d23b683546d15ca0cb06a6f__GPU_EXECUTION_AMENDMENT.md)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu0/scripts/finalize_cpu_delivery.py`](../../objects/8b/8b298feaa982c79524b4d74705a9fade0afc3548842c4d179c5720b1ac2b4844__finalize_cpu_delivery.py)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu1/scripts/finalize_cpu_delivery.py`](../../objects/8b/8b298feaa982c79524b4d74705a9fade0afc3548842c4d179c5720b1ac2b4844__finalize_cpu_delivery.py)
+- [`gpu_runs/CUBLAS_4GPU_20261019_V1/gpu2/scripts/finalize_cpu_delivery.py`](../../objects/8b/8b298feaa982c79524b4d74705a9fade0afc3548842c4d179c5720b1ac2b4844__finalize_cpu_delivery.py)

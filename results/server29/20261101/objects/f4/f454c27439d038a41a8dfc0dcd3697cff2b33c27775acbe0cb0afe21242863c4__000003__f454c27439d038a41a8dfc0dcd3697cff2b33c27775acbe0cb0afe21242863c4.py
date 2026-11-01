@@ -1,0 +1,1 @@
+lambda _cls, lineno, end_lineno, col_offset, end_col_offset: _tuple_new(_cls, (lineno, end_lineno, col_offset, end_col_offset))

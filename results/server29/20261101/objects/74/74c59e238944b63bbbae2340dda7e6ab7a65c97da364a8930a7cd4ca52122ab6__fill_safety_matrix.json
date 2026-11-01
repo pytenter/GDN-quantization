@@ -1,0 +1,131 @@
+{
+  "task_id": "QWEN_GDN_FAST_RUNTIME_QUALIFICATION_V1",
+  "status": "FILL_OPT_SAFETY_UNPROVEN",
+  "GPU_dispatches": 0,
+  "fill_flag_disabled": false,
+  "global_disable_approved": false,
+  "source_catalog_sha256": "e4d91bcd635ded3afd3bfed4d1693aeaecafad054ff803a5fba013f286bf76d0",
+  "exact_count_caused_by_fill_flag": "UNPROVEN",
+  "known_fill_kernel_delta_per_token": 724,
+  "padding_or_compiled_dispatch_full_proof": false,
+  "categories": [
+    {
+      "id": "generic_empty",
+      "source_locations": "TensorFactories.cu54-60,80-86",
+      "allocation_write_read_order": "allocator -> optionalguardedfill -> return",
+      "covered_part": "noneguaranteedifprotectiondisabled",
+      "remaining_gap": "uninitializedlogical/storageholes",
+      "status": "GENERIC_FULL_PROGRAM_PROOF_MISSING",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "to_copy",
+      "source_locations": "TensorConversions.cpp344-386;Copy.cu173-251",
+      "allocation_write_read_order": "alloc -> copy/sourcecast -> return",
+      "covered_part": "logicaloutputwrittenconditionalonvaliditerator/source",
+      "remaining_gap": "strides/binary/stream/consumerunverified",
+      "status": "LOCAL_LOGICAL_WRITE_SUPPORT_ONLY",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "clone_repeat_reshape",
+      "source_locations": "TensorFactories.cpp1739-1759;Repeat.cpp101-123;TensorShape.cpp1683-1719",
+      "allocation_write_read_order": "alloc -> zero_or_copy -> view/return",
+      "covered_part": "logicaloutputwritten",
+      "remaining_gap": "physicalstrides/padding/dispatchunrecorded",
+      "status": "LOCAL_LOGICAL_WRITE_SUPPORT_ONLY",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "resize_growth",
+      "source_locations": "Resize.cpp17-71;ResizeCommon.h55-71",
+      "allocation_write_read_order": "allocnew -> copyoldprefix -> optionalfillnewtail",
+      "covered_part": "newtailNOTwrittenwithoutguardorconsumer",
+      "remaining_gap": "growthmaybereadbeforefullwrite",
+      "status": "GENERIC_UNINITIALIZED_GROWTH_RISK",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "abs_iterator",
+      "source_locations": "AbsKernel.cu11-47;Loops.cuh43-66;MemoryAccess.cuh199-230",
+      "allocation_write_read_order": "readinput -> computeinbounds -> storeoutput",
+      "covered_part": "logicaliteratoroutputconditional",
+      "remaining_gap": "vector/padding/alias/binaryunproven",
+      "status": "LOCAL_LOGICAL_WRITE_SUPPORT_ONLY",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "arange",
+      "source_locations": "RangeFactories.cu40-65,213-270",
+      "allocation_write_read_order": "resize -> writef(idx)forallidx<N -> copyifneeded",
+      "covered_part": "logicaloutputperidxcovered",
+      "remaining_gap": "actualallocationId/shapeunrecorded",
+      "status": "LOCAL_LOGICAL_WRITE_SUPPORT_ONLY",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "native_GDN",
+      "source_locations": "modeling_qwen3_5.py355-379",
+      "allocation_write_read_order": "zerosinitialstate -> readstateupdate -> writesreadout -> return",
+      "covered_part": "nativeoutputsliceandstateupdatesvisible",
+      "remaining_gap": "initialzeroisrequiredmathematics;optionaldispatchunproven",
+      "status": "EXPLICIT_INITIALIZATION_REQUIRED",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "cache_conv",
+      "source_locations": "cache_utils.py1014-1086;modeling_qwen3_5.py210-216",
+      "allocation_write_read_order": "zeros/pad -> fullcopy -> nextforwardconsume",
+      "covered_part": "nativecachewritebackvisible",
+      "remaining_gap": "historypaddingandzeromustremain;restore/optionalpathsunproven",
+      "status": "EXPLICIT_INITIALIZATION_REQUIRED",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "depthwise_output",
+      "source_locations": "DepthwiseConv2d.cu37-137,145-212,360-445",
+      "allocation_write_read_order": "resize -> localacczero/bias -> validinputreads -> assignoutput",
+      "covered_part": "nativeforwardtemplatefulloutputindex",
+      "remaining_gap": "binarybinding/cuDNN/workspaceincomplete",
+      "status": "LOCAL_LOGICAL_WRITE_SUPPORT_ONLY",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "flash_outputs",
+      "source_locations": "flash_api.cpp437-539;flash_fwd_kernel.h59-109,430-473",
+      "allocation_write_read_order": "empty -> same-streamkernel -> maskedoutputreturn",
+      "covered_part": "validrowsintended;OOBnotwritten",
+      "remaining_gap": "mask/sharedtile/consumeraddresscoverageincomplete",
+      "status": "FILL_OPT_SAFETY_UNPROVEN",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "flash_splitKV",
+      "source_locations": "flash_api.cpp312-321;flash_fwd_launch_template.h103-158;flash_fwd_kernel.h518-555,1005-1040",
+      "allocation_write_read_order": "emptyaccum -> splitkernel -> combine",
+      "covered_part": "someempty/validsplitwritesvisible",
+      "remaining_gap": "allheads/splits/tails/combinereads/binaryunproven",
+      "status": "FILL_OPT_SAFETY_UNPROVEN",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "optional_FLA_Triton",
+      "source_locations": "hub_kernels.py792-836",
+      "allocation_write_read_order": "selecthub_orpackage_orfallback -> wrappers -> impl",
+      "covered_part": "notcovered",
+      "remaining_gap": "unwrapfilenameNOTruntimeimplementationproof",
+      "status": "DISPATCH_AND_BUFFER_COVERAGE_UNKNOWN",
+      "full_program_safety_PASS": false
+    },
+    {
+      "id": "CUDA_graph",
+      "source_locations": "core/baseline_worker/matched_worker+trace_operations;cache_utilscompilebranch;flash_api.cpp501-519",
+      "allocation_write_read_order": "noexplicitcaptureinmeasuredentry;librarybranchesexist",
+      "covered_part": "NOT_OBSERVED_IN_REVIEWED_EXECUTION_SCOPE",
+      "remaining_gap": "noautomaticfuturecapture/reusecoverage",
+      "status": "NOT_QUALIFIED_FOR_CUDA_GRAPH",
+      "full_program_safety_PASS": false
+    }
+  ],
+  "scientific_limitation": "Source-pattern checks and outputparity cannot prove absenceofuninitializedreads. Officialcommit source identity is not compiledbinary/profilerruntimebranchproof."
+}

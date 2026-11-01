@@ -1,0 +1,1 @@
+tuple[Literal['a', 'b', 'rc'], int] | None

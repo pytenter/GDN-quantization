@@ -1,0 +1,3325 @@
+src/com/naronco/cubeshaft/render/TextureLoader.java
+public class TextureLoader {
+	private static Map<String, Integer> loadedTextures = new HashMap<String, Integer>();
+
+	public static final int load(String filename, int textureMode) {
+		try {
+			if (loadedTextures.containsKey(filename)) {
+				return loadedTextures.get(filename).intValue();
+			}
+			IntBuffer buffer = (IntBuffer) BufferUtils.createIntBuffer(1)
+					.clear();
+			glGenTextures(buffer);
+
+			int id = buffer.get(0);
+			loadedTextures.put(filename, id);
+			glBindTexture(GL_TEXTURE_2D, id);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, textureMode);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, textureMode);
+
+			BufferedImage img = ImageIO.read(TextureLoader.class
+					.getResource(filename));
+			int width = img.getWidth();
+			int height = img.getHeight();
+			ByteBuffer pixelsByteBuffer = BufferUtils.createByteBuffer(width
+					* height << 2);
+			int[] intPixels = new int[width * height];
+			byte[] bytePixels = new byte[width * height << 2];
+
+			img.getRGB(0, 0, width, height, intPixels, 0, width);
+			for (int i = 0; i < intPixels.length; i++) {
+				int a = intPixels[i] >>> 24;
+				int r = intPixels[i] >> 16 & 0xff;
+				int g = intPixels[i] >> 8 & 0xff;
+				int b = intPixels[i] & 0xff;
+				bytePixels[(i << 2) + 0] = (byte) r;
+				bytePixels[(i << 2) + 1] = (byte) g;
+				bytePixels[(i << 2) + 2] = (byte) b;
+				bytePixels[(i << 2) + 3] = (byte) a;
+			}
+
+			pixelsByteBuffer.put(bytePixels);
+			pixelsByteBuffer.position(0).limit(bytePixels.length);
+			gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA, width, height, GL_RGBA,
+					GL_UNSIGNED_BYTE, pixelsByteBuffer);
+			return id;
+		} catch (Exception e) {
+		}
+		throw new RuntimeException("!!");
+	}
+}
+src/com/melanistics/TickHandler.java
+public class TickHandler 
+{	
+	public static EventHandler EVENT_BUS = new EventHandler();
+	
+	private List<Runnable> run = new ArrayList<>();
+	private List<IInputHandler> input = new ArrayList<>();
+		
+	public void Tick() {
+		for (int i = 0; i < run.size(); i++) {
+			run.get(i).run();
+		}
+	}
+
+	public void Input(int par1, char par2, boolean par3) {
+		for (int i = 0; i < input.size(); i++) {
+			input.get(i).onKeyInput(par1, par2, par3);
+		}
+	}
+
+	public void addRunnable(Runnable par1) {
+		run.add(par1);
+	}
+
+	public void addInputHandler(IInputHandler par1) {
+		input.add(par1);
+	}
+	
+	
+
+}
+src/com/naronco/cubeshaft/gui/ProgressMenu.java
+public class ProgressMenu extends Menu 
+{
+	private String progressTitle, progressText;
+
+	@Override
+	public void init() {
+	}
+
+	@Override
+	protected void buttonClicked(Button b) {
+	}
+
+	@Override
+	public void render(int xMouse, int yMouse) {
+		super.render(xMouse, yMouse);
+	}
+
+	public void setProgressTitle(String title) {
+		this.progressTitle = title;
+	}
+
+	public void setProgressText(String text) {
+		this.progressText = text;
+	}
+
+	public void setProgress(int progress) {
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		Tesselator t = Tesselator.instance;
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, TextureLoader.load("/terrain.png", GL_NEAREST));
+
+		t.begin();
+		t.color(0x606060);
+		int tileSize = 32;
+		int w = width / tileSize + 1;
+		int h = height / tileSize + 1;
+		Random random = new Random(100);
+		for (int x = 0; x < w; x++)
+			for (int y = 0; y < h; y++) {
+				int xd = Math.abs(x - w / 2);
+				int yd = Math.abs(y - h / 2);
+				int br = 255 - (int) (Math.sqrt(xd * xd + yd * yd) * 15);
+				int col = br << 16 | br << 8 | br;
+				t.color(col);
+				Tile tile = Tile.dirt;
+				if (random.nextInt(3) == 0) tile = Tile.stone;
+				float u0 = (tile.texIndex % 16) / 16.0f;
+				float u1 = u0 + 1.0f / 16.0f;
+				float v0 = (tile.texIndex / 16) / 16.0f;
+				float v1 = v0 + 1.0f / 16.0f;
+				t.vertexUV(x * tileSize, y * tileSize, 0.0f, u0, v0);
+				t.vertexUV(x * tileSize + tileSize, y * tileSize, 0.0f, u1, v0);
+				t.vertexUV(x * tileSize + tileSize, y * tileSize + tileSize, 0.0f, u1, v1);
+				t.vertexUV(x * tileSize, y * tileSize + tileSize, 0.0f, u0, v1);
+			}
+		t.end();
+
+		glDisable(GL_TEXTURE_2D);
+		if (progress >= 0) {
+			int x = width / 2 - 100;
+			int y = height / 2 + 32;
+
+			t.begin();
+			t.color(0x202020);
+			t.vertex(x, y + 4, 0.0f);
+			t.vertex(x, y + 6, 0.0f);
+			t.vertex(x + 200, y + 6, 0.0f);
+			t.vertex(x + 200, y + 4, 0.0f);
+			t.color(0x808080);
+			t.vertex(x, y, 0.0f);
+			t.vertex(x, y + 4, 0.0f);
+			t.vertex(x + 200, y + 4, 0.0f);
+			t.vertex(x + 200, y, 0.0f);
+			t.color(0x00CC00);
+			t.vertex(x, y, 0.0f);
+			t.vertex(x, y + 4, 0.0f);
+			t.vertex(x + progress * 2, y + 4, 0.0f);
+			t.vertex(x + progress * 2, y, 0.0f);
+			t.end();
+		}
+
+		drawString(progressTitle, (width - TextRenderer.getTextLength(progressTitle)) / 2, height / 2 - 8 - 32, 0xffffff);
+		drawString(progressText, (width - TextRenderer.getTextLength(progressText)) / 2, height / 2 - 8 + 16, 0xffffff);
+		Display.update();
+	}
+}
+src/com/naronco/cubeshaft/level/LevelRenderer.java
+public class LevelRenderer {
+	public Level level;
+	public Chunk[] chunkCache;
+	public List<Chunk> loadedChunks = new ArrayList<Chunk>();
+	private int xChunks;
+	private int yChunks;
+	private int zChunks;
+	public int viewDistance = 0;
+
+	public LevelRenderer(Level level) {
+		this.level = level;
+		level.levelRenderers.add(this);
+		init();
+	}
+
+	public void init() {
+		if (this.chunkCache != null) {
+			for (int i = 0; i < chunkCache.length; i++) {
+				this.chunkCache[i].deleteRenderLists();
+			}
+		}
+
+		this.xChunks = (level.width + 16 - 1) / 16;
+		this.yChunks = (level.height + 16 - 1) / 16;
+		this.zChunks = (level.depth + 16 - 1) / 16;
+		this.chunkCache = new Chunk[xChunks * yChunks * zChunks];
+
+		for (int xc = 0; xc < xChunks; xc++)
+			for (int yc = 0; yc < yChunks; yc++)
+				for (int zc = 0; zc < zChunks; zc++) {
+					int xc0 = xc << 4;
+					int yc0 = yc << 4;
+					int zc0 = zc << 4;
+
+					int xc1 = (xc + 1) << 4;
+					int yc1 = (yc + 1) << 4;
+					int zc1 = (zc + 1) << 4;
+
+					if (xc1 > level.width)
+						xc1 = level.width;
+					if (yc1 > level.height)
+						yc1 = level.height;
+					if (zc1 > level.depth)
+						zc1 = level.depth;
+
+					this.chunkCache[(yc * xChunks + zc) * zChunks + xc] = new Chunk(
+							level, xc0, yc0, zc0, xc1, yc1, zc1);
+				}
+
+		queueChunks(0, 0, 0, level.width, level.height, level.depth);
+	}
+
+	public void render(int index) {
+		for (int i = 0; i < loadedChunks.size(); i++) {
+			Chunk c = loadedChunks.get(i);
+			if (c.isVisible)
+				glCallList(c.getRenderList(index));
+		}
+	}
+
+	public static void renderPickBox(HitResult hitResult) {
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		glLineWidth(1.5f);
+		glColor4f(0.0f, 0.0f, 0.0f, 0.8f);
+		float x = hitResult.x;
+		float y = hitResult.y;
+		float z = hitResult.z;
+		glBegin(GL_LINE_STRIP);
+		glVertex3f(x, y, z);
+		glVertex3f(x + 1.0f, y, z);
+		glVertex3f(x + 1.0f, y, z + 1.0f);
+		glVertex3f(x, y, z + 1.0f);
+		glVertex3f(x, y, z);
+		glEnd();
+		glBegin(GL_LINE_STRIP);
+		glVertex3f(x, y + 1.0f, z);
+		glVertex3f(x + 1.0f, y + 1.0f, z);
+		glVertex3f(x + 1.0f, y + 1.0f, z + 1.0f);
+		glVertex3f(x, y + 1.0f, z + 1.0f);
+		glVertex3f(x, y + 1.0f, z);
+		glEnd();
+		glBegin(GL_LINES);
+		glVertex3f(x, y, z);
+		glVertex3f(x, y + 1.0f, z);
+		glVertex3f(x + 1.0f, y, z);
+		glVertex3f(x + 1.0f, y + 1.0f, z);
+		glVertex3f(x + 1.0f, y, z + 1.0f);
+		glVertex3f(x + 1.0f, y + 1.0f, z + 1.0f);
+		glVertex3f(x, y, z + 1.0f);
+		glVertex3f(x, y + 1.0f, z + 1.0f);
+		glEnd();
+		glDisable(GL_BLEND);
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		glColor4f(1.0f, 1.0f, 1.0f, 0.3f);
+		Tesselator t = Tesselator.instance;
+		t.begin();
+		Tile.renderHover(t, (int) x, (int) y, (int) z, hitResult.side);
+		t.end();
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+		glDisable(GL_BLEND);
+	}
+
+	public final void queueChunks(int x0, int y0, int z0, int x1, int y1, int z1) {
+		x0 = (int) Math.floor(x0 / 16.0);
+		x1 = (int) Math.floor(x1 / 16.0);
+		y0 = (int) Math.floor(y0 / 16.0);
+		y1 = (int) Math.floor(y1 / 16.0);
+		z0 = (int) Math.floor(z0 / 16.0);
+		z1 = (int) Math.floor(z1 / 16.0);
+		if (x0 < 0)
+			x0 = 0;
+		if (y0 < 0)
+			y0 = 0;
+		if (z0 < 0)
+			z0 = 0;
+		if (x1 >= xChunks)
+			x1 = xChunks - 1;
+		if (y1 >= yChunks)
+			y1 = yChunks - 1;
+		if (z1 >= zChunks)
+			z1 = zChunks - 1;
+
+		for (int x = x0; x <= x1; x++)
+			for (int y = y0; y <= y1; y++)
+				for (int z = z0; z <= z1; z++) {
+					Chunk chunk = this.chunkCache[(y * this.zChunks + z)
+							* this.xChunks + x];
+					chunk.isDirty = true;
+				}
+	}
+}
+src/com/melanistics/PluginManager.java
+public class PluginManager 
+{
+	public List<Class<?>> plugins = new ArrayList<Class<?>>();
+	
+	private HashMap<Class<?>, EnumPluginState> state = new HashMap<Class<?>, EnumPluginState>();
+	private HashMap<Class<?>, Object> used = new HashMap<Class<?>, Object>(); 
+	private HashMap<String, Class<?>> pluginID = new HashMap<String, Class<?>>();
+	
+	public Properties props;
+	
+	public PluginManager(Properties p)
+	{
+		props = p;
+	}
+	
+	
+	public void load(File f) 
+	{
+		try 
+		{
+			f.mkdir();
+			if (!f.isDirectory()) 
+			{
+				throw new RuntimeException("File is not a Directory");
+			}
+			File[] files = f.listFiles();
+
+			List<String> s = new ArrayList<>();
+			List<URL> url = new ArrayList<>();
+			for (int i = 0; i < files.length; i++) 
+			{
+				File zip = files[i];
+				if (zip.isFile()&& (zip.getName().endsWith(".zip") || zip.getName().endsWith(".jar"))) 
+				{
+					s.addAll(loadfromZip(zip));
+					url.add(zip.toURI().toURL());
+				}
+				else if(zip.isDirectory())
+				{
+					s.addAll(loadfromDir(zip,zip));
+					url.add(zip.toURI().toURL());
+				}
+			}
+			List<Class<?>> l = loadClass(s.toArray(new String[s.size()]), url.toArray(new URL[url.size()]));
+
+			for (Class<?> c : l) 
+			{
+				if(c.isAnnotationPresent(Init.Plugin.class))
+				{
+					plugins.add(c);
+					Init.Plugin plug = c.getAnnotation(Init.Plugin.class);
+					String id = plug.pluginID();
+					String s2 = props.getProperty(id);
+					System.out.println(s2);
+					if(s2==null)
+					{
+						props.setProperty(id, "true");
+						System.out.println(props);
+					}
+					boolean b = Boolean.valueOf(s2);
+					if(b || s2==null)
+					{	
+						Object o = c.newInstance();
+						state.put(c, EnumPluginState.LOADED);
+						invoke(o);
+						used.put(c, o);
+						pluginID.put(id, c);
+					}
+					else
+					{
+						state.put(c, EnumPluginState.DISABLED);
+					}
+				}
+				
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		
+	}
+
+	private List<String> loadfromZip(File f) throws Exception 
+	{
+		System.out.println("Zip Found.\t" + f);
+		ZipInputStream zip = new ZipInputStream(new FileInputStream(f));
+
+		List<String> l = new ArrayList<>();
+
+		while (true) 
+		{
+			ZipEntry entry = zip.getNextEntry();
+			if (entry == null) 
+			{
+				break;
+			}
+			String name = entry.getName();
+			String s = name.split("/")[name.split("/").length - 1];
+
+			if (!entry.isDirectory() && s != null && s.endsWith(".class")) 
+			{
+				System.out.println(name.replace('/', '.'));
+				l.add(name.replace('/', '.'));
+			}
+
+		}
+		zip.close();
+		return l;
+	}
+	
+	private List<String> loadfromDir(File f, File parent)
+	{
+		if(f==parent)
+			System.out.println("Dir found. \t"+f);
+		List<String> l = new ArrayList<>();
+		for(File file : f.listFiles())
+		{
+			if(file == null)
+			{
+				continue;
+			}
+			
+			if(file.isDirectory())
+			{
+				l.addAll(loadfromDir(file, parent));
+			}
+			else if(file.isFile() && file.getName().endsWith(".class"))
+			{
+				File parentfile = file.getParentFile();
+				String name = file.getName();
+				while(!parent.equals(parentfile))
+				{
+					name = parentfile.getName() + "." + name;
+					parentfile = parentfile.getParentFile();
+				}
+				name = parent.getName() + "." + name;
+				System.out.println(name);
+				l.add(name);
+			}
+		}
+		
+		return l;
+	}
+	
+	private List<Class<?>> loadClass(String[] par1, URL[] url) throws Exception 
+	{
+		URLClassLoader load = new URLClassLoader(url);
+		List<Class<?>> l = new ArrayList<>();
+		for (int i = 0; i < par1.length; i++) 
+		{
+			String s = par1[i];
+			if (s.contains("$")) 
+			{
+				continue;
+			}
+			if (s.endsWith(".class")) 
+			{
+				s = s.replace(".class", "");
+			}
+			Class<?> c = load.loadClass(s);
+			l.add(c);
+			System.out.println("Sucsesfull loading " + c);
+		}
+		load.close();
+		return l;
+	}
+
+	private void invoke(Object o) 
+	{
+		Class<?> c = o.getClass();
+		Method[] m = c.getDeclaredMethods();
+		for (int i = 0; i < m.length; i++) 
+		{
+			if (m[i].isAnnotationPresent(Init.Start.class)) 
+			{
+				Method run = m[i];
+				System.out.println("Try to run [" + run + "] at [" + c + "]");
+				
+				try {
+					run.invoke(o);
+				} catch (Exception e) {
+					System.out.println("Failed !!!");
+					state.put(c, EnumPluginState.ERROR);
+					e.printStackTrace();
+				} 
+				
+			}
+		}
+	}
+	
+	
+	public EnumPluginState getPluginState(Class<?> c)
+	{
+		return state.get(c);
+	}
+	
+	public Object getPlugin(Class<?> c)
+	{
+		return used.get(c);
+	}
+	
+	public Class<?> getPluginByID(String id)
+	{
+		return pluginID.get(id);
+	}
+	
+	public String getPluginID(Class<?> c)
+	{
+		return c.getAnnotation(Init.Plugin.class).pluginID();
+	}
+	
+	public String getPluginName(Class<?> c)
+	{
+		return c.getAnnotation(Init.Plugin.class).name();
+	}
+}
+src/com/naronco/cubeshaft/render/Renderer.java
+public class Renderer {
+	private Cubeshaft game;
+	private float redFog;
+	private float greenFog;
+	private float blueFog;
+	public HeldTile heldTile;
+	private FloatBuffer buffer = BufferUtils.createFloatBuffer(16);
+	private int viewDistance = 0;
+
+	public Renderer(Cubeshaft game) {
+		this.game = game;
+		this.heldTile = new HeldTile();
+		this.viewDistance = game.levelRenderer.viewDistance;
+	}
+
+	public Vec3 getEyePos(float delta) {
+		float x = this.game.player.xo
+				+ (this.game.player.x - this.game.player.xo) * delta;
+		float y = this.game.player.yo
+				+ (this.game.player.y - this.game.player.yo) * delta;
+		float z = this.game.player.zo
+				+ (this.game.player.z - this.game.player.zo) * delta;
+		return new Vec3(x, y, z);
+	}
+
+	public void enableGuiMode() {
+		glClear(256);
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glOrtho(0.0, game.width, Math.max(1, game.height), 0.0, 100.0, 300.0);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+		glTranslatef(0.0f, 0.0f, -200.0f);
+	}
+
+	public void renderFog() {
+		Tile tile = Tile.tiles[this.game.level.getTile(
+				(int) this.game.player.x, (int) (this.game.player.y + 0.12f),
+				(int) this.game.player.z)];
+		if (tile != null && tile.getLiquidType() == 1) {
+			glFogi(GL_FOG_MODE, GL_EXP);
+			glFogf(GL_FOG_DENSITY, 0.1f);
+			glFog(GL_FOG_COLOR, getFloatBuffer(0.02f, 0.02f, 0.2f, 1.0f));
+			glLightModel(GL_LIGHT_MODEL_AMBIENT,
+					getFloatBuffer(0.3f, 0.3f, 0.7f, 1.0f));
+		} else if (tile != null && tile.getLiquidType() == 2) {
+			glFogi(GL_FOG_MODE, GL_EXP);
+			glFogf(GL_FOG_DENSITY, 2.0f);
+			glFog(GL_FOG_COLOR, getFloatBuffer(0.6f, 0.1f, 0.0f, 1.0f));
+			glLightModel(GL_LIGHT_MODEL_AMBIENT,
+					getFloatBuffer(0.4f, 0.3f, 0.3f, 1.0f));
+		} else {
+			glFogi(GL_FOG_MODE, GL_EXP);
+			glFogf(GL_FOG_DENSITY,
+					0.001f * (1 << (viewDistance + 1) << viewDistance));
+			glFog(GL_FOG_COLOR,
+					this.getFloatBuffer(redFog, greenFog, blueFog, 1.0f));
+			glLightModel(GL_LIGHT_MODEL_AMBIENT,
+					getFloatBuffer(1.0f, 1.0f, 1.0f, 1.0f));
+		}
+		// glEnable(GL_COLOR_MATERIAL);
+		// glColorMaterial(GL_FRONT, GL_AMBIENT);
+		// glEnable(GL_LIGHTING);
+	}
+
+	public static Vec3 calcNormal(Vec3 p0, Vec3 p1, Vec3 p2) {
+		Vec3 np0 = p1.copy().sub(p0);
+		Vec3 np1 = p2.copy().sub(p0);
+		return np0.copy().cross(np1).normalize();
+	}
+
+	private FloatBuffer getFloatBuffer(float... fs) {
+		this.buffer.clear();
+		this.buffer.put(fs);
+		this.buffer.flip();
+		return this.buffer;
+	}
+}
+src/com/naronco/cubeshaft/particle/ParticleEngine.java
+public class ParticleEngine {
+	public List<Particle> particles = new ArrayList<Particle>();
+
+	public void render(Player player, float delta) {
+		Tesselator t = Tesselator.instance;
+		synchronized (particles) {
+			if (particles.size() == 0)
+				return;
+			float f0 = -(float) Math.cos(player.xRot * Math.PI / 180.0);
+			float f1 = -(float) Math.sin(player.xRot * Math.PI / 180.0);
+			float f2 = -f1 * (float) Math.sin(player.yRot * Math.PI / 180.0);
+			float f3 = f0 * (float) Math.sin(player.yRot * Math.PI / 180.0);
+			float f4 = (float) Math.cos(player.yRot * Math.PI / 180.0);
+			t.begin();
+			for (int i = 0; i < this.particles.size(); i++) {
+				Particle p = particles.get(i);
+				t.color(230, 230, 230);
+
+				float u0 = (p.texture % 16 + p.xTex / 4.0f) / 16.0f;
+				float u1 = u0 + 0.01560938f;
+				float v0 = (p.texture / 16 + p.xTex / 4.0f) / 16.0f;
+				float v1 = v0 + 0.01560938f;
+
+				float f = 0.1f * p.d;
+
+				float x = p.xo + (p.x - p.xo) * delta;
+				float y = p.yo + (p.y - p.yo) * delta;
+				float z = p.zo + (p.z - p.zo) * delta;
+
+				Vec3 p0 = new Vec3(x - f0 * f - f2 * f, y - f4 * f, z - f1 * f
+						- f3 * f);
+				Vec3 p1 = new Vec3(x - f0 * f + f2 * f, y + f4 * f, z - f1 * f
+						+ f3 * f);
+				Vec3 p2 = new Vec3(x + f0 * f - f2 * f, y - f4 * f, z + f1 * f
+						- f3 * f);
+
+				Vec3 normal = Renderer.calcNormal(p0, p1, p2);
+
+				t.normal(normal.x, normal.y, normal.z);
+				t.vertexUV(x - f0 * f - f2 * f, y - f4 * f,
+						z - f1 * f - f3 * f, u0, v1);
+				t.vertexUV(x - f0 * f + f2 * f, y + f4 * f,
+						z - f1 * f + f3 * f, u0, v0);
+				t.vertexUV(x + f0 * f + f2 * f, y + f4 * f,
+						z + f1 * f + f3 * f, u1, v0);
+				t.vertexUV(x + f0 * f - f2 * f, y - f4 * f,
+						z + f1 * f - f3 * f, u1, v1);
+			}
+		}
+		t.end();
+	}
+}
+src/com/naronco/cubeshaft/level/Cloud.java
+public class Cloud {
+	public static final int CLOUD_MAP_SIZE = 8;
+	public static final boolean[] cloudMap = new boolean[CLOUD_MAP_SIZE
+			* CLOUD_MAP_SIZE];
+
+	public void render() {
+		Tesselator t = Tesselator.instance;
+		for (int x = 0; x < CLOUD_MAP_SIZE; x++) {
+			for (int z = 0; z < CLOUD_MAP_SIZE; z++) {
+				int col = cloudMap[x + z * CLOUD_MAP_SIZE] ? 0xffffff : 0;
+				if (col != 0) {
+					t.begin();
+					t.color(0xffffff);
+					renderCloud(t, x * 16, 120, z * 16, 0);
+					renderCloud(t, x * 16, 120, z * 16, 1);
+
+					t.color(0xd0d0d0);
+					renderCloud(t, x * 16, 120, z * 16, 2);
+					t.color(0xc0c0c0);
+					renderCloud(t, x * 16, 120, z * 16, 3);
+					t.color(0xd0d0d0);
+					renderCloud(t, x * 16, 120, z * 16, 4);
+					t.color(0xc0c0c0);
+					renderCloud(t, x * 16, 120, z * 16, 5);
+					t.end();
+				}
+			}
+		}
+	}
+
+	public void renderCloud(Tesselator t, float xo, float yo, float zo, int side) {
+		float x0 = xo;
+		float x1 = xo + 16;
+		float y0 = yo;
+		float y1 = yo + 4;
+		float z0 = zo;
+		float z1 = zo + 16;
+
+		if (side == 0) {
+			t.normal(0, -1, 0);
+			t.vertex(x0, y0, z1);
+			t.vertex(x0, y0, z0);
+			t.vertex(x1, y0, z0);
+			t.vertex(x1, y0, z1);
+			return;
+		}
+		if (side == 1) {
+			t.normal(0, 1, 0);
+			t.vertex(x1, y1, z1);
+			t.vertex(x1, y1, z0);
+			t.vertex(x0, y1, z0);
+			t.vertex(x0, y1, z1);
+			return;
+		}
+		if (side == 2) {
+			t.normal(0, 0, -1);
+			t.vertex(x0, y1, z0);
+			t.vertex(x1, y1, z0);
+			t.vertex(x1, y0, z0);
+			t.vertex(x0, y0, z0);
+			return;
+		}
+		if (side == 3) {
+			t.normal(0, 0, 1);
+			t.vertex(x0, y1, z1);
+			t.vertex(x0, y0, z1);
+			t.vertex(x1, y0, z1);
+			t.vertex(x1, y1, z1);
+			return;
+		}
+		if (side == 4) {
+			t.normal(-1, 0, 0);
+			t.vertex(x0, y1, z1);
+			t.vertex(x0, y1, z0);
+			t.vertex(x0, y0, z0);
+			t.vertex(x0, y0, z1);
+			return;
+		}
+		if (side == 5) {
+			t.normal(1, 0, 0);
+			t.vertex(x1, y0, z1);
+			t.vertex(x1, y0, z0);
+			t.vertex(x1, y1, z0);
+			t.vertex(x1, y1, z1);
+			return;
+		}
+	}
+
+	static {
+		Random random = new Random();
+		for (int i = 0; i < cloudMap.length; i++) {
+			if (random.nextBoolean())
+				cloudMap[i] = true;
+		}
+	}
+}
+src/com/naronco/cubeshaft/level/generator/LevelGenerator.java
+public class LevelGenerator {
+	private Cubeshaft game;
+	private int width;
+	private int height;
+	private int depth;
+	private Random random = new Random();
+
+	public LevelGenerator(Cubeshaft game) {
+		this.game = game;
+	}
+
+	public int getHeight(int[] heightmap, int x, int y) {
+		if (x < 0)
+			x = 0;
+		if (x >= width)
+			x = width - 1;
+		if (y < 0)
+			y = 0;
+		if (y >= depth)
+			y = depth - 1;
+		return heightmap[x + y * depth];
+	}
+	
+	public boolean generate(String name, Level level, int w, int h, int d) {
+		this.game.setProgressTitle("Generating level");
+		level.init(name, w, h, d, new byte[w * h * d]);
+		
+		this.width = w;
+		this.height = h;
+		this.depth = d;
+
+		setProgressText("Raising..");
+
+		/*
+		 * NoiseMap noise1 = new NoiseMap(width, depth, 32); NoiseMap noise2 =
+		 * new NoiseMap(width, depth, 32); CombinedNoiseMap noiseMap = new
+		 * CombinedNoiseMap(noise1, noise2);
+		 * 
+		 * int[] heightMap = new int[width * depth]; for (int x = 0; x < width;
+		 * x++) { setProgress(x * 100 / (width - 1)); for (int z = 0; z < depth;
+		 * z++) { heightMap[x + z * width] = (int) ((noiseMap.values[x + z
+		 * width]) 2 + height / 2 - 2); } }
+		 */
+
+		IGenerator biomeGenerator = new SimplexGenerator(random, 16, 0.5f,
+				0.005f);
+		Biome[] biomes = new Biome[width * depth];
+		for (int x = 0; x < width; x++) {
+			setProgress(x * 50 / (width - 1));
+			for (int z = 0; z < depth; z++) {
+				biomes[x + z * depth] = Biome.getBiome(biomeGenerator.Generate(
+						x, z, Biome.None));
+			}
+		}
+
+		IGenerator heightmapGenerator = new SimplexGenerator(random, 32, 0.25f,
+				0.015f);
+		int[] heightMap = new int[width * depth];
+
+		for (int x = 0; x < width; x++) {
+			setProgress(x * 50 / (width - 1) + 50);
+			for (int z = 0; z < depth; z++) {
+				heightMap[x + z * depth] = (int) (heightmapGenerator.Generate(
+						x, z, biomes[x + z * depth]) * height);
+			}
+		}
+
+		setProgressText("Smoothing..");
+		double[] gausMatrix = { 0.00296901674395065, 0.013306209891014005,
+				0.02193823127971504, 0.013306209891014005, 0.00296901674395065,
+				0.013306209891014005, 0.05963429543618023, 0.09832033134884507,
+				0.05963429543618023, 0.013306209891014005, 0.02193823127971504,
+				0.09832033134884507, 0.16210282163712417, 0.09832033134884507,
+				0.02193823127971504, 0.013306209891014005, 0.05963429543618023,
+				0.09832033134884507, 0.05963429543618023, 0.013306209891014005,
+				0.00296901674395065, 0.013306209891014005, 0.02193823127971504,
+				0.013306209891014005, 0.00296901674395065 };
+		int gausDepth = 5;
+		int iters = 4;
+		for (int i = 0; i < iters; i++) {
+			for (int x = 0; x < width; x++) {
+				setProgress(x * (100 / iters) / (width - 1) + 100 / iters * i);
+				for (int y = 0; y < depth; y++) {
+					double total = 0;
+					for (int gx = 0; gx < gausDepth; gx++) {
+						for (int gy = 0; gy < gausDepth; gy++) {
+							total += getHeight(heightMap, x - 2 + gx, y - 2
+									+ gy)
+									* gausMatrix[gx + gy * gausDepth];
+						}
+					}
+					heightMap[x + y * depth] = (int) (total);
+				}
+			}
+		}
+		for (int x = 0; x < width; x++) {
+			setProgress(x * 100 / (width - 1));
+			for (int z = 0; z < depth; z++) {
+				int total = 0;
+				for (int gx = 0; gx < 7; gx++) {
+					for (int gy = 0; gy < 7; gy++) {
+						total += getHeight(heightMap, x - 3 + gx, z - 3 + gy);
+					}
+				}
+				heightMap[x + z * depth] = (int) (total / 49.0f);
+			}
+		}
+
+		setProgressText("Erosing..");
+
+		for (int x = 0; x < width; x++) {
+			setProgress(x * 100 / (width - 1));
+			for (int y = 0; y < depth; y++) {
+				heightMap[x + y * depth] = heightMap[x + y * depth] - 2
+						+ random.nextInt(5);
+			}
+		}
+		setProgressText("Smoothing..");
+		for (int x = 0; x < width; x++) {
+			setProgress(x * 100 / (width - 1));
+			for (int y = 0; y < depth; y++) {
+				double total = 0;
+				for (int gx = 0; gx < gausDepth; gx++) {
+					for (int gy = 0; gy < gausDepth; gy++) {
+						total += getHeight(heightMap, x - 2 + gx, y - 2 + gy)
+								* gausMatrix[gx + gy * gausDepth];
+					}
+				}
+				heightMap[x + y * depth] = (int) (total);
+			}
+		}
+
+		setProgressText("Soiling..");
+		for (int x = 0; x < width; x++) {
+			setProgress(x * 100 / (width - 1));
+			for (int z = 0; z < depth; z++)
+				for (int y = 0; y < height; y++) {
+					Biome biome = biomes[x + z * width];
+					int hei = heightMap[x + z * width];
+
+					int tile = 0;
+					if (biome == Biome.Desert) {
+						if (y < hei)
+							tile = Tile.sand.id;
+					} else if (biome == Biome.Water) {
+						if (y < hei)
+							tile = Tile.stone.id;
+					} else {
+						if (y == hei && y != height / 2 - 3)
+							tile = Tile.grass.id;
+						else if (y == hei && y == height / 2 - 3)
+							tile = Tile.sand.id;
+						else if (y >= hei && y < hei)
+							tile = Tile.dirt.id;
+						else if (y < hei && y >= hei - 5)
+							tile = random.nextInt(2) == 0 ? Tile.dirt.id
+									: Tile.stone.id;
+						else if (y < hei - 5)
+							tile = Tile.stone.id;
+					}
+					level.setTileNoUpdate(x, y, z, tile);
+				}
+		}
+
+		setProgressText("Watering..");
+		for (int x = 0; x < width; x++) {
+			this.setProgress(x * 100 / (width - 1));
+			for (int z = 0; z < depth; z++)
+				for (int y = 0; y < height / 4; y++) {
+					int tile = level.getTile(x, y, z);
+					if (tile == 0)
+						if ((level.getTile(x, y - 1, z - 1) == 0)
+								|| (level.getTile(x, y - 1, z + 1) == 0)
+								|| (level.getTile(x - 1, y - 1, z) == 0)
+								|| (level.getTile(x + 1, y - 1, z) == 0))
+							level.setTileNoUpdate(x, y, z, Tile.flowingWater.id);
+						else
+							level.setTileNoUpdate(x, y, z, Tile.water.id);
+					else if (tile == Tile.grass.id && y < height / 2 - 3)
+						level.setTileNoUpdate(x, y, z, Tile.dirt.id);
+				}
+		}
+
+		setProgressText("Carving..");
+		Simplex3DNoise noise3D = new Simplex3DNoise(random, 32, 0.25f, 0.015f);
+
+		for (int x = 0; x < width; x++) {
+			setProgress(x * 100 / (width - 1));
+				for (int z = 0; z < depth; z++) {
+					for (int y = 0; y < height / 2; y++) {
+					if(noise3D.Generate(x, y, z) < 0.25f)
+					{
+						level.setTileNoUpdate(x, y, z, 0);
+					}
+				}
+			}
+		}
+
+		setProgressText("Planting..");
+		int treeCount = width * depth / 256;
+		for (int i = 0; i < treeCount; i++) {
+			setProgress(i * 100 / (treeCount - 1) / 2);
+			int x = random.nextInt(width);
+			int z = random.nextInt(depth);
+			int y = heightMap[x + z * width] + 1;
+			new TreeLevelStruct().generate(level, x, y, z, random);
+		}
+		for (int y = 0; y < height; y++) {
+			setProgress(50 + y * 50 / (height - 1));
+			for (int x = 0; x < width; x++)
+				for (int z = 0; z < depth; z++) {
+					int tile = level.getTile(x, y, z);
+					if (tile == Tile.grass.id) {
+						int upperTile = level.getTile(x, y + 1, z);
+						if (upperTile == 0 && random.nextInt(5) == 0)
+							level.setTileNoUpdate(x, y + 1, z,
+									Tile.tallGrass.id);
+					}
+				}
+		}
+		int bambooCount = width * depth / 256;
+		/*
+		 * Random r = new Random(); for(int i = 0; i < bambooCount; i++) {
+		 * setProgress(i * 100 / (bambooCount - 1)); int x =
+		 * random.nextInt(width); int z = random.nextInt(depth); int y =
+		 * heightMap[x + z * width] + 1; if(level.getTile(x, y - 1, z) ==
+		 * Tile.sand.id) { if ((level.getTile(x, y - 1, z - 1) == Tile.water.id)
+		 * || (level.getTile(x, y - 1, z + 1) == Tile.water.id) ||
+		 * (level.getTile(x - 1, y - 1, z) == Tile.water.id) || (level.getTile(x
+		 * + 1, y - 1, z) == Tile.water.id)) { float temp = r.nextFloat() * 4;
+		 * if (temp >= 0) level.setTileNoUpdate(x, y, z, Tile.bamboo.id); if
+		 * (temp >= 1) level.setTileNoUpdate(x, y + 1, z, Tile.bamboo.id); if
+		 * (temp >= 2) level.setTileNoUpdate(x, y + 2, z, Tile.bamboo.id); if
+		 * (temp >= 3) level.setTileNoUpdate(x, y + 3, z, Tile.bamboo.id);
+		 * setProgress(i * 100 / (bambooCount - 1)); } else i--; } else i--; }
+		 */
+
+		// overlay(flyingIslands);
+		// overlay(hell);
+
+		level.calcLightDepths(0, 0, width, depth);
+		for (int i = 0; i < level.levelRenderers.size(); i++) {
+			level.levelRenderers.get(i).init();
+		}
+
+		game.endLoading();
+		return true;
+	}
+
+	public void generateFlatmap(String name, Level level, int w, int h, int d) {
+		game.setProgressTitle("Generating Flatmap");
+		game.setProgressText("Generating...");
+
+		Tile[] tiles = new Tile[] { Tile.bedrock, Tile.stone, Tile.stone,
+				Tile.stone, Tile.dirt, Tile.dirt, Tile.grass };
+
+		byte[] b = new byte[w * h * d];
+		for (int j = 1; j < w; j++) {
+			game.setProgress((int) ((j / (float) w) * 100.0));
+			for (int l = 1; l < d; l++) {
+				for (int k = 0; k < tiles.length; k++) {
+					// //b[(x + l) * z + j] = (byte) Tile.stone.id;
+					int i = (k * w + l) * d + j;
+					if (i >= b.length || i < 0)
+						continue;
+					b[i] = (byte) tiles[k].id;
+				}
+			}
+
+		}
+		level.init(name, w, h, d, b);
+	}
+
+	private void setProgressText(String text) {
+		ProgressMenu menu = (ProgressMenu) game.menu;
+		menu.setProgressText(text);
+	}
+
+	private void setProgress(int progress) {
+		ProgressMenu menu = (ProgressMenu) game.menu;
+		menu.setProgress(progress);
+	}
+}
+src/com/naronco/cubeshaft/render/FrustumCuller.java
+public final class FrustumCuller {
+
+	private static FrustumCuller instance = new FrustumCuller();
+
+	public float[][] frustrum = new float[16][16];
+	public float[] projectionMatrix = new float[16];
+	public float[] modelviewMatrix = new float[16];
+	public float[] clippingMatrix = new float[16];
+
+	private FloatBuffer projectionMatrixBuffer = BufferUtils
+			.createFloatBuffer(16);
+	private FloatBuffer modelviewMatrixBuffer = BufferUtils
+			.createFloatBuffer(16);
+
+	public static FrustumCuller getInstance() {
+		instance.projectionMatrixBuffer.clear();
+		instance.modelviewMatrixBuffer.clear();
+		GL11.glGetFloat(2983, instance.projectionMatrixBuffer);
+		GL11.glGetFloat(2982, instance.modelviewMatrixBuffer);
+		instance.projectionMatrixBuffer.flip().limit(16);
+		instance.projectionMatrixBuffer.get(instance.projectionMatrix);
+		instance.modelviewMatrixBuffer.flip().limit(16);
+		instance.modelviewMatrixBuffer.get(instance.modelviewMatrix);
+		instance.clippingMatrix[0] = instance.modelviewMatrix[0]
+				* instance.projectionMatrix[0] + instance.modelviewMatrix[1]
+				* instance.projectionMatrix[4] + instance.modelviewMatrix[2]
+				* instance.projectionMatrix[8] + instance.modelviewMatrix[3]
+				* instance.projectionMatrix[12];
+		instance.clippingMatrix[1] = instance.modelviewMatrix[0]
+				* instance.projectionMatrix[1] + instance.modelviewMatrix[1]
+				* instance.projectionMatrix[5] + instance.modelviewMatrix[2]
+				* instance.projectionMatrix[9] + instance.modelviewMatrix[3]
+				* instance.projectionMatrix[13];
+		instance.clippingMatrix[2] = instance.modelviewMatrix[0]
+				* instance.projectionMatrix[2] + instance.modelviewMatrix[1]
+				* instance.projectionMatrix[6] + instance.modelviewMatrix[2]
+				* instance.projectionMatrix[10] + instance.modelviewMatrix[3]
+				* instance.projectionMatrix[14];
+		instance.clippingMatrix[3] = instance.modelviewMatrix[0]
+				* instance.projectionMatrix[3] + instance.modelviewMatrix[1]
+				* instance.projectionMatrix[7] + instance.modelviewMatrix[2]
+				* instance.projectionMatrix[11] + instance.modelviewMatrix[3]
+				* instance.projectionMatrix[15];
+		instance.clippingMatrix[4] = instance.modelviewMatrix[4]
+				* instance.projectionMatrix[0] + instance.modelviewMatrix[5]
+				* instance.projectionMatrix[4] + instance.modelviewMatrix[6]
+				* instance.projectionMatrix[8] + instance.modelviewMatrix[7]
+				* instance.projectionMatrix[12];
+		instance.clippingMatrix[5] = instance.modelviewMatrix[4]
+				* instance.projectionMatrix[1] + instance.modelviewMatrix[5]
+				* instance.projectionMatrix[5] + instance.modelviewMatrix[6]
+				* instance.projectionMatrix[9] + instance.modelviewMatrix[7]
+				* instance.projectionMatrix[13];
+		instance.clippingMatrix[6] = instance.modelviewMatrix[4]
+				* instance.projectionMatrix[2] + instance.modelviewMatrix[5]
+				* instance.projectionMatrix[6] + instance.modelviewMatrix[6]
+				* instance.projectionMatrix[10] + instance.modelviewMatrix[7]
+				* instance.projectionMatrix[14];
+		instance.clippingMatrix[7] = instance.modelviewMatrix[4]
+				* instance.projectionMatrix[3] + instance.modelviewMatrix[5]
+				* instance.projectionMatrix[7] + instance.modelviewMatrix[6]
+				* instance.projectionMatrix[11] + instance.modelviewMatrix[7]
+				* instance.projectionMatrix[15];
+		instance.clippingMatrix[8] = instance.modelviewMatrix[8]
+				* instance.projectionMatrix[0] + instance.modelviewMatrix[9]
+				* instance.projectionMatrix[4] + instance.modelviewMatrix[10]
+				* instance.projectionMatrix[8] + instance.modelviewMatrix[11]
+				* instance.projectionMatrix[12];
+		instance.clippingMatrix[9] = instance.modelviewMatrix[8]
+				* instance.projectionMatrix[1] + instance.modelviewMatrix[9]
+				* instance.projectionMatrix[5] + instance.modelviewMatrix[10]
+				* instance.projectionMatrix[9] + instance.modelviewMatrix[11]
+				* instance.projectionMatrix[13];
+		instance.clippingMatrix[10] = instance.modelviewMatrix[8]
+				* instance.projectionMatrix[2] + instance.modelviewMatrix[9]
+				* instance.projectionMatrix[6] + instance.modelviewMatrix[10]
+				* instance.projectionMatrix[10] + instance.modelviewMatrix[11]
+				* instance.projectionMatrix[14];
+		instance.clippingMatrix[11] = instance.modelviewMatrix[8]
+				* instance.projectionMatrix[3] + instance.modelviewMatrix[9]
+				* instance.projectionMatrix[7] + instance.modelviewMatrix[10]
+				* instance.projectionMatrix[11] + instance.modelviewMatrix[11]
+				* instance.projectionMatrix[15];
+		instance.clippingMatrix[12] = instance.modelviewMatrix[12]
+				* instance.projectionMatrix[0] + instance.modelviewMatrix[13]
+				* instance.projectionMatrix[4] + instance.modelviewMatrix[14]
+				* instance.projectionMatrix[8] + instance.modelviewMatrix[15]
+				* instance.projectionMatrix[12];
+		instance.clippingMatrix[13] = instance.modelviewMatrix[12]
+				* instance.projectionMatrix[1] + instance.modelviewMatrix[13]
+				* instance.projectionMatrix[5] + instance.modelviewMatrix[14]
+				* instance.projectionMatrix[9] + instance.modelviewMatrix[15]
+				* instance.projectionMatrix[13];
+		instance.clippingMatrix[14] = instance.modelviewMatrix[12]
+				* instance.projectionMatrix[2] + instance.modelviewMatrix[13]
+				* instance.projectionMatrix[6] + instance.modelviewMatrix[14]
+				* instance.projectionMatrix[10] + instance.modelviewMatrix[15]
+				* instance.projectionMatrix[14];
+		instance.clippingMatrix[15] = instance.modelviewMatrix[12]
+				* instance.projectionMatrix[3] + instance.modelviewMatrix[13]
+				* instance.projectionMatrix[7] + instance.modelviewMatrix[14]
+				* instance.projectionMatrix[11] + instance.modelviewMatrix[15]
+				* instance.projectionMatrix[15];
+		instance.frustrum[0][0] = instance.clippingMatrix[3]
+				- instance.clippingMatrix[0];
+		instance.frustrum[0][1] = instance.clippingMatrix[7]
+				- instance.clippingMatrix[4];
+		instance.frustrum[0][2] = instance.clippingMatrix[11]
+				- instance.clippingMatrix[8];
+		instance.frustrum[0][3] = instance.clippingMatrix[15]
+				- instance.clippingMatrix[12];
+		normalize(instance.frustrum, 0);
+		instance.frustrum[1][0] = instance.clippingMatrix[3]
+				+ instance.clippingMatrix[0];
+		instance.frustrum[1][1] = instance.clippingMatrix[7]
+				+ instance.clippingMatrix[4];
+		instance.frustrum[1][2] = instance.clippingMatrix[11]
+				+ instance.clippingMatrix[8];
+		instance.frustrum[1][3] = instance.clippingMatrix[15]
+				+ instance.clippingMatrix[12];
+		normalize(instance.frustrum, 1);
+		instance.frustrum[2][0] = instance.clippingMatrix[3]
+				+ instance.clippingMatrix[1];
+		instance.frustrum[2][1] = instance.clippingMatrix[7]
+				+ instance.clippingMatrix[5];
+		instance.frustrum[2][2] = instance.clippingMatrix[11]
+				+ instance.clippingMatrix[9];
+		instance.frustrum[2][3] = instance.clippingMatrix[15]
+				+ instance.clippingMatrix[13];
+		normalize(instance.frustrum, 2);
+		instance.frustrum[3][0] = instance.clippingMatrix[3]
+				- instance.clippingMatrix[1];
+		instance.frustrum[3][1] = instance.clippingMatrix[7]
+				- instance.clippingMatrix[5];
+		instance.frustrum[3][2] = instance.clippingMatrix[11]
+				- instance.clippingMatrix[9];
+		instance.frustrum[3][3] = instance.clippingMatrix[15]
+				- instance.clippingMatrix[13];
+		normalize(instance.frustrum, 3);
+		instance.frustrum[4][0] = instance.clippingMatrix[3]
+				- instance.clippingMatrix[2];
+		instance.frustrum[4][1] = instance.clippingMatrix[7]
+				- instance.clippingMatrix[6];
+		instance.frustrum[4][2] = instance.clippingMatrix[11]
+				- instance.clippingMatrix[10];
+		instance.frustrum[4][3] = instance.clippingMatrix[15]
+				- instance.clippingMatrix[14];
+		normalize(instance.frustrum, 4);
+		instance.frustrum[5][0] = instance.clippingMatrix[3]
+				+ instance.clippingMatrix[2];
+		instance.frustrum[5][1] = instance.clippingMatrix[7]
+				+ instance.clippingMatrix[6];
+		instance.frustrum[5][2] = instance.clippingMatrix[11]
+				+ instance.clippingMatrix[10];
+		instance.frustrum[5][3] = instance.clippingMatrix[15]
+				+ instance.clippingMatrix[14];
+		normalize(instance.frustrum, 5);
+		return instance;
+	}
+
+	private static void normalize(float[][] var0, int var1) {
+		float var2 = (float) Math
+				.sqrt(var0[var1][0] * var0[var1][0] + var0[var1][1]
+						* var0[var1][1] + var0[var1][2] * var0[var1][2]);
+		var0[var1][0] /= var2;
+		var0[var1][1] /= var2;
+		var0[var1][2] /= var2;
+		var0[var1][3] /= var2;
+	}
+
+	public boolean isBoxInFrustrum(float x1, float y1, float z1, float x2,
+			float y2, float z2) {
+		for (int var7 = 0; var7 < 6; ++var7) {
+			if (this.frustrum[var7][0] * x1 + this.frustrum[var7][1] * y1
+					+ this.frustrum[var7][2] * z1 + this.frustrum[var7][3] <= 0.0F
+					&& this.frustrum[var7][0] * x2 + this.frustrum[var7][1]
+							* y1 + this.frustrum[var7][2] * z1
+							+ this.frustrum[var7][3] <= 0.0F
+					&& this.frustrum[var7][0] * x1 + this.frustrum[var7][1]
+							* y2 + this.frustrum[var7][2] * z1
+							+ this.frustrum[var7][3] <= 0.0F
+					&& this.frustrum[var7][0] * x2 + this.frustrum[var7][1]
+							* y2 + this.frustrum[var7][2] * z1
+							+ this.frustrum[var7][3] <= 0.0F
+					&& this.frustrum[var7][0] * x1 + this.frustrum[var7][1]
+							* y1 + this.frustrum[var7][2] * z2
+							+ this.frustrum[var7][3] <= 0.0F
+					&& this.frustrum[var7][0] * x2 + this.frustrum[var7][1]
+							* y1 + this.frustrum[var7][2] * z2
+							+ this.frustrum[var7][3] <= 0.0F
+					&& this.frustrum[var7][0] * x1 + this.frustrum[var7][1]
+							* y2 + this.frustrum[var7][2] * z2
+							+ this.frustrum[var7][3] <= 0.0F
+					&& this.frustrum[var7][0] * x2 + this.frustrum[var7][1]
+							* y2 + this.frustrum[var7][2] * z2
+							+ this.frustrum[var7][3] <= 0.0F) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	public boolean isBoxInFrustrum(AABB bb) {
+		return isBoxInFrustrum(bb.x0, bb.y0, bb.z0, bb.x1, bb.y1, bb.z1);
+	}
+}
+src/com/naronco/cubeshaft/gui/StartMenu.java
+public class StartMenu extends Menu {
+	@Override
+	public void init() {
+		this.buttons.add(new Button(0, this.width / 2 - 200, this.height / 4, 400, 40, "Singleplayer"));
+		this.buttons.add(new Button(1, this.width / 2 - 200, this.height / 4 + 60, 400, 40, "Multiplayer"));
+		this.buttons.add(new Button(3, this.width / 2 - 200, this.height / 4 + 120, 400, 40, "Options"));
+		this.buttons.add(new Button(4, this.width / 2 - 200, this.height / 4 + 180, 400, 40, "Quit"));
+	}
+
+	@Override
+	protected void buttonClicked(Button b) {
+		
+		if (b.id == 0) {
+		//	this.game.setMenu(new LevelGenerateMenu());
+		//	this.game.generateNewLevel();
+			this.game.setMenu(new MenuSelectWorld());
+		}
+		if(b.id == 3)
+		{
+			this.game.setMenu(new MenuOptions());
+		}
+		if (b.id == 4) 
+		{
+			try {
+			File dir = new File("data");
+			dir.mkdir();
+			File f = new File(dir,"config.dat");
+			OutputStream out = new FileOutputStream(f);
+			KeyManager.saveKeys(game.props);
+			game.props.store(out, "");
+			} catch(IOException e) {
+				e.printStackTrace();
+			}
+			this.game.tryToQuit();
+		}
+	}
+
+	@Override
+	public void render(int xm, int ym) {
+		glDisable(GL_TEXTURE_2D);
+		fill(0, 0, width, height, 0xffddddff);
+		super.render(xm, ym);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, TextureLoader.load("/Cubeshaft.png", GL_NEAREST));
+		Tesselator t = Tesselator.instance;
+		glColor4f(1, 1, 1, 1);
+		int x1 = (width - 660) / 2, y1 = 32, x2 = (width - 660) / 2 + 660, y2 = 160;
+		t.begin();
+		t.vertexUV(x1, y1, 0, 0, 0);
+		t.vertexUV(x2, y1, 0, 1, 0);
+		t.vertexUV(x2, y2, 0, 1, 1);
+		t.vertexUV(x1, y2, 0, 0, 1);
+		t.end();
+
+	}
+
+	@Override
+	public void input() {
+		super.input();
+	}
+}
+src/com/naronco/cubeshaft/gui/TextRenderer.java
+public class TextRenderer {
+	private static int[] charWidth = new int[256];
+	private int texture;
+
+	public TextRenderer(String filename) {
+		BufferedImage img;
+		try {
+			img = ImageIO.read(getClass().getResource(filename));
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+		int width = img.getWidth();
+		int height = img.getHeight();
+		int[] pixels = new int[width * height];
+		img.getRGB(0, 0, width, height, pixels, 0, width);
+		for (int i = 0; i < 128; i++) {
+			int xi = i % 16;
+			int yi = i / 16;
+			int cw = 0;
+			int xo = 15;
+			while (xo >= 0 && cw == 0) {
+				for (int yo = 0; yo < 15; yo++) {
+					int xx = xi * 16 + xo;
+					int yy = yi * 16 + yo;
+					if ((pixels[xx + yy * width] & 0xff00000) != 0x00) {
+						cw = xo + 4;
+					}
+				}
+				xo--;
+			}
+			if (i == 32) cw = 12;
+			charWidth[i] = cw;
+		}
+		this.texture = TextureLoader.load(filename, GL_NEAREST);
+	}
+
+	public void drawString(String text, int x, int y, int color) {
+		drawString(text, x, y + 1, color, true);
+		drawString(text, x, y - 1, color, true);
+		drawString(text, x + 1, y, color, true);
+		drawString(text, x - 1, y, color, true);
+		drawString(text, x, y, color, false);
+	}
+
+	public void drawString(String text, int x, int y, int color, boolean dark) {
+		char[] chars = text.toCharArray();
+		if (dark) color = (color & 0xfcfcfc) >> 2;
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, texture);
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		Tesselator t = Tesselator.instance;
+		t.begin();
+		t.color(color);
+		int xOffs = 0;
+		for (int j = 0; j < text.length(); j++) {
+			if (chars[j] == '&') {
+				String colorString = "0123456789abcdef";
+				int m = ((colorString.indexOf(chars[j + 1])) & 0x8) << 3;
+
+				int r = (color & 0x4) * 191 + m;
+				int g = (color & 0x2) * 191 + m;
+				int b = (color & 0x1) * 191 + m;
+				color = r << 16 | g << 8 | b;
+
+				j += 2;
+				if (dark) color = (color & 0xfcfcfc) >> 1;
+			}
+			int xTex = chars[j] % 16 << 4;
+			int yTex = chars[j] / 16 << 4;
+			if (!dark) t.color((color & 0xfcfcfc) / 2);
+			t.vertexUV(x + xOffs + 1, y + 16, 0.0f, xTex / 256.0f, (yTex + 16) / 256.0f);
+			t.vertexUV(x + xOffs + 17, y + 16, 0.0f, (xTex + 16) / 256.0f, (yTex + 16) / 256.0f);
+			t.vertexUV(x + xOffs + 17, y, 0.0f, (xTex + 16) / 256.0f, yTex / 256.0f);
+			t.vertexUV(x + xOffs + 1, y, 0.0f, xTex / 256.0f, yTex / 256.0f);
+
+			if (!dark) t.color((color & 0xfcfcfc) / 2);
+			t.vertexUV(x + xOffs + 1, y + 17, 0.0f, xTex / 256.0f, (yTex + 16) / 256.0f);
+			t.vertexUV(x + xOffs + 17, y + 17, 0.0f, (xTex + 16) / 256.0f, (yTex + 16) / 256.0f);
+			t.vertexUV(x + xOffs + 17, y + 1, 0.0f, (xTex + 16) / 256.0f, yTex / 256.0f);
+			t.vertexUV(x + xOffs + 1, y + 1, 0.0f, xTex / 256.0f, yTex / 256.0f);
+
+			if (!dark) t.color((color & 0xfcfcfc) / 2);
+			t.vertexUV(x + xOffs, y + 17, 0.0f, xTex / 256.0f, (yTex + 16) / 256.0f);
+			t.vertexUV(x + xOffs + 16, y + 17, 0.0f, (xTex + 16) / 256.0f, (yTex + 16) / 256.0f);
+			t.vertexUV(x + xOffs + 16, y + 1, 0.0f, (xTex + 16) / 256.0f, yTex / 256.0f);
+			t.vertexUV(x + xOffs, y + 1, 0.0f, xTex / 256.0f, yTex / 256.0f);
+
+			t.color(color);
+			t.vertexUV(x + xOffs, y + 16, 0.0f, xTex / 256.0f, (yTex + 16) / 256.0f);
+			t.vertexUV(x + xOffs + 16, y + 16, 0.0f, (xTex + 16) / 256.0f, (yTex + 16) / 256.0f);
+			t.vertexUV(x + xOffs + 16, y, 0.0f, (xTex + 16) / 256.0f, yTex / 256.0f);
+			t.vertexUV(x + xOffs, y, 0.0f, xTex / 256.0f, yTex / 256.0f);
+			xOffs += charWidth[chars[j]];
+		}
+		t.end();
+
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+	}
+
+	public static int getTextLength(String text) {
+		char[] chars = text.toCharArray();
+		int length = 0;
+		for (int i = 0; i < chars.length; i++)
+			if (chars[i] == '&') i++;
+			else length += charWidth[chars[i]];
+		return length;
+	}
+}
+src/com/naronco/cubeshaft/gui/PausedGameMenu.java
+public class PausedGameMenu extends Menu {
+	public void init() {
+		this.buttons.add(new Button(3, this.width / 2 - 200, this.height / 4, 400, 40, "Back to game"));
+		this.buttons.add(new Button(1, this.width / 2 - 200, this.height / 4 + 60, 190, 40, "Save"));
+		this.buttons.add(new Button(2, this.width / 2 + 10, this.height / 4 + 60, 190, 40, "Load"));
+		//this.buttons.add(new Button(0, this.width / 2 - 200, this.height / 4 + 180, 400, 40, "Generate new level"));
+		this.buttons.add(new Button(0, this.width / 2 - 200, this.height / 4 + 180, 400, 40, "Save and Quit"));
+	}
+
+	protected void buttonClicked(Button b) {
+		if (b.id == 0) 
+		{
+			//this.game.generateNewLevel();
+			//this.game.setMenu(null);
+			//this.game.setInGame();
+			Level l = game.level;
+			game.level = new Level();
+			game.level.init("", 1, 1, 1, new byte[1]);
+			game.levelManager.save(l.name, l, game.player);
+			l = null;
+			System.gc();
+			this.game.setMenu(new StartMenu());
+		}
+		if (b.id == 1) {
+			this.game.setMenu(new LevelSaveMenu());
+		}
+		if (b.id == 2) {
+			this.game.setMenu(new LevelLoadMenu());
+		}
+		if (b.id == 3) {
+			this.game.setMenu(null);
+			this.game.setInGame();
+		}
+	}
+
+	public void render(int xMouse, int yMouse) {
+		fill(0, 0, width, height, 0xa0050500);
+		drawString("Game menu", (this.width - TextRenderer.getTextLength("Game menu")) / 2, 40, 0xfffffff);
+		drawString("y: " + game.player.y, 10, 30, 0xeeeeee);
+		super.render(xMouse, yMouse);
+	}
+}
+src/com/naronco/cubeshaft/particle/Particle.java
+public class Particle extends Entity {
+	private float xxa;
+	private float yya;
+	private float zza;
+	public int texture;
+	float xTex;
+	float yTex;
+	private int time = 0;
+	private int removeTime = 0;
+	float d;
+
+	public Particle(Level level, float x, float y, float z, float xs, float ys,
+			float zs, int texture) {
+		super(level);
+		this.texture = texture;
+		setSize(0.2f, 0.2f);
+		this.heightOffset = this.bbHeight / 2.0f;
+		setPos(x, y, z);
+		this.xxa = xs + (float) (Math.random() * 2.0 - 1.0) * 0.4f;
+		this.yya = ys + (float) (Math.random() * 2.0 - 1.0) * 0.4f;
+		this.zza = zs + (float) (Math.random() * 2.0 - 1.0) * 0.4f;
+		float f = (float) (Math.random() + Math.random() + 1.0) * 0.15f;
+		float dist = (float) Math.sqrt(xxa * xxa + yya * yya + zza * zza);
+		this.xxa = this.xxa / dist * f * 0.16f;
+		this.yya = this.yya / dist * f * 0.16f + 0.03f;
+		this.zza = this.zza / dist * f * 0.16f;
+		this.xTex = (float) Math.random() * 3.0f;
+		this.yTex = (float) Math.random() * 3.0f;
+		this.d = (float) (Math.random() * 0.5 + 0.5);
+		this.removeTime = (int) (4.0 / (Math.random() * 0.9 + 0.1) * 3.0);
+		this.time = 0;
+	}
+
+	public boolean blocks(Entity e) {
+		return false;
+	}
+
+	public void tick() {
+		this.xo = this.x;
+		this.yo = this.y;
+		this.zo = this.z;
+		if (this.time++ >= this.removeTime) {
+			this.removed = true;
+		}
+		this.yya = (float) (this.yya - 0.01);
+		move(this.xxa, this.yya, this.zza);
+		this.xxa *= 0.98f;
+		this.yya *= 0.98f;
+		this.zza *= 0.98f;
+		if (this.onGround) {
+			this.xxa *= 0.7f;
+			this.zza *= 0.7f;
+		}
+	}
+}
+src/com/naronco/cubeshaft/level/Chunk.java
+public class Chunk {
+	public AABB aabb;
+	private Level level;
+	private int x0;
+	private int y0;
+	private int z0;
+	private int x1;
+	private int y1;
+	private int z1;
+	private float x;
+	private float y;
+	private float z;
+	private int glRenderList = -1;
+	public boolean isDirty = true;
+	public boolean isVisible = true;
+	public static int chunkUpdates = 0;
+
+	public Chunk(Level level, int x0, int y0, int z0, int x1, int y1, int z1) {
+		this.level = level;
+		this.x0 = x0;
+		this.y0 = y0;
+		this.z0 = z0;
+		this.x1 = x1;
+		this.y1 = y1;
+		this.z1 = z1;
+		this.x = (x0 + x1) / 2.0f;
+		this.y = (y0 + y1) / 2.0f;
+		this.z = (z0 + z1) / 2.0f;
+		this.aabb = new AABB(x0, y0, z0, x1, y1, z1);
+		this.glRenderList = glGenLists(3);
+	}
+
+	public final void update() {
+		chunkUpdates++;
+
+		Tesselator t = Tesselator.instance;
+		for (int i = 0; i < 3; i++) {
+			glNewList(this.glRenderList + i, GL_COMPILE);
+			t.begin();
+
+			for (int x = x0; x < x1; x++) {
+				for (int y = y0; y < y1; y++) {
+					for (int z = z0; z < z1; z++) {
+						int type = this.level.getTile(x, y, z);
+						if (type > 0) {
+							Tile tile = Tile.tiles[type];
+							tile.render(i, x, y, z);
+						}
+					}
+				}
+			}
+
+			t.end();
+			glEndList();
+			this.isDirty = false;
+		}
+	}
+
+	public int getRenderList(int index) {
+		return glRenderList + index;
+	}
+
+	public float distToPlayer(Player player) {
+		float xd = player.x - x;
+		float yd = player.y - y;
+		float zd = player.z - z;
+		return xd * xd + yd * yd + zd * zd;
+	}
+
+	public void createRenderLists() {
+		for (int i = 0; i < 3; i++) {
+			glNewList(glRenderList + i, GL_COMPILE);
+			glEndList();
+		}
+	}
+
+	public void deleteRenderLists() {
+		glDeleteLists(glRenderList, 3);
+	}
+
+	public final void clip(FrustumCuller clippingHelper) {
+		this.isVisible = clippingHelper.isBoxInFrustrum(aabb);
+	}
+}
+src/com/naronco/cubeshaft/level/LevelIO.java
+public class LevelIO {
+	private static final int VERSION = 1;
+	private Cubeshaft game;
+
+	public LevelIO(Cubeshaft game) {
+		this.game = game;
+	}
+
+	public void save3(String levelName, Level level, Player player) {
+		try {
+			File path = new File("world");
+			path.mkdir();
+
+			if (!path.exists()) {
+				DataOutputStream dos = new DataOutputStream(
+						new FileOutputStream(path));
+				dos.close();
+			}
+
+			DataOutputStream dos = new DataOutputStream(new FileOutputStream(
+					new File("world/" + levelName + ".csworld")));
+			dos.writeShort(VERSION);
+
+			dos.writeShort(level.width);
+			dos.writeShort(level.height);
+			dos.writeShort(level.depth);
+
+			dos.writeFloat(player.x);
+			dos.writeFloat(player.y);
+			dos.writeFloat(player.z);
+			dos.writeFloat(player.xRot);
+			dos.writeFloat(player.yRot);
+
+			game.setProgressTitle("Saving level..");
+			game.setProgressText("");
+			for (int i = 0; i < level.tiles.length; i++) {
+				byte tile = level.tiles[i];
+				dos.writeByte(tile);
+			}
+
+			dos.close();
+		} catch (Exception e) {
+			e.printStackTrace();
+			System.exit(1);
+		}
+	}
+
+	public void load3(String levelName, Level level, Player player) {
+		try {
+			File path = new File("world/" + levelName + ".csworld");
+			if (!path.exists()) {
+				System.err.println(levelName + " world doesnt exist!");
+				return;
+			}
+
+			DataInputStream dis = new DataInputStream(new FileInputStream(
+					new File("world/" + levelName + ".csworld")));
+			short version = dis.readShort();
+			if (version != LevelIO.VERSION) {
+				System.err.println("Version outdated!");
+				dis.close();
+				return;
+			}
+
+			int width = dis.readShort();
+			int height = dis.readShort();
+			int depth = dis.readShort();
+			float x = dis.readFloat();
+			float y = dis.readFloat();
+			float z = dis.readFloat();
+			float xRot = dis.readFloat();
+			float yRot = dis.readFloat();
+
+			player.setPos(x, y, z);
+			player.xRot = xRot;
+			player.yRot = yRot;
+
+			int levelSize = width * height * depth;
+			byte[] tiles = new byte[levelSize];
+
+			game.setProgressTitle("Loading level..");
+			game.setProgressText("");
+			for (int i = 0; i < levelSize; i++) {
+				tiles[i] = dis.readByte();
+			}
+
+		//	level.init(width, height, depth, tiles);
+			dis.close();
+		} catch (Exception e) {
+			e.printStackTrace();
+			System.exit(1);
+		}
+	}
+
+	public boolean exists(String levelName) {
+		File path = new File("world/" + levelName + ".csworld");
+		return path.exists();
+	}
+
+	public void save(String levelName, Level level, Player player) {
+		System.out.println(levelName);
+		DataSave s = new DataSave("World");
+		s.setInt("w", level.width);
+		s.setInt("h", level.height);
+		s.setInt("d", level.depth);
+
+		s.setFloat("x", player.x);
+		s.setFloat("y", player.y);
+		s.setFloat("z", player.z);
+		s.setFloat("xr", player.xRot);
+		s.setFloat("yr", player.yRot);
+		
+		//DataSave map = new DataSave("Map");
+		System.out.println(level.tiles.length);
+		
+		char[] b = new char[level.tiles.length*2];
+		
+		for(int i=0; i<level.tiles.length;i++)
+		{
+			String s2 =  Integer.toHexString(level.tiles[i]);
+			s2 = s2.length()<=1 ? "0"+s2 : s2;
+			b[i] = s2.charAt(0);
+			b[i+level.tiles.length] = s2.charAt(1);
+		}
+		//s.setData("Map", map);
+		s.setString("map", String.valueOf(b));
+		//s.setString("Map", Arrays.toString(level.tiles));
+		clearLevel(level);
+		level = null;
+		System.gc();
+		try {
+
+			File path = new File("world");
+			path.mkdir();
+
+			GZIPOutputStream out = new GZIPOutputStream(new FileOutputStream(
+					new File(path, levelName + ".csworld")));
+			DataSave.xmlIO.writeIO(out, s);
+		} catch (Exception e) {
+			e.printStackTrace();
+			System.err.println("Can't save World!");
+		}
+	}
+
+	public void load(String levelName, Level level, Player player) {
+		try {
+			GZIPInputStream in = new GZIPInputStream(
+					new FileInputStream(
+					new File("world", levelName + ".csworld")));
+			DataSave s = DataSave.xmlIO.readIO(in)[0];
+
+			float x = s.getFloat("x");
+			float y = s.getFloat("y");
+			float z = s.getFloat("z");
+			float xRot = s.getFloat("xr");
+			float yRot = s.getFloat("yr");
+
+			player.setPos(x, y, z);
+			player.xRot = xRot;
+			player.yRot = yRot;
+
+			int width = s.getInt("w");
+			int height = s.getInt("h");
+			int depth = s.getInt("d");
+
+			//game.setProgressTitle("Loading level..");
+			//game.setProgressText("");
+
+			int levelSize = width * height * depth;
+			byte[] tiles = new byte[levelSize];
+			//DataSave map = s.getData("Map");
+			String ma = s.getString("map");
+			for(int i=0;i<tiles.length;i++)
+			{
+				tiles[i] = (byte)(int)(Integer.decode("0x" + ma.charAt(i) + ma.charAt(i + tiles.length) ));//ma.charAt(i);
+			}
+			s.clear();
+			s = null;
+			System.gc();
+			
+			level.init(levelName, width, height, depth, tiles);
+
+		} catch (Exception e) {
+			e.printStackTrace();
+			System.exit(1);
+		}
+	}
+	
+	public void clearLevel(Level l)
+	{
+		l.entities.clear();
+		l.players.clear();
+		l.heightMap = null;
+		l.tiles = null;
+	}
+}
+src/com/naronco/cubeshaft/level/Level.java
+public class Level {
+	public int width, depth, height;
+	public byte[] tiles;
+	public int[] heightMap;
+	public String name;
+
+	public List<LevelRenderer> levelRenderers = new ArrayList<LevelRenderer>();
+
+	public Random random = new Random();
+	public List<Entity> entities = new ArrayList<Entity>();
+	public List<Player> players = new ArrayList<Player>();
+
+	public int skyColor = -1;
+	public Sun sun = new Sun(8.0f);
+	public SkyColor sky = new SkyColor();
+	public int time;
+
+	public void init(String name, int width, int height, int depth, byte[] tiles) {
+		this.name = name;
+		this.width = width;
+		this.height = height;
+		this.depth = depth;
+		this.tiles = tiles;
+		heightMap = new int[width * depth];
+		calcLightDepths(0, 0, width, depth);
+		for (int i = 0; i < levelRenderers.size(); i++) {
+			levelRenderers.get(i).init();
+		}
+	}
+
+	public void calcLightDepths(int x, int z, int w, int d) {
+		for (int xx = x; xx < x + w; xx++)
+			for (int zz = z; zz < z + d; zz++) {
+				int blocker = 0;
+				for (int yy = this.height - 1; yy > 0; yy--) {
+					blocker = yy;
+					Tile tile = Tile.tiles[getTile(xx, yy, zz)];
+					if (tile == null ? false : tile.isNormalRender()) {
+						break;
+					}
+				}
+				heightMap[xx + zz * width] = blocker + 1;
+			}
+	}
+
+	public List<AABB> getCubes(Entity source, AABB aabb) {
+		List<AABB> result = new ArrayList<AABB>();
+
+		int x0 = (int) Math.floor(aabb.x0);
+		int x1 = (int) Math.floor(aabb.x1 + 1);
+		int y0 = (int) Math.floor(aabb.y0);
+		int y1 = (int) Math.floor(aabb.y1 + 1);
+		int z0 = (int) Math.floor(aabb.z0);
+		int z1 = (int) Math.floor(aabb.z1 + 1);
+
+		for (int x = x0; x < x1; x++)
+			for (int y = y0; y < y1; y++)
+				for (int z = z0; z < z1; z++)
+					if (x >= 0 && y >= 0 && z >= 0 && x < this.width
+							&& z < this.depth && y < this.height) {
+						Tile tile = Tile.tiles[this.getTile(x, y, z)];
+						if (tile != null) {
+							AABB bb = tile.getAABB(x, y, z);
+							if (bb != null && bb.intersects(aabb)) {
+								result.add(bb);
+							}
+						}
+					}
+
+		return result;
+	}
+
+	public List<Entity> getEntitysExcludingEntity(AABB par1, Entity par2) 
+	{
+		return getEntitysExcludingEntity(par1, par2, new IEntitySelector() 
+		{
+			@Override
+			public boolean isValidEntity(Entity e) 
+			{
+				return true;
+			}
+		});
+	}
+
+	public List<Entity> getEntitysExcludingEntity(AABB par1, Entity par2, IEntitySelector par3) {
+		List<Entity> result = new ArrayList<>();
+		
+		synchronized (entities) 
+		{
+			for (Entity e : entities) {
+				AABB tmpBB = e.getBox().copie();
+				if (par1.intersects(tmpBB) && par3.isValidEntity(e))
+					result.add(e);
+			}
+		}
+		synchronized (players) 
+		{
+			for (Entity e : players) {
+				AABB tmpBB = e.getBox().copie();
+				if (par1.intersects(tmpBB) && par3.isValidEntity(e))
+					result.add(e);
+			}
+		}
+		result.remove(par2);
+		return result;
+	}
+
+	public boolean setTile(int x, int y, int z, int id) {
+		if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= depth)
+			return false;
+		if (id == tiles[(y * width + z) * depth + x])
+			return false;
+		tiles[(y * width + z) * depth + x] = (byte) id;
+		neighborChange(x - 1, y, z, id);
+		neighborChange(x + 1, y, z, id);
+		neighborChange(x, y - 1, z, id);
+		neighborChange(x, y + 1, z, id);
+		neighborChange(x, y, z - 1, id);
+		neighborChange(x, y, z + 1, id);
+
+		tileAdd(x, y, z, id);
+
+		calcLightDepths(x, z, 1, 1);
+		for (int i = 0; i < this.levelRenderers.size(); i++) {
+			levelRenderers.get(i).queueChunks(x - 1, y - 1, z - 1, x + 1,
+					y + 1, z + 1);
+		}
+		return true;
+	}
+
+	public boolean setTileNoUpdate(int x, int y, int z, int id) {
+		if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= depth)
+			return false;
+		if (id == tiles[(y * width + z) * depth + x])
+			return false;
+		tiles[(y * width + z) * depth + x] = (byte) id;
+		return true;
+	}
+
+	private void neighborChange(int x, int y, int z, int id) {
+		if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= depth)
+			return;
+		Tile tile = Tile.tiles[tiles[(y * width + z) * depth + x]];
+		if (tile != null) {
+			tile.neighborChange(this, x, y, z, id);
+		}
+	}
+
+	private void tileAdd(int x, int y, int z, int id) {
+		if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= depth)
+			return;
+		Tile tile = Tile.tiles[id];
+		if (tile != null) {
+			tile.tileAdd(this, x, y, z);
+		}
+	}
+
+	public int getTile(int x, int y, int z) {
+		if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= depth)
+			return 0;
+		if(tiles == null)
+			return 0;
+		return tiles[(y * width + z) * depth + x] & 0xff;
+	}
+	
+	public int getHeigh(int x, int z) 
+	{
+		int y = 0;
+		while(getTile(x, y, z)!=0)
+		{		
+			y++;
+		}
+		return y;		
+	}
+	
+	public boolean isDaytime()
+	{
+		return time>0 && time <1800;
+	}
+	
+	public void addEntity(Entity e) {
+		synchronized (entities) {
+			entities.add(e);
+		}
+	}
+
+	public boolean maybeGrowTree(int x, int y, int z) {
+		int lowerTile = getTile(x, y - 1, z);
+		if (lowerTile != Tile.grass.id && lowerTile != Tile.dirt.id)
+			return false;
+		for (int yc = y + 1; yc <= y + 10; yc++)
+			if (getTile(x, yc, z) != 0)
+				return false;
+		for (int yc = y; yc <= y + 10; yc++)
+			if (getTile(x, yc, z) == Tile.water.id
+					|| getTile(x, yc, z) == Tile.flowingWater.id)
+				return false;
+		for (int xc = x - 2; xc <= x + 2; xc++)
+			for (int yc = y + 3; yc <= y + 10; yc++)
+				for (int zc = z - 2; zc <= z + 2; zc++) {
+					int tile = getTile(xc, yc, zc);
+					if (tile != 0)
+						return false;
+				}
+		return true;
+	}
+
+	public void growTree(int x, int y, int z) {
+		TreeLevelStruct tree = new TreeLevelStruct();
+		tree.generate(this, x, y, z, random);
+	}
+
+	public boolean containsLiquid(AABB aabb, int liquidType) {
+		int x0 = (int) Math.floor(aabb.x0);
+		int x1 = (int) Math.floor(aabb.x1 + 1);
+		int y0 = (int) Math.floor(aabb.y0);
+		int y1 = (int) Math.floor(aabb.y1 + 1);
+		int z0 = (int) Math.floor(aabb.z0);
+		int z1 = (int) Math.floor(aabb.z1 + 1);
+
+		for (int x = x0; x < x1; x++)
+			for (int y = y0; y < y1; y++)
+				for (int z = z0; z < z1; z++)
+					if (x >= 0 && y >= 0 && z >= 0 && x < this.width
+							&& z < this.depth && y < this.height) {
+						Tile tile = Tile.tiles[this.getTile(x, y, z)];
+						if (tile != null && tile.getLiquidType() == liquidType)
+							return true;
+					}
+
+		return false;
+	}
+
+	public void tick() 
+	{
+		time = (time + 2) % 3600;
+		// time=900;
+		skyColor = sky.getSkyColor(time);
+		
+		List<Entity> remove = new ArrayList<Entity>();
+		List<Entity> ents = new ArrayList<Entity>(entities);	
+		for (Entity e : ents) {
+			e.tick();
+			if (e.y < -50) e.removed = true;
+			if (e.removed)
+				remove.add(e);
+		}
+		entities.removeAll(remove);
+		
+		if(!isDaytime() && random.nextInt(20)==0);
+		{
+			Player p = Cubeshaft.game.player;
+			List l = getEntitysExcludingEntity(p.getBox().copie().grow(64, 64, 64), p, new IEntitySelector() 
+			{	
+				@Override
+				public boolean isValidEntity(Entity e) 
+				{
+					return e instanceof Mob;
+				}
+			});
+			if(l.size() < 3)
+			{
+				spawnMobs();
+			}
+		}
+	}
+	
+	private void spawnMobs()
+	{
+		Player p = Cubeshaft.game.player;
+		float x = (random.nextInt(32)-random.nextInt(32));
+		float z = (random.nextInt(32)-random.nextInt(32));
+		
+		if(Math.sqrt(x*x+z*z)>16)
+		{	
+			int y = getHeigh((int)x, (int)z);
+			
+			Mob m;
+			if(getTile((int)x, y-2, (int)z)==Tile.water.id || getTile((int)x, y-2, (int)z)==Tile.flowingWater.id)
+				m = new MobSkeletonWater(this);
+			else
+				m = new MobSkeleton(this);
+			
+			m.setPos(p.x + x, y, p.z + z);
+		
+		addEntity(m);
+		}
+	}
+	private void DespawnMobs()
+	{
+		for(Entity e : entities)
+		{
+			if(e instanceof Mob)
+			{
+				if(new Waypoint( Cubeshaft.game.player).getDistansTo(new Waypoint(e))>80)
+				{
+					e.removed = true;
+				}
+			}
+		}
+	}
+	
+}
+src/com/naronco/cubeshaft/level/tile/Tile.java
+public class Tile {
+	public static final Tile[] tiles = new Tile[256];
+	public static final Tile stone = new Tile(1, 1);
+	public static final Tile grass = new GrassTile(2);
+	public static final Tile dirt = new DirtTile(3, 2);
+	public static final Tile planks = new Tile(5, 4);
+	public static final Tile sapling = new SaplingTile(6);
+	public static final Tile sand = new Tile(7, 17);
+	public static final Tile flowingWater = new FlowingLiquidTile(8, 1);
+	public static final Tile water = new LiquidTile(9, 1);
+	public static final Tile flowingLava = new FlowingLiquidTile(10, 2);
+	public static final Tile lava = new LiquidTile(11, 2);
+	public static final Tile wood = new WoodTile(12, 18);
+	public static final Tile leaves = new LeafTile(13);
+	public static final Tile tallGrass = new TallGrassTile(14);
+	public static final Tile glass = new GlassTile(15);
+	public static final Tile brick = new Tile(16, 21);
+	public static final Tile rock = new Tile(17, 16 * 15);
+	public static final Tile hellStone = new Tile(18, 16 * 15 + 1);
+	public static final Tile bamboo = new BambooTile(19, 16);
+	public static final Tile fence = new FenceTile(20, 17);
+	public static final Tile sprucewood = new WoodTile(21, 20);
+	public static final Tile oakwood = new WoodTile(22, 22);
+	public static final Tile birchwood = new WoodTile(23, 24);
+	public static final Tile Palmwood = new WoodTile(24, 26);
+	public static final Tile clay = new WoodTile(25, 28);
+	public static final Tile bedrock = new BedrockTile(26, 6).setHardness(100.0F);
+
+
+	public int texIndex;
+	public final int id;
+	public float hardness;
+	public float x0, y0, z0;
+	public float x1, y1, z1;
+
+	protected Tile(int id) {
+		tiles[id] = this;
+		this.id = id;
+		setBounds(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+	}
+	
+	public Tile setHardness(float f)
+	{
+		hardness = f;
+		return this;
+	}
+
+	public void setBounds(float x0, float y0, float z0, float x1, float y1,
+			float z1) {
+		this.x0 = x0;
+		this.y0 = y0;
+		this.z0 = z0;
+		this.x1 = x1;
+		this.y1 = y1;
+		this.z1 = z1;
+	}
+
+	protected Tile(int id, int texIndex) {
+		this(id);
+		this.texIndex = texIndex;
+	}
+
+	public boolean render(int renderType, int x, int y, int z) {
+		return TileRenderer.instance.render(this, x, y, z, renderType);
+	}
+
+	public void renderGui(int renderType, int x, int y, int z) {
+		TileRenderer.instance.render(this, x, y, z, renderType);
+	}
+
+	public boolean canRender(Level level, int x, int y, int z, int renderType,
+			int side) {
+		if (renderType == 2)
+			return false;
+		Tile tile = tiles[level.getTile(x, y, z)];
+		if (!(tile == null ? false : tile.isNormalRender()))
+			return true;
+		return false;
+	}
+
+	public int getTexture(int side) {
+		return texIndex;
+	}
+
+	public static void renderHover(Tesselator t, int x, int y, int z, int side) {
+		float x0 = x;
+		float x1 = x + 1.0f;
+		float y0 = y;
+		float y1 = y + 1.0f;
+		float z0 = z;
+		float z1 = z + 1.0f;
+
+		if (side == 0) {
+			t.normal(0, -1, 0);
+			t.vertex(x0, y0, z1);
+			t.vertex(x0, y0, z0);
+			t.vertex(x1, y0, z0);
+			t.vertex(x1, y0, z1);
+			return;
+		}
+		if (side == 1) {
+			t.normal(0, 1, 0);
+			t.vertex(x1, y1, z1);
+			t.vertex(x1, y1, z0);
+			t.vertex(x0, y1, z0);
+			t.vertex(x0, y1, z1);
+			return;
+		}
+		if (side == 2) {
+			t.normal(0, 0, -1);
+			t.vertex(x0, y1, z0);
+			t.vertex(x1, y1, z0);
+			t.vertex(x1, y0, z0);
+			t.vertex(x0, y0, z0);
+			return;
+		}
+		if (side == 3) {
+			t.normal(0, 0, 1);
+			t.vertex(x0, y1, z1);
+			t.vertex(x0, y0, z1);
+			t.vertex(x1, y0, z1);
+			t.vertex(x1, y1, z1);
+			return;
+		}
+		if (side == 4) {
+			t.normal(-1, 0, 0);
+			t.vertex(x0, y1, z1);
+			t.vertex(x0, y1, z0);
+			t.vertex(x0, y0, z0);
+			t.vertex(x0, y0, z1);
+			return;
+		}
+		if (side == 5) {
+			t.normal(1, 0, 0);
+			t.vertex(x1, y0, z1);
+			t.vertex(x1, y0, z0);
+			t.vertex(x1, y1, z0);
+			t.vertex(x1, y1, z1);
+			return;
+		}
+	}
+
+	public static AABB getDefaultAABB(int x, int y, int z) {
+		return new AABB(x, y, z, x + 1, y + 1, z + 1);
+	}
+
+	public AABB getAABB(int x, int y, int z) {
+		return new AABB(x, y, z, x + 1, y + 1, z + 1);
+	}
+
+	public boolean isNormalRender() {
+		return true;
+	}
+
+	public boolean isPickable() {
+		return true;
+	}
+
+	public void tick(Level level, int x, int y, int z, Random random) {
+	}
+
+	public void destroy(Level level, int x, int y, int z,
+			ParticleEngine particleEngine) {
+		synchronized (particleEngine.particles) {
+			for (int xp = 0; xp < 6; xp++)
+				for (int yp = 0; yp < 6; yp++)
+					for (int zp = 0; zp < 6; zp++) {
+						float xx = x + (xp + 0.5f) / 6 * 0.8f + 0.1f;
+						float yy = y + (yp + 0.5f) / 6 * 0.8f + 0.1f;
+						float zz = z + (zp + 0.5f) / 6 * 0.8f + 0.1f;
+						Particle p = new Particle(level, xx, yy, zz, xx - x
+								- 0.5f, yy - y - 0.5f, zz - z - 0.5f,
+								this.texIndex);
+						particleEngine.particles.add(p);
+					}
+		}
+		float xx = (float) (Math.random() - Math.random()) * 0.3f;
+		float yy = (float) (Math.random() - Math.random()) * 0.3f;
+		float zz = (float) (Math.random() - Math.random()) * 0.3f;
+		level.addEntity(new ItemEntity(level, this, x + 0.25f + xx, y + 0.25f
+				+ yy, z + 0.25f + zz));
+	}
+
+	public int getLiquidType() {
+		return 0;
+	}
+
+	public void neighborChange(Level level, int x, int y, int z, int id) {
+	}
+
+	public void tileAdd(Level level, int x, int y, int z) {
+	}
+
+	public int getRenderMode() {
+		return 0;
+	}
+}
+src/com/naronco/cubeshaft/player/Player.java
+public class Player extends Entity implements INamedEntity
+{
+	public static HumanModel PLAYER_MODEL = new HumanModel();
+	public boolean[] keys = new boolean[10];
+	public Inventory inventory;
+	private String name;
+
+	public Player(Level level, String par1) {
+		
+		super(level);
+		name = par1;
+		this.heightOffset = 1.62f;
+		this.inventory = new Inventory();
+		hitbox = HitBox.getHumanModel(bbHeight, bbWidth);
+	}
+	
+	@Override
+	public void collide(Entity e, String part) {
+		if (e instanceof Mob)
+			push(e);
+		if (e instanceof ItemEntity && ((ItemEntity) e).getTimebeforPickup()==0) {
+			ItemEntity i = (ItemEntity) e;
+			if (inventory.items.size() < 13 && !inventory.items.contains(i.getTile())) 
+			{
+				inventory.add(i.getTile().id);
+			}
+			e.removed = true;
+		}
+	}
+
+	private void push(Entity e) {
+		float xd = e.x - this.x;
+		float zd = e.z - this.z;
+		e.xd += xd * 0.1f;
+		e.zd += zd * 0.1f;
+		this.xd -= xd * 0.1f;
+		this.zd -= zd * 0.1f;
+	}
+
+	@Override
+	public void tick() {
+		this.xo = this.x;
+		this.yo = this.y;
+		this.zo = this.z;
+		float xa = 0.0f;
+		float za = 0.0f;
+		boolean inWater = isInWater();
+		boolean inLava = isInLava();
+		if (this.keys[0])
+			za -= 1.0f;
+		if (this.keys[1])
+			za += 1.0f;
+		if (this.keys[2])
+			xa -= 1.0f;
+		if (this.keys[3])
+			xa += 1.0f;
+		if (this.keys[4]) 
+		{		
+			float jump = yd;
+			if (inWater) 		
+				jump += 0.01;
+			
+			else if (inLava) 	
+				jump += 0.01;
+			
+			else if (onGround) 	
+				jump = 0.23f;
+			
+			PlayerJumpEvent e = new PlayerJumpEvent(this, jump);
+			TickHandler.EVENT_BUS.postEvent(e);
+			if(!e.isCancled() && (onGround || inLava || inWater))
+			{
+				this.yd = (float)e.getResult();
+			}
+		}
+		float speed = 0.007f;
+		if (inWater) {
+			moveRel(xa, za, speed);
+			move(this.xd, this.yd, this.zd);
+			this.xd *= 0.8f;
+			this.yd *= 0.8f;
+			this.zd *= 0.8f;
+			this.yd = (float) (this.yd - 0.007);
+			if ((this.collision) && (isFree(this.xd, this.yd + 0.6F, this.zd)))
+				this.yd = 0.2f;
+			return;
+		}
+		if (inLava) {
+			moveRel(xa, za, speed);
+			move(this.xd, this.yd, this.zd);
+			this.xd *= 0.5f;
+			this.yd *= 0.5f;
+			this.zd *= 0.5f;
+			this.yd = (float) (this.yd - 0.007);
+			if ((this.collision) && (isFree(this.xd, this.yd + 0.6F, this.zd)))
+				this.yd = 0.2f;
+			return;
+		}
+		moveRel(xa, za, onGround ? 0.03f : speed);
+		move(this.xd, this.yd, this.zd);
+		this.xd *= 0.91f;
+		this.yd *= 0.98f;
+		this.zd *= 0.91f;
+		this.yd -= 0.016f;
+		if (onGround) {
+			this.xd *= 0.6f;
+			this.zd *= 0.6f;
+		}
+	}
+
+	public void render(float delta) {
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D,
+				TextureLoader.load("/mob/char.png", GL_NEAREST));
+		glPushMatrix();
+
+		double time = System.nanoTime() / 1000000000.0D * 10.0D * 1.0f;
+		float s = 0.05833333f;
+
+		glTranslatef(this.xo + (this.x - this.xo) * delta, this.y
+				+ (this.y - this.yo) * delta, this.z + (this.z - this.zo)
+				* delta);
+		glScalef(1.0f, -1.0f, 1.0f);
+		glScalef(s, s, s);
+		glRotatef(xRot, 0.0f, 1.0f, 0.0f);
+		HumanModel model = (HumanModel) PLAYER_MODEL;
+		model.head.xRot = xRot;
+		model.head.yRot = yRot;
+		model.rightArm.xRot = (float) Math.sin(time * 0.6662 + Math.PI) * 1.0f;
+		model.leftArm.xRot = (float) Math.sin(time * 0.6662) * 1.0f;
+		model.rightLeg.xRot = (float) Math.sin(time * 0.6662) * 0.7f;
+		model.leftLeg.xRot = (float) Math.sin(time * 0.6662 + Math.PI) * 0.7f;
+		model.head.render();
+		model.body.render();
+		model.rightArm.render();
+		model.leftArm.render();
+		model.rightLeg.render();
+		model.leftLeg.render();
+		glPopMatrix();
+		glDisable(GL_TEXTURE_2D);
+	}
+
+	@Override
+	public boolean hasName() 
+	{
+		return true;
+	}
+
+	@Override
+	public String getName() 
+	{
+		return name;
+	}
+
+	@Override
+	public void setName(String s) 
+	{
+		name = s;
+	}
+}
+src/com/naronco/cubeshaft/gui/Menu.java
+public class Menu {
+	protected Cubeshaft game;
+	protected int width, height;
+	protected List<Button> buttons = new ArrayList<Button>();
+
+	public void render(int xMouse, int yMouse) {
+		for (int i = 0; i < buttons.size(); i++) {
+			Button b = buttons.get(i);
+			if (!b.isClickable) {
+				fill(b.x - 2, b.y - 2, b.x + b.width + 2, b.y + b.height + 2, 0xff000000);
+				fill(b.x, b.y, b.x + b.width, b.y + b.height, 0xff2C2C2C);
+				drawString(b.text, b.x + (b.width - TextRenderer.getTextLength(b.text)) / 2, b.y + (b.height - 16) / 2, 0x5F5F60);
+			} else {
+				fill(b.x - 2, b.y - 2, b.x + b.width + 2, b.y + b.height + 2, 0xff000000);
+				if (xMouse >= b.x && yMouse >= b.y && xMouse < b.x + b.width && yMouse < b.y + b.height) {
+					fill(b.x - 2, b.y - 2, b.x + b.width + 2, b.y + b.height + 2, 0xffA0A0A0);
+					fill(b.x, b.y, b.x + b.width, b.y + b.height, 0xff8080A0);
+					drawString(b.text, b.x + (b.width - TextRenderer.getTextLength(b.text)) / 2, b.y + (b.height - 16) / 2, 0xFFFFA0);
+				} else {
+					fill(b.x, b.y, b.x + b.width, b.y + b.height, 0xff8F8F90);
+					drawString(b.text, b.x + (b.width - TextRenderer.getTextLength(b.text)) / 2, b.y + (b.height - 16) / 2, 0xE0E0E0);
+				}
+			}
+		}
+	}
+
+	protected void keyType(char c, int keyIndex) 
+	{
+		if (keyIndex == Keyboard.KEY_ESCAPE) 
+		{
+			if(this instanceof PausedGameMenu)
+			{
+				this.game.setMenu(null);
+				this.game.setInGame();
+			}
+			else
+			{
+				this.game.setMenu(new StartMenu());
+			}
+		}
+	}
+
+	protected void buttonClicked(Button button) {
+	}
+
+	public final void init(Cubeshaft game, int width, int height) {
+		this.game = game;
+		this.width = width;
+		this.height = height;
+		init();
+	}
+
+	public void init() {
+	}
+
+	protected static void fill(int x0, int y0, int x1, int y1, int color) {
+		float a = (color >>> 24) / 255.0f;
+		float r = (color >> 16 & 0xff) / 255.0f;
+		float g = (color >> 8 & 0xff) / 255.0f;
+		float b = (color & 0xff) / 255.0f;
+
+		Tesselator t = Tesselator.instance;
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glColor4f(r, g, b, a);
+		t.begin();
+		t.vertex(x0, y1, 0.0f);
+		t.vertex(x1, y1, 0.0f);
+		t.vertex(x1, y0, 0.0f);
+		t.vertex(x0, y0, 0.0f);
+		t.end();
+		glDisable(GL_BLEND);
+	}
+
+	public void drawString(String text, int x, int y, int color) {
+		this.game.guiText.drawString(text, x, y, color);
+	}
+
+	public void input() {
+		while (Mouse.next())
+			if (Mouse.getEventButtonState()) {
+				int xMouse = Mouse.getEventX() * this.width / this.game.width;
+				int yMouse = this.height - Mouse.getEventY() * this.height / this.game.height - 1;
+				int mb = Mouse.getEventButton();
+				if (mb == 0) for (int i = 0; i < buttons.size(); i++) {
+					Button b = buttons.get(i);
+					if (xMouse >= b.x && yMouse >= b.y && xMouse < b.x + b.width && yMouse < b.y + b.height) {
+						this.buttonClicked(b);
+					}
+				}
+			}
+		while (Keyboard.next())
+			if (Keyboard.getEventKeyState()) keyType(Keyboard.getEventCharacter(), Keyboard.getEventKey());
+	}
+
+	public void tick() {
+	}
+
+	public void close() {
+	}
+}
+src/com/naronco/cubeshaft/phys/AABB.java
+public class AABB {
+	public float x0, y0, z0;
+	public float x1, y1, z1;
+
+	public AABB(float x0, float y0, float z0, float x1, float y1, float z1) {
+		this.x0 = x0;
+		this.y0 = y0;
+		this.z0 = z0;
+		this.x1 = x1;
+		this.y1 = y1;
+		this.z1 = z1;
+	}
+
+	public AABB grow(float xa, float ya, float za) {
+		float x0 = this.x0 - xa;
+		float y0 = this.y0 - ya;
+		float z0 = this.z0 - za;
+		float x1 = this.x1 + xa;
+		float y1 = this.y1 + ya;
+		float z1 = this.z1 + za;
+		return new AABB(x0, y0, z0, x1, y1, z1);
+	}
+
+	public boolean intersects(AABB bb) {
+		if ((bb.x1 <= x0) || (bb.x0 >= x1)) {
+			return false;
+		}
+		if ((bb.y1 <= y0) || (bb.y0 >= y1)) {
+			return false;
+		}
+		return (bb.z1 > z0) && (bb.z0 < z1);
+	}
+
+	public void move(float xa, float ya, float za) {
+		this.x0 += xa;
+		this.y0 += ya;
+		this.z0 += za;
+		this.x1 += xa;
+		this.y1 += ya;
+		this.z1 += za;
+	}
+
+	public AABB copie() {
+		return new AABB(x0, y0, z0, x1, y1, z1);
+	}
+}
+src/util/Vec3.java
+public class Vec3 {
+	public float x, y, z;
+
+	public Vec3() {
+		clear();
+	}
+
+	public Vec3(float x, float y, float z) {
+		set(x, y, z);
+	}
+
+	public Vec3(Vec3 v) {
+		set(v);
+	}
+
+	public Vec3 clear() {
+		this.x = 0.0f;
+		this.y = 0.0f;
+		this.z = 0.0f;
+		return this;
+	}
+
+	public Vec3 set(float x, float y, float z) {
+		this.x = x;
+		this.y = y;
+		this.z = z;
+		return this;
+	}
+
+	public Vec3 set(Vec3 v) {
+		this.x = v.x;
+		this.y = v.y;
+		this.z = v.z;
+		return this;
+	}
+
+	public Vec3 add(Vec3 s) {
+		x += s.x;
+		y += s.y;
+		z += s.z;
+		return this;
+	}
+
+	public Vec3 sub(Vec3 s) {
+		x -= s.x;
+		y -= s.y;
+		z -= s.z;
+		return this;
+	}
+
+	public Vec3 mul(float v) {
+		x *= v;
+		y *= v;
+		z *= v;
+		return this;
+	}
+
+	public Vec3 div(float v) {
+		v = 1.0f / v;
+		x *= v;
+		y *= v;
+		z *= v;
+		return this;
+	}
+
+	public Vec3 cross(Vec3 s) {
+		float _x = s.y * z - s.z * y;
+		float _y = s.z * x - s.x * z;
+		float _z = s.x * y - s.y * x;
+		return set(_x, _y, _z);
+	}
+
+	public Vec3 normalize() {
+		return div(length());
+	}
+
+	public float dot(Vec3 p) {
+		return x * p.x + y * p.y + z * p.z;
+	}
+
+	public float lengthSquared() {
+		return dot(this);
+	}
+
+	public float length() {
+		return (float) Math.sqrt(dot(this));
+	}
+
+	public Vec3 lerp(Vec3 to, float t) {
+		return add(to.copy().sub(this).mul(t));
+	}
+
+	public Vec3 copy() {
+		return new Vec3(x, y, z);
+	}
+}
+src/com/naronco/cubeshaft/render/Tesselator.java
+public class Tesselator {
+	private static boolean TRIANGLE_MODE = false;
+	private static boolean USE_VBO = false;
+	private ByteBuffer byteBuffer;
+	private IntBuffer intBuffer;
+	private FloatBuffer floatBuffer;
+	private ShortBuffer shortBuffer;
+	private int[] array;
+	private int vertices;
+	private double u;
+	private double v;
+	private int tex2;
+	private int col;
+	private boolean hasColor = false;
+	private boolean hasTexture = false;
+	private boolean hasTexture2 = false;
+	private boolean hasNormal = false;
+	private int p = 0;
+	private int count = 0;
+	private boolean noColor = false;
+	private int mode;
+	private double xo;
+	private double yo;
+	private double zo;
+	private int normal;
+
+	public static Tesselator instance = new Tesselator(0x200000);
+
+	private boolean tesselating = false;
+	private boolean vboMode = false;
+	private IntBuffer vboIds;
+	private int vboId = 0;
+	private int vboCounts = 10;
+	private int size;
+
+	public Tesselator(int size) {
+		this.size = size;
+
+		this.byteBuffer = BufferUtils.createByteBuffer(size * 4);
+		this.intBuffer = byteBuffer.asIntBuffer();
+		this.floatBuffer = byteBuffer.asFloatBuffer();
+		this.shortBuffer = byteBuffer.asShortBuffer();
+		this.array = new int[size];
+
+		this.vboMode = ((USE_VBO) && (GLContext.getCapabilities().GL_ARB_vertex_buffer_object));
+		if (this.vboMode) {
+			this.vboIds = BufferUtils.createIntBuffer(this.vboCounts);
+			ARBVertexBufferObject.glGenBuffersARB(this.vboIds);
+		}
+	}
+
+	public void end() {
+		if (!this.tesselating)
+			throw new IllegalStateException("Not tesselating!");
+		this.tesselating = false;
+		if (this.vertices > 0) {
+			this.intBuffer.clear();
+			this.intBuffer.put(this.array, 0, this.p);
+
+			this.byteBuffer.position(0);
+			this.byteBuffer.limit(this.p * 4);
+
+			if (this.vboMode) {
+				this.vboId = ((this.vboId + 1) % this.vboCounts);
+				ARBVertexBufferObject.glBindBufferARB(34962,
+						this.vboIds.get(this.vboId));
+
+				ARBVertexBufferObject.glBufferDataARB(34962, this.byteBuffer,
+						35040);
+			}
+
+			if (this.hasTexture) {
+				if (this.vboMode) {
+					glTexCoordPointer(2, 5126, 32, 12L);
+				} else {
+					this.floatBuffer.position(3);
+					glTexCoordPointer(2, 32, this.floatBuffer);
+				}
+				glEnableClientState(32888);
+			}
+			if (this.hasTexture2) {
+				glClientActiveTexture(GL_TEXTURE1);
+
+				if (this.vboMode) {
+					glTexCoordPointer(2, 5122, 32, 24L);
+				} else {
+					this.shortBuffer.position(14);
+					glTexCoordPointer(2, 32, this.shortBuffer);
+				}
+				glEnableClientState(32888);
+				glClientActiveTexture(GL_TEXTURE0);
+			}
+			if (this.hasColor) {
+				if (this.vboMode) {
+					glColorPointer(4, 5121, 32, 20L);
+				} else {
+					this.byteBuffer.position(20);
+					glColorPointer(4, true, 32, this.byteBuffer);
+				}
+				glEnableClientState(GL_COLOR_ARRAY);
+			}
+			if (this.hasNormal) {
+				if (this.vboMode) {
+					glNormalPointer(5121, 32, 24L);
+				} else {
+					this.byteBuffer.position(24);
+					glNormalPointer(32, this.byteBuffer);
+				}
+				glEnableClientState(GL_NORMAL_ARRAY);
+			}
+			if (this.vboMode) {
+				glVertexPointer(3, 5126, 32, 0L);
+			} else {
+				this.floatBuffer.position(0);
+				glVertexPointer(3, 32, this.floatBuffer);
+			}
+			glEnableClientState(32884);
+			if ((this.mode == 7) && (TRIANGLE_MODE))
+				glDrawArrays(4, 0, this.vertices);
+			else {
+				glDrawArrays(this.mode, 0, this.vertices);
+			}
+
+			glDisableClientState(32884);
+			if (this.hasTexture)
+				glDisableClientState(32888);
+			if (this.hasTexture2) {
+				glClientActiveTexture(GL_TEXTURE1);
+				glDisableClientState(32888);
+				glClientActiveTexture(GL_TEXTURE0);
+			}
+			if (this.hasColor)
+				glDisableClientState(32886);
+			if (this.hasNormal)
+				glDisableClientState(32885);
+		}
+
+		clear();
+	}
+
+	private void clear() {
+		this.vertices = 0;
+
+		this.byteBuffer.clear();
+		this.p = 0;
+		this.count = 0;
+
+		this.col = 0;
+	}
+
+	public void begin() {
+		begin(GL_QUADS);
+	}
+
+	public void begin(int mode) {
+		if (this.tesselating) {
+			throw new IllegalStateException("Already tesselating!");
+		}
+		this.tesselating = true;
+
+		clear();
+		this.mode = mode;
+		this.hasNormal = false;
+		this.hasColor = false;
+		this.hasTexture = false;
+		this.hasTexture2 = false;
+		this.noColor = false;
+	}
+
+	public void tex(double u, double v) {
+		this.hasTexture = true;
+		this.u = u;
+		this.v = v;
+	}
+
+	public void tex2(int tex2) {
+		this.hasTexture2 = true;
+		this.tex2 = tex2;
+	}
+
+	public void color(float r, float g, float b) {
+		color((int) (r * 255.0F), (int) (g * 255.0F), (int) (b * 255.0F));
+	}
+
+	public void color(float r, float g, float b, float a) {
+		color((int) (r * 255.0F), (int) (g * 255.0F), (int) (b * 255.0F),
+				(int) (a * 255.0F));
+	}
+
+	public void color(int r, int g, int b) {
+		color(r, g, b, 255);
+	}
+
+	public void color(int r, int g, int b, int a) {
+		if (this.noColor)
+			return;
+
+		if (r > 255)
+			r = 255;
+		if (g > 255)
+			g = 255;
+		if (b > 255)
+			b = 255;
+		if (a > 255)
+			a = 255;
+		if (r < 0)
+			r = 0;
+		if (g < 0)
+			g = 0;
+		if (b < 0)
+			b = 0;
+		if (a < 0)
+			a = 0;
+
+		this.hasColor = true;
+		if (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN)
+			this.col = (a << 24 | b << 16 | g << 8 | r);
+		else
+			this.col = (r << 24 | g << 16 | b << 8 | a);
+	}
+
+	public void color(byte r, byte g, byte b) {
+		color(r & 0xFF, g & 0xFF, b & 0xFF);
+	}
+
+	public void vertexUV(double x, double y, double z, double u, double v) {
+		tex(u, v);
+		vertex(x, y, z);
+	}
+
+	public void vertex(double x, double y, double z) {
+		this.count += 1;
+
+		if ((this.mode == 7) && (TRIANGLE_MODE) && (this.count % 4 == 0)) {
+			for (int i = 0; i < 2; i++) {
+				int offs = 8 * (3 - i);
+				if (this.hasTexture) {
+					this.array[(this.p + 3)] = this.array[(this.p - offs + 3)];
+					this.array[(this.p + 4)] = this.array[(this.p - offs + 4)];
+				}
+				if (this.hasTexture2) {
+					this.array[(this.p + 7)] = this.array[(this.p - offs + 7)];
+				}
+				if (this.hasColor) {
+					this.array[(this.p + 5)] = this.array[(this.p - offs + 5)];
+				}
+
+				this.array[(this.p + 0)] = this.array[(this.p - offs + 0)];
+				this.array[(this.p + 1)] = this.array[(this.p - offs + 1)];
+				this.array[(this.p + 2)] = this.array[(this.p - offs + 2)];
+
+				this.vertices += 1;
+				this.p += 8;
+			}
+		}
+
+		if (this.hasTexture) {
+			this.array[(this.p + 3)] = Float.floatToRawIntBits((float) this.u);
+			this.array[(this.p + 4)] = Float.floatToRawIntBits((float) this.v);
+		}
+		if (this.hasTexture2) {
+			this.array[(this.p + 7)] = this.tex2;
+		}
+		if (this.hasColor) {
+			this.array[(this.p + 5)] = this.col;
+		}
+		if (this.hasNormal) {
+			this.array[(this.p + 6)] = this.normal;
+		}
+
+		this.array[(this.p + 0)] = Float
+				.floatToRawIntBits((float) (x + this.xo));
+		this.array[(this.p + 1)] = Float
+				.floatToRawIntBits((float) (y + this.yo));
+		this.array[(this.p + 2)] = Float
+				.floatToRawIntBits((float) (z + this.zo));
+
+		this.p += 8;
+
+		this.vertices += 1;
+		if ((this.vertices % 4 == 0) && (this.p >= this.size - 32)) {
+			end();
+			this.tesselating = true;
+		}
+	}
+
+	public void color(int c) {
+		int r = c >> 16 & 0xFF;
+		int g = c >> 8 & 0xFF;
+		int b = c & 0xFF;
+		color(r, g, b);
+	}
+
+	public void color(int c, int alpha) {
+		int r = c >> 16 & 0xFF;
+		int g = c >> 8 & 0xFF;
+		int b = c & 0xFF;
+		color(r, g, b, alpha);
+	}
+
+	public void noColor() {
+		this.noColor = true;
+	}
+
+	public void normal(float x, float y, float z) {
+		this.hasNormal = true;
+		byte xx = (byte) (int) (x * 127.0F);
+		byte yy = (byte) (int) (y * 127.0F);
+		byte zz = (byte) (int) (z * 127.0F);
+
+		this.normal = (xx | yy << 8 | zz << 16);
+	}
+
+	public void offset(double xo, double yo, double zo) {
+		this.xo = xo;
+		this.yo = yo;
+		this.zo = zo;
+	}
+
+	public void addOffset(float x, float y, float z) {
+		this.xo += x;
+		this.yo += y;
+		this.zo += z;
+	}
+}
+src/com/naronco/cubeshaft/render/TileRenderer.java
+public class TileRenderer {
+	public static TileRenderer instance = new TileRenderer();
+
+	public static final void init(Cubeshaft game) {
+		instance.level = game.level;
+	}
+
+	private Level level;
+	private Tesselator t = Tesselator.instance;
+
+	public boolean render(Tile tile, int x, int y, int z, int renderType) {
+		int renderMode = tile.getRenderMode();
+		switch (renderMode) {
+		case 0:
+			return renderDefault(tile, x, y, z, renderType);
+		case 1:
+			return renderCross(tile, x, y, z, renderType);
+		case 2:
+			return renderLiquid(tile, x, y, z, renderType);
+		}
+		return false;
+	}
+
+	public boolean renderDefault(Tile tile, int x, int y, int z, int renderType) {
+		boolean canRender = false;
+		if (tile.canRender(level, x, y - 1, z, renderType, 0)) {
+			renderSide(tile, x, y, z, 0);
+			canRender = true;
+		}
+		if (tile.canRender(level, x, y + 1, z, renderType, 1)) {
+			renderSide(tile, x, y, z, 1);
+			canRender = true;
+		}
+		if (tile.canRender(level, x, y, z - 1, renderType, 2)) {
+			renderSide(tile, x, y, z, 2);
+			canRender = true;
+		}
+		if (tile.canRender(level, x, y, z + 1, renderType, 3)) {
+			renderSide(tile, x, y, z, 3);
+			canRender = true;
+		}
+		if (tile.canRender(level, x - 1, y, z, renderType, 4)) {
+			renderSide(tile, x, y, z, 4);
+			canRender = true;
+		}
+		if (tile.canRender(level, x + 1, y, z, renderType, 5)) {
+			renderSide(tile, x, y, z, 5);
+			canRender = true;
+		}
+		return canRender;
+	}
+
+	public boolean renderCross(Tile tile, int x, int y, int z, int renderType) {
+		t.color(255, 255, 255);
+		for (int i = 0; i < 2; i++) {
+			float s = (float) (Math.sin(i * Math.PI / 2.0 + 0.7853981633974483) * 0.5);
+			float c = (float) (Math.cos(i * Math.PI / 2.0 + 0.7853981633974483) * 0.5);
+
+			float xc0 = x + 0.5f - s;
+			float xc1 = x + 0.5f + s;
+			float yc0 = y;
+			float yc1 = y + 1.0f;
+			float zc0 = z + 0.5f - c;
+			float zc1 = z + 0.5f + c;
+
+			Vec3 q00 = new Vec3(xc0, yc0, zc0);
+			Vec3 q01 = new Vec3(xc1, yc0, zc1);
+			Vec3 q02 = new Vec3(xc0, yc1, zc0);
+
+			Vec3 n0 = Renderer.calcNormal(q00, q01, q02);
+
+			Vec3 q10 = new Vec3(xc1, yc0, zc1);
+			Vec3 q11 = new Vec3(xc0, yc0, zc0);
+			Vec3 q12 = new Vec3(xc1, yc1, zc1);
+
+			Vec3 n1 = Renderer.calcNormal(q10, q11, q12);
+
+			float u0 = (tile.getTexture(i) % 16) / 16.0f;
+			float u1 = u0 + 0.0624375f;
+			float v0 = (tile.getTexture(i) / 16) / 16.0f;
+			float v1 = v0 + 0.0624375f;
+
+			t.normal(n0.x, n0.y, n0.z);
+			t.vertexUV(xc0, yc0, zc0, u0, v1);
+			t.vertexUV(xc1, yc0, zc1, u1, v1);
+			t.vertexUV(xc1, yc1, zc1, u1, v0);
+			t.vertexUV(xc0, yc1, zc0, u0, v0);
+
+			t.normal(n1.x, n1.y, n1.z);
+			t.vertexUV(xc1, yc0, zc1, u0, v1);
+			t.vertexUV(xc0, yc0, zc0, u1, v1);
+			t.vertexUV(xc0, yc1, zc0, u1, v0);
+			t.vertexUV(xc1, yc1, zc1, u0, v0);
+		}
+		return true;
+	}
+
+	public boolean renderLiquid(Tile tile, int x, int y, int z, int renderType) {
+		boolean canRender = false;
+		if (tile.canRender(level, x, y - 1, z, renderType, 0)) {
+			renderSide(tile, x, y, z, 0);
+			renderFlippedSide(tile, x, y, z, 0);
+			canRender = true;
+		}
+		if (tile.canRender(level, x, y + 1, z, renderType, 1)) {
+			renderSide(tile, x, y, z, 1);
+			renderFlippedSide(tile, x, y, z, 1);
+			canRender = true;
+		}
+		if (tile.canRender(level, x, y, z - 1, renderType, 2)) {
+			renderSide(tile, x, y, z, 2);
+			renderFlippedSide(tile, x, y, z, 2);
+			canRender = true;
+		}
+		if (tile.canRender(level, x, y, z + 1, renderType, 3)) {
+			renderSide(tile, x, y, z, 3);
+			renderFlippedSide(tile, x, y, z, 3);
+			canRender = true;
+		}
+		if (tile.canRender(level, x - 1, y, z, renderType, 4)) {
+			renderSide(tile, x, y, z, 4);
+			renderFlippedSide(tile, x, y, z, 4);
+			canRender = true;
+		}
+		if (tile.canRender(level, x + 1, y, z, renderType, 5)) {
+			renderSide(tile, x, y, z, 5);
+			renderFlippedSide(tile, x, y, z, 5);
+			canRender = true;
+		}
+		return canRender;
+	}
+
+	public void renderSide(Tile tile, float xo, float yo, float zo, int side) {
+		int xTex = tile.getTexture(side) % 16 << 5;
+		int yTex = tile.getTexture(side) / 16 << 5;
+		float u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+		if (side == 0 || side == 1) {
+			u0 = tile.x0 / 16.0f;
+			u1 = tile.x1 / 16.0f;
+			v0 = tile.z0 / 16.0f;
+			v1 = tile.z1 / 16.0f;
+		} else if (side == 2 || side == 3) {
+			u0 = tile.x0 / 16.0f;
+			u1 = tile.x1 / 16.0f;
+			v0 = tile.y0 / 16.0f;
+			v1 = tile.y1 / 16.0f;
+		} else if (side == 4 || side == 5) {
+			u0 = tile.z0 / 16.0f;
+			u1 = tile.z1 / 16.0f;
+			v0 = tile.y0 / 16.0f;
+			v1 = tile.y1 / 16.0f;
+		}
+		u0 += xTex / 512.0f;
+		u1 += xTex / 512.0f;
+		v0 += yTex / 512.0f;
+		v1 += yTex / 512.0f;
+
+		float x0 = xo + tile.x0;
+		float x1 = xo + tile.x1;
+		float y0 = yo + tile.y0;
+		float y1 = yo + tile.y1;
+		float z0 = zo + tile.z0;
+		float z1 = zo + tile.z1;
+
+		if (side == 0) {
+			t.normal(0, -1, 0);
+			t.vertexUV(x0, y0, z1, u0, v1);
+			t.vertexUV(x0, y0, z0, u0, v0);
+			t.vertexUV(x1, y0, z0, u1, v0);
+			t.vertexUV(x1, y0, z1, u1, v1);
+			return;
+		}
+		if (side == 1) {
+			t.normal(0, 1, 0);
+			t.vertexUV(x1, y1, z1, u0, v1);
+			t.vertexUV(x1, y1, z0, u0, v0);
+			t.vertexUV(x0, y1, z0, u1, v0);
+			t.vertexUV(x0, y1, z1, u1, v1);
+			return;
+		}
+		if (side == 2) {
+			t.normal(0, 0, -1);
+			t.vertexUV(x0, y1, z0, u0, v0);
+			t.vertexUV(x1, y1, z0, u1, v0);
+			t.vertexUV(x1, y0, z0, u1, v1);
+			t.vertexUV(x0, y0, z0, u0, v1);
+			return;
+		}
+		if (side == 3) {
+			t.normal(0, 0, 1);
+			t.vertexUV(x0, y1, z1, u1, v0);
+			t.vertexUV(x0, y0, z1, u1, v1);
+			t.vertexUV(x1, y0, z1, u0, v1);
+			t.vertexUV(x1, y1, z1, u0, v0);
+			return;
+		}
+		if (side == 4) {
+			t.normal(-1, 0, 0);
+			t.vertexUV(x0, y1, z1, u0, v0);
+			t.vertexUV(x0, y1, z0, u1, v0);
+			t.vertexUV(x0, y0, z0, u1, v1);
+			t.vertexUV(x0, y0, z1, u0, v1);
+			return;
+		}
+		if (side == 5) {
+			t.normal(1, 0, 0);
+			t.vertexUV(x1, y0, z1, u1, v1);
+			t.vertexUV(x1, y0, z0, u0, v1);
+			t.vertexUV(x1, y1, z0, u0, v0);
+			t.vertexUV(x1, y1, z1, u1, v0);
+			return;
+		}
+	}
+
+	public void renderFlippedSide(Tile tile, int xo, int yo, int zo, int side) {
+		int xTex = tile.getTexture(side) % 16 << 5;
+		int yTex = tile.getTexture(side) / 16 << 5;
+		float u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+		if (side == 0 || side == 1) {
+			u0 = tile.x0 / 16.0f;
+			u1 = tile.x1 / 16.0f;
+			v0 = tile.z0 / 16.0f;
+			v1 = tile.z1 / 16.0f;
+		} else if (side == 2 || side == 3) {
+			u0 = tile.x0 / 16.0f;
+			u1 = tile.x1 / 16.0f;
+			v0 = tile.y0 / 16.0f;
+			v1 = tile.y1 / 16.0f;
+		} else if (side == 4 || side == 5) {
+			u0 = tile.z0 / 16.0f;
+			u1 = tile.z1 / 16.0f;
+			v0 = tile.y0 / 16.0f;
+			v1 = tile.y1 / 16.0f;
+		}
+		u0 += xTex / 512.0f;
+		u1 += xTex / 512.0f;
+		v0 += yTex / 512.0f;
+		v1 += yTex / 512.0f;
+
+		float x0 = xo + tile.x0;
+		float x1 = xo + tile.x1;
+		float y0 = yo + tile.y0;
+		float y1 = yo + tile.y1;
+		float z0 = zo + tile.z0;
+		float z1 = zo + tile.z1;
+
+		if (side == 0) {
+			t.vertexUV(x1, y0, z1, u0, v1);
+			t.vertexUV(x1, y0, z0, u0, v0);
+			t.vertexUV(x0, y0, z0, u1, v0);
+			t.vertexUV(x0, y0, z1, u1, v1);
+			return;
+		}
+		if (side == 1) {
+			t.vertexUV(x0, y1, z1, u0, v1);
+			t.vertexUV(x0, y1, z0, u0, v0);
+			t.vertexUV(x1, y1, z0, u1, v0);
+			t.vertexUV(x1, y1, z1, u1, v1);
+			return;
+		}
+		if (side == 2) {
+			t.vertexUV(x0, y0, z0, u0, v0);
+			t.vertexUV(x1, y0, z0, u1, v0);
+			t.vertexUV(x1, y1, z0, u1, v1);
+			t.vertexUV(x0, y1, z0, u0, v1);
+			return;
+		}
+		if (side == 3) {
+			t.vertexUV(x1, y1, z1, u1, v0);
+			t.vertexUV(x1, y0, z1, u1, v1);
+			t.vertexUV(x0, y0, z1, u0, v1);
+			t.vertexUV(x0, y1, z1, u0, v0);
+			return;
+		}
+		if (side == 4) {
+			t.vertexUV(x0, y0, z1, u0, v0);
+			t.vertexUV(x0, y0, z0, u1, v0);
+			t.vertexUV(x0, y1, z0, u1, v1);
+			t.vertexUV(x0, y1, z1, u0, v1);
+			return;
+		}
+		if (side == 5) {
+			t.vertexUV(x1, y1, z1, u1, v1);
+			t.vertexUV(x1, y1, z0, u0, v1);
+			t.vertexUV(x1, y0, z0, u0, v0);
+			t.vertexUV(x1, y0, z1, u1, v0);
+			return;
+		}
+	}
+}

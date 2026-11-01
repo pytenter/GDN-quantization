@@ -1,0 +1,785 @@
+# Codex科研任务：Qwen/GDN Hadamard + Dual-Axis 直接32K科学探索
+
+**TASK_ID：** `QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1`
+
+**GPU_EXECUTION_AUTHORIZED = YES**
+
+**MAX_GPU_COUNT = 1**
+
+**TARGET_GPU = RTX3090_24GB**
+
+**MAX_TOTAL_GPUH = 24.0**
+
+**MAX_NEW_ARCHIVE_GIB = 10**
+
+**MAX_CONCURRENT_TRAJECTORIES = 1**
+
+## 0. 最高优先级：高效得到科学答案
+
+你是一名负责GDN recurrent-state INT8量化的科研工程Agent。
+
+用户明确要求：不要再围绕旧执行链反复修补、追加first-divergence诊断或不断创建新的资格实验。
+
+本次建立一条独立、最简、可复现的科学执行路径。
+
+**唯一核心科学问题：**
+
+> 在Qwen3.5-9B中，使用相同Hadamard旋转、相同recurrent计算和相同逐token QDQ/writeback协议时，将原INT8-C128量化器替换为STEPQuant-inspired Dual-Axis INT8，能否改善32K长程full-model Future-KL？
+
+本次直接以两篇预先冻结的32K文档为探索终点。
+
+执行顺序：
+
+1. 恢复已通过的CPU codec资格。
+2. 前瞻性冻结新科学协议与长文档。
+3. 验证原Hadamard+C128运行路径。
+4. 验证Dual-M GPU codec与真实QDQ写回。
+5. 完成最短128-token安全canary。
+6. 根据真实吞吐确定32K预算可行性。
+7. 直接完成两篇32K配对探索。
+8. 计算Future-KL、记录工程成本并封存。
+9. STOP。
+
+不得在中途加入新的研究问题。
+
+不得因为结果不理想而修改算法、数据或评价指标。
+
+如果核心数值身份或资源门禁失败，保存证据并停止，不开始无期限工程修复。
+
+---
+
+## 1. 保留历史结果，不修复旧execution
+
+历史实验：
+
+`QWEN_GDN_HADAMARD_DUAL_AXIS_INT8_FEASIBILITY_V1`
+
+结果：
+
+`CPU_CODEC_QUALIFIED_ONLY`
+
+其中Dual-M在9个预设合成案例上相对C128的等权relative-MSE平均降低33.8209%。
+
+但该结论只适用于预设合成分布。
+
+`DUAL_M_INT8`已通过STEPQuant官方all8、impact=ones、pivots=0的reference exact parity。
+
+后续实验：
+
+`QWEN_GDN_HADAMARD_DUAL_AXIS_REAL_STATE_RUNTIME_GATE_V1`
+
+其execution_02因第一个token的：
+
+`FP_NATIVE vs FP_H relative_L2 = 0.006718461729707917`
+
+超过旧冻结阈值0.002而停止。
+
+必须保留：
+
+`execution_02 = FAIL_AND_STOP`
+
+不得修改旧报告、阈值、源码身份或失败记录。
+
+**本任务不是对execution_02的恢复，也不追溯改变旧门禁。**
+
+本次重新定义科学问题与比较对象。
+
+新协议需要在任何新的GPU科学结果出现前独立冻结，并在预注册中明确说明与旧协议的区别。
+
+禁止为了得到新实验PASS而将旧relative-L2结果重新判为合格。
+
+---
+
+## 2. 新实验的科学设计
+
+仅保留三个条件：
+
+| 条件 | Rotation | Recurrent codec |
+|---|---|---|
+| FP_NATIVE | 原生模型 | 无state INT8量化 |
+| H_C128 | Canonical Hadamard | 原始INT8-C128 |
+| H_DUAL_M | 完全相同的Hadamard | Dual-Axis INT8 |
+
+不运行：
+
+- C128_FP16_SCALE
+- C128_LS_FP16
+- Dual-W
+- C6R
+- C7
+- 任何新训练旋转
+
+这意味着本次实验检验完整codec替换的净效果，不能将改善全部归因于row scale，也不能证明Query importance具有增量价值。
+
+### 2.1 Primary
+
+对同一篇文档：
+
+`K_A = mean KL(FP_NATIVE || H_C128)`
+
+`K_D = mean KL(FP_NATIVE || H_DUAL_M)`
+
+定义：
+
+`Delta = K_A - K_D`
+
+Delta大于0表示Dual-M的输出分布更接近原生FP模型。
+
+Delta小于0表示原C128更好。
+
+注意：FP_NATIVE是共同的实际原生模型目标，不是已被证明与FP_H数值完全等价的参考。
+
+因此本次能够检验：
+
+**实际Hadamard量化系统中codec替换的增量功能效果。**
+
+但不能据此声称此前FP_NATIVE/FP_H的数值等价性已经得到解决。
+
+---
+
+## 3. Hadamard正确性：验证结构，不重复旧失败门禁
+
+原正式Hadamard参考路径：
+
+`experiments/qwen_gdn/aime26/81920/run_qwen_aime26_formal.py`
+
+以及实际服务器上经过资格的Qwen V3 compensated runtime。
+
+这些文件只提供定位线索，必须读取当前真实运行源码和冻结manifest。
+
+检查以下不可变语义：
+
+1. Q/K按正式协议归一化。
+2. H128只作用在Key空间。
+3. Q和K采用一致的正交坐标变换。
+4. Value不被新增旋转。
+5. H128不重复施加。
+6. recurrent state处于正确的Key-rotated坐标。
+7. GDN delta update保持不变。
+8. 当前token readout时序保持不变。
+9. RMSNorm/gate/out_proj完全不变。
+10. 量化写回发生在原正式位置。
+11. 下一token读取已经QDQ写回的状态。
+
+使用固定小张量完成Hadamard正交性、坐标逆变换和GDN核心代数等价检查。
+
+这些检查必须与真实运行时的形状、归一化位置和乘法约定一致。
+
+禁止仅因为H正交就假定完整BF16模型bitwise等价。
+
+**新协议不将FP_NATIVE与FP_H的全模型relative-L2≤0.002作为硬门禁。**
+
+但必须保留旧失败，并如实披露实际有限精度Hadamard路径与native FP可能存在数值漂移。
+
+若发现旋转轴错误、更新公式错误、重复旋转或与原正式H路径不一致，则直接STOP。
+
+不能把真正的实现错误解释为浮点舍入差异。
+
+特别要求：不要重新写GDN核心kernel，不要更换compensated cumsum数值路径，不要通过修改BF16/FP32精度来人为改善指标。
+
+---
+
+## 4. 严格的INT8实验语义
+
+所有INT8学生必须每token执行真实QDQ/writeback。
+
+对于某token：
+
+1. 从上token量化写回状态开始。
+2. 完成当前GDN计算。
+3. 按正式协议计算当前readout。
+4. 在原有量化边界处执行codec。
+5. 将量化重构后的状态写回。
+6. 下一token只读取这个已QDQ的状态。
+
+禁止：
+
+- 低频requantization
+- 跳token量化
+- FP16/FP32 persistent compensation
+- FP pivots
+- mixed precision state
+- 学生状态使用未量化的FP历史
+- 使用共同FP anchor替代学生前缀
+- 改变token计算顺序
+- 改变INT8数值范围
+
+### 4.1 H_C128
+
+必须调用原正式Hadamard+C128代码路径。
+
+C128：
+
+- signed INT8 [-127,127]
+- K轴128分组
+- 原始FP32 column scale
+- 原始round/clamp/EPS语义
+
+新实验不得重写一个近似C128然后把它当golden reference。
+
+### 4.2 H_DUAL_M
+
+必须从已经封存并通过官方reference parity的CPU V1源码继承。
+
+算法：
+
+- 全元素INT8
+- row scale为FP16
+- column scale为FP16
+- impact=ones
+- 无pivots
+- 一次column LS fitting
+- 最终整数重编码
+- 不增加迭代次数
+- 不改变scale floor
+- 不调整clip范围
+- 不引入Query权重
+
+在GPU上使用与冻结算法同义的向量化实现。
+
+如果为了性能调整张量运算，需要通过同设备、同dtype下的官方all8/ones参考对照，并在GPU执行前冻结数值资格。
+
+不能仅以CPU/GPU浮点舍入不同为由随意放宽容差。
+
+不能用测试文档调参。
+
+### 4.3 Cache物理表示
+
+第一轮为公平比较，允许A/D都使用原正式FP32 QDQ-value cache生命周期。
+
+但是：
+
+`PERSISTENT_INT8_QDQ_SEMANTICS = YES`
+
+不意味着：
+
+`PHYSICAL_RESIDENT_INT8 = YES`
+
+如采用FP32 tensor承载量化后的值，必须明确：
+
+`PHYSICAL_INT8_RUNTIME = NOT_QUALIFIED`
+
+真正packed INT8属于后续系统优化问题，本次不以改变cache物理结构为目标。
+
+---
+
+## 5. 文档选择：两篇新的32K长文本
+
+上一轮两个128-token冻结文档只用于GPU安全canary，不直接作为本轮正式32K样本。
+
+从已有合法RepoBench-P/P_e长文本pool选择。
+
+要求：
+
+- 不使用AIME。
+- 不使用之前参与Qwen NoInflation 8-doc方法分析的文档。
+- 排除已知历史重复raw SHA和相同doc ID。
+- 尽量选择不同repository/project来源。
+- 每篇至少32769 tokens。
+- 使用既有Qwen正式tokenizer。
+- 不增加chat template或特殊token。
+- 不因预计的row imbalance、Dual-M收益或模型输出而选样。
+
+固定seed：
+
+`20261015`
+
+在任何新GPU forward之前完成：
+
+1. 查询合格pool。
+2. 按预先定义的SHA排序。
+3. 选出前两篇合格文档。
+4. 冻结document ID。
+5. 冻结raw text SHA。
+6. 冻结完整token SHA。
+7. 冻结tokenizer身份。
+8. 冻结实际消耗的32768-token输入。
+
+若project字段可靠，则优先按照事前写明的确定性规则选择不同项目。
+
+若project身份不可核验，明确记录UNKNOWN，不能把不同raw文档当成项目级独立性证明。
+
+若合法pool中不足两篇32769-token文档，STOP并报告，不自行缩短科学长度或改变样本选择规则。
+
+不允许看完Doc1结果后重新选择Doc2。
+
+---
+
+## 6. 32K评分协议
+
+每条轨迹消费：
+
+32768 tokens。
+
+评分：
+
+`t = 8192 + 64*k`
+
+`k = 0,...,383`
+
+共384个评分位置。
+
+严格明确：
+
+消费 `ids[t]` 后，使用当前位置logits预测 `ids[t+1]`。
+
+使用匹配的完整词表FP32 logits。
+
+不要硬编码Ling的157184词表大小，使用实际Qwen模型词表。
+
+计算：
+
+`KL(FP_NATIVE || student)`
+
+必须：
+- Full-vocabulary
+- FP32 softmax/log_softmax
+- 固定reducer实现与求和顺序
+- 同文档同token位置严格配对
+- 排除任何未完成或无效评分对象
+
+在看到正式Delta之前冻结KL计算实现及数值重复性资格。
+
+不可将NoInflation旧384点评分分辨率直接套用到新codec、新runtime。
+
+若新评分差异小于可合法确认的数值分辨率，应报告NUMERICALLY_UNRESOLVED，而不是强行判断胜负。
+
+三个时间窗口：
+
+Early: [8192,16384)
+
+Middle: [16384,24576)
+
+Late: [24576,32768)
+
+各128个位置。
+
+主要结论以整篇384点平均为准。
+
+Late改善比例、改善位置比例、state MSE或局部clipping不能代替Primary。
+
+统计独立单位为文档。
+
+仅两篇，属于探索性实验，不做confirmatory显著性宣称。
+
+---
+
+## 7. 最小GPU资格：只做真正必要的验证
+
+目标是尽快运行有效科学轨迹，不建立新的复杂GPU资格工程。
+
+### G0：身份检查
+
+恢复并确认：
+
+- CPU V1 seal
+- Dual-M已资格源码
+- 原C128正式源码
+- 模型权重
+- 当前V3 compensated runtime
+- 128-token canary输入
+- 新32K文档冻结身份
+
+保持所有历史FAIL/STOP。
+
+如身份不匹配，STOP。
+
+### G1：资源准入
+
+选择一张真实空闲的RTX3090 24GB。
+
+优先使用先前成功加载Qwen的GPU0，但必须核验实际GPU UUID和当前使用状态。
+
+不占用他人计算。
+
+不自动换卡，不使用SGLang，不改device-map/模型dtype，不使用CPU offload绕过资源门禁。
+
+只有当前资源足以安全加载和运行时才继续。
+
+### G2：Hadamard+C128基线
+
+复用原正式Hadamard路径。
+
+运行短程128-token canary。
+
+原正式C128实现与新实验调用路径必须在相同设备、相同数值协议下比较：
+
+- 当前GDN更新
+- 当前readout
+- codes
+- scales
+- dequant
+- writeback
+- 下一token缓存
+- logits
+
+使用同一个原正式实现作为独立reference，不使用新adapter验证新adapter。
+
+要求原正式边界与新执行器一致。
+
+当前GPU实现必须通过适用的fresh-process确定性资格。
+
+但不重复此前FP_NATIVE/FP_H全模型relative-L2门禁。
+
+### G3：Dual-M资格
+
+使用同一128-token输入。
+
+验证：
+
+- 官方all8/ones reference parity
+- GPU codec roundtrip
+- 每token24层正确QDQ/writeback
+- 下一token真实消费已QDQ状态
+- observer OFF/ON不干扰结果
+- 数值有限性
+- scale floor/ceiling
+- clipping
+- GPU显存与codec耗时
+
+继承上一轮已经冻结的scale风险规则：
+
+当相关受影响能量比例≥1e-4，且affected relative-MSE>1e-2时，触发安全STOP。
+
+具体受影响集合、scale floor/ceiling和误差定义必须读取原封存协议，不能事后重新解释。
+
+如果某条件真实触发严重scale失真，应如实STOP。
+
+不能改FP16为FP32来挽救Dual-M。
+
+### G4：吞吐与GPU预算
+
+根据真实GPU数据测量：
+
+- FP_NATIVE tokens/s
+- H_C128 tokens/s
+- H_DUAL_M tokens/s
+- 峰值显存
+- 每tokencodec encode/decode耗时
+- full-model整体耗时
+- 实际score/reducer开销
+- checkpoint IO成本
+
+根据真实样本测算两篇×三条件×32768-token的GPUh需求。
+
+预测时包括：
+- 模型加载
+- prefill
+- 逐token写回
+- 评分
+- checkpoint
+- 日志
+- 资源释放
+
+在本任务24 GPUh硬上限内保留合理安全余量。
+
+如果保守预测无法完成两篇完整科学比较，不要启动32K。直接STOP并报告资源账本及所需预算。
+
+如果可以完成，则直接进入正式探索，不再额外运行2K/4K/8K资格阶段。
+
+---
+
+## 8. 正式两篇32K科学探索
+
+通过全部强制门禁后，执行：
+
+Doc1:
+- FP_NATIVE
+- H_C128
+- H_DUAL_M
+
+Doc2:
+- FP_NATIVE
+- H_C128
+- H_DUAL_M
+
+六条完整轨迹。
+
+全部固定teacher forcing。
+
+不得使用自由生成产生不同token流。
+
+每篇的FP参考只计算一次，保存匹配评分位置的必要logits。
+
+FP logits可流式传输至CPU存储，减少GPU显存占用。
+
+所有学生轨迹必须从token0开始构造自己的完整量化状态历史。
+
+不允许使用C6R旧anchor。
+不允许使用NoInflation旧FP anchor。
+不允许跳过前8192token的学生QDQ。
+不允许只从8192开始量化再声称full32K。
+
+可以复用本任务内合法生成且身份一致的checkpoint，不重复计算已合格前缀。
+
+必要checkpoint应包含：
+- token cursor
+- recurrent cache
+- RNG
+- 已完成评分位置
+- reducer状态
+- 模型及源码身份
+- codec身份
+
+resume必须保持原语义，不能重复消费或遗漏token。
+
+为了避免反复前缀计算，使用适度checkpoint，但不得产生无界大文件。
+
+两篇全部事前冻结。
+
+不得因Doc1对Dual-M不利就取消Doc2，也不得因Doc1有利而增加新文档。
+
+如果资源、数学或安全门禁在正式执行中失败，保留部分完成结果及失败原因，停止，不自动修改算法或开始新一轮attempt。
+
+---
+
+## 9. 同时记录最小必要机制指标
+
+本任务主目标是完整Future-KL，而非复刻NoInflation的大规模机制诊断。
+
+只采集以下低开销指标：
+
+1. State relative MSE（仅在具备合法匹配FP state时）。
+2. A/D量化误差与差值。
+3. effective scale范围。
+4. rounded clamp fraction。
+5. unrounded level越界比例。
+6. scale floor/ceiling事件。
+7. 非有限状态与状态爆炸事件。
+8. per-token codec耗时。
+9. GPU峰值显存。
+
+对于D：
+
+`effective_scale[i,j] = row_scale[i] * column_scale[j]`
+
+不能直接把row scale与A的column scale比较大小。
+
+如果完整FP state capture会显著增加GPUh，只使用事前冻结的稀疏位置、layer/head或聚合指标。
+
+不允许为了机制诊断牺牲正式32K结果。
+
+此前8-doc NoInflation发现Late改善最大，但不能据此预设Dual-M也必须Late最大。
+
+任何机制解释都属于探索性分析。
+
+---
+
+## 10. GPU预算与失败策略
+
+本次最多使用：
+
+24.0 GPUh。
+
+包含所有GPU占用时间：
+- model loading
+- qualification
+- reference
+- student forward
+- codec
+- profiling
+- checkpoint
+- 退出前占用
+
+不允许按新attempt重置预算。
+
+实时记录累计GPUh和剩余预算。
+
+如果资源不足，提前停止。
+
+禁止：
+- 更换GPU扩容
+- 新增TP/PP
+- 重新训练rotation
+- 大规模改写kernel
+- 改变量化协议
+- 追加文档
+- 追加codec
+- 放宽科学数值门槛
+- 为正面结果挑选数据
+- 自动启动AIME
+
+对于新实验控制层中的纯CPU错误，可在GPU正式科学运行前进行必要最小修复，并记录身份。
+
+一旦发生正式GPU数值资格失败，不允许在同一科学执行中静默修复再跑。
+
+旧FAIL始终保留。
+
+本任务不再展开独立的first-divergence机制研究。
+
+---
+
+## 11. 结果分析和决策
+
+为每篇计算：
+
+`K_A = mean384 KL(FP_NATIVE || H_C128)`
+
+`K_D = mean384 KL(FP_NATIVE || H_DUAL_M)`
+
+`Delta = K_A - K_D`
+
+输出：
+
+| Doc | K_A | K_D | Delta | Relative Gain | Winner |
+|---|---|---|---|---|---|
+
+同时报告三个窗口的对应数值。
+
+Relative Gain使用明确冻结的分母：
+
+`RelativeGain = Delta / K_A`
+
+若K_A为0或低于合法数值分辨范围，报告N/A，不允许无限大收益。
+
+每篇必须有384个真实评分位置及完整sum/384结果。
+
+没有实际score的单元标记NOT_RUN。
+
+不得将缺失值填0。
+
+科学分类：
+
+**POSITIVE_EXPLORATORY**
+两篇均出现超过数值分辨率的正向Delta。
+
+**MIXED_EXPLORATORY**
+两篇方向不同，或一篇正向一篇未分辨。
+
+**NEGATIVE_EXPLORATORY**
+两篇均出现超过数值分辨率的负向Delta。
+
+**INCONCLUSIVE**
+数值差异无法分辨，或者科学资格不足。
+
+若只有一篇完成，则结果为PARTIAL，不宣称两文档科学结论。
+
+即使两篇均改善，也不能证明广泛泛化、AIME提升或统计显著性。
+
+如果两篇均负面，也只能否定本轮受测的Hadamard+Dual-M实现与文档条件，不得宣称所有Dual-Axis量化器无效。
+
+---
+
+## 12. 最终交付
+
+建立独立新目录：
+
+`QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1`
+
+建议输出：
+
+- preregistration.json
+- source_manifest.json
+- frozen_documents.json
+- gpu_admission.json
+- numerical_qualification.json
+- codec_parity.json
+- gpu_resource_ledger.json
+- science_results.csv
+- science_results.json
+- window_results.csv
+- scale_safety.json
+- runtime_cost.json
+- FINAL_SCIENTIFIC_REPORT.md
+- FAILURE_HISTORY.md
+- hashes/artifact_sha256.txt
+- hashes/DELIVERY_VERIFICATION.json
+
+只创建实际有证据的产物。
+
+不能用旧合成数据填充真实GPU结果表。
+
+保存：
+- 源码SHA
+- 模型权重身份
+- 原文与token SHA
+- 输入位置
+- Hadamard身份
+- codec身份
+- KL reducer身份
+- 所有checkpoint SHA
+- 首个失败门禁
+- 本轮GPUh
+
+保留原CPU V1、旧execution_01/02、NoInflation 8-doc及Frozen AIME26的字节身份。
+
+不自动git push。
+不触发后续后台任务。
+
+---
+
+## 13. 最终Codex回报格式
+
+必须输出：
+
+TASK = QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1
+
+GPU_AUTHORIZATION = YES
+
+SCIENTIFIC_PROTOCOL = NEW_PROSPECTIVE_CODEC_COMPARISON
+
+OLD_FP_NATIVE_H_FAILURE = PRESERVED
+
+CPU_V1_SEAL = PASS / FAIL
+
+HADAMARD_STRUCTURAL_CORRECTNESS = PASS / FAIL
+
+CANONICAL_H_C128_PARITY = PASS / FAIL / NOT_RUN
+
+DUAL_M_GPU_PARITY = PASS / FAIL / NOT_RUN
+
+PERSISTENT_QDQ = PASS / FAIL / NOT_RUN
+
+FRESH_PROCESS_DETERMINISM = PASS / FAIL / NOT_RUN
+
+NUMERICAL_SAFETY = PASS / FAIL / NOT_RUN
+
+RESOURCE_ADMISSION = PASS / FAIL / NOT_RUN
+
+DOCS_FROZEN = 2 / 实际数量
+
+FP_NATIVE_32K = x/2
+
+H_C128_32K = x/2
+
+H_DUAL_M_32K = x/2
+
+VALID_PAIRED_DOCS = x/2
+
+PRIMARY_384_POSITION_CHECK = PASS / FAIL / NOT_RUN
+
+DUAL_M_FULLMODEL_RESULT = POSITIVE_EXPLORATORY / MIXED_EXPLORATORY / NEGATIVE_EXPLORATORY / INCONCLUSIVE / PARTIAL
+
+GPU_HOURS_USED = 实际值
+
+MAX_GPU_HOURS = 24.0
+
+PHYSICAL_INT8_STORAGE = PASS / NOT_QUALIFIED / NOT_RUN
+
+AIME = NOT_RUN
+
+C6R_INTERACTION = NOT_RUN
+
+C8_TRAINING = NOT_AUTHORIZED
+
+FINAL_EXECUTION_STATUS = COMPLETE_AND_STOP / PARTIAL_STOP / FAIL_AND_STOP / BLOCKED_AND_STOP
+
+最终科学报告必须回答：
+
+1. Hadamard+Dual-M在两篇真实32K文档上是否优于Hadamard+C128？
+2. 如果有收益，平均绝对与相对Future-KL改善是多少？
+3. Early/Middle/Late哪个窗口受益，是否一致？
+4. 真实scale、clipping及数值范围是否有新增风险？
+5. Dual-M的真实在线开销是否可接受？
+6. 如果长程改善，是否值得做独立多文档验证？
+7. 如果结果混合或负面，是否应该停止当前Dual-M路线？
+8. 当前证据能否支持与learned rotation互补？答案必须区分“尚未验证”与“已否定”。
+
+完成本次两篇32K或发生不可恢复的核心失败后，立即STOP。
+
+不运行后续confirmatory实验。
+不运行AIME。
+不训练C8。
+不自动新增任何实验。
+
+**最终原则：只改变codec，冻结其他科学变量；用真实32K Future-KL回答问题，停止无期限工程修补。**

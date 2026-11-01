@@ -1,0 +1,5 @@
+def __create_fn__(_type_overlapping_sources, _type_non_overlapping_sources, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self,overlapping_sources:_type_overlapping_sources,non_overlapping_sources:_type_non_overlapping_sources)->_return_type:
+  self.overlapping_sources=overlapping_sources
+  self.non_overlapping_sources=non_overlapping_sources
+ return __init__

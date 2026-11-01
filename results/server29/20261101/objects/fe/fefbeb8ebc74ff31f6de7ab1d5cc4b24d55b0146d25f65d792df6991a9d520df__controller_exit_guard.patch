@@ -1,0 +1,19 @@
+--- frozen/scripts/pace_four_gpu_controller.py
++++ candidate/scripts/pace_four_gpu_controller.py
+@@ -5,6 +5,7 @@
+ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
+ import pace_control as C
+ from pace_four_gpu_publish import publish_unit
++from owned_exit_guard import owned_child_running
+ 
+ def progress_signature(value):
+     return tuple(value.get(k) for k in ('phase','generated_tokens','input_forwards','token','tokens','total','condition','case','layer'))
+@@ -66,7 +67,7 @@
+             with self.lock:self.active[unit]=dict(gpu=gpu,gpu_uuid=C.UUIDS[gpu],stage=stage,identity=identity,dispatch_monotonic=started)
+             self.ledger();last=time.monotonic();signature=None;next_check=0
+             while proc.poll() is None:
+-                C.require(C.same_process(identity),'Owned child PID/starttick/argv changed; never signal replacement')
++                if not owned_child_running(proc,identity,C.same_process):break
+                 C.require(not self.stop.is_set(),'Shared first failure stops remaining owned children')
+                 C.require(not (self.root/'GLOBAL_STOP_REQUEST.json').exists(),'Human requested STOP')
+                 p=target/'PROGRESS.json'

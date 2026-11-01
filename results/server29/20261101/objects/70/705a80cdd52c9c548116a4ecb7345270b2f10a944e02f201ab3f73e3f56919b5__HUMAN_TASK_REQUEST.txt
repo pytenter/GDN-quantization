@@ -1,0 +1,861 @@
+# Codex正式科研任务：Qwen/GDN Group32 Sym8 — WScale、RowBal及联合量化 AIME26
+
+## 0. 任务身份和最终目标
+
+任务名称：
+
+`QWEN_GDN_SYM8_G32_WSCALE_ROWBAL_AIME26_SEED1_V1`
+
+目标模型：Qwen3.5-9B / GDN。
+
+可用GPU：Qwen服务器中用户当前提供的3张空闲RTX3090 24GB。
+
+本任务要求在一次统一工程流程中完成三个新的对称INT8量化器，并进行正式AIME26评测。
+
+### 冻结实验配置
+
+| ID | 正式方法标签 | AIME26 |
+|---|---|---|
+| W | `H+G32+Sym8+WScale` | 30题，seed1 |
+| R | `H+G32+Sym8+RowBal` | 30题，seed1 |
+| RW | `H+G32+Sym8+RowBal+WScale` | 30题，seed1 |
+
+历史只读对照：
+
+- `H+G32+Sym8`：21/30。
+- `H+G32+Asym8`：25/30。
+
+新增正式生成总数：90条。
+
+统一：
+
+- Qwen3.5-9B权重。
+- 已有Key-H128旋转。
+- Symmetric INT8，整数区间沿用原Canonical。
+- Key-axis Group32。
+- FP32量化scale。
+- Zero-point=0。
+- 真实每token QDQ/writeback。
+- AIME26完整30题。
+- seed=1。
+- max_new_tokens=81920。
+- 原Qwen正式Sampler。
+- 原Frozen V4评分器。
+
+不训练模型，不修改GDN递归，不引入Dual-M、Asym、INT4、FP16保护或额外Rotation。
+
+**三个新候选都必须接受完整AIME评测。不得根据校准集MSE的优劣提前淘汰其中某一个配置。**
+
+---
+
+# 一、实现前先恢复已有合格Runtime
+
+复用：
+
+- `QWEN_GDN_GROUP32_FOUR_CODEC_AIME26_SEED1_V1`
+- Qwen HISTORICAL_PORT。
+- 原Key-H128实现。
+- 已通过资格的Sym8 Group32 Codec。
+- 原Sampler、Prompt及Frozen V4。
+- 历史Group32的GPU资格证据。
+
+此前Group32四配置已经120/120正式完成。
+
+不得重新运行旧基线，也不得改写其任何封存资产。
+
+必须核验真实模型权重、源码、量化器、Tokenizer、输入、Sampler及评分器SHA。
+
+保持原Qwen独立Runtime，不引入SGLang。
+
+### 统一量化位置
+
+审计实际GDN helper的时序：
+
+1. 从上一token已QDQ的State进行GDN更新。
+2. 使用更新后的State完成当前readout。
+3. 对更新后State执行本次量化。
+4. 立即写回重建State。
+5. 下一token使用该重建State。
+
+新方法只能替换第3步的量化器，不能修改1、2、4、5的数学语义。
+
+Prompt与Decode均保持原来从首token开始的逐tokenQDQ。
+
+---
+
+# 二、统一数学记号
+
+每个Recurrent Head的State：
+
+`X ∈ FP32[128,128]`
+
+第一个维度为Key，第二个维度为Value。
+
+在Hadamard坐标下量化。
+
+沿Key轴，每个Value列分成四个Group32：
+
+`g ∈ {0,1,2,3}`
+
+每组32个Key元素。
+
+原始量化器记作：
+
+`Q32_sym(X)`
+
+默认scale：
+
+`s0[g,j] = amax(abs(X[i,j]), i∈g) / 127`
+
+实际执行必须保留原Canonical的scale floor、舍入、裁剪、negative-zero和解码规则。
+
+新量化器不允许修改位宽、Group Size、零点或Hadamard。
+
+---
+
+# 三、共享非AIME校准：计算Key行敏感性
+
+三个新方法共用同一份冻结的Key行重要性。
+
+不能为WScale、RowBal、RW分别校准三套不同的重要性。
+
+## 3.1 数据来源
+
+优先复用已有合法的非AIME FP State、Query、Key、Gate及Beta轨迹。
+
+如果已有轨迹不包含计算transported query所需的完整数据，可以进行一次有界的非AIME FP采集。
+
+使用未参与本次最终评测的WikiText-2、PG19等文档。
+
+明确冻结：
+
+- 文档ID。
+- Token范围。
+- 模型及Runner SHA。
+- 采集位置。
+- 实际层/Head映射。
+- 校准输入顺序。
+- CAL/VAL文档划分。
+
+校准与验证必须按文档隔离。
+
+不得使用AIME26题目、Prompt、输出、正确率或历史AIME错误题目进行校准。
+
+## 3.2 计算transpo​rted-query权重
+
+GDN状态更新抽象为：
+
+`X_(t+1) = A_(t+1) @ S_hat_t + B_(t+1)`
+
+其中：
+
+`A_t = alpha_t * (I - beta_t * k_t @ k_t.T)`
+
+在已有Hadamard坐标下，量化误差E_t首先通过下一次更新影响readout：
+
+`delta_o_(t+1) = E_t.T @ A_(t+1).T @ q_(t+1)`
+
+定义：
+
+`g_(t+1) = A_(t+1).T @ q_(t+1)`
+
+计算每个实际Recurrent Head、每个Key行的静态敏感性：
+
+`omega[i] = mean_cal(g_(t+1)[i]^2)`
+
+这借鉴STEPQuant的读取敏感性思想。
+
+必须使用真实GDN Readout Query及正确的Gate、Beta、Key，保持已有H128坐标一致。
+
+Qwen实际16个独立Q/K Head映射到32个Recurrent Heads，但transported query还依赖实际Recurrent Head的状态转移参数。因此不能仅因为Query被共享，就未经核验地把对应omega直接复制。
+
+## 3.3 权重稳定化
+
+omega为静态FP32校准参数，不在AIME期间更新。
+
+为避免极小权重与异常值造成数值失稳：
+
+- 使用冻结的正数floor。
+- 在每个32行Group中进行几何均值归一化。
+- 使用预冻结的有限上下界进行clamp。
+- 保存clamp前后分布。
+- 保存Layer/Head/Row身份与SHA。
+
+建议先使用：
+
+`omega_normalized ∈ [1/16,16]`
+
+这是候选算法的数值稳定化规则，不是从论文直接复制的最优阈值。
+
+所有方法使用相同omega。
+
+不得根据AIME结果调整。
+
+---
+
+# 四、方法W：H+G32+Sym8+WScale
+
+目标：
+
+**让Group32的scale不再仅保护最大绝对值，而是优先降低敏感Key行的量化误差。**
+
+## 4.1 数学定义
+
+当前Group的基础scale为：
+
+`s0 = max_abs(X_group)/127`
+
+设预冻结候选系数集合：
+
+`Lambda = {0.60, 0.75, 0.875, 1.00, 1.125}`
+
+对每个候选：
+
+`s(lambda) = max(lambda*s0, original_scale_floor)`
+
+使用原Sym8舍入和clip得到整数codes并解码。
+
+对Group32计算：
+
+`L(lambda) = sum_i omega[i] * (X[i,j] - X_hat_lambda[i,j])^2`
+
+选择：
+
+`lambda_star = argmin_lambda L(lambda)`
+
+然后将选中的scale、codes与重建值作为当前token真正的QDQ结果。
+
+每个Value列的每个Group独立选择。
+
+如目标相同，使用预冻结的确定性tie-break规则，优先选择更接近lambda=1的候选。
+
+### 重要限制
+
+- omega来自离线非AIME校准。
+- X来自当前真实更新后的State。
+- 不访问未来Query。
+- 不使用FP oracle。
+- 不产生额外高精度persistent State。
+- 仍然每个Group只需要一个动态FP32 scale。
+- zero-point始终为0。
+
+由于候选包含lambda=1，在精确算术下，WScale的当前加权局部重建目标不应差于原absmax候选。
+
+但这不保证完整Readout Error或AIME准确率必然提高。
+
+## 4.2 性能要求
+
+Qwen全部GDN State有大量Group32。
+
+不得使用Python逐Head、逐Group、逐候选循环。
+
+建议使用GPU批处理或融合Triton Kernel：
+
+- 一次载入32个Group元素。
+- 同时计算多个候选scale。
+- 在GPU上比较加权误差。
+- 选择最优候选。
+- 输出最终Codes和重建State。
+- 不进行逐Group CPU同步。
+
+WScale必须保留在线候选选择语义，不得为提速偷偷替换成另一种离线固定lambda算法。
+
+若实施性能优化，须在非AIME测试上核验输出对应同一冻结公式。
+
+---
+
+# 五、方法R：H+G32+Sym8+RowBal
+
+目标：
+
+**借鉴STEPQuant和KVarN的尺度归一化思想，使Group内部不同Key行获得不同的有效量化分辨率。**
+
+## 5.1 行尺度
+
+对当前更新后State计算：
+
+`m[i] = sqrt(mean_j(X[i,j]^2) + epsilon)`
+
+在每个Key Group内进行几何均值归一化。
+
+定义：
+
+`r[i] = (m[i]/GM_group(m))^a * (omega[i]/GM_group(omega))^(-b)`
+
+这是一种针对Group32的候选设计，不是原论文公式的完整复现。
+
+选择一套明确的离线超参数：
+
+- a控制Key行幅度。
+- b控制读取敏感性。
+- epsilon保护近零值。
+- r_min/r_max避免极端缩放。
+
+建议使用预冻结的有限候选网格：
+
+`(a,b) ∈ {(0.25,0.25),(0.50,0.25),(0.50,0.50)}`
+
+先在非AIME CAL数据上根据固定的读取误差代理选择一组参数，在独立VAL文档报告泛化表现，然后冻结唯一(a,b)。
+
+RowBal与RW必须共享相同参数，不得分别调优。
+
+建议初始化稳定范围：
+
+`r[i] ∈ [0.25,4.0]`
+
+实际选用的数值必须在正式AIME之前冻结，不得依据AIME正确率修改。
+
+## 5.2 量化定义
+
+先进行行归一化：
+
+`Y[i,j] = X[i,j]/r[i]`
+
+对每个Value列的32元素Group计算：
+
+`s[g,j] = max_abs(Y_group)/127`
+
+执行原Sym8 Encode/Decode：
+
+`q[i,j] = Sym8Encode(Y[i,j],s[g,j])`
+
+最后：
+
+`X_hat[i,j] = r[i]*s[g,j]*q[i,j]`
+
+下一token真正使用的是X_hat。
+
+### 必须满足
+
+- r始终为有限正数。
+- 不产生zero-point。
+- q仍为Signed INT8。
+- 仍沿Key轴G32。
+- 不修改GDN更新。
+- 本次r根据当前更新后State动态计算。
+- 不持久保存未量化的X。
+- 动态r所需的工作Tensor不能成为高精度continuation shadow。
+
+### 元数据口径
+
+原Sym32已有每Group的FP32 scale。
+
+RowBal另外引入每Key行的r。
+
+如果将来实现真实packed整数State，必须考虑保存每token最新r或设计等价恢复方式，不能忽略这部分元数据成本。
+
+目前仍采用已QDQ的FP32 State carrier，不声称真实packed INT8显存压缩。
+
+不要额外引入纯Value列缩放后直接套用原absmax，因为该尺度在精确算术下可能完全抵消。
+
+---
+
+# 六、方法RW：H+G32+Sym8+RowBal+WScale
+
+这是第三个正式候选。
+
+它不是重新发明一套独立量化器，而是严格组合前两个模块。
+
+要求：
+
+- 使用与R完全相同的omega。
+- 使用与R完全相同的(a,b)。
+- 使用与R完全相同的r计算。
+- 使用与W完全相同的Lambda候选集合。
+- 使用与W完全相同的加权scale搜索规则。
+
+## 6.1 组合算法
+
+先通过RowBal计算：
+
+`Y[i,j] = X[i,j]/r[i]`
+
+再计算基础尺度：
+
+`s0[g,j] = max_abs(Y_group)/127`
+
+对每个lambda：
+
+`s_lambda = max(lambda*s0,scale_floor)`
+
+`q_lambda = clip(round(Y/s_lambda),-127,127)`
+
+`X_hat_lambda[i,j] = r[i]*s_lambda*q_lambda[i,j]`
+
+**重要：组合方案的scale选择目标必须在原始X空间计算，而不是只计算归一化Y的普通MSE。**
+
+即：
+
+`L_RW(lambda) = sum_i omega[i]*(X[i,j]-X_hat_lambda[i,j])^2`
+
+取最小目标对应的scale进行正式QDQ。
+
+这确保RW仍然优化原始State的加权重建误差，而不是因r的尺度变化改变了目标含义。
+
+## 6.2 消融关系
+
+- W相对原Sym32：只新增WScale。
+- R相对原Sym32：只新增RowBal。
+- RW相对R：只新增WScale。
+- RW相对W：新增RowBal。
+
+此处W、R、RW必须共享相同的量化轴、Hadamard及FP32数值基础。
+
+所有配置使用同一个统一量化器框架，不能分别维护三套容易产生数学漂移的实现。
+
+---
+
+# 七、统一CPU资格与非AIME诊断
+
+不要设置“局部MSE必须下降”作为进入AIME的科学门禁。
+
+本阶段主要验证算法确实符合定义。
+
+### 必须测试
+
+1. 原`H+G32+Sym8`参数化回归。
+2. WScale的GPU候选选择与独立参考一致性。
+3. RowBal的r计算。
+4. RW使用相同r和omega。
+5. RW在原X空间选择scale。
+6. 全零/全正/全负Group。
+7. 小动态范围。
+8. scale floor。
+9. candidate tie-break。
+10. 负零和Signed INT8范围。
+11. finite及非法值处理。
+12. 真正沿Key维度32元素分组。
+13. 不跨Layer/Head/Value列混组。
+14. 用lambda=1且r=1时恢复原Sym32。
+15. 当前计算完成后立即使用解码State写回。
+
+非AIME诊断包括：
+
+- State MSE。
+- 加权State MSE。
+- 一步transported-query Readout Error。
+- 固定输入多步传播误差。
+- 幅度误差与方向误差。
+- Scale变化。
+- clipping/saturation。
+- Row factor分布。
+- GPU元数据开销。
+
+这些是研究分析指标。
+
+即使某个候选的代理指标不好，只要数学正确、数值有效、GPU运行合法，也必须保留其正式AIME资格。
+
+不要为了取得较好的代理指标而在AIME前无限次修改超参数。
+
+---
+
+# 八、GPU工程实施：统一高效Kernel
+
+当前可使用3张空闲RTX3090，但必须先核验真实GPU UUID、Owner-PID、显存和资源占用。
+
+不得抢占其他任务，也不得自动借用第四张GPU。
+
+优先使用原合格HISTORICAL_PORT和原Sym32数学。
+
+统一量化器接口建议支持：
+
+`method = base / wscale / rowbal / rowbal_wscale`
+
+其中base只用于回归和历史对照，不新增AIME生成。
+
+GPU实现要求：
+
+- 共享原FP32 scale与Sym8编码规则。
+- 所有候选仅替换QDQ环节。
+- 不改变Hadamard注入位置。
+- 不修改原GDN helper的更新/readout。
+- 不改变Sampler。
+- 不改变模型权重。
+- 不增加多token未量化State buffer。
+- 不产生CPU逐Group同步。
+
+WScale需要在GPU上高效评估候选scale。
+
+RowBal需要在GPU上批处理每行RMS、omega及r。
+
+RW应复用RowBal与WScale实现，避免重复计算相同的中间量。
+
+允许使用符合数值合同的自定义Triton实现，但需在独立源码路径下开发、测试及封存，不修改其他正在运行任务依赖的共享文件。
+
+### 最小必要GPU资格
+
+每个配置执行：
+
+- Codec字段测试。
+- 非AIME 32-token真实GDN。
+- 非AIME 128-token真实GDN。
+- 必要的512-token持续QDQ/fresh。
+- 每层真实QDQ调用。
+- 下一kernel消费已QDQ State。
+- Prompt逐tokenQDQ。
+- Sampler/RNG/Cache重置。
+- EOS与合法length处理。
+- finite、clipping及scale范围。
+- 长Context资源可行性。
+
+不要重做历史H+Sym32全部工程测试。
+
+不再设置与方法正确性没有直接对应关系的4倍Hadamard FP误差或2e-6对角均匀阈值。
+
+如果发现实际数学错误、非法量化、未执行QDQ或Cache污染，则必须停止对应分支。
+
+---
+
+# 九、先进行一次匹配性能验收
+
+三个新方法可能有显著不同的量化计算成本。
+
+尤其WScale需要每Group测试多个候选，不能假设它与原Sym32一样快。
+
+请用冻结的非AIME输入，在相同GPU及测量窗口下记录：
+
+- `H+G32+Sym8`短程TPS。
+- WScale TPS。
+- RowBal TPS。
+- RW TPS。
+- Prefill耗时。
+- Decode耗时。
+- Quantizer单独耗时。
+- CUDA Kernel调用数。
+- GPU峰值allocated/reserved。
+- r与omega元数据开销。
+- 每token额外计算量。
+
+如果存在明显可避免的逐Group同步、重复Tensor读取或过多Kernel Launch，应在正式AIME前集中优化并再次核验数学合同。
+
+不得为了速度：
+
+- 降低量化频率。
+- 使用FP State shadow。
+- 减少Lambda候选数。
+- 更改(a,b)。
+- 关闭Clipping检查。
+- 改变Group Size。
+- 更换Codec数学。
+
+正式前给出90条最大生成的资源估算。
+
+不人为预设“必须超过某TPS才能证明科学有效”的门禁，但若Runtime不能合法完成81920上限、显存不足或资源不可用，则不得启动正式生成。
+
+---
+
+# 十、AIME26正式协议
+
+严格复用原Qwen Group32任务。
+
+### 数据
+
+- AIME26完整30题。
+- Seed1。
+- 原Prompt及Chat Template。
+- 原Tokenizer。
+- 相同输入token IDs。
+- 原Frozen V4。
+
+### 生成
+
+`max_new_tokens = 81920`
+
+实际Context必须能够支持Prompt加81920个新token。
+
+原Sampler目标参数：
+
+- Thinking=True。
+- do_sample=True。
+- temperature=1.0。
+- top_p=0.95。
+- top_k=20。
+- min_p=0。
+- presence_penalty=1.5。
+- repetition_penalty=1.0。
+- seed=1。
+
+必须从历史Runner恢复实际生效的sampling backend、generated-only presence mask、EOS及Generator初始化规则。
+
+不能凭本提示词重新写一套Sampler。
+
+所有样本从零State独立开始。
+
+正式生成时不再调整omega、a、b、Lambda或数值实现。
+
+---
+
+# 十一、三张3090正式调度
+
+不要每张GPU固定一种量化器。
+
+采用按题目配对调度：
+
+| GPU | AIME题目 | WScale | RowBal | RW |
+|---|---:|---:|---:|---:|
+| 3090-A | 10 | 10 | 10 | 10 |
+| 3090-B | 10 | 10 | 10 | 10 |
+| 3090-C | 10 | 10 | 10 | 10 |
+| 合计 | 30 | 30 | 30 | 30 |
+
+同一题的三种配置必须在同一GPU UUID上独立执行。
+
+题目分配应在正式生成前使用确定性规则冻结。
+
+各GPU内串行，三个GPU之间并行。
+
+每条样本需要独立：
+
+- Model Request。
+- Sampler Generator。
+- Seed1 RNG。
+- Recurrent State。
+- Attention KV Cache。
+- Penalty状态。
+- Generated token历史。
+
+可以预先轮换W/R/RW顺序，但不得依据已出现的AIME正确率调整。
+
+在正式运行前冻结实际GPU映射和执行顺序。
+
+如果无法继续使用历史`H+G32+Sym8`所绑定的GPU UUID，必须记录与历史比较的设备差异。
+
+---
+
+# 十二、正式生成数量和资源纪律
+
+本轮：
+
+`3 × 30 × 81920 = 7,372,800`
+
+这是理论最大新token数，不是预计实际生成量。
+
+用户本轮未设置GPUh硬预算，因此不要沿用历史0.5GPUh限制或任意30分钟任务上限。
+
+但是必须保留：
+
+- GPU UUID。
+- PID和外部占用检查。
+- GPU显存。
+- 实际生成进度。
+- 无真实进展Watchdog。
+- 磁盘空间检查。
+- Runtime异常。
+- OOM。
+- Worker退出和GPU释放。
+- GPU时间可信上下界。
+- Append-only资源账本。
+
+若精确GPUh无法从轮询确定：
+
+`EXACT_GPUh=UNRESOLVED`
+
+不能将观测区间称为物理精确GPUh。
+
+如果三GPU不足以同时运行，可以合法串行/减少并行数量，但不能增加未经授权GPU、缩短81920或更改正式方法定义。
+
+不能因为某候选前几题正确率低而停止。
+
+---
+
+# 十三、正式评分与科学分析
+
+完成后使用原Frozen V4，并进行独立CPU复评分。
+
+结果表：
+
+| Method | Correct/30 | Accuracy |
+|---|---:|---:|
+| `H+G32+Sym8` | 历史21/30 | 70.00% |
+| `H+G32+Sym8+WScale` | 实测 | 实测 |
+| `H+G32+Sym8+RowBal` | 实测 | 实测 |
+| `H+G32+Sym8+RowBal+WScale` | 实测 | 实测 |
+| `H+G32+Asym8` | 历史25/30 | 83.33% |
+
+核心比较：
+
+1. WScale相对原Sym32能否增加正确题数？
+2. RowBal相对原Sym32能否增加正确题数？
+3. RW相对WScale是否有额外收益？
+4. RW相对RowBal是否有额外收益？
+5. 哪个方法能否缩小与Asym8的正确率差距？
+
+计算两因素交互：
+
+`I = Acc(RW)-Acc(R)-Acc(W)+Acc(Base)`
+
+这里Base为历史`H+G32+Sym8`。
+
+如果Base与新增方法的实际执行协议不完全匹配，完整交互只能作为描述性结果，不能宣称严格匹配的因果作用。
+
+### 逐题分析
+
+提供：
+
+- 三种新方法各自正确/错误向量。
+- 两两rescued、lost与net_correct。
+- exact McNemar双侧p值。
+- 与历史基线的合法同题比较。
+- 最终答案。
+- EOS/length。
+- 输出token数。
+- 非有限值与Runtime错误。
+- GPU UUID及执行时间。
+- 真实QDQ证据摘要。
+
+30题单Seed1，而且AIME26已被此前实验使用，所有准确率差异和检验都属于探索性分析。
+
+不得根据这次AIME成绩再次调优omega或(a,b)并声称独立确认。
+
+---
+
+# 十四、存储与实际部署成本
+
+必须分别报告：
+
+1. 数值QDQ语义。
+2. FP32 carrier实际显存。
+3. 临时INT8 codes。
+4. FP32 scales。
+5. 静态omega占用。
+6. RowBal动态r占用。
+7. 理论packed整数存储。
+8. 实际TPS及显存。
+
+特别注意：
+
+- WScale仍保留每Group一个动态scale，但需要离线静态omega及额外候选计算。
+- RowBal增加每Key行有效尺度，真实packed实现时需要相应metadata。
+- RW同时具有这两种开销。
+- 当前原GDN使用FP32 Tensor保存QDQ后的State，并非已经实现物理packed INT8。
+
+不能因为新方法仍是8-bit code，就声称它与原Sym8在元数据和计算成本上完全相同。
+
+---
+
+# 十五、交付与封存
+
+新独立root：
+
+`QWEN_GDN_SYM8_G32_WSCALE_ROWBAL_AIME26_SEED1_V1`
+
+至少交付真实存在的：
+
+1. `EXECUTION_PLAN.md`
+2. `SOURCE_MODEL_RUNTIME_IDENTITY.json`
+3. `HISTORICAL_G32_BASELINE_REUSE.json`
+4. `CALIBRATION_DATA_FREEZE.json`
+5. `TRANSPORTED_QUERY_OMEGA.json`
+6. `WSCALE_NUMERICAL_CONTRACT.md`
+7. `ROWBAL_NUMERICAL_CONTRACT.md`
+8. `COMBINED_NUMERICAL_CONTRACT.md`
+9. `CALIBRATION_PARAMETER_SELECTION.json`
+10. `CPU_CODEC_QUALIFICATION.json`
+11. `GPU_CODEC_QUALIFICATION.json`
+12. `PERSISTENT_QDQ_NEXT_CONSUMPTION.json`
+13. `GPU_THROUGHPUT_AND_MEMORY.json`
+14. `AIME26_SEED1_PROTOCOL_FREEZE.json`
+15. `QUESTION_GPU_ASSIGNMENT.json`
+16. `FORMAL_PROGRESS.json`
+17. `FORMAL_GENERATIONS_90.jsonl`
+18. `FROZEN_V4_SCORES.json`
+19. `AIME26_PER_PROBLEM_RESULTS.csv`
+20. `WSCALE_ROWBAL_PAIRWISE_INTERACTION.json`
+21. `GENERATION_LENGTH_AND_RESOURCES.md`
+22. `GPU_RESOURCE_LEDGER.jsonl`
+23. `FINAL_SCIENTIFIC_REPORT.md`
+24. `SHA256_MANIFEST.json`
+25. `FINAL_SEAL_RECEIPT.json`
+
+已有历史模型、Group32正式结果、OSCAR及其他实验资产全部只读。
+
+未产生的正式结果不得填入虚构数字，也不得创建假完成文件。
+
+---
+
+# 十六、一次性执行顺序
+
+请不要拆成反复的Recovery任务。
+
+### Phase A：共享校准及数学定义
+
+- 恢复Group32正式基线。
+- 复用或一次性采集非AIME真实State/Query/Gate。
+- 计算并冻结omega。
+- 冻结Lambda。
+- 在非AIME数据上一次性确定RowBal的(a,b)。
+- 建立统一三模式量化数学合同。
+
+### Phase B：统一工程实现
+
+- 实现WScale。
+- 实现RowBal。
+- 实现RW。
+- CPU独立数学测试。
+- GPU高效批量/融合实现。
+- 保留原Canonical Sym8及持久QDQ数学。
+
+### Phase C：必要GPU资格与性能确认
+
+- 数值字段资格。
+- 真实9B短程Forward。
+- Prompt每tokenQDQ。
+- Next-kernel真实消费。
+- Fresh-process。
+- Sampler。
+- 长Context资源。
+- 匹配TPS及显存测量。
+
+资格合格后直接启动AIME，不再插入额外Future-KL科学门禁。
+
+### Phase D：正式AIME26
+
+- 3张3090。
+- 每张负责10题。
+- 每题三个配置。
+- 总共90条生成。
+- Seed1。
+- 最多81920新token。
+- 按合法EOS/length结束。
+- 不依据阶段性正确率更改方法。
+
+### Phase E：评分与封存
+
+- Frozen V4。
+- 独立CPU复评分。
+- 同题配对与交互。
+- 校准代理与AIME结果分开报告。
+- 性能及元数据成本。
+- 完整SHA及资源封存。
+
+## 合法终态
+
+90条全部合法完成：
+
+`FORMAL_COMPLETE_90_90_AND_STOP`
+
+数学或真实QDQ错误：
+
+`QUANTIZER_MATH_OR_QDQ_FAIL_CLOSED_STOP`
+
+GPU资源不可用：
+
+`RESOURCE_BLOCKED_NO_DISPATCH`
+
+Runtime不能满足81920生成协议：
+
+`RUNTIME_LONG_CONTEXT_FAIL_CLOSED_STOP`
+
+部分合法完成：
+
+`PARTIAL_RESULTS_PRESERVED_AND_STOP`
+
+不允许通过修改量化规则、改变seed、缩短长度、重试选择正确答案或跳过必要数学资格取得成功。
+
+## 最终科学目标
+
+在固定Hadamard、对称INT8、Key Group32和真实逐tokenQDQ的条件下，直接验证：
+
+**读取敏感性加权Group尺度、Key行幅度归一化，以及两者联合设计，能否改善Qwen/GDN的AIME26数学推理能力，并在不引入zero-point的情况下缩小与非对称INT8的差距。**
+
+请集中完成一套高效统一实现，减少不必要的重复实验，让最终AIME26准确率、逐题配对和真实性能决定方法价值。

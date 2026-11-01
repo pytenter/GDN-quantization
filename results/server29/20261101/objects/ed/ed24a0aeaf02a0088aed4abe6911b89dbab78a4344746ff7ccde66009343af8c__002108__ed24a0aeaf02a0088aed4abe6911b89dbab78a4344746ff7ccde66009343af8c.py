@@ -1,0 +1,6 @@
+def __create_fn__():
+ def __eq__(self,other):
+  if other.__class__ is self.__class__:
+   return (self._rule_id_name_set,self.node_missing_onnx_shape_inference,self.missing_custom_symbolic_function,self.missing_standard_symbolic_function,self.operator_supported_in_newer_opset_version,self.fx_graph_to_onnx,self.fx_node_to_onnx,self.fx_pass,self.no_symbolic_function_for_call_function,self.unsupported_fx_node_analysis,self.op_level_debugging,self.find_opschema_matched_symbolic_function,self.fx_node_insert_type_promotion,self.find_operator_overloads_in_onnx_registry,)==(other._rule_id_name_set,other.node_missing_onnx_shape_inference,other.missing_custom_symbolic_function,other.missing_standard_symbolic_function,other.operator_supported_in_newer_opset_version,other.fx_graph_to_onnx,other.fx_node_to_onnx,other.fx_pass,other.no_symbolic_function_for_call_function,other.unsupported_fx_node_analysis,other.op_level_debugging,other.find_opschema_matched_symbolic_function,other.fx_node_insert_type_promotion,other.find_operator_overloads_in_onnx_registry,)
+  return NotImplemented
+ return __eq__

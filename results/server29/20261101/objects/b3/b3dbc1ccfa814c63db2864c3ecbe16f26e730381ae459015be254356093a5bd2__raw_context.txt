@@ -1,0 +1,1559 @@
+bauble/view.py
+class PropertiesExpander(InfoExpander):
+
+    def __init__(self):
+        super().__init__(_('Properties'))
+        table = Gtk.Table(rows=4, columns=2)
+        table.set_col_spacings(15)
+        table.set_row_spacings(8)
+
+        # database id
+        id_label = Gtk.Label(label="<b>"+_("ID:")+"</b>")
+        id_label.set_use_markup(True)
+        id_label.set_alignment(1, .5)
+        self.id_data = Gtk.Label(label='--')
+        self.id_data.set_alignment(0, .5)
+        table.attach(id_label, 0, 1, 0, 1)
+        table.attach(self.id_data, 1, 2, 0, 1)
+
+        # object type
+        type_label = Gtk.Label(label="<b>"+_("Type:")+"</b>")
+        type_label.set_use_markup(True)
+        type_label.set_alignment(1, .5)
+        self.type_data = Gtk.Label(label='--')
+        self.type_data.set_alignment(0, .5)
+        table.attach(type_label, 0, 1, 1, 2)
+        table.attach(self.type_data, 1, 2, 1, 2)
+
+        # date created
+        created_label = Gtk.Label(label="<b>"+_("Date created:")+"</b>")
+        created_label.set_use_markup(True)
+        created_label.set_alignment(1, .5)
+        self.created_data = Gtk.Label(label='--')
+        self.created_data.set_alignment(0, .5)
+        table.attach(created_label, 0, 1, 2, 3)
+        table.attach(self.created_data, 1, 2, 2, 3)
+
+        # date last updated
+        updated_label = Gtk.Label(label="<b>"+_("Last updated:")+"</b>")
+        updated_label.set_use_markup(True)
+        updated_label.set_alignment(1, .5)
+        self.updated_data = Gtk.Label(label='--')
+        self.updated_data.set_alignment(0, .5)
+        table.attach(updated_label, 0, 1, 3, 4)
+        table.attach(self.updated_data, 1, 2, 3, 4)
+
+        box = Gtk.HBox()
+        box.pack_start(table, False, False, 0)
+        self.vbox.pack_start(box, False, False, 0)
+
+    def update(self, row):
+        """"
+        Update the widget in the expander.
+        """
+        self.id_data.set_text(str(row.id))
+        self.type_data.set_text(str(type(row).__name__))
+        self.created_data.set_text(
+            row._created
+            and row._created.strftime('%Y-%m-%d %H:%m:%S')
+            or '')
+        self.updated_data.set_text(
+            row._last_updated
+            and row._last_updated.strftime('%Y-%m-%d %H:%m:%S')
+            or '')
+bauble/view.py
+class InfoExpander(Gtk.Expander):
+    """
+    an abstract class that is really just a generic expander with a vbox
+    to extend this you just have to implement the update() method
+    """
+
+    # preference for storing the expanded state
+    expanded_pref = None
+
+    def __init__(self, label, widgets=None):
+        """
+        :param label: the name of this info expander, this is displayed on the
+        expander's expander
+
+        :param widgets: a bauble.utils.BuilderWidgets instance
+        """
+        super().__init__()
+        self.set_label(label)
+        self.vbox = Gtk.VBox(False)
+        self.vbox.set_border_width(5)
+        self.add(self.vbox)
+        self.widgets = widgets
+        if not self.expanded_pref:
+            self.set_expanded(True)
+        self.connect("notify::expanded", self.on_expanded)
+
+    def on_expanded(self, expander, *args):
+        if self.expanded_pref:
+            prefs.prefs[self.expanded_pref] = expander.get_expanded()
+            prefs.prefs.save()
+
+    def set_labeled_value(self, prefix, value):
+        '''toggle visibility of labeled value, set value
+
+        if value is not empty, update the value and show both the label and
+        the value.  if the value is empty, show both label and value.
+
+        note: label id is prefix+'_label', value id is prefix+'_data'.
+
+        '''
+        if value:
+            self.widget_set_value(prefix + '_data', value)
+            self.widgets[prefix + '_data'].set_visible(True)
+            self.widgets[prefix + '_label'].set_visible(True)
+        else:
+            self.widgets[prefix + '_data'].set_visible(False)
+            self.widgets[prefix + '_label'].set_visible(False)
+
+    def widget_set_value(self, widget_name, value, markup=False, default=None):
+        '''
+        a shorthand for L{bauble.utils.set_widget_value()}
+        '''
+        utils.set_widget_value(self.widgets[widget_name], value,
+                               markup, default)
+
+    def update(self, value):
+        '''
+        This method should be implemented by classes that extend InfoExpander
+        '''
+        raise NotImplementedError("InfoExpander.update(): not implemented")
+bauble/plugins/plants/species_model.py
+class Species(db.Base, db.Serializable, db.DefiningPictures, db.WithNotes):
+    """
+    :Table name: species
+
+    :Columns:
+        *epithet*:
+        *sp2*:
+        *author*:
+
+        *hybrid*:
+            Hybrid flag
+
+        *infrasp1*:
+        *infrasp1_rank*:
+        *infrasp1_author*:
+
+        *infrasp2*:
+        *infrasp2_rank*:
+        *infrasp2_author*:
+
+        *infrasp3*:
+        *infrasp3_rank*:
+        *infrasp3_author*:
+
+        *infrasp4*:
+        *infrasp4_rank*:
+        *infrasp4_author*:
+
+        *cv_group*:
+        *trade_name*:
+
+        *sp_qual*:
+            Species qualifier
+
+            Possible values:
+                *agg.*: An aggregate species
+
+                *s. lat.*: aggregrate species (sensu lato)
+
+                *s. str.*: segregate species (sensu stricto)
+
+        *label_distribution*:
+            UnicodeText
+            This field is optional and can be used for the label in case
+            str(self.distribution) is too long to fit on the label.
+
+    :Properties:
+        *accessions*:
+
+        *vernacular_names*:
+
+        *default_vernacular_name*:
+
+        *synonyms*:
+
+        *distribution*:
+
+    :Constraints:
+        The combination of epithet, author, hybrid, sp_qual,
+        cv_group, trade_name, genus_id
+    """
+    __tablename__ = 'species'
+    __mapper_args__ = {'order_by': ['epithet', 'author']}
+
+    rank = 'species'
+    link_keys = ['accepted']
+
+    def search_view_markup_pair(self):
+        '''provide the two lines describing object for SearchView row.
+        '''
+        try:
+            if len(self.vernacular_names) > 0:
+                substring = (
+                    '%s -- %s' %
+                    (self.genus.family,
+                     ', '.join([str(v) for v in self.vernacular_names])))
+            else:
+                substring = '%s' % self.genus.family
+            trail = ''
+            if self.accepted:
+                trail += ('<span foreground="#555555" size="small" '
+                          'weight="light"> - ' + _("synonym of %s") + "</span>"
+                          ) % self.accepted.markup(authors=True)
+            citation = self.markup(authors=True)
+            authorship_text = utils.xml_safe(self.author)
+            if authorship_text:
+                citation = citation.replace(authorship_text, '<span weight="light">' + authorship_text + '</span>')
+            return citation + trail, substring
+        except Exception as e:
+            import traceback
+            logger.warning(traceback.format_exc())
+            return '...', '...'
+
+    @property
+    def cites(self):
+        '''the cites status of this taxon, or None
+
+        cites appendix number, one of I, II, or III.
+        not enforced by the software in v1.0.x
+        '''
+
+        cites_notes = [i.note for i in self.notes
+                       if i.category and i.category.upper() == 'CITES']
+        if not cites_notes:
+            return self.genus.cites
+        return cites_notes[0]
+
+    @property
+    def conservation(self):
+        '''the IUCN conservation status of this taxon, or DD
+
+        one of: EX, RE, CR, EN, VU, NT, LC, DD
+        not enforced by the software in v1.0.x
+        '''
+
+        {'EX': _('Extinct (EX)'),
+         'EW': _('Extinct Wild (EW)'),
+         'RE': _('Regionally Extinct (RE)'),
+         'CR': _('Critically Endangered (CR)'),
+         'EN': _('Endangered (EN)'),
+         'VU': _('Vulnerable (VU)'),
+         'NT': _('Near Threatened (NT)'),
+         'LV': _('Least Concern (LC)'),
+         'DD': _('Data Deficient (DD)'),
+         'NE': _('Not Evaluated (NE)')}
+
+        notes = [i.note for i in self.notes
+                 if i.category and i.category.upper() == 'IUCN']
+        return (notes + ['DD'])[0]
+
+    @property
+    def condition(self):
+        '''the condition of this taxon, or None
+
+        this is referred to what the garden conservator considers the
+        area of interest. it is really an interpretation, not a fact.
+        '''
+        # one of, but not forcibly so:
+        [_('endemic'), _('indigenous'), _('native'), _('introduced')]
+
+        notes = [i.note for i in self.notes
+                 if i.category.lower() == 'condition']
+        return (notes + [None])[0]
+
+    def __lowest_infraspecific(self):
+        infrasp = [(self.infrasp1_rank, self.infrasp1,
+                    self.infrasp1_author),
+                   (self.infrasp2_rank, self.infrasp2,
+                    self.infrasp2_author),
+                   (self.infrasp3_rank, self.infrasp3,
+                    self.infrasp3_author),
+                   (self.infrasp4_rank, self.infrasp4,
+                    self.infrasp4_author)]
+        infrasp = [i for i in infrasp if i[0] not in ['cv.', '', None]]
+        if infrasp == []:
+            return ('', '', '')
+        return sorted(infrasp, key=lambda a: rank_level(a[0]))[-1]
+
+    @property
+    def infraspecific_rank(self):
+        return self.__lowest_infraspecific()[0] or ''
+
+    @property
+    def infraspecific_epithet(self):
+        return self.__lowest_infraspecific()[1] or ''
+
+    @property
+    def infraspecific_author(self):
+        return self.__lowest_infraspecific()[2] or ''
+
+    @property
+    def cultivar_epithet(self):
+        infrasp = ((self.infrasp1_rank, self.infrasp1,
+                    self.infrasp1_author),
+                   (self.infrasp2_rank, self.infrasp2,
+                    self.infrasp2_author),
+                   (self.infrasp3_rank, self.infrasp3,
+                    self.infrasp3_author),
+                   (self.infrasp4_rank, self.infrasp4,
+                    self.infrasp4_author))
+        for rank, epithet, author in infrasp:
+            if rank == 'cv.':
+                return epithet
+        return ''
+
+    # columns
+    epithet = Column(Unicode(64), index=True)
+    sp = synonym('epithet')
+    sp2 = Column(Unicode(64), index=True)  # in case hybrid=True
+    author = Column(Unicode(128))
+    hybrid = Column(Boolean, default=False)
+    sp_qual = Column(types.Enum(values=['agg.', 's. lat.', 's. str.', None]),
+                     default=None)
+    cv_group = Column(Unicode(50))
+    trade_name = Column(Unicode(64))
+
+    infrasp1 = Column(Unicode(64))
+    infrasp1_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp1_author = Column(Unicode(64))
+
+    infrasp2 = Column(Unicode(64))
+    infrasp2_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp2_author = Column(Unicode(64))
+
+    infrasp3 = Column(Unicode(64))
+    infrasp3_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp3_author = Column(Unicode(64))
+
+    infrasp4 = Column(Unicode(64))
+    infrasp4_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp4_author = Column(Unicode(64))
+
+    genus_id = Column(Integer, ForeignKey('genus.id'), nullable=False)
+    ## the Species.genus property is defined as backref in Genus.species
+
+    label_distribution = Column(UnicodeText)
+    bc_distribution = Column(UnicodeText)
+
+    # relations
+    synonyms = association_proxy('_synonyms', 'synonym')
+    _synonyms = relation('SpeciesSynonym',
+                         primaryjoin='Species.id==SpeciesSynonym.species_id',
+                         cascade='all, delete-orphan', uselist=True,
+                         backref='species')
+
+    # this is a dummy relation, it is only here to make cascading work
+    # correctly and to ensure that all synonyms related to this genus
+    # get deleted if this genus gets deleted
+    _syn = relation('SpeciesSynonym',
+                    primaryjoin='Species.id==SpeciesSynonym.synonym_id',
+                    cascade='all, delete-orphan', uselist=True)
+
+    ## VernacularName.species gets defined here too.
+    vernacular_names = relation('VernacularName', cascade='all, delete-orphan',
+                                collection_class=VNList,
+                                backref=backref('species', uselist=False))
+    _default_vernacular_name = relation('DefaultVernacularName', uselist=False,
+                                        cascade='all, delete-orphan',
+                                        backref=backref('species',
+                                                        uselist=False))
+    distribution = relation('SpeciesDistribution',
+                            cascade='all, delete-orphan',
+                            backref=backref('species', uselist=False))
+
+    habit_id = Column(Integer, ForeignKey('habit.id'), default=None)
+    habit = relation('Habit', uselist=False, backref='species')
+
+    flower_color_id = Column(Integer, ForeignKey('color.id'), default=None)
+    flower_color = relation('Color', uselist=False, backref='species')
+
+    #hardiness_zone = Column(Unicode(4))
+
+    awards = Column(UnicodeText)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __str__(self):
+        'return the default string representation for self.'
+        return self.str()
+
+    def _get_default_vernacular_name(self):
+        if self._default_vernacular_name is None:
+            return None
+        return self._default_vernacular_name.vernacular_name
+
+    def _set_default_vernacular_name(self, vn):
+        if vn is None:
+            del self.default_vernacular_name
+            return
+        if vn not in self.vernacular_names:
+            self.vernacular_names.append(vn)
+        d = DefaultVernacularName()
+        d.vernacular_name = vn
+        self._default_vernacular_name = d
+
+    def _del_default_vernacular_name(self):
+        utils.delete_or_expunge(self._default_vernacular_name)
+        del self._default_vernacular_name
+    default_vernacular_name = property(_get_default_vernacular_name,
+                                       _set_default_vernacular_name,
+                                       _del_default_vernacular_name)
+
+    def distribution_str(self):
+        if self.distribution is None:
+            return ''
+        else:
+            dist = ['%s' % d for d in self.distribution]
+            return str(', ').join(sorted(dist))
+
+    def markup(self, authors=False, genus=True):
+        '''returns this object as a string with markup
+
+        :param authors: whether the authorship should be included
+        :param genus: whether the genus name should be included
+
+        '''
+        return self.str(authors, markup=True, genus=genus)
+
+    # in PlantPlugins.init() we set this to 'x' for win32
+    hybrid_char = '×'
+
+    def str(self, authors=False, markup=False, remove_zws=False, genus=True,
+            qualification=None):
+        '''
+        returns a string for species
+
+        :param authors: flag to toggle whether authorship should be included
+        :param markup: flag to toggle whether the returned text is marked up
+        to show italics on the epithets
+        :param remove_zws: flag to toggle zero width spaces, helping
+        semantically correct lexicographic order.
+        :param genus: flag to toggle leading genus name.
+        :param qualification: pair or None. if specified, first is the
+        qualified rank, second is the qualification.
+        '''
+        # TODO: this method will raise an error if the session is none
+        # since it won't be able to look up the genus....we could
+        # probably try to query the genus directly with the genus_id
+        if genus is True:
+            genus = str(self.genus)
+        else:
+            genus = ''
+        if self.epithet and not remove_zws:
+            epithet = '\u200b' + self.epithet  # prepend with zero_width_space
+        else:
+            epithet = self.epithet
+        sp2 = self.sp2
+        if markup:
+            escape = utils.xml_safe
+            italicize = lambda s: (  # all but the multiplication signs
+                '<i>%s</i>' % escape(s).replace('×', '</i>×<i>'))
+            genus = italicize(genus)
+            if epithet is not None:
+                epithet = italicize(epithet)
+            if sp2 is not None:
+                sp2 = italicize(sp2)
+        else:
+            italicize = escape = lambda x: x
+
+        author = None
+        if authors and self.author:
+            author = escape(self.author)
+
+        infrasp = ((self.infrasp1_rank, self.infrasp1,
+                    self.infrasp1_author),
+                   (self.infrasp2_rank, self.infrasp2,
+                    self.infrasp2_author),
+                   (self.infrasp3_rank, self.infrasp3,
+                    self.infrasp3_author),
+                   (self.infrasp4_rank, self.infrasp4,
+                    self.infrasp4_author))
+
+        infrasp_parts = []
+        group_added = False
+        for irank, iepithet, iauthor in infrasp:
+            if irank == 'cv.' and iepithet:
+                if self.cv_group and not group_added:
+                    group_added = True
+                    infrasp_parts.append(_("(%(group)s Group)") %
+                                         dict(group=self.cv_group))
+                infrasp_parts.append("'%s'" % escape(iepithet))
+            else:
+                if irank:
+                    infrasp_parts.append(irank)
+                if iepithet and irank:
+                    infrasp_parts.append(italicize(iepithet))
+                elif iepithet:
+                    infrasp_parts.append(escape(iepithet))
+
+            if authors and iauthor:
+                infrasp_parts.append(escape(iauthor))
+        if self.cv_group and not group_added:
+            infrasp_parts.append(_("%(group)s Group") %
+                                 dict(group=self.cv_group))
+
+        # create the binomial part
+        binomial = [genus, self.hybrid and self.hybrid_char, epithet, author]
+        logger.debug("binomial parts: »%s« »%s« »%s« »%s«" % tuple(binomial))
+
+        # create the tail, ie: anything to add on to the end
+        tail = []
+        if self.sp_qual:
+            tail = [self.sp_qual]
+
+        if qualification is not None:
+            rank, qual = qualification
+            if qual in ['incorrect']:
+                rank = None
+            if rank == 'sp':
+                binomial.insert(2, qual)
+            elif not rank:
+                binomial[2] += ' (' + qual + ')'
+            elif rank == 'genus':
+                binomial.insert(0, qual)
+            elif rank == 'infrasp':
+                if infrasp_parts:
+                    infrasp_parts.insert(0, qual)
+            else:
+                for r, e, a in infrasp:
+                    if r == 'cv.':
+                        e = "'%s'" % e
+                    if rank == r:
+                        pos = infrasp_parts.index(e)
+                        infrasp_parts.insert(pos, qual)
+                else:
+                    logger.info('cannot find specified rank %s' % e)
+
+        parts = chain(binomial, infrasp_parts, tail)
+        s = utils.utf8(' '.join(i for i in parts if i))
+        if self.hybrid:
+            s = s.replace('%s ' % self.hybrid_char, self.hybrid_char)
+        return s
+
+    @property
+    def accepted(self):
+        'Name that should be used if name of self should be rejected'
+        from sqlalchemy.orm.session import object_session
+        session = object_session(self)
+        if not session:
+            logger.warning('species:accepted - object not in session')
+            return None
+        syn = session.query(SpeciesSynonym).filter(
+            SpeciesSynonym.synonym_id == self.id).first()
+        accepted = syn and syn.species
+        return accepted
+
+    @accepted.setter
+    def accepted(self, value):
+        'Name that should be used if name of self should be rejected'
+        logger.debug("Accepted taxon: %s %s" % (type(value), value))
+        assert isinstance(value, self.__class__)
+        if self in value.synonyms:
+            return
+        # remove any previous `accepted` link
+        from sqlalchemy.orm.session import object_session
+        session = object_session(self)
+        if not session:
+            logger.warning('species:accepted.setter - object not in session')
+            return
+        previous_synonymy_link = session.query(SpeciesSynonym).filter(
+            SpeciesSynonym.synonym_id == self.id).first()
+        if previous_synonymy_link:
+            a = session.query(Species).filter(Species.id==previous_synonymy_link.species_id).one()
+            a.synonyms.remove(self)
+        session.flush()
+        if value != self:
+            value.synonyms.append(self)
+        session.flush()
+
+    def has_accessions(self):
+        '''true if species is linked to at least one accession
+        '''
+
+        return False
+
+    infrasp_attr = {1: {'rank': 'infrasp1_rank',
+                        'epithet': 'infrasp1',
+                        'author': 'infrasp1_author'},
+                    2: {'rank': 'infrasp2_rank',
+                        'epithet': 'infrasp2',
+                        'author': 'infrasp2_author'},
+                    3: {'rank': 'infrasp3_rank',
+                        'epithet': 'infrasp3',
+                        'author': 'infrasp3_author'},
+                    4: {'rank': 'infrasp4_rank',
+                        'epithet': 'infrasp4',
+                        'author': 'infrasp4_author'}}
+
+    def get_infrasp(self, level):
+        """
+        level should be 1-4
+        """
+        return getattr(self, self.infrasp_attr[level]['rank']), \
+            getattr(self, self.infrasp_attr[level]['epithet']), \
+            getattr(self, self.infrasp_attr[level]['author'])
+
+    def set_infrasp(self, level, rank, epithet, author=None):
+        """
+        level should be 1-4
+        """
+        setattr(self, self.infrasp_attr[level]['rank'], rank)
+        setattr(self, self.infrasp_attr[level]['epithet'], epithet)
+        setattr(self, self.infrasp_attr[level]['author'], author)
+
+    def as_dict(self, recurse=True):
+        result = dict((col, getattr(self, col))
+                      for col in list(self.__table__.columns.keys())
+                      if col not in ['id']
+                      and col[0] != '_'
+                      and getattr(self, col) is not None
+                      and not col.endswith('_id'))
+        result['object'] = 'taxon'
+        result['rank'] = 'species'
+        result['ht-rank'] = 'genus'
+        result['ht-epithet'] = self.genus.epithet
+        if recurse and self.accepted is not None:
+            result['accepted'] = self.accepted.as_dict(recurse=False)
+        return result
+
+    @classmethod
+    def correct_field_names(cls, keys):
+        pass
+
+    @classmethod
+    def retrieve(cls, session, keys):
+        from .genus import Genus
+        try:
+            return session.query(cls).filter(
+                cls.epithet == keys['epithet']).join(Genus).filter(
+                Genus.epithet == keys['ht-epithet']).one()
+        except:
+            return None
+
+    @classmethod
+    def compute_serializable_fields(cls, session, keys):
+        from .genus import Genus
+        result = {'genus': None}
+        ## retrieve genus object
+        specifies_family = keys.get('familia')
+        result['genus'] = Genus.retrieve_or_create(
+            session, {'epithet': keys['ht-epithet'],
+                      'ht-epithet': specifies_family},
+            create=(specifies_family is not None))
+        if result['genus'] is None:
+            raise error.NoResultException()
+        return result
+
+    def top_level_count(self):
+        plants = [p for a in self.accessions for p in a.plants]
+        return {(1, 'Species'): 1,
+                (2, 'Genera'): set([self.genus.id]),
+                (3, 'Families'): set([self.genus.family.id]),
+                (4, 'Accessions'): len(self.accessions),
+                (5, 'Plantings'): len(plants),
+                (6, 'Living plants'): sum(p.quantity for p in plants),
+                (7, 'Locations'): set(p.location.id for p in plants),
+                (8, 'Sources'): set([a.source.source_detail.id
+                                     for a in self.accessions
+                                     if a.source and a.source.source_detail])}
+bauble/plugins/plants/species_editor.py
+def edit_species(model=None, parent_view=None, is_dependent_window=False):
+    kkk = SpeciesEditor(model, parent_view, is_dependent_window)
+    kkk.start()
+    result = kkk._committed
+    del kkk
+    return result
+bauble/plugins/plants/family.py
+class Family(db.Base, db.Serializable, db.WithNotes):
+    """
+    :Table name: family
+
+    :Columns:
+        *family*:
+            The name of the family. Required.
+
+        *qualifier*:
+            The family qualifier.
+
+            Possible values:
+                * s. lat.: aggregrate family (senso lato)
+
+                * s. str.: segregate family (senso stricto)
+
+                * '': the empty string
+
+    :Properties:
+        *synonyms*:
+            An association to _synonyms that will automatically
+            convert a Family object and create the synonym.
+
+    :Constraints:
+        The family table has a unique constraint on family/qualifier.
+    """
+    __tablename__ = 'family'
+    __table_args__ = (UniqueConstraint('epithet'), {})
+    __mapper_args__ = {'order_by': ['Family.epithet', 'Family.qualifier']}
+
+    rank = 'familia'
+    link_keys = ['accepted']
+
+    @validates('genus')
+    def validate_stripping(self, key, value):
+        if value is None:
+            return None
+        return value.strip()
+
+    @property
+    def cites(self):
+        '''the cites status of this taxon, or None
+        '''
+
+        cites_notes = [i.note for i in self.notes
+                       if i.category and i.category.upper() == 'CITES']
+        if not cites_notes:
+            return None
+        return cites_notes[0]
+
+    # columns
+    epithet = Column(String(45), nullable=False, index=True)
+    family = synonym('epithet')
+
+    # use '' instead of None so that the constraints will work propertly
+    author = Column(Unicode(255), default='')
+
+    # we use the blank string here instead of None so that the
+    # contraints will work properly,
+    qualifier = Column(types.Enum(values=['s. lat.', 's. str.', '']),
+                       default='')
+
+    # relations
+    # `genera` relation is defined outside of `Family` class definition
+    synonyms = association_proxy('_synonyms', 'synonym')
+    _synonyms = relation('FamilySynonym',
+                         primaryjoin='Family.id==FamilySynonym.family_id',
+                         cascade='all, delete-orphan', uselist=True,
+                         backref='family')
+
+    # this is a dummy relation, it is only here to make cascading work
+    # correctly and to ensure that all synonyms related to this family
+    # get deleted if this family gets deleted
+    __syn = relation('FamilySynonym',
+                     primaryjoin='Family.id==FamilySynonym.synonym_id',
+                     cascade='all, delete-orphan', uselist=True)
+
+    def __repr__(self):
+        return Family.str(self)
+
+    @staticmethod
+    def str(family, qualifier=False, author=False):
+        # author is not in the model but it really should
+        if family.epithet is None:
+            return db.Base.__repr__(family)
+        else:
+            return ' '.join([s for s in [
+                family.epithet, family.qualifier] if s not in (None, '')])
+
+    @property
+    def accepted(self):
+        'Name that should be used if name of self should be rejected'
+        session = object_session(self)
+        if not session:
+            logger.warning('family:accepted - object not in session')
+            return None
+        syn = session.query(FamilySynonym).filter(
+            FamilySynonym.synonym_id == self.id).first()
+        accepted = syn and syn.family
+        return accepted
+
+    @accepted.setter
+    def accepted(self, value):
+        'Name that should be used if name of self should be rejected'
+        assert isinstance(value, self.__class__)
+        if self in value.synonyms:
+            return
+        # remove any previous `accepted` link
+        session = object_session(self)
+        if not session:
+            logger.warning('family:accepted.setter - object not in session')
+            return
+        session.query(FamilySynonym).filter(
+            FamilySynonym.synonym_id == self.id).delete()
+        session.commit()
+        value.synonyms.append(self)
+
+    def has_accessions(self):
+        '''true if family is linked to at least one accession
+        '''
+
+        return False
+
+    def as_dict(self, recurse=True):
+        result = db.Serializable.as_dict(self)
+        if 'qualifier' in result:
+            del result['qualifier']
+        result['object'] = 'taxon'
+        result['rank'] = self.rank
+        result['epithet'] = self.epithet
+        if recurse and self.accepted is not None:
+            result['accepted'] = self.accepted.as_dict(recurse=False)
+        return result
+
+    @classmethod
+    def retrieve(cls, session, keys):
+        try:
+            return session.query(cls).filter(
+                cls.epithet == keys['epithet']).one()
+        except:
+            return None
+
+    @classmethod
+    def correct_field_names(cls, keys):
+        pass
+
+    def top_level_count(self):
+        genera = set(g for g in self.genera if g.species)
+        species = [s for g in genera for s in g.species]
+        accessions = [a for s in species for a in s.accessions]
+        plants = [p for a in accessions for p in a.plants]
+        return {(1, 'Families'): set([self.id]),
+                (2, 'Genera'): genera,
+                (3, 'Species'): set(species),
+                (4, 'Accessions'): len(accessions),
+                (5, 'Plantings'): len(plants),
+                (6, 'Living plants'): sum(p.quantity for p in plants),
+                (7, 'Locations'): set(p.location.id for p in plants),
+                (8, 'Sources'): set([a.source.source_detail.id
+                                     for a in accessions
+                                     if a.source and a.source.source_detail])}
+bauble/view.py
+class Action(Gtk.Action):
+
+    """
+    An Action allows a label, tooltip, callback and accelerator to be called
+    when specific items are selected in the SearchView
+    """
+    # issue #30: multiselect and singleselect are really specific to the
+    # SearchView and we could probably generalize this class a little bit
+    # more...or we just assume this class is specific to the SearchView and
+    # document it that way
+
+    def __init__(self, name, label, tooltip=None, stock_id=None,
+                 callback=None, accelerator=None,
+                 multiselect=False, singleselect=True):
+        """
+        callback: the function to call when the the action is activated
+        accelerator: accelerator to call this action
+        multiselect: show menu when multiple items are selected
+        singleselect: show menu when single items are selected
+
+        The activate signal is not automatically connected to the
+        callback method.
+        """
+        super().__init__(name=name, label=label, tooltip=tooltip, stock_id=stock_id)
+        self.callback = callback
+        self.multiselect = multiselect
+        self.singleselect = singleselect
+        self.accelerator = accelerator
+
+    def _set_enabled(self, enable):
+        self.set_visible(enable)
+        # if enable:
+        #     self.connect_accelerator()
+        # else:
+        #     self.disconnect_accelerator()
+
+    def _get_enabled(self):
+        return self.get_visible()
+
+    enabled = property(_get_enabled, _set_enabled)
+bauble/plugins/plants/species_model.py
+class Species(db.Base, db.Serializable, db.DefiningPictures, db.WithNotes):
+    """
+    :Table name: species
+
+    :Columns:
+        *epithet*:
+        *sp2*:
+        *author*:
+
+        *hybrid*:
+            Hybrid flag
+
+        *infrasp1*:
+        *infrasp1_rank*:
+        *infrasp1_author*:
+
+        *infrasp2*:
+        *infrasp2_rank*:
+        *infrasp2_author*:
+
+        *infrasp3*:
+        *infrasp3_rank*:
+        *infrasp3_author*:
+
+        *infrasp4*:
+        *infrasp4_rank*:
+        *infrasp4_author*:
+
+        *cv_group*:
+        *trade_name*:
+
+        *sp_qual*:
+            Species qualifier
+
+            Possible values:
+                *agg.*: An aggregate species
+
+                *s. lat.*: aggregrate species (sensu lato)
+
+                *s. str.*: segregate species (sensu stricto)
+
+        *label_distribution*:
+            UnicodeText
+            This field is optional and can be used for the label in case
+            str(self.distribution) is too long to fit on the label.
+
+    :Properties:
+        *accessions*:
+
+        *vernacular_names*:
+
+        *default_vernacular_name*:
+
+        *synonyms*:
+
+        *distribution*:
+
+    :Constraints:
+        The combination of epithet, author, hybrid, sp_qual,
+        cv_group, trade_name, genus_id
+    """
+    __tablename__ = 'species'
+    __mapper_args__ = {'order_by': ['epithet', 'author']}
+
+    rank = 'species'
+    link_keys = ['accepted']
+
+    def search_view_markup_pair(self):
+        '''provide the two lines describing object for SearchView row.
+        '''
+        try:
+            if len(self.vernacular_names) > 0:
+                substring = (
+                    '%s -- %s' %
+                    (self.genus.family,
+                     ', '.join([str(v) for v in self.vernacular_names])))
+            else:
+                substring = '%s' % self.genus.family
+            trail = ''
+            if self.accepted:
+                trail += ('<span foreground="#555555" size="small" '
+                          'weight="light"> - ' + _("synonym of %s") + "</span>"
+                          ) % self.accepted.markup(authors=True)
+            citation = self.markup(authors=True)
+            authorship_text = utils.xml_safe(self.author)
+            if authorship_text:
+                citation = citation.replace(authorship_text, '<span weight="light">' + authorship_text + '</span>')
+            return citation + trail, substring
+        except Exception as e:
+            import traceback
+            logger.warning(traceback.format_exc())
+            return '...', '...'
+
+    @property
+    def cites(self):
+        '''the cites status of this taxon, or None
+
+        cites appendix number, one of I, II, or III.
+        not enforced by the software in v1.0.x
+        '''
+
+        cites_notes = [i.note for i in self.notes
+                       if i.category and i.category.upper() == 'CITES']
+        if not cites_notes:
+            return self.genus.cites
+        return cites_notes[0]
+
+    @property
+    def conservation(self):
+        '''the IUCN conservation status of this taxon, or DD
+
+        one of: EX, RE, CR, EN, VU, NT, LC, DD
+        not enforced by the software in v1.0.x
+        '''
+
+        {'EX': _('Extinct (EX)'),
+         'EW': _('Extinct Wild (EW)'),
+         'RE': _('Regionally Extinct (RE)'),
+         'CR': _('Critically Endangered (CR)'),
+         'EN': _('Endangered (EN)'),
+         'VU': _('Vulnerable (VU)'),
+         'NT': _('Near Threatened (NT)'),
+         'LV': _('Least Concern (LC)'),
+         'DD': _('Data Deficient (DD)'),
+         'NE': _('Not Evaluated (NE)')}
+
+        notes = [i.note for i in self.notes
+                 if i.category and i.category.upper() == 'IUCN']
+        return (notes + ['DD'])[0]
+
+    @property
+    def condition(self):
+        '''the condition of this taxon, or None
+
+        this is referred to what the garden conservator considers the
+        area of interest. it is really an interpretation, not a fact.
+        '''
+        # one of, but not forcibly so:
+        [_('endemic'), _('indigenous'), _('native'), _('introduced')]
+
+        notes = [i.note for i in self.notes
+                 if i.category.lower() == 'condition']
+        return (notes + [None])[0]
+
+    def __lowest_infraspecific(self):
+        infrasp = [(self.infrasp1_rank, self.infrasp1,
+                    self.infrasp1_author),
+                   (self.infrasp2_rank, self.infrasp2,
+                    self.infrasp2_author),
+                   (self.infrasp3_rank, self.infrasp3,
+                    self.infrasp3_author),
+                   (self.infrasp4_rank, self.infrasp4,
+                    self.infrasp4_author)]
+        infrasp = [i for i in infrasp if i[0] not in ['cv.', '', None]]
+        if infrasp == []:
+            return ('', '', '')
+        return sorted(infrasp, key=lambda a: rank_level(a[0]))[-1]
+
+    @property
+    def infraspecific_rank(self):
+        return self.__lowest_infraspecific()[0] or ''
+
+    @property
+    def infraspecific_epithet(self):
+        return self.__lowest_infraspecific()[1] or ''
+
+    @property
+    def infraspecific_author(self):
+        return self.__lowest_infraspecific()[2] or ''
+
+    @property
+    def cultivar_epithet(self):
+        infrasp = ((self.infrasp1_rank, self.infrasp1,
+                    self.infrasp1_author),
+                   (self.infrasp2_rank, self.infrasp2,
+                    self.infrasp2_author),
+                   (self.infrasp3_rank, self.infrasp3,
+                    self.infrasp3_author),
+                   (self.infrasp4_rank, self.infrasp4,
+                    self.infrasp4_author))
+        for rank, epithet, author in infrasp:
+            if rank == 'cv.':
+                return epithet
+        return ''
+
+    # columns
+    epithet = Column(Unicode(64), index=True)
+    sp = synonym('epithet')
+    sp2 = Column(Unicode(64), index=True)  # in case hybrid=True
+    author = Column(Unicode(128))
+    hybrid = Column(Boolean, default=False)
+    sp_qual = Column(types.Enum(values=['agg.', 's. lat.', 's. str.', None]),
+                     default=None)
+    cv_group = Column(Unicode(50))
+    trade_name = Column(Unicode(64))
+
+    infrasp1 = Column(Unicode(64))
+    infrasp1_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp1_author = Column(Unicode(64))
+
+    infrasp2 = Column(Unicode(64))
+    infrasp2_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp2_author = Column(Unicode(64))
+
+    infrasp3 = Column(Unicode(64))
+    infrasp3_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp3_author = Column(Unicode(64))
+
+    infrasp4 = Column(Unicode(64))
+    infrasp4_rank = Column(types.Enum(values=list(infrasp_rank_values.keys()),
+                                      translations=infrasp_rank_values))
+    infrasp4_author = Column(Unicode(64))
+
+    genus_id = Column(Integer, ForeignKey('genus.id'), nullable=False)
+    ## the Species.genus property is defined as backref in Genus.species
+
+    label_distribution = Column(UnicodeText)
+    bc_distribution = Column(UnicodeText)
+
+    # relations
+    synonyms = association_proxy('_synonyms', 'synonym')
+    _synonyms = relation('SpeciesSynonym',
+                         primaryjoin='Species.id==SpeciesSynonym.species_id',
+                         cascade='all, delete-orphan', uselist=True,
+                         backref='species')
+
+    # this is a dummy relation, it is only here to make cascading work
+    # correctly and to ensure that all synonyms related to this genus
+    # get deleted if this genus gets deleted
+    _syn = relation('SpeciesSynonym',
+                    primaryjoin='Species.id==SpeciesSynonym.synonym_id',
+                    cascade='all, delete-orphan', uselist=True)
+
+    ## VernacularName.species gets defined here too.
+    vernacular_names = relation('VernacularName', cascade='all, delete-orphan',
+                                collection_class=VNList,
+                                backref=backref('species', uselist=False))
+    _default_vernacular_name = relation('DefaultVernacularName', uselist=False,
+                                        cascade='all, delete-orphan',
+                                        backref=backref('species',
+                                                        uselist=False))
+    distribution = relation('SpeciesDistribution',
+                            cascade='all, delete-orphan',
+                            backref=backref('species', uselist=False))
+
+    habit_id = Column(Integer, ForeignKey('habit.id'), default=None)
+    habit = relation('Habit', uselist=False, backref='species')
+
+    flower_color_id = Column(Integer, ForeignKey('color.id'), default=None)
+    flower_color = relation('Color', uselist=False, backref='species')
+
+    #hardiness_zone = Column(Unicode(4))
+
+    awards = Column(UnicodeText)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __str__(self):
+        'return the default string representation for self.'
+        return self.str()
+
+    def _get_default_vernacular_name(self):
+        if self._default_vernacular_name is None:
+            return None
+        return self._default_vernacular_name.vernacular_name
+
+    def _set_default_vernacular_name(self, vn):
+        if vn is None:
+            del self.default_vernacular_name
+            return
+        if vn not in self.vernacular_names:
+            self.vernacular_names.append(vn)
+        d = DefaultVernacularName()
+        d.vernacular_name = vn
+        self._default_vernacular_name = d
+
+    def _del_default_vernacular_name(self):
+        utils.delete_or_expunge(self._default_vernacular_name)
+        del self._default_vernacular_name
+    default_vernacular_name = property(_get_default_vernacular_name,
+                                       _set_default_vernacular_name,
+                                       _del_default_vernacular_name)
+
+    def distribution_str(self):
+        if self.distribution is None:
+            return ''
+        else:
+            dist = ['%s' % d for d in self.distribution]
+            return str(', ').join(sorted(dist))
+
+    def markup(self, authors=False, genus=True):
+        '''returns this object as a string with markup
+
+        :param authors: whether the authorship should be included
+        :param genus: whether the genus name should be included
+
+        '''
+        return self.str(authors, markup=True, genus=genus)
+
+    # in PlantPlugins.init() we set this to 'x' for win32
+    hybrid_char = '×'
+
+    def str(self, authors=False, markup=False, remove_zws=False, genus=True,
+            qualification=None):
+        '''
+        returns a string for species
+
+        :param authors: flag to toggle whether authorship should be included
+        :param markup: flag to toggle whether the returned text is marked up
+        to show italics on the epithets
+        :param remove_zws: flag to toggle zero width spaces, helping
+        semantically correct lexicographic order.
+        :param genus: flag to toggle leading genus name.
+        :param qualification: pair or None. if specified, first is the
+        qualified rank, second is the qualification.
+        '''
+        # TODO: this method will raise an error if the session is none
+        # since it won't be able to look up the genus....we could
+        # probably try to query the genus directly with the genus_id
+        if genus is True:
+            genus = str(self.genus)
+        else:
+            genus = ''
+        if self.epithet and not remove_zws:
+            epithet = '\u200b' + self.epithet  # prepend with zero_width_space
+        else:
+            epithet = self.epithet
+        sp2 = self.sp2
+        if markup:
+            escape = utils.xml_safe
+            italicize = lambda s: (  # all but the multiplication signs
+                '<i>%s</i>' % escape(s).replace('×', '</i>×<i>'))
+            genus = italicize(genus)
+            if epithet is not None:
+                epithet = italicize(epithet)
+            if sp2 is not None:
+                sp2 = italicize(sp2)
+        else:
+            italicize = escape = lambda x: x
+
+        author = None
+        if authors and self.author:
+            author = escape(self.author)
+
+        infrasp = ((self.infrasp1_rank, self.infrasp1,
+                    self.infrasp1_author),
+                   (self.infrasp2_rank, self.infrasp2,
+                    self.infrasp2_author),
+                   (self.infrasp3_rank, self.infrasp3,
+                    self.infrasp3_author),
+                   (self.infrasp4_rank, self.infrasp4,
+                    self.infrasp4_author))
+
+        infrasp_parts = []
+        group_added = False
+        for irank, iepithet, iauthor in infrasp:
+            if irank == 'cv.' and iepithet:
+                if self.cv_group and not group_added:
+                    group_added = True
+                    infrasp_parts.append(_("(%(group)s Group)") %
+                                         dict(group=self.cv_group))
+                infrasp_parts.append("'%s'" % escape(iepithet))
+            else:
+                if irank:
+                    infrasp_parts.append(irank)
+                if iepithet and irank:
+                    infrasp_parts.append(italicize(iepithet))
+                elif iepithet:
+                    infrasp_parts.append(escape(iepithet))
+
+            if authors and iauthor:
+                infrasp_parts.append(escape(iauthor))
+        if self.cv_group and not group_added:
+            infrasp_parts.append(_("%(group)s Group") %
+                                 dict(group=self.cv_group))
+
+        # create the binomial part
+        binomial = [genus, self.hybrid and self.hybrid_char, epithet, author]
+        logger.debug("binomial parts: »%s« »%s« »%s« »%s«" % tuple(binomial))
+
+        # create the tail, ie: anything to add on to the end
+        tail = []
+        if self.sp_qual:
+            tail = [self.sp_qual]
+
+        if qualification is not None:
+            rank, qual = qualification
+            if qual in ['incorrect']:
+                rank = None
+            if rank == 'sp':
+                binomial.insert(2, qual)
+            elif not rank:
+                binomial[2] += ' (' + qual + ')'
+            elif rank == 'genus':
+                binomial.insert(0, qual)
+            elif rank == 'infrasp':
+                if infrasp_parts:
+                    infrasp_parts.insert(0, qual)
+            else:
+                for r, e, a in infrasp:
+                    if r == 'cv.':
+                        e = "'%s'" % e
+                    if rank == r:
+                        pos = infrasp_parts.index(e)
+                        infrasp_parts.insert(pos, qual)
+                else:
+                    logger.info('cannot find specified rank %s' % e)
+
+        parts = chain(binomial, infrasp_parts, tail)
+        s = utils.utf8(' '.join(i for i in parts if i))
+        if self.hybrid:
+            s = s.replace('%s ' % self.hybrid_char, self.hybrid_char)
+        return s
+
+    @property
+    def accepted(self):
+        'Name that should be used if name of self should be rejected'
+        from sqlalchemy.orm.session import object_session
+        session = object_session(self)
+        if not session:
+            logger.warning('species:accepted - object not in session')
+            return None
+        syn = session.query(SpeciesSynonym).filter(
+            SpeciesSynonym.synonym_id == self.id).first()
+        accepted = syn and syn.species
+        return accepted
+
+    @accepted.setter
+    def accepted(self, value):
+        'Name that should be used if name of self should be rejected'
+        logger.debug("Accepted taxon: %s %s" % (type(value), value))
+        assert isinstance(value, self.__class__)
+        if self in value.synonyms:
+            return
+        # remove any previous `accepted` link
+        from sqlalchemy.orm.session import object_session
+        session = object_session(self)
+        if not session:
+            logger.warning('species:accepted.setter - object not in session')
+            return
+        previous_synonymy_link = session.query(SpeciesSynonym).filter(
+            SpeciesSynonym.synonym_id == self.id).first()
+        if previous_synonymy_link:
+            a = session.query(Species).filter(Species.id==previous_synonymy_link.species_id).one()
+            a.synonyms.remove(self)
+        session.flush()
+        if value != self:
+            value.synonyms.append(self)
+        session.flush()
+
+    def has_accessions(self):
+        '''true if species is linked to at least one accession
+        '''
+
+        return False
+
+    infrasp_attr = {1: {'rank': 'infrasp1_rank',
+                        'epithet': 'infrasp1',
+                        'author': 'infrasp1_author'},
+                    2: {'rank': 'infrasp2_rank',
+                        'epithet': 'infrasp2',
+                        'author': 'infrasp2_author'},
+                    3: {'rank': 'infrasp3_rank',
+                        'epithet': 'infrasp3',
+                        'author': 'infrasp3_author'},
+                    4: {'rank': 'infrasp4_rank',
+                        'epithet': 'infrasp4',
+                        'author': 'infrasp4_author'}}
+
+    def get_infrasp(self, level):
+        """
+        level should be 1-4
+        """
+        return getattr(self, self.infrasp_attr[level]['rank']), \
+            getattr(self, self.infrasp_attr[level]['epithet']), \
+            getattr(self, self.infrasp_attr[level]['author'])
+
+    def set_infrasp(self, level, rank, epithet, author=None):
+        """
+        level should be 1-4
+        """
+        setattr(self, self.infrasp_attr[level]['rank'], rank)
+        setattr(self, self.infrasp_attr[level]['epithet'], epithet)
+        setattr(self, self.infrasp_attr[level]['author'], author)
+
+    def as_dict(self, recurse=True):
+        result = dict((col, getattr(self, col))
+                      for col in list(self.__table__.columns.keys())
+                      if col not in ['id']
+                      and col[0] != '_'
+                      and getattr(self, col) is not None
+                      and not col.endswith('_id'))
+        result['object'] = 'taxon'
+        result['rank'] = 'species'
+        result['ht-rank'] = 'genus'
+        result['ht-epithet'] = self.genus.epithet
+        if recurse and self.accepted is not None:
+            result['accepted'] = self.accepted.as_dict(recurse=False)
+        return result
+
+    @classmethod
+    def correct_field_names(cls, keys):
+        pass
+
+    @classmethod
+    def retrieve(cls, session, keys):
+        from .genus import Genus
+        try:
+            return session.query(cls).filter(
+                cls.epithet == keys['epithet']).join(Genus).filter(
+                Genus.epithet == keys['ht-epithet']).one()
+        except:
+            return None
+
+    @classmethod
+    def compute_serializable_fields(cls, session, keys):
+        from .genus import Genus
+        result = {'genus': None}
+        ## retrieve genus object
+        specifies_family = keys.get('familia')
+        result['genus'] = Genus.retrieve_or_create(
+            session, {'epithet': keys['ht-epithet'],
+                      'ht-epithet': specifies_family},
+            create=(specifies_family is not None))
+        if result['genus'] is None:
+            raise error.NoResultException()
+        return result
+
+    def top_level_count(self):
+        plants = [p for a in self.accessions for p in a.plants]
+        return {(1, 'Species'): 1,
+                (2, 'Genera'): set([self.genus.id]),
+                (3, 'Families'): set([self.genus.family.id]),
+                (4, 'Accessions'): len(self.accessions),
+                (5, 'Plantings'): len(plants),
+                (6, 'Living plants'): sum(p.quantity for p in plants),
+                (7, 'Locations'): set(p.location.id for p in plants),
+                (8, 'Sources'): set([a.source.source_detail.id
+                                     for a in self.accessions
+                                     if a.source and a.source.source_detail])}
+bauble/view.py
+def select_in_search_results(obj):
+    """
+    :param obj: the object the select
+    @returns: a Gtk.TreeIter to the selected row
+
+    Search the tree model for obj if it exists then select it if not
+    then add it and select it.
+
+    The the obj is not in the model then we add it.
+    """
+    check(obj is not None, 'select_in_search_results: arg is None')
+    view = bauble.gui.get_view()
+    if not isinstance(view, SearchView):
+        return None
+    logger.debug("select_in_search_results %s is in session %s" %
+                 (obj, obj in view.session))
+    model = view.results_view.get_model()
+    found = utils.search_tree_model(model, obj)
+    row_iter = None
+    if len(found) > 0:
+        row_iter = found[0]
+    else:
+        row_iter = model.append(None, [obj])
+        model.append(row_iter, ['-'])
+    view.results_view.set_cursor(model.get_path(row_iter))
+    return row_iter
+bauble/prefs.py
+class _prefs(dict):
+class PrefsView(pluginmgr.View):
+class PrefsCommandHandler(pluginmgr.CommandHandler):
+    def __init__(self, filename=default_prefs_file):
+    def init(self):
+    def _parse_key(name):
+    def get(self, key, default):
+    def __getitem__(self, key):
+    def items(self):
+    def setdefault(self, key, default=None):
+    def __setitem__(self, key, value):
+    def __contains__(self, key):
+    def save(self, force=False):
+    def __init__(self):
+    def on_prefs_prefs_tv_row_activated(self, tv, path, column):
+    def update(self):
+    def __call__(self, cmd, arg):
+    def get_view(self):
+bauble/view.py
+class InfoBox(Gtk.Notebook):
+    """
+    Holds list of expanders with an optional tabbed layout.
+
+    The default is to not use tabs. To create the InfoBox with tabs
+    use InfoBox(tabbed=True).  When using tabs then you can either add
+    expanders directly to the InfoBoxPage or using
+    InfoBox.add_expander with the page_num argument.
+
+    Also, it's not recommended to create a subclass of a subclass of
+    InfoBox since if they both use bauble.utils.BuilderWidgets then
+    the widgets will be parented to the infobox that is created first
+    and the expanders of the second infobox will appear empty.
+    """
+
+    def __init__(self, tabbed=False):
+        super().__init__()
+        self.row = None
+        self.set_property('show-border', False)
+        if not tabbed:
+            page = InfoBoxPage()
+            self.insert_page(page, None, 0)
+            self.set_property('show-tabs', False)
+        self.set_current_page(0)
+        self.connect('switch-page', self.on_switch_page)
+
+    # not sure why we pass have self and notebook in the arg list here
+    # since they are the same
+    def on_switch_page(self, notebook, dummy_page, page_num,  *args):
+        """
+        Called when a page is switched
+        """
+        if not self.row:
+            return
+        page = self.get_nth_page(page_num)
+        page.update(self.row)
+
+    def add_expander(self, expander, page_num=0):
+        """
+        Add an expander to a page.
+
+        :param expander: The expander to add.
+        :param page_num: The page number in the InfoBox to add the expander.
+        """
+        page = self.get_nth_page(page_num)
+        page.add_expander(expander)
+
+    def update(self, row):
+        """
+        Update the current page with row.
+        """
+        self.row = row
+        page_num = self.get_current_page()
+        self.get_nth_page(page_num).update(row)
+bauble/plugins/plants/family.py
+class FamilySynonym(db.Base):
+    """
+    :Table name: family_synonyms
+
+    :Columns:
+        *family_id*:
+
+        *synonyms_id*:
+
+    :Properties:
+        *synonyms*:
+
+        *family*:
+    """
+    __tablename__ = 'family_synonym'
+
+    # columns
+    family_id = Column(Integer, ForeignKey('family.id'), nullable=False)
+    synonym_id = Column(Integer, ForeignKey('family.id'), nullable=False,
+                        unique=True)
+
+    # relations
+    synonym = relation('Family', uselist=False,
+                       primaryjoin='FamilySynonym.synonym_id==Family.id')
+
+    def __init__(self, synonym=None, **kwargs):
+        # it is necessary that the first argument here be synonym for
+        # the Family.synonyms association_proxy to work
+        self.synonym = synonym
+        super().__init__(**kwargs)
+
+    def __str__(self):
+        return Family.str(self.synonym)

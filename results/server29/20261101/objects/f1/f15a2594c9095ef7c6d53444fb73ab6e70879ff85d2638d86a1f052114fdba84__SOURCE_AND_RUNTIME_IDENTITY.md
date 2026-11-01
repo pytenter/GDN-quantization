@@ -1,0 +1,20 @@
+# 前期CPU身份原文（保留时间点）
+
+# 源码、Runtime与历史边界
+
+实际父交付为 QWEN_GDN_HISTORICAL_RUNTIME_GPU_RECOVERY_V1/gpu_execution_20261019_v1/delivery。3753项索引和407项有效源均已逐SHA/bytes核验。有效清单SHA为48ec3e527b28cc1a1860a72559d0e9fafad96866c9d981f6b0c80d4bf5ebe19c，父清单64ca5853e4ed65ab3e2c59d9deb85b4aa026f0f712abd5496495b7b912fcb457，403继承+4修订；没有用405+2替代。
+
+历史模式仍为HISTORICAL_PORT；完整历史二进制EXACT身份UNKNOWN。父FP短32-token与短测速资格不证明INT8或32K/81K。历史FP三次中位13.774973185423399TPS，NEW参考7.741047785182266TPS，只作历史背景，本轮未重测、不作为INT8数字。
+
+需要澄清附件中的时间点：前序finisher本身当时未做最终seal，随后该任务完成最终封存及三地交付。保留两个阶段，不补造finisher证明。真实最终manifest SHA cece32eb6c2f51d3b1316d8960f34406c9b4b0142a1a143e0de1b72c611babf5（准确值以provenance/PARENT_FINAL_DELIVERY_VERIFICATION.json为准）；seal SHA5be227f4b61eb61b641c559720e05a3d00159c8cc5e1d3ed53fafd712ee104b6。历史raw保持原位，未修改删除。
+
+canonical Hadamard、normalize、patch、get_state、quantize_c128、seed及loader共7项AST完全不变。新适配不修改原FP forward、GDN core、Attention/MLP、权重/BF16或cache数学。全模型使用32层/24GDN层、32heads、128x128状态。小型真实CPU模型使用2个GDN层/2heads/128x128，仅检验调用链。
+
+本地CPU Torch2.5.1，远端CPU Torch2.5.1+cu121；远端只导入CPU并显式禁止CUDA初始化。61项当前外部源/模型文件/原生库/解释器已重新流式SHA/bytes核验，未加载9B。实际GPU库映射、Driver/NVML、逻辑序号身份只可能在新授权后真实核验，目前NOT_RUN。
+
+旧Asym128/64源码只读留存，未直接移植FP16 scale实验结果。本轮C32 Key轴、FP32 scales，独立数据与结果。Ling仅提供风险经验，没有复用其Value轴/FP16结果。
+
+
+# 本次GPU执行实际身份
+
+新RUN GROUP32_GPU_EXECUTION_20261019_V1，单卡UUID GPU-a78176ed-f97f-c54f-6201-5a01b570f422。实际source freeze SHA 5979bb5a40d7ea46f76d542b9d664b1f7d936acd3bb35f392c6659958f992d41，plan SHA fa3ea12d982cf9e278d41bf1fdba424ee3ca2be036f55b48bd1fd698552ba95f。497项冻结源仅GPU_PLAN的授权开关与archive I/O root改变；canonical/codec/FP helper均与CPU封存逐字节相同。用户另行回复“授权”，预算0.5 GPUh、1800硬秒、1650保护、150清理，未引用旧四卡不限时授权。Driver、PREFLIGHT/POSTFLIGHT库SHA/bytes/inode与owner-PID回执保存在每个执行单位。独立复核确认真实进程退出及全UUID中原worker资源释放。完整历史二进制EXACT身份仍UNKNOWN。

@@ -1,0 +1,81 @@
+{
+  "TASK_ID": "QWEN_GDN_DUALM_AWARE_ROTATION_TRAINING_READINESS_V1",
+  "status": "PASS_LOCAL_CPU_ONLY_NOT_FULL_MODEL",
+  "TRAINING_GRADIENT_QUALIFIED": "CPU_LOCAL_OPERATOR_ONLY",
+  "LOCAL_MICRO_TRAINING_QUALIFIED": "NOT_RUN_DATA_GATE_STOP",
+  "FULL_MODEL_A800_TRAINING": "NOT_TESTED",
+  "full_model_training_gradient": "NOT_TESTED",
+  "CPU_evidence": {
+    "path": "GRADIENT_QUALIFICATION_CPU.json",
+    "sha256": "bd317eef04c31a8147b327768a1b1debdfa4a65d540f4c9f44027fcffb4b35a6",
+    "checks": 206,
+    "CUDA_initialized": false,
+    "scope": "Original RMSNorm-before-gate class + local projection + original out_proj hook/captured_losses AST; helper qualification, not real9B functional trajectory",
+    "diagnostic_teacher_scope": "The captured C6R-coordinate tensor is a numerical fixture; no claim it is the historical clean FP teacher state",
+    "weights_scope": "SEEDED_FROZEN_UNIT_WEIGHTS_NOT_MODEL_WEIGHTS"
+  },
+  "arms": [
+    {
+      "arm": "A",
+      "layers": 24,
+      "all_recorded_norms_finite_nonzero": true,
+      "minimum_gradient_norm": 3.910491159331286e-06,
+      "maximum_gradient_norm": 0.004120954778045416
+    },
+    {
+      "arm": "D",
+      "layers": 24,
+      "all_recorded_norms_finite_nonzero": true,
+      "minimum_gradient_norm": 9.529716180622927e-07,
+      "maximum_gradient_norm": 0.002181497635319829
+    }
+  ],
+  "three_H64_updates": [
+    {
+      "arm": "A",
+      "updates": 3,
+      "status": "PASS_EXACT_LEGAL_OPTIMIZER_BOUNDARY_RESUME",
+      "maximum_orthogonality_error": 3.814697265625e-06,
+      "checkpoint": {
+        "path": "/data/zypan/analyses/qwen_gdn_dualm_aware_rotation_training_readiness_v1/qualification/CPU_UNIT_A_AFTER_UPDATE2.pt",
+        "sha256": "3632347650fc11cbc8336dd6f75d3394edfde3c1966b3c470c042333a45687bc",
+        "bytes": 113868
+      },
+      "scope": "One representative layer/head with real captured state; original H64 and loss helper; not a full1024-token/8-capture update"
+    },
+    {
+      "arm": "D",
+      "updates": 3,
+      "status": "PASS_EXACT_LEGAL_OPTIMIZER_BOUNDARY_RESUME",
+      "maximum_orthogonality_error": 3.814697265625e-06,
+      "checkpoint": {
+        "path": "/data/zypan/analyses/qwen_gdn_dualm_aware_rotation_training_readiness_v1/qualification/CPU_UNIT_D_AFTER_UPDATE2.pt",
+        "sha256": "3ce560d0c0fb33b4b34be1c91c5443886f296c0a863e5876bc81fc93f0545686",
+        "bytes": 113868
+      },
+      "scope": "One representative layer/head with real captured state; original H64 and loss helper; not a full1024-token/8-capture update"
+    }
+  ],
+  "smooth_Cayley_check": {
+    "analytic": 0.1824401170015335,
+    "finite_difference": 0.18241405487060547,
+    "tolerance": ".002+.01*abs(analytic); FP32 original solve, no hard-rounding finite difference"
+  },
+  "fixed_backward": "Whole-codec identity STE; all Dual-M scale, LS, FP16, round and clamp paths detached, including identity surrogate in saturation",
+  "claims_excluded": [
+    "full9B training qualification",
+    "GPU reproducibility",
+    "formal R_A/R_D checkpoint",
+    "32K accuracy improvement"
+  ],
+  "CUDA_RNG_restore": "NOT_TESTED_CUDA_NOT_INITIALIZED_EMPTY_CUDA_STATES",
+  "GPU_determinism": "NOT_TESTED",
+  "C128_hard_vs_legacy_disclosure": {
+    "path": "C128_HARD_VS_LEGACY_DISCLOSURE.json",
+    "sha256": "ea7c0f9e4caf265ca62715df7d6d43a87afcedf79973694b731724e1c7ebc8e2",
+    "legacy_equals_hard_numerically_on_real_fixture": true,
+    "legacy_equals_hard_bytes_on_real_fixture": false,
+    "signed_zero_byte_differences": 551,
+    "Arm_A_wrapper_to_legacy_bytes_and_gradient": "PASS"
+  }
+}

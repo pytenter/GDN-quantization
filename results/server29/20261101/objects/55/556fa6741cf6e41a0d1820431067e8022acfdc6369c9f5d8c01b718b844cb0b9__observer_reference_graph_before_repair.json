@@ -1,0 +1,89 @@
+{
+  "edges": [
+    "smoke.original -> wrapped.__closure__.self -> patch.model",
+    "smoke.observed -> original -> wrapped.self -> patch.model",
+    "patch.bank -> frozen rotation GPU tensors"
+  ],
+  "formal": {
+    "bytes": 34744,
+    "mtime_ns": 1790569617574038923,
+    "path": "/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/qwen_gdn/QWEN_C5_C6_AIME26_CANONICAL60_V1/scripts/run_qwen_c5_c6_formal.py",
+    "sha256": "77b1e1f6dad8a0dd53a27cf5a47c02be86c26d2cf30732604ba6d3747e178f69"
+  },
+  "nodes": [
+    {
+      "actual_release_point": "local deleted at final cleanup",
+      "expected_release_point": "after base rehash",
+      "lifetime": "whole model smoke",
+      "object": "model",
+      "owner": "smoke local model",
+      "reference_type": "strong"
+    },
+    {
+      "actual_release_point": "kept via wrapped callable until smoke returns",
+      "expected_release_point": "after observer teardown",
+      "lifetime": "condition",
+      "object": "patch.self.model",
+      "owner": "formal patch instance",
+      "reference_type": "strong"
+    },
+    {
+      "actual_release_point": "smoke returns",
+      "expected_release_point": "after last observer use",
+      "lifetime": "condition; survives unpatch",
+      "object": "wrapped closure self",
+      "owner": "smoke local original",
+      "reference_type": "strong closure cell"
+    },
+    {
+      "actual_release_point": "smoke returns",
+      "expected_release_point": "after restore and capture",
+      "lifetime": "condition; function-scope",
+      "object": "original callable",
+      "owner": "observed closure + smoke local",
+      "reference_type": "strong closure/local"
+    },
+    {
+      "actual_release_point": "qmod restored; smoke local survives",
+      "expected_release_point": "after restore and capture",
+      "lifetime": "active instrumentation",
+      "object": "observed callable",
+      "owner": "smoke local + qmod during call",
+      "reference_type": "strong"
+    },
+    {
+      "actual_release_point": "last patch reachable through original until smoke returns",
+      "expected_release_point": "after observer teardown",
+      "lifetime": "condition",
+      "object": "rotation bank",
+      "owner": "C6R/C7 patch.self.bank",
+      "reference_type": "strong"
+    },
+    {
+      "actual_release_point": "operator restored by __exit__",
+      "expected_release_point": "patch destruction",
+      "lifetime": "patch",
+      "object": "saved unpatched kernel",
+      "owner": "patch.saved",
+      "reference_type": "strong"
+    },
+    {
+      "actual_release_point": "hooks removed; does not remove local original",
+      "expected_release_point": "__exit__ and hook.remove",
+      "lifetime": "active instrumentation",
+      "object": "observer hook",
+      "owner": "model module pre-hook registry",
+      "reference_type": "strong lambda captures self"
+    }
+  ],
+  "operator_install": "with patch calls __enter__ before original is read",
+  "root_cause": "PLAUSIBLE_NOT_VERIFIED",
+  "source": {
+    "bytes": 17588,
+    "mtime_ns": 1791005531017609050,
+    "path": "/data/zypan/worktrees/qwen-gdn-c6r-c7-4x3090-deployment-v1/experiments/QWEN_GDN_C6R_C7_4X3090_DEPLOYMENT_CLOSURE_V1/scripts/deployment_closure_gpu.py",
+    "sha256": "077f9f2905b5984c69656484bed5b1c25db38874c9eb253d3dffa527d38c210b"
+  },
+  "status": "AUDITED_STATIC",
+  "unpatch": "finally restores original (patched wrapper); patch.__exit__ restores base operators and removes registered layer hooks; lm_head hook removed"
+}

@@ -1,0 +1,1 @@
+lambda _cls, batch_size, randomness: _tuple_new(_cls, (batch_size, randomness))

@@ -1,0 +1,928 @@
+# Codex正式科研任务：Qwen/GDN INT8 Group64 四配置 AIME26 Seed1
+
+## 0. 任务定义
+
+任务名称：
+
+`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1`
+
+模型：Qwen3.5-9B / GDN。
+
+运行环境：Qwen服务器，优先复用已经通过Group32正式评测的`HISTORICAL_PORT`。
+
+GPU资源：仅使用Qwen服务器中本任务获得授权且实际空闲的RTX3090 24GB；最多4张。
+
+### 核心科学目标
+
+在不改变既有模型、Sampler、Prompt、QDQ时序及评分协议的前提下，验证将Key-side Group Size从32扩大到64后，对称/非对称INT8与Hadamard的数学推理准确率如何变化。
+
+本次正式新增：
+
+- 4种INT8 Group64配置。
+- AIME2026完整30题。
+- 固定seed=1。
+- 每条最多81920个新生成token。
+- 总计120条正式自由生成。
+- 原Frozen V4评分器与独立CPU复评分。
+
+**优先保证Group64与已经封存的Group32结果形成可信的同题比较。**
+
+不新增Future-KL、协方差旋转、OSCAR PBR、Dual-M、Learned Rotation、INT4或额外seed。
+
+本任务是完整执行任务，不是仅生成计划。要求先审计、统一实现、完成必要资格，再执行正式AIME与封存。
+
+---
+
+# 一、冻结四组Group64正式配置
+
+| ID | Rotation | Quantization | Group Size | Scale |
+|---|---|---|---|---|
+| G64-0 | Native/Identity | Symmetric INT8 | 64 | FP32 |
+| G64-1 | Native/Identity | Asymmetric INT8 | 64 | FP32 |
+| G64-2 | Key-H128 | Symmetric INT8 | 64 | FP32 |
+| G64-3 | Key-H128 | Asymmetric INT8 | 64 | FP32 |
+
+四组只改变指定的两个因素：
+
+1. 是否使用已有Key-H128。
+2. 使用Symmetric还是Asymmetric INT8。
+
+Group Size在本次全部固定为64。
+
+对于128×128 Key×Value的GDN State：
+
+- 每个Value列有128个Key元素。
+- 沿Key轴分成两个连续64元素Group。
+- 每个Group独立使用scale。
+- Asym每个Group额外使用整数zero-point。
+- 不跨Value列、Head或Layer分组。
+
+必须检查真实State Tensor内存布局及索引，不能把逻辑Key轴与实际Tensor维度混淆。
+
+### 不允许增加的条件
+
+- Group32重新生成。
+- Group128正式生成。
+- PBR/Permutation。
+- 协方差UqH。
+- Dual-M。
+- C6R/C7。
+- FP新正式AIME。
+- INT4/INT6。
+- 高精度保护State。
+
+本轮只运行G64-0至G64-3。
+
+---
+
+# 二、复用已完成的Group32正式基线
+
+已有任务：
+
+`QWEN_GDN_GROUP32_FOUR_CODEC_AIME26_SEED1_V1`
+
+正式终态：
+
+`FORMAL_COMPLETE_120_120_AND_STOP`
+
+已冻结结果：
+
+| Group32配置 | 正确数 | 准确率 |
+|---|---:|---:|
+| Q0：Native Sym32 | 20/30 | 66.67% |
+| Q1：Native Asym32 | 25/30 | 83.33% |
+| Q2：H128 Sym32 | 21/30 | 70.00% |
+| Q3：H128 Asym32 | 25/30 | 83.33% |
+
+该任务已有：
+
+- 完整120条合法生成。
+- 同题同GPU UUID配对。
+- 原Frozen V4及独立CPU复评分一致。
+- 原Prompt及Sampler。
+- seed1。
+- 81920新token上限。
+- Prompt和Decode阶段真实逐tokenQDQ。
+- INT8/UINT8临时编码与FP32 scale。
+- QDQ State的真实下一kernel消费证据。
+- 完整资源、模型、源码、输入及评分SHA封存。
+
+**所有旧Group32资产只读复用，不得修改、重跑、重新评分替代历史结果或覆盖封存。**
+
+首先恢复：
+
+1. 原Group32四配置实际运行源码。
+2. HISTORICAL_PORT真实Runtime。
+3. Canonical Sym32/Asym32数学及CUDA实现。
+4. 原Hadamard计算位置。
+5. 原Sampler与Penalty实现。
+6. 原30题Prompt及输入token IDs。
+7. Frozen V4评分器。
+8. 原问题到GPU UUID映射。
+9. 历史完整执行与资源身份。
+
+不能仅靠任务名称推测代码版本一致，必须核验实际SHA和执行合同。
+
+---
+
+# 三、统一实现方式：只参数化Group Size
+
+这是本轮最重要的效率原则。
+
+**不要重写四个不同的Group64量化器。**
+
+应当在已有已经验证的Group32数学核心上，以最小的版本化改动支持：
+
+`group_size = 64`
+
+四组共享相同的量化模块。
+
+Native与H128继续使用已经验证的各自State坐标路径。
+
+### 3.1 Symmetric INT8 G64
+
+保留历史Sym32的所有规则：
+
+- Signed INT8。
+- 原实际编码区间。
+- FP32 scale。
+- 原amax规则。
+- 原scale floor。
+- 原FP32除法或CUDA reciprocal运算语义。
+- 原rounding。
+- 原clip。
+- 原negative-zero flags。
+- 原FP32 decode。
+- 原QDQ及writeback位置。
+
+数学示意：
+
+\[
+s_g=\frac{\max_{i\in g}|x_i|}{127}
+\]
+
+\[
+q_i=\operatorname{clip}
+\left(\operatorname{round}(x_i/s_g),-127,127\right)
+\]
+
+\[
+\widehat x_i=s_gq_i
+\]
+
+以上只是概念公式；实际还必须保留原Canonical的零组、scale floor、负零和CUDA舍入细节。
+
+不要将原GPU合格的除127路径擅自替换为另一种数学上看似等价、实际位级行为不同的运算。
+
+### 3.2 Asymmetric INT8 G64
+
+必须直接复用已合格的Asym32核心：
+
+- Include-zero extrema。
+- FP32 scale。
+- UINT8 codes。
+- 整数zero-point。
+- 原Tensor/Tensor除255规则。
+- 原RNE顺序。
+- 原zero-point裁剪。
+- 原int16扩宽再减zero-point。
+- 原FP32 decode。
+
+数学示意：
+
+\[
+a_g=\min(0,\min_{i\in g}x_i)
+\]
+
+\[
+b_g=\max(0,\max_{i\in g}x_i)
+\]
+
+\[
+s_g=\frac{b_g-a_g}{255}
+\]
+
+\[
+z_g=\operatorname{clip}
+\left(\operatorname{round}(-a_g/s_g),0,255\right)
+\]
+
+\[
+q_i=
+\operatorname{clip}
+\left(\operatorname{round}(x_i/s_g)+z_g,0,255\right)
+\]
+
+\[
+\widehat x_i=s_g(q_i-z_g)
+\]
+
+仍以原Asym32代码的精确数值合同为最终标准。
+
+不能把`round(x/s)+z`与`round(x/s+z)`在实际GPU中未经验证地互换。
+
+### 3.3 禁止的工程变化
+
+不得为了Group64：
+
+- 改变scale dtype。
+- 修改clip规则。
+- 改变量化轴。
+- 修改Hadamard。
+- 更换GDN递归Kernel数学。
+- 更改Sampler。
+- 延迟QDQ。
+- 增加未量化State缓冲。
+- 改成其他Runtime。
+- 采用新的PBR分组。
+
+除合法Group Size变化外，所有量化数学都应沿用原合格实现。
+
+---
+
+# 四、最少但真实的数学资格
+
+本次不再引入过度严格且与工程正确性无明确对应关系的FP最大误差门禁。
+
+但是必须验证新Group64量化确实正确。
+
+## 4.1 CPU资格
+
+采用原Group32已验证的独立参考和数学Fixture。
+
+只针对Group64新增需要的检查：
+
+- 128维Key轴正确分成2组。
+- 每组恰好64元素。
+- Value列独立。
+- Head/Layer互不混合。
+- scale和zero-point分别计算。
+- 全零、全正、全负、正负混合。
+- 极端幅度。
+- rounding midpoint。
+- scale floor。
+- Sym负零。
+- UINT8编码范围。
+- Asym整数zero-point范围。
+- Decode。
+- 数据finite。
+
+CPU参考与实际实现之间存在已知CPU/CUDA算术语义差异时，不得通过更换数学规则掩盖差异。
+
+## 4.2 两个重要数学负控
+
+**负控A：参数化Group32必须复现原Codec。**
+
+将新参数化代码设置为`group_size=32`，在冻结CPU/GPU短程Fixture上检查它能否复现原Sym32/Asym32结果。
+
+这只是工程回归，不是重新运行Group32 AIME。
+
+**负控B：Group64必须确实使用两个独立Group。**
+
+构造两个半区具有不同幅度分布的State。
+
+检查前64个Key元素和后64个Key元素确实获得独立scale/zero-point。
+
+防止实际上仍采用Group128，或者错误地沿Value分组。
+
+### 4.3 不设置的门禁
+
+本次不要求：
+
+- Group64 State MSE必须低于Group32。
+- Future-KL必须改善。
+- 对称Group64准确率必须超过某个历史基线。
+- FP模型完整轨迹逐字节一致。
+- 人为4倍Hadamard噪声约束。
+- 与工程正确性无关的任意2e-6阈值。
+
+只有数学实现错误、非法状态、真实QDQ错误或Runtime安全错误才应该阻止正式AIME。
+
+---
+
+# 五、GPU真实Persistent QDQ资格
+
+Qwen已有的实际状态语义是：
+
+24个GDN层从规定首Token开始，每token更新后立即执行QDQ，然后写回State，下一token真实消费已QDQ后的State。
+
+本任务必须保留这个合同。
+
+流程：
+
+```text
+Previous QDQ State
+        ↓
+Original GDN Recurrence
+        ↓
+Updated State
+        ↓
+Sym64 / Asym64 Encode
+        ↓
+Decode
+        ↓
+Immediate Writeback
+        ↓
+Next Token Consumes QDQ State
+```
+
+### 必要检查
+
+每种新配置至少完成：
+
+1. GPU Codec微型字段核验。
+2. 非AIME 32-token真实GDN Canary。
+3. 非AIME 128-token真实GDN Canary。
+4. 必要的512-token持续QDQ检查。
+5. 全24层QDQ覆盖。
+6. Prompt阶段逐tokenQDQ。
+7. Decode阶段逐tokenQDQ。
+8. 下一kernel真实读取量化重建State。
+9. Scale、codes和zero-point有效。
+10. State与Logits finite。
+11. Fresh-process重复性。
+12. Cache及Sampler reset。
+13. EOS与Length合法终止。
+
+短程真实next-consumption必须使用完整真实值与预期Decode结果核验，而不是仅通过指针、调用计数或Hash代替。
+
+可以只在Canary中开启重型逐Tensor观察；正式AIME保留真实QDQ及冻结稀疏数值审计，不需要每token保存全部State。
+
+### 关于长上下文
+
+已有Group32完成81K上限的正式生成及相关资源验证。
+
+仍应核验Group64实际Runtime能够容纳Prompt及81920新token，且不会发生新的显存或Cache布局问题。
+
+但不需要重复设计完整81K State数值上界证明。
+
+如复用已有长Context资源资格，必须明确其适用范围，并补齐Group64特有的有限资源检查。
+
+不能把82293-slot合成Cache压力测试称为真实81K数值误差证明。
+
+### State存储口径
+
+本任务仍为数值persistent INT8。
+
+原Runtime用FP32 Tensor承载已QDQ重建State，整体48MiB左右。
+
+临时整数codes不等于已经实现物理packed INT8常驻。
+
+不得报告未经实测的显存压缩率。
+
+---
+
+# 六、Qwen正式AIME26协议必须完全复用
+
+使用之前Group32正式冻结的执行协议，而不是根据提示词重新实现。
+
+### 数据
+
+- AIME2026完整30题。
+- 原始题目ID。
+- 原始Prompt。
+- 原Chat Template。
+- 原Tokenizer。
+- 相同输入token IDs。
+- seed=1。
+- Frozen V4。
+
+### 长度
+
+`max_new_tokens = 81920`
+
+这是最大新生成token数。
+
+Context应合法支持：
+
+`prompt_tokens + 81920`
+
+不能改成Ling 256K动态协议。
+
+不能将81920解释为包含Prompt的总上下文长度。
+
+### Sampler
+
+恢复并核验原Qwen实际生效设置：
+
+```text
+thinking             = true
+do_sample            = true
+temperature          = 1.0
+top_p                = 0.95
+top_k                = 20
+min_p                = 0
+presence_penalty     = 1.5
+repetition_penalty   = 1.0
+seed                 = 1
+max_new_tokens       = 81920
+```
+
+同时严格保留：
+
+- 原采样Backend。
+- 原采样算子顺序。
+- 原Generator初始化。
+- 原generated-only presence mask。
+- 原Penalty作用范围。
+- 原EOS/Stop条件。
+- 原Cache reset。
+- 原Prompt逐tokenQDQ。
+
+本任务不得根据部分AIME输出修改任何采样参数。
+
+---
+
+# 七、GPU资源和正式任务调度
+
+**不要假设此前四张3090现在全部空闲。**
+
+先检查：
+
+- 当前每张GPU的UUID。
+- GPU型号和实际可用显存。
+- Owner-PID。
+- 原P1及OSCAR任务真实进程状态。
+- 其他任务占用。
+- 当前授权范围。
+- CUDA/PyTorch环境。
+- 原HISTORICAL_PORT运行身份。
+
+某GPU只有在原先固定队列完全结束、进程退出且显存释放后，才允许加入本次调度。
+
+不能抢占P1或C1/S3，也不能利用两个Worker切换间隙抢卡。
+
+禁止自动切换到未经授权GPU。
+
+GPU资源未释放时可以完成CPU准备，但不得启动竞争者或后台自动派发器。
+
+## 7.1 按问题Bundle调度
+
+本次不能固定：
+
+- GPU0只运行Sym64。
+- GPU1只运行Asym64。
+- GPU2只运行H+Sym64。
+- GPU3只运行H+Asym64。
+
+应该把每道题作为一个Bundle：
+
+```text
+AIME26 Problem i
+    G64-0 / Seed1
+    G64-1 / Seed1
+    G64-2 / Seed1
+    G64-3 / Seed1
+```
+
+同一道题的四条生成尽量绑定同一个GPU UUID。
+
+每条生成独立初始化：
+
+- Recurrent State。
+- Attention KV Cache。
+- RNG。
+- Generated token历史。
+- Sampler。
+- Presence Penalty状态。
+- 模型Request。
+
+如果四张GPU都合法空闲，优先复用旧Group32的8/8/7/7题目到UUID映射。
+
+这样可以最大程度保持Group32与Group64的硬件配对。
+
+如果只有部分GPU可用：
+
+- 按真实可用GPU数量调整新的问题Bundle分配。
+- 每题的四配置仍然在同一GPU。
+- 所有分配在正式生成前冻结。
+- 若新旧GPU UUID不同，明确报告跨Group Size对照中的硬件差异。
+- 不在看过AIME正确率之后重新调整问题归属。
+
+必须保存：
+
+`QUESTION_GPU_ASSIGNMENT.json`
+
+## 7.2 单GPU执行纪律
+
+每张GPU同一时刻只运行一个活跃9B生成Worker。
+
+各GPU可以并行处理不同题目。
+
+建议预冻结轮换方法顺序，例如四配置循环移位，避免某一个方法始终最后执行。
+
+单条生成使用独立进程，或经严格证明能够完全重置State/Cache/RNG的常驻Worker。
+
+优先沿用Group32已经通过资格的请求隔离方式。
+
+---
+
+# 八、正式运行资源预算与效率
+
+理论最大新生成token数：
+
+\[
+4\times30\times81920=9,830,400
+\]
+
+实际数量取决于EOS和合法Length结束。
+
+用户本轮未要求沿用历史0.5 GPUh小型Canary预算，因此不能擅自设置短GPU时间硬上限来截断正式AIME。
+
+但必须记录：
+
+- 每配置非AIME短程实测TPS。
+- 模型加载成本。
+- Prefill吞吐。
+- Decode吞吐。
+- 显存allocated/reserved。
+- 磁盘需求。
+- 资源安全检查。
+- Worker生命周期。
+- GPU UUID。
+- 实际token进度。
+- 进程退出和GPU释放。
+- GPU时间及其可信误差范围。
+
+若精确物理GPUh不能从现有数据确定，应标注：
+
+`EXACT_GPUh=UNRESOLVED`
+
+不能将轮询估计冒充精确物理使用量。
+
+### 高效实现要求
+
+- 只修改Group Size的参数化路径。
+- 尽量复用原GPU量化和GDN Kernel。
+- 禁止额外CPU/GPU逐token同步。
+- 避免每token归档完整State。
+- 只使用必要的轻量finite检查。
+- 不在每token重新创建Hadamard。
+- 不增加不必要的Tensor复制。
+- 不引入OSCAR稠密旋转。
+- 不增加额外模型实例并发。
+
+如果发现明显可避免的性能问题，应在正式AIME前集中优化一次并重新核验数学合同。
+
+正式实验开始后冻结源码，不再修改量化实现。
+
+---
+
+# 九、正式120条AIME生成
+
+只有下列条件均通过后，才允许正式派发：
+
+1. Group64的CPU数学资格。
+2. Group64的GPU Codec资格。
+3. Native和H128实际坐标资格。
+4. 每token persistent QDQ/writeback资格。
+5. 下一kernel真实状态消费资格。
+6. Sampler与Prompt一致性资格。
+7. 长Context显存和Runtime资格。
+8. GPU UUID及授权核验。
+9. 30题与GPU问题Bundle冻结。
+10. 模型、源码、输入、评分器身份冻结。
+
+启动后：
+
+- 四种配置各30题。
+- 所有样本seed1。
+- 每条最长81920新token。
+- 不依据中途正确率修改方法。
+- 不为了提高成绩重试答错样本。
+- 不因为Group64局部MSE较大而提前停止。
+- 不因某方法比Group32慢而缩短生成长度。
+
+合法终止包括：
+
+- EOS。
+- 达到81920新token上限。
+
+非法终止或未完成包括：
+
+- Nonfinite。
+- Runtime失败。
+- OOM。
+- 资源安全停止。
+- 不完整输出。
+
+合法EOS与Length结束都纳入Frozen V4评分。
+
+不完整轨迹不得冒充已完成样本。
+
+---
+
+# 十、Frozen V4评分与独立复核
+
+全部合法生成后使用原冻结评分器。
+
+不得修改：
+
+- rightmost claim。
+- tentative/retraction。
+- restatement过滤。
+- 最终答案提取。
+- 标准答案。
+- 正确率计算。
+
+必须输出完整四组正式结果：
+
+| 方法 | 正确数 | Accuracy |
+|---|---:|---:|
+| G64-0：Native Sym64 | 实测/30 | 实测 |
+| G64-1：Native Asym64 | 实测/30 | 实测 |
+| G64-2：H Sym64 | 实测/30 | 实测 |
+| G64-3：H Asym64 | 实测/30 | 实测 |
+
+同时执行独立CPU复评分并进行逐样本一致性检查。
+
+若出现评分不一致，保留原始生成与双方评分payload，不能悄悄挑选有利结果。
+
+---
+
+# 十一、科学分析：与Group32形成2×2×2消融
+
+本轮最重要的价值，是与已完成Group32形成：
+
+`Group Size × Sym/Asym × Native/H128`
+
+三个二元因素。
+
+## 11.1 固定Group64，观察非对称量化作用
+
+Native：
+
+`G64-1 - G64-0`
+
+Hadamard：
+
+`G64-3 - G64-2`
+
+## 11.2 固定Group64，观察Hadamard作用
+
+Symmetric：
+
+`G64-2 - G64-0`
+
+Asymmetric：
+
+`G64-3 - G64-1`
+
+## 11.3 固定Codec与Rotation，比较Group64和Group32
+
+四项主比较：
+
+| Group64 | Group32历史匹配条件 |
+|---|---|
+| G64-0 | Q0 |
+| G64-1 | Q1 |
+| G64-2 | Q2 |
+| G64-3 | Q3 |
+
+比较正确率与同题correctness flips。
+
+例如：
+
+\[
+\Delta_{\mathrm{Asym,Native}}
+=
+Acc(G64\text{-}1)-Acc(Q1)
+\]
+
+\[
+\Delta_{\mathrm{Asym,H}}
+=
+Acc(G64\text{-}3)-Acc(Q3)
+\]
+
+重点回答Asym64能否保留Asym32的25/30水平。
+
+## 11.4 Group Size与Asymmetric之间的交互
+
+以Native为例：
+
+\[
+I_{\mathrm{Native}}
+=
+[Acc(G64\text{-}1)-Acc(G64\text{-}0)]
+-
+[Acc(Q1)-Acc(Q0)]
+\]
+
+Hadamard同理。
+
+这可观察Asymmetric优势是否随Group Size变化。
+
+## 11.5 三因素交互
+
+在同题一致、协议身份可比较的前提下，计算：
+
+\[
+I_{64}
+=
+[Acc(G64\text{-}3)-Acc(G64\text{-}2)]
+-
+[Acc(G64\text{-}1)-Acc(G64\text{-}0)]
+\]
+
+\[
+I_{32}
+=
+[Acc(Q3)-Acc(Q2)]
+-
+[Acc(Q1)-Acc(Q0)]
+\]
+
+\[
+I_{\mathrm{3way}}=I_{64}-I_{32}
+\]
+
+这个量描述：Hadamard与Asymmetric的交互是否随Group Size改变。
+
+只进行探索性解释，不将差中差直接宣称为已证明的物理机制。
+
+## 11.6 统计要求
+
+同题配对输出：
+
+- rescued。
+- lost。
+- net_correct。
+- delta_accuracy。
+- exact McNemar双侧p。
+- 各方法共同正确/共同错误。
+- 每题正确性向量。
+- EOS/Length分布。
+- 生成token数。
+
+所有检验标记为：
+
+`EXPLORATORY_UNADJUSTED_MULTIPLE_COMPARISONS`
+
+只有30题、一个seed，并且AIME26已多次被研究，不能宣称独立确认或广泛统计泛化。
+
+### 必须区分新旧协议
+
+Group32是匹配的逐Prompt token QDQ正式协议。
+
+历史C128和Dual-M可能采用不同Prefill/Runtime，应仅作为背景。
+
+不能将Group64与历史C128准确率直接当作纯Group Size因果比较。
+
+如果Group32与Group64在实际代码、GPU或Sampler身份上存在未匹配因素，必须如实披露。
+
+---
+
+# 十二、存储和计算成本
+
+必须提供理论packed存储估算以及真实GPU资源占用，且二者严格区分。
+
+按Qwen 24层、32个Recurrent Heads、128×128 State、FP32 scale、Asym UINT8 zero-point估计：
+
+| Codec | 理论有效位宽 | 理论codes+metadata |
+|---|---:|---:|
+| Sym32 | 9.000 bpe | 13.500 MiB |
+| Asym32 | 9.250 bpe | 13.875 MiB |
+| Sym64 | 8.500 bpe | 12.750 MiB |
+| Asym64 | 8.625 bpe | 12.9375 MiB |
+
+以上是理论packed codes+metadata，未计实现对齐、临时Workspace、负零flags和其他模型缓存。
+
+本次仍使用native FP32 QDQ carrier，不可声称实际State显存已经压缩到12–13MiB。
+
+实际性能报告应独立列出：
+
+- Sym64/Asym64真实TPS。
+- 对称和非对称量化额外Kernel开销。
+- GPU显存。
+- 模型加载时间。
+- Prompt阶段吞吐。
+- Decode阶段吞吐。
+
+不能用理论元数据减少推断实际服务速度一定变快。
+
+---
+
+# 十三、最终交付
+
+独立实验root：
+
+`QWEN_GDN_GROUP64_FOUR_CODEC_AIME26_SEED1_V1`
+
+至少交付实际已产生且可以核验的：
+
+1. `EXECUTION_PLAN.md`
+2. `GROUP32_HISTORY_REUSE_AND_IDENTITY.json`
+3. `SOURCE_MODEL_RUNTIME_FREEZE.json`
+4. `GROUP64_SYM_ASYM_NUMERICAL_CONTRACT.md`
+5. `GROUP64_CPU_CODEC_QUALIFICATION.json`
+6. `GROUP64_GPU_CODEC_QUALIFICATION.json`
+7. `GROUP64_PERSISTENT_QDQ_AUDIT.json`
+8. `GROUP64_FREE_GENERATION_CANARY.json`
+9. `AIME26_SEED1_PROTOCOL_FREEZE.json`
+10. `GPU_UUID_AND_PERMISSION_AUDIT.json`
+11. `QUESTION_GPU_ASSIGNMENT.json`
+12. `RESOURCE_AND_THROUGHPUT_ESTIMATE.md`
+13. `FORMAL_PROGRESS.json`
+14. `FORMAL_GENERATIONS_120.jsonl`
+15. `FROZEN_V4_SCORES.json`
+16. `AIME26_PER_PROBLEM_RESULTS.csv`
+17. `GROUP32_GROUP64_PAIRWISE.json`
+18. `GROUP64_FACTORIAL_ANALYSIS.json`
+19. `GENERATION_LENGTH_AND_GPU_RESOURCES.md`
+20. `GPU_RESOURCE_LEDGER.jsonl`
+21. `FINAL_SCIENTIFIC_REPORT.md`
+22. `SHA256_MANIFEST.json`
+23. `FINAL_SEAL_RECEIPT.json`
+
+历史Group32、P1/C1/S3、FP和其他实验资产一律只读。
+
+不得修改既有模型权重、Sampler、原量化源码或历史成绩。
+
+不存在真实数据时不得创建伪造科学结果文件。
+
+所有输出应支持独立SHA核验。
+
+---
+
+# 十四、一次性实施与停止规则
+
+这次按照一个完整任务执行，不要产生一连串Recovery项目。
+
+### Phase A：统一实现
+
+- 恢复Group32全部身份。
+- 参数化Sym/Asym Group Size。
+- 实现G64-0至G64-3。
+- 保留原Canonical数学。
+- 完成CPU独立参考及负控。
+
+### Phase B：GPU必要资格
+
+- 审计真实空闲GPU。
+- 验证四种配置的GPU Codec。
+- 32/128/512-token持续QDQ。
+- next-kernel消费。
+- Fresh-process。
+- Sampler与EOS。
+- Long-context资源可行性。
+- 实测非AIME吞吐。
+
+不因少量正常FP32舍入差异、较大State MSE或预计正确率低而停止。
+
+### Phase C：正式AIME
+
+- 冻结30题×4配置×seed1。
+- 按题目Bundle分配授权GPU。
+- 串行执行每张GPU的样本。
+- 并行处理不同GPU任务。
+- 最多81920新token。
+- 保存完整生成和合法终止证据。
+
+### Phase D：评分与科学报告
+
+- Frozen V4。
+- 独立CPU复评分。
+- Group64四配置结果。
+- 与Group32配对。
+- 2×2×2主效应与交互。
+- 资源与数值审计。
+- 完整封存。
+
+### 成功终态
+
+120条全部合法完成、评分一致且封存：
+
+`FORMAL_COMPLETE_120_120_AND_STOP`
+
+GPU资源尚未获得合法许可：
+
+`RESOURCE_BLOCKED_NO_DISPATCH`
+
+数学或QDQ真实错误：
+
+`GROUP64_MATH_OR_PERSISTENT_QDQ_FAIL_CLOSED_STOP`
+
+Runtime或长上下文资源不满足协议：
+
+`RUNTIME_RESOURCE_FAIL_CLOSED_STOP`
+
+只完成部分合法生成：
+
+`PARTIAL_RESULTS_PRESERVED_AND_STOP`
+
+不允许通过缩短81920长度、更换量化器、修改评分器、改变任务名单或重试挑选正确答案来取得成功。
+
+## 最终目标
+
+**用现有高可信度Group32四配置作为基线，在Qwen/GDN上以最小必要工程改动完成Group64 Sym/Asym × Native/H128的完整AIME26 Seed1消融。**
+
+本任务应直接回答：
+
+1. Group64下Asymmetric是否仍然明显优于Symmetric？
+2. Group64 Asym能否保持Group32 Asym的数学推理准确率？
+3. Hadamard的作用是否依赖Group Size？
+4. Group32多出来的量化元数据是否真正换来了准确率收益？
+5. 这些差异能否在真实持续QDQ协议下成立？
+
+在保证数学、量化和运行正确性的前提下，以正式AIME26正确率作为核心科学指标，不再用过度严格的浮点误差门限或额外Future-KL测试阻断实验。

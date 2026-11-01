@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(lock_file={self.lock_file!r}, timeout={self.timeout!r}, mode={self.mode!r}, blocking={self.blocking!r}, poll_interval={self.poll_interval!r}, lifetime={self.lifetime!r}, lock_file_fd={self.lock_file_fd!r}, lock_file_fd_token={self.lock_file_fd_token!r}, lock_file_fd_identity={self.lock_file_fd_identity!r}, pending_lock_file_fd={self.pending_lock_file_fd!r}, pending_lock_file_fd_identity={self.pending_lock_file_fd_identity!r}, lock_counter={self.lock_counter!r}, lock_file_key={self.lock_file_key!r}, owner_claim_paths={self.owner_claim_paths!r}, claim_root={self.claim_root!r})"
+ return __repr__

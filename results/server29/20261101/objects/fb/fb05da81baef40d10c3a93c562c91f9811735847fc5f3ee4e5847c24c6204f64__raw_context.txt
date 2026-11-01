@@ -1,0 +1,1941 @@
+elementpath/xpath_nodes.py
+def is_schema_node(obj: Any) -> bool:
+    return hasattr(obj, 'local_name') and hasattr(obj, 'type') and hasattr(obj, 'name')
+elementpath/namespaces.py
+XPATH_FUNCTIONS_NAMESPACE = "http://www.w3.org/2005/xpath-functions"
+elementpath/xpath30/xpath30_helpers.py
+def parse_datetime_marker(marker: str, dt: datetime.datetime, lang: Optional[str] = None) -> str:
+    component = marker[1]
+    fmt_token = marker[2:-1]
+
+    if ',' not in fmt_token:
+        presentation, width = fmt_token, ''
+    else:
+        presentation, width = fmt_token.rsplit(',', maxsplit=1)
+
+    if not presentation:
+        fmt_modifier = ''
+        if component in 'Hhf':
+            presentation = '1'
+        elif component in 'ms':
+            presentation = '01'
+        elif component in 'Zz':
+            presentation = '01:01'
+        else:
+            presentation = 'n'
+    elif presentation == 'a':
+        fmt_modifier = ''
+    else:
+        _match = FMT_MODIFIER_PATTERN.search(presentation)
+        if _match is None:
+            fmt_modifier = ''
+        else:
+            fmt_modifier = _match.group(0)
+            if fmt_modifier:
+                presentation = presentation[:-len(fmt_modifier)]
+
+        if presentation.startswith('#') and presentation.endswith('#'):
+            msg_tmpl = 'Invalid formatting component {!r}'
+            raise xpath_error('FOFD1340', msg_tmpl.format(component))
+
+    for pch in presentation:
+        if pch.isdigit():
+            zero_cp = ord(pch) - int(pch)
+            zero_ch = chr(zero_cp)
+            break
+    else:
+        zero_cp, zero_ch = ord('0'), '0'
+
+    digits = sum(c.isdigit() for c in presentation)
+    opt_digits = presentation.count('#')
+    if not width or width == '*':
+        if digits > 1:
+            min_width, max_width = digits, digits + opt_digits
+        else:
+            min_width, max_width = 0, None
+    else:
+        min_width, max_width = parse_width(width)
+        if digits > 1:
+            min_width = max(min_width, digits)
+            if max_width:
+                max_width = max(max_width, digits + opt_digits)
+
+    if component == 'Y':
+        value = str(abs(dt.year))
+    elif component == 'M':
+        if presentation.lower().startswith('n') and lang is not None:
+            value = int_to_month(dt.month, lang)
+        else:
+            value = str(dt.month)
+    elif component == 'D':
+        value = str(dt.day)
+    elif component == 'H':
+        value = str(dt.hour)
+    elif component == 'h':
+        if dt.hour == 0:
+            value = '12'
+        elif dt.hour > 12:
+            value = str(dt.hour % 12)
+        else:
+            value = str(dt.hour)
+    elif component == 'P':
+        value = 'a.m.' if dt.hour < 12 else 'p.m.'
+    elif component == 'm':
+        value = str(dt.minute)
+    elif component == 's':
+        value = str(dt.second)
+    elif component == 'f':
+        value = str('{:06}'.format(dt.microsecond))
+    elif component == 'z' or component == 'Z':
+        if presentation == 'N':
+            value = dt.tzname() or ''
+        elif dt.tzinfo is None:
+            value = '+00:00'
+        else:
+            value = str(dt)
+            if value.endswith('Z'):
+                value = '+00:00'
+            else:
+                value = value[-6:]
+    elif component == 'W':
+        value = str(dt.isocalendar()[1])
+    elif component == 'w':
+        value = str(week_in_month(dt))
+    elif component == 'F':
+        if presentation.lower().startswith('n') and lang is not None:
+            value = int_to_weekday(dt.isocalendar()[2], lang)
+        else:
+            value = str(dt.isocalendar()[2])
+    elif component == 'E':
+        if dt.year < 0:
+            value = 'BC'
+        else:
+            value = 'AD'
+    elif component == 'd':
+        delta = dt - type(dt)(dt.year, 1, 1)
+        value = str(1 + delta.seconds // 86400)
+    else:
+        msg_tmpl = 'Invalid formatting component {!r}'
+        raise xpath_error('FOFD1340', msg_tmpl.format(component))
+
+    sign = ''
+    left_to_right = component != 'Y'
+
+    if presentation == 'n':
+        fmt_chunk = value.lower()
+    elif presentation == 'N':
+        fmt_chunk = value.upper()
+    elif presentation == 'Nn':
+        fmt_chunk = value.title()
+    elif presentation == 'I' or presentation == 'i':
+        fmt_chunk = value
+    elif presentation == 'Z' and component == 'Z':
+        if dt.tzinfo is None:
+            fmt_chunk = MILITARY_TIME_ZONES[None]
+        elif value.endswith(':00'):
+            fmt_chunk = MILITARY_TIME_ZONES.get(value[:3], value)
+        else:
+            fmt_chunk = value
+
+    elif presentation == 'w':
+        fmt_chunk = int_to_words(int(value), lang, fmt_modifier)
+    elif presentation == 'W':
+        fmt_chunk = int_to_words(int(value), lang, fmt_modifier).upper()
+    elif presentation == 'Ww':
+        fmt_chunk = int_to_words(int(value), lang, fmt_modifier).title()
+    elif presentation == 'a':
+        fmt_chunk = int_to_alphabetic(int(value), lang)
+    elif presentation == 'A':
+        fmt_chunk = int_to_alphabetic(int(value), lang).upper()
+    else:
+        left_to_right = False
+        k = 0
+        pch = ''
+        chars = []
+
+        # Extract the sign
+        if value.startswith('-') or value.startswith('+'):
+            sign = value[0]
+            value = value[1:]
+
+        if component in 'zZ':
+            if presentation.isdigit():
+                if len(presentation) <= 2:
+                    if value.endswith(':00'):
+                        value = value[:-3]
+                        left_to_right = True
+                    elif len(presentation) == 1:
+                        presentation = '#0:01'
+                        min_width, max_width = 3, 4
+                    else:
+                        presentation = '01:01'
+                        min_width = max_width = 4
+                elif len(presentation) == 3:
+                    presentation = '#001'
+                    min_width, max_width = 3, 4
+            elif presentation.replace(':', '', 1).isdigit():
+                if len(presentation) == 4:
+                    presentation = '#0:01'
+                    min_width, max_width = 3, 4
+
+        if component != 'f':
+            presentation = ''.join(reversed(presentation))
+            value = ''.join(reversed(value))
+
+        for ch in value:
+            try:
+                pch = presentation[k]
+            except IndexError:
+                if ch == '0' and not pch.isdigit():
+                    break
+            else:
+                k += 1
+
+            while pch != '#' and not pch.isdigit():
+                chars.append(pch)
+                min_width += 1
+                if max_width is not None:
+                    max_width += 1
+
+                try:
+                    pch = presentation[k]
+                except IndexError:
+                    break
+                else:
+                    k += 1
+            else:
+                if ch.isdigit():
+                    chars.append(ch)
+
+        if component != 'f':
+            fmt_chunk = ''.join(reversed(chars))
+        else:
+            fmt_chunk = ''.join(chars)
+
+        if 'o' in fmt_modifier:
+            try:
+                fmt_chunk += ordinal_suffix(int(fmt_chunk))
+            except ValueError:
+                pass
+            else:
+                min_width += 2
+                if max_width is not None:
+                    max_width += 2
+
+    if len(fmt_chunk) < min_width and component not in 'PzZ':
+        if component in 'f':
+            fmt_chunk += zero_ch * (min_width - len(fmt_chunk))
+        else:
+            fmt_chunk = zero_ch * (min_width - len(fmt_chunk)) + fmt_chunk
+
+    if max_width:
+        if left_to_right or component in 'f':
+            fmt_chunk = fmt_chunk[:max_width]
+        else:
+            fmt_chunk = fmt_chunk[max(0, len(fmt_chunk)-max_width):]
+
+    if component in 'zZ':
+        if not min_width:
+            fmt_chunk = fmt_chunk.lstrip('0')
+            if not fmt_chunk:
+                return 'Z' if component == 'Z' else 'GMT' + sign + '0'
+        else:
+            try:
+                nz_first = min(k for k in range(len(fmt_chunk)) if fmt_chunk[k] != zero_ch)
+            except ValueError:
+                fmt_chunk = fmt_chunk[max(0, len(fmt_chunk) - min_width):]
+            else:
+                fmt_chunk = fmt_chunk[max(0, min(nz_first, len(fmt_chunk) - min_width)):]
+
+    elif min_width == 3 and component == 'F':
+        fmt_chunk = fmt_chunk[:3]
+    elif min_width or component == 'f':
+        try:
+            nz_last = max(k for k in range(len(fmt_chunk)) if fmt_chunk[k] != zero_ch)
+        except ValueError:
+            nz_last = 0
+
+        fmt_chunk = fmt_chunk[:max(min_width, nz_last + 1)]
+
+    if zero_ch != '0':
+        fmt_chunk = ''.join(chr(zero_cp + int(ch)) if ch.isdigit() else ch for ch in fmt_chunk)
+
+    if component == 'z':
+        return 'GMT' + sign + fmt_chunk
+
+    if presentation == 'I':
+        return sign + int_to_roman(int(fmt_chunk))
+    elif presentation == 'i':
+        return sign + int_to_roman(int(fmt_chunk)).lower()
+
+    return sign + fmt_chunk
+elementpath/datatypes/proxies.py
+class NumericProxy(metaclass=NumericTypeMeta):
+    """Proxy for xs:numeric related types. Builds xs:float instances."""
+
+    def __new__(cls, *args: FloatArgType, **kwargs: FloatArgType) -> float:  # type: ignore[misc]
+        return float(*args, **kwargs)
+elementpath/xpath_token.py
+class XPathFunction(XPathToken):
+    """
+    A token for processing XPath functions.
+    """
+    _name: Optional[QName] = None
+    pattern = r'(?<!\$)\b[^\d\W][\w.\-\xb7\u0300-\u036F\u203F\u2040]*' \
+              r'(?=\s*(?:\(\:.*\:\))?\s*\((?!\:))'
+
+    sequence_types: Tuple[str, ...] = ()
+    "Sequence types of arguments and of the return value of the function."
+
+    nargs: NargsType = None
+    "Number of arguments: a single value or a couple with None that means unbounded."
+
+    body: Optional[XPathToken] = None
+    "Body of anonymous inline function."
+
+    variables: Optional[Dict[str, Any]] = None
+    "Optional variables linked by let and for expressions."
+
+    def __init__(self, parser: 'XPath1Parser', nargs: Optional[int] = None) -> None:
+        super().__init__(parser)
+        if isinstance(nargs, int) and nargs != self.nargs:
+            if nargs < 0:
+                raise self.error('XPST0017', 'number of arguments must be non negative')
+            elif self.nargs is None:
+                self.nargs = nargs
+            elif isinstance(self.nargs, int):
+                raise self.error('XPST0017', 'incongruent number of arguments')
+            elif self.nargs[0] > nargs or self.nargs[1] is not None and self.nargs[1] < nargs:
+                raise self.error('XPST0017', 'incongruent number of arguments')
+            else:
+                self.nargs = nargs
+
+    def __call__(self, context: Optional[XPathContext] = None,
+                 argument_list: Optional[Union[
+                     XPathToken,
+                     List[Union[XPathToken, AtomicValueType]],
+                     Tuple[Union[XPathToken, AtomicValueType], ...]
+                 ]] = None) -> Any:
+
+        args: List[Any] = []
+        if isinstance(argument_list, (list, tuple)):
+            args.extend(argument_list)
+        elif isinstance(argument_list, XPathToken):
+            tk = argument_list
+            while True:
+                if tk.symbol == ',':
+                    args.append(tk[1].evaluate(context))
+                    tk = tk[0]
+                else:
+                    args.append(tk.evaluate(context))
+                    break
+            args.reverse()
+
+        # Check provided argument with arity
+        if self.nargs is None or self.nargs == len(args):
+            pass
+        elif isinstance(self.nargs, tuple):
+            if len(args) < self.nargs[0]:
+                raise self.error('XPTY0004', "missing required arguments")
+            elif self.nargs[1] is not None and len(args) > self.nargs[1]:
+                raise self.error('XPTY0004', "too many arguments")
+        elif self.nargs > len(args):
+            raise self.error('XPTY0004', "missing required arguments")
+        else:
+            raise self.error('XPTY0004', "too many arguments")
+
+        context = copy(context)
+        if self.variables is not None and context is not None:
+            context.variables.update(self.variables)
+
+        if self.symbol == 'function':
+            if context is None:
+                raise self.missing_context()
+            elif not args and self:
+                if context.item is None:
+                    if is_document_node(context.root):
+                        context.item = cast(DocumentProtocol, context.root).getroot()
+                    else:
+                        context.item = context.root
+
+                args.append(context.item)
+
+            partial_function = False
+            if self.variables is None:
+                self.variables = {}
+
+            for variable, sequence_type, value in zip(self, self.sequence_types, args):
+                varname = cast(str, variable[0].value)
+
+                if isinstance(value, XPathToken) and value.symbol == '?':
+                    partial_function = True
+                    continue
+                elif isinstance(value, XPathFunction) and sequence_type.startswith('function('):
+                    if not value.match_function_test(sequence_type, as_argument=True):
+                        msg = "argument {!r}: {} does not match sequence type {}"
+                        raise self.error('XPTY0004', msg.format(varname, value, sequence_type))
+
+                elif not self.parser.match_sequence_type(value, sequence_type):
+                    value = self.cast_to_primitive_type(value, sequence_type)
+                    if not self.parser.match_sequence_type(value, sequence_type):
+                        msg = "argument {!r}: {} does not match sequence type {}"
+                        raise self.error('XPTY0004', msg.format(varname, value, sequence_type))
+
+                context.variables[varname] = self.variables[varname] = value
+
+            if partial_function:
+                return self
+
+        elif self.label == 'partial function':
+            for value, tk in zip(args, filter(lambda x: x.symbol == '?', self)):
+                if isinstance(value, XPathToken):
+                    tk.value = value.evaluate(context)
+                else:
+                    assert not isinstance(value, Token), "An atomic value or None expected"
+                    tk.value = value
+        else:
+            self.clear()
+            for value in args:
+                if isinstance(value, XPathToken):
+                    self.append(value)
+                else:
+                    assert not isinstance(value, Token), "An atomic value or None expected"
+                    self.append(ValueToken(self.parser, value=value))
+
+            if any(tk.symbol == '?' for tk in self._items):
+                self._partial_function()
+                return self
+
+        if isinstance(self.label, MultiLabel):
+            # Disambiguate multi-label tokens
+            if self.namespace == XSD_NAMESPACE and \
+                    'constructor function' in self.label.values:
+                self.label = 'constructor function'
+            else:
+                for label in self.label.values:
+                    if label.endswith('function'):
+                        self.label = label
+                        break
+
+        if self.label == 'partial function':
+            result = self._partial_evaluate(context)
+        elif self.body is not None:
+            assert self.label == 'inline function'
+            result = self.body.evaluate(context)
+        else:
+            result = self.evaluate(context)
+
+        if isinstance(result, XPathToken) and result.symbol == '?':
+            pass
+        elif not self.parser.match_sequence_type(result, self.sequence_types[-1]):
+            result = self.cast_to_primitive_type(result, self.sequence_types[-1])
+            if not self.parser.match_sequence_type(result, self.sequence_types[-1]):
+                msg = "{!r} does not match sequence type {}"
+                self.parser.match_sequence_type(result, self.sequence_types[-1])
+                raise self.error('XPTY0004', msg.format(result, self.sequence_types[-1]))
+
+        return result
+
+    @property
+    def source(self) -> str:
+        if self.label == 'function test':
+            if len(self.sequence_types) == 1 and self.sequence_types[0] == '*':
+                return 'function(*)'
+            else:
+                return 'function(%s) as %s' % (
+                    ', '.join(self.sequence_types[:-1]), self.sequence_types[-1]
+                )
+        elif self.label in ('sequence type', 'kind test', ''):
+            return '%s(%s)%s' % (
+                self.symbol, ', '.join(item.source for item in self), self.occurrence or ''
+            )
+        return '%s(%s)' % (self.symbol, ', '.join(item.source for item in self))
+
+    @property
+    def name(self) -> Optional[QName]:
+        if self._name is not None:
+            return self._name
+        elif self.symbol == 'function':
+            return None
+        elif self.label == 'partial function':
+            return None
+        elif not self.namespace or self.namespace == XPATH_FUNCTIONS_NAMESPACE:
+            self._name = QName(XPATH_FUNCTIONS_NAMESPACE, 'fn:%s' % self.symbol)
+        elif self.namespace == XSD_NAMESPACE:
+            self._name = QName(XSD_NAMESPACE, 'xs:%s' % self.symbol)
+        elif self.namespace == XPATH_MATH_FUNCTIONS_NAMESPACE:
+            self._name = QName(XPATH_MATH_FUNCTIONS_NAMESPACE, 'math:%s' % self.symbol)
+        else:
+            for pfx, uri in self.parser.namespaces.items():
+                if uri == self.namespace:
+                    self._name = QName(uri, f'{pfx}:{self.symbol}')
+                    break
+            else:
+                self._name = QName(self.namespace, self.symbol)
+
+        return self._name
+
+    @property
+    def arity(self) -> int:
+        if isinstance(self.nargs, int):
+            return self.nargs
+        return len(self._items)
+
+    def nud(self) -> 'XPathFunction':
+        code = 'XPST0017' if self.label == 'function' else 'XPST0003'
+        self.value = None
+        self.parser.advance('(')
+        if self.nargs is None:
+            del self._items[:]
+            if self.parser.next_token.symbol in (')', '(end)'):
+                raise self.error(code, 'at least an argument is required')
+            while True:
+                self.append(self.parser.expression(5))
+                if self.parser.next_token.symbol != ',':
+                    break
+                self.parser.advance()
+        elif self.nargs == 0:
+            if self.parser.next_token.symbol != ')':
+                if self.parser.next_token.symbol != '(end)':
+                    raise self.error(code, '%s has no arguments' % str(self))
+                raise self.parser.next_token.wrong_syntax()
+            self.parser.advance()
+            return self
+        else:
+            if isinstance(self.nargs, (tuple, list)):
+                min_args, max_args = self.nargs
+            else:
+                min_args = max_args = self.nargs
+
+            k = 0
+            while k < min_args:
+                if self.parser.next_token.symbol in (')', '(end)'):
+                    msg = 'Too few arguments: expected at least %s arguments' % min_args
+                    raise self.wrong_nargs(msg if min_args > 1 else msg[:-1])
+
+                self._items[k:] = self.parser.expression(5),
+                k += 1
+                if k < min_args:
+                    if self.parser.next_token.symbol == ')':
+                        msg = 'Too few arguments: expected at least %s arguments' % min_args
+                        raise self.error(code, msg if min_args > 1 else msg[:-1])
+                    self.parser.advance(',')
+
+            while max_args is None or k < max_args:
+                if self.parser.next_token.symbol == ',':
+                    self.parser.advance(',')
+                    self._items[k:] = self.parser.expression(5),
+                elif k == 0 and self.parser.next_token.symbol != ')':
+                    self._items[k:] = self.parser.expression(5),
+                else:
+                    break  # pragma: no cover
+                k += 1
+
+            if self.parser.next_token.symbol == ',':
+                msg = 'Too many arguments: expected at most %s arguments' % max_args
+                raise self.error(code, msg if max_args != 1 else msg[:-1])
+
+        self.parser.advance(')')
+        if any(tk.symbol == '?' for tk in self._items):
+            self._partial_function()
+
+        return self
+
+    def match_function_test(self, function_test: str, as_argument: bool = False) -> bool:
+        """
+        Match if function signature is a subtype of provided *function_test*.
+        For default return type is covariant and arguments are contravariant.
+        If *as_argument* is `True` the match is inverted and also the return
+        type is considered contravariant.
+
+        References:
+          https://www.w3.org/TR/xpath-31/#id-function-test
+          https://www.w3.org/TR/xpath-31/#id-sequencetype-subtype
+        """
+        if not function_test.startswith('function('):
+            return False
+        elif function_test == 'function(*)':
+            return True
+
+        parts = function_test[9:].partition(') as ')
+        if not parts[1] or not parts[2]:
+            return False
+
+        sequence_types = parts[0].split(', ')
+        sequence_types.append(parts[2])
+
+        signature = [x for x in self.sequence_types[:self.arity]]
+        signature.append(self.sequence_types[-1])
+
+        if len(sequence_types) != len(signature):
+            return False
+
+        if as_argument:
+            iterator = zip(sequence_types, signature)
+        else:
+            iterator = zip(signature, sequence_types)
+
+        k = 0
+        for fst, st in iterator:
+            k += 1
+            if not as_argument and k == len(sequence_types):
+                st, fst = fst, st
+
+            if st[-1] in '*+?':
+                st_occurs = st[-1]
+                st = st[:-1]
+            else:
+                st_occurs = ''
+
+            if fst[-1] in '*+?':
+                fst_occurs = fst[-1]
+                fst = fst[:-1]
+            else:
+                fst_occurs = ''
+
+            if st_occurs == fst_occurs or fst_occurs == '*':
+                pass
+            elif not fst_occurs:
+                if st_occurs not in '?*':
+                    return False
+            elif fst_occurs == '+':
+                if st_occurs:
+                    return False
+            elif st_occurs:
+                return False
+
+            if st == fst:
+                continue
+            elif fst == 'item()':
+                continue
+            elif st == 'item()':
+                return False
+            elif fst.startswith('xs:') ^ st.startswith('xs:'):
+                return False
+            elif fst.startswith('xs:'):
+                if not issubclass(xsd11_atomic_types[st[3:]],
+                                  xsd11_atomic_types[fst[3:]]):
+                    return False
+            elif fst != 'node()':
+                return False
+
+        return True
+
+    def _partial_function(self) -> None:
+        """Convert a named function to an anonymous partial function."""
+        def evaluate(context: Optional[XPathContext] = None) -> Any:
+            return self
+
+        def select(context: Optional[XPathContext] = None) -> Any:
+            yield self
+
+        if self.__class__.evaluate is not XPathToken.evaluate:
+            setattr(self, '_partial_evaluate', self.evaluate)
+        if self.__class__.select is not XPathToken.select:
+            setattr(self, '_partial_select', self.select)
+
+        setattr(self, 'evaluate', evaluate)
+        setattr(self, 'select', select)
+
+        self._name = None
+        self.label = 'partial function'
+        self.nargs = len([tk for tk in self._items if tk.symbol == '?'])
+
+    def _partial_evaluate(self, context: Optional[XPathContext] = None) -> Any:
+        return [x for x in self._partial_select(context)]
+
+    def _partial_select(self, context: Optional[XPathContext] = None) -> Iterator[Any]:
+        item = self._partial_evaluate(context)
+        if item is not None:
+            if isinstance(item, list):
+                yield from item
+            else:
+                if context is not None:
+                    context.item = item
+                yield item
+elementpath/xpath30/xpath30_helpers.py
+def int_to_roman(num: int) -> str:
+    """
+    Convert an integer to Roman ordinal.
+    """
+    def roman_num(value: int) -> Iterator[str]:
+        if not value:
+            yield '0'
+            return
+        elif value < 0:
+            yield '-'
+            value = abs(value)
+
+        for base, roman in ROMAN_NUMERALS_MAP.items():
+            if value:
+                yield roman * (value // base)
+                value %= base
+
+    return ''.join(x for x in roman_num(num))
+elementpath/xpath_nodes.py
+class TypedAttribute(XPathNode):
+    """
+    A class for processing typed attribute nodes.
+
+    :param attribute: the origin AttributeNode instance.
+    :param xsd_type: the reference XSD type.
+    :param value: the types value.
+    """
+    def __init__(self, attribute: AttributeNode, xsd_type: Any, value: Any) -> None:
+        self.attribute = attribute
+        self.xsd_type = xsd_type
+        self.value = value
+        self.parent = attribute.parent
+
+    @property
+    def kind(self) -> str:
+        return 'attribute'
+
+    @property
+    def name(self) -> str:
+        return self.attribute.name
+
+    def as_item(self) -> Tuple[str, Any]:
+        return self.attribute.name, self.value
+
+    def __repr__(self) -> str:
+        return '%s(name=%r)' % (self.__class__.__name__, self.attribute.name)
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, self.__class__) and \
+            self.attribute == other.attribute and \
+            self.value == other.value
+
+    def __hash__(self) -> int:
+        return hash((self.attribute, self.value))
+elementpath/xpath30/xpath30_helpers.py
+def decimal_to_string(value: decimal.Decimal) -> str:
+    """
+    Convert a Decimal value to a string representation
+    that not includes exponent and with its decimals.
+    """
+    sign, digits, exponent = value.as_tuple()
+
+    if not exponent:
+        result = ''.join(str(x) for x in digits)
+    elif exponent > 0:
+        result = ''.join(str(x) for x in digits) + '0' * exponent
+    else:
+        result = ''.join(str(x) for x in digits[:exponent])
+        if not result:
+            result = '0'
+        result += '.'
+        if len(digits) >= -exponent:
+            result += ''.join(str(x) for x in digits[exponent:])
+        else:
+            result += '0' * (-exponent - len(digits))
+            result += ''.join(str(x) for x in digits)
+
+    return '-' + result if sign else result
+elementpath/xpath_nodes.py
+class TextNode(XPathNode):
+    """
+    A class for processing XPath text nodes. An Element's property
+    (elem.text or elem.tail) with a `None` value is not a text node.
+
+    :param value: a string value.
+    :param parent: the parent element.
+    :param tail: provide `True` if the text node is the parent Element's tail.
+    """
+    text: None
+    _tail = False
+
+    def __init__(self, value: str, parent: Optional[ElementNode] = None,
+                 tail: bool = False) -> None:
+        self.value = value
+        self.parent = parent
+        if tail and parent is not None:
+            self._tail = True
+
+    @property
+    def kind(self) -> str:
+        return 'text'
+
+    def is_tail(self) -> bool:
+        """Returns `True` if the node has a parent and represents the tail text."""
+        return self._tail
+
+    def __repr__(self) -> str:
+        if self.parent is not None:
+            return '%s(%r, parent=%r, tail=%r)' % (
+                self.__class__.__name__, self.value, self.parent, self._tail
+            )
+        return '%s(%r)' % (self.__class__.__name__, self.value)
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, self.__class__) and \
+            self.value == other.value and \
+            self.parent is other.parent and \
+            self._tail is other._tail
+
+    def __hash__(self) -> int:
+        return hash((self.value, self.parent, self._tail))
+elementpath/xpath30/xpath30_helpers.py
+def ordinal_suffix(value: int) -> str:
+    value = abs(value) % 100
+    if 3 < value < 20:
+        return 'th'
+
+    value %= 10
+    if value == 1:
+        return 'st'
+    elif value == 2:
+        return 'nd'
+    elif value == 3:
+        return 'rd'
+    else:
+        return 'th'
+elementpath/helpers.py
+OCCURRENCE_INDICATORS = frozenset(('?', '*', '+'))
+elementpath/namespaces.py
+XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema"
+elementpath/xpath_nodes.py
+def is_xpath_node(obj: Any) -> bool:
+    return isinstance(obj, XPathNode) or \
+        hasattr(obj, 'tag') and hasattr(obj, 'attrib') and hasattr(obj, 'text') or \
+        hasattr(obj, 'local_name') and hasattr(obj, 'type') and hasattr(obj, 'name') or \
+        hasattr(obj, 'getroot') and hasattr(obj, 'parse') and hasattr(obj, 'iter')
+elementpath/xpath_nodes.py
+def is_comment_node(obj: Any) -> bool:
+    return hasattr(obj, 'tag') and callable(obj.tag) and obj.tag.__name__ == 'Comment'
+elementpath/namespaces.py
+XSLT_XQUERY_SERIALIZATION_NAMESPACE = "http://www.w3.org/2010/xslt-xquery-serialization"
+elementpath/xpath30/xpath30_helpers.py
+def int_to_alphabetic(num: int, reference: Optional[str] = None) -> str:
+    if not reference or len(reference) > 1:
+        try:
+            alphabet = ALPHABET_CHARACTERS[reference]
+        except KeyError:
+            msg = "formatting for language {!r} is not supported"
+            raise NotImplementedError(msg.format(reference))
+
+    elif reference.isdigit():
+        for alphabet in OTHER_NUMBERS:
+            if reference in alphabet:
+                break
+        else:
+            alphabet = '1234567890'
+    else:
+        for alphabet in ALPHABET_CHARACTERS.values():
+            if reference.lower() in alphabet:
+                break
+        else:
+            alphabet = '1234567890'
+
+    base = len(alphabet)
+
+    if not num:
+        return '0'
+
+    chars = []
+    negative = num < 0
+
+    num = abs(num) - 1
+    while num >= 0:
+        chars.append(alphabet[num % base])
+        num = (num // base) - 1
+
+    if negative:
+        chars.append('-')
+    return ''.join(reversed(chars))
+elementpath/xpath_nodes.py
+def is_element_node(obj: Any) -> bool:
+    return isinstance(obj, TypedElement) or \
+        hasattr(obj, 'tag') and not callable(obj.tag) and \
+        hasattr(obj, 'attrib') and hasattr(obj, 'text')
+elementpath/helpers.py
+def is_xml_codepoint(cp: int) -> bool:
+    return cp in (0x9, 0xA, 0xD) or \
+        0x20 <= cp <= 0xD7FF or \
+        0xE000 <= cp <= 0xFFFD or \
+        0x10000 <= cp <= 0x10FFFF
+elementpath/xpath_nodes.py
+def node_nilled(obj: Any) -> Optional[bool]:
+    if is_element_node(obj):
+        if isinstance(obj, TypedElement):
+            return obj.elem.get(XSI_NIL) in ('true', '1')
+        return obj.get(XSI_NIL) in ('true', '1')
+    return None
+elementpath/datatypes/qname.py
+class QName(AbstractQName):
+    name = 'QName'
+elementpath/xpath_context.py
+class XPathSchemaContext(XPathContext):
+    """
+    The XPath dynamic context base class for schema bounded parsers. Use this class
+    as dynamic context for schema instances in order to perform a schema-based type
+    checking during the static analysis phase. Don't use this as dynamic context on
+    XML instances.
+    """
+    iter_children_or_self: Callable[..., Iterator[Union[XsdElementProtocol, XMLSchemaProtocol]]]
+    root: XMLSchemaProtocol
+elementpath/xpath_nodes.py
+def etree_iter_paths(elem: ElementNode, path: str = '.') -> Iterator[Tuple[ElementNode, str]]:
+    yield elem, path
+    comment_nodes = 0
+    pi_nodes = Counter[Optional[str]]()
+    positions = Counter[Optional[str]]()
+
+    for child in elem:
+        if callable(child.tag):
+            if child.tag.__name__ != 'ProcessingInstruction':  # type: ignore[attr-defined]
+                comment_nodes += 1
+                yield child, f'{path}/comment()[{comment_nodes}]'
+                continue
+
+            name = node_name(child)
+            pi_nodes[name] += 1
+            yield child, f'{path}/processing-instruction({name})[{pi_nodes[name]}]'
+            continue
+
+        if child.tag.startswith('{'):
+            tag = f'Q{child.tag}'
+        else:
+            tag = f'Q{{}}{child.tag}'
+
+        if path == '/':
+            child_path = f'/{tag}'
+        elif path:
+            child_path = '/'.join((path, tag))
+        else:
+            child_path = tag
+
+        positions[child.tag] += 1
+        child_path += f'[{positions[child.tag]}]'
+
+        yield from etree_iter_paths(child, child_path)
+elementpath/xpath_nodes.py
+def is_document_node(obj: Any) -> bool:
+    return hasattr(obj, 'getroot') and hasattr(obj, 'parse') and hasattr(obj, 'iter')
+elementpath/regex/patterns.py
+def translate_pattern(pattern: str, flags: int = 0, xsd_version: str = '1.0',
+                      back_references: bool = True, lazy_quantifiers: bool = True,
+                      anchors: bool = True) -> str:
+    """
+    Translates a pattern regex expression to a Python regex pattern. With default
+    options the translator processes XPath 2.0/XQuery 1.0 regex patterns. For XML
+    Schema patterns set all boolean options to `False`.
+
+    :param pattern: the source XML Schema regular expression.
+    :param flags: regex flags as represented by Python's re module.
+    :param xsd_version: apply regex rules of a specific XSD version, '1.0' for default.
+    :param back_references: if `True` supports back-references and capturing groups.
+    :param lazy_quantifiers: if `True` supports lazy quantifiers (\\*?, +?).
+    :param anchors: if `True` supports ^ and $ anchors, otherwise the translated \
+    pattern is anchored to its boundaries and anchors are treated as normal characters.
+    """
+    pos: int
+    msg: str
+
+    def parse_character_class() -> CharacterClass:
+        nonlocal pos
+        nonlocal msg
+
+        pos += 1
+        if pattern[pos] == '^':
+            pos += 1
+            negative = True
+        else:
+            negative = False
+
+        char_class_pos = pos
+        while True:
+            if pattern[pos] == '[':
+                msg = "invalid character '[' at position {}: {!r}"
+                raise RegexError(msg.format(pos, pattern))
+            elif pattern[pos] == '\\':
+                if pattern[pos + 1].isdigit():
+                    msg = "illegal back-reference in character class at position {}: {!r}"
+                    raise RegexError(msg.format(pos, pattern))
+                pos += 2
+            elif pattern[pos] == ']' or pattern[pos:pos + 2] == '-[':
+                if pos == char_class_pos:
+                    msg = "empty character class at position {}: {!r}"
+                    raise RegexError(msg.format(pos, pattern))
+
+                char_class_pattern = pattern[char_class_pos:pos]
+                if HYPHENS_PATTERN.search(char_class_pattern) and pos - char_class_pos > 2:
+                    msg = "invalid character range '--' at position {}: {!r}"
+                    raise RegexError(msg.format(pos, pattern))
+
+                if xsd_version == '1.0':
+                    hyphen_match = INVALID_HYPHEN_PATTERN.search(char_class_pattern)
+                    if hyphen_match is not None:
+                        hyphen_pos = char_class_pos + hyphen_match.span()[1] - 2
+                        msg = "unescaped character '-' at position {}: {!r}"
+                        raise RegexError(msg.format(hyphen_pos, pattern))
+
+                char_class = CharacterClass(char_class_pattern, xsd_version)
+                if negative:
+                    char_class.complement()
+                break  # pragma: no cover
+            else:
+                pos += 1
+
+        if pattern[pos] != ']':
+            # Parse a group subtraction
+            pos += 1
+            subtracted_class = parse_character_class()
+            pos += 1
+            char_class -= subtracted_class
+
+        return char_class
+
+    group_open_char = '(' if back_references else '(?:'
+    regex = [] if anchors else ['^%s' % group_open_char]
+    pos = 0
+    pattern_len = len(pattern)
+    total_groups = 0
+    nested_groups = 0
+    dot_all = flags & re.DOTALL
+
+    if back_references:
+        match = FORBIDDEN_ESCAPES_REF_PATTERN.search(pattern)
+    else:
+        match = FORBIDDEN_ESCAPES_NOREF_PATTERN.search(pattern)
+
+    if match:
+        msg = "not allowed escape sequence {!r} at position {}: {!r}"
+        raise RegexError(msg.format(match.group(), match.span()[0], pattern))
+
+    while pos < pattern_len:
+        ch = pattern[pos]
+        if ch == '.':
+            regex.append(ch if dot_all else '[^\r\n]')
+        elif ch in ('^', '$'):
+            if not anchors:
+                regex.append(r'\%s' % ch)
+            elif ch == '^':
+                regex.append(r'(?<!\n\Z)^' if flags & re.MULTILINE else '^')
+            else:
+                regex.append('$' if flags & re.MULTILINE else r'$(?!\n\Z)')
+
+        elif ch == '[':
+            try:
+                char_class_repr = str(parse_character_class())
+            except IndexError:
+                msg = "unterminated character class at position {}: {!r}"
+                raise RegexError(msg.format(pos, pattern))
+            else:
+                if char_class_repr == '[]':
+                    regex.append(r'[^\w\W]')
+                else:
+                    regex.append(char_class_repr)
+
+        elif ch == '{':
+            if pos == 0:
+                msg = "unexpected quantifier {!r} at position {}: {!r}"
+                raise RegexError(msg.format(ch, pos, pattern))
+
+            match = QUANTIFIER_PATTERN.match(pattern[pos:])
+            if match is None:
+                msg = "invalid quantifier {!r} at position {}: {!r}"
+                raise RegexError(msg.format(ch, pos, pattern))
+
+            if regex and regex[-1] in ('^', r'(?<!\n\Z)^', '$', r'$(?!\n\Z)'):
+                # ^{n} or ${n} allowed but useless. Invalid im Python re
+                # so incapsulate '^'/'$' inside a non-capturing group.
+                regex[-1] = f'(?:{regex[-1]})'
+
+            regex.append(match.group())
+            pos += len(match.group())
+            if not lazy_quantifiers and pos < pattern_len and pattern[pos] in ('?', '+', '*'):
+                msg = "unexpected meta character {!r} at position {}: {!r}"
+                raise RegexError(msg.format(pattern[pos], pos, pattern))
+            continue  # pragma: no cover
+
+        elif ch == '(':
+            if pattern[pos:pos + 2] == '(?' and pattern[pos:pos + 3] != '(?:':
+                msg = "invalid '(?...)' extension notation at position {}: {!r}"
+                raise RegexError(msg.format(pos, pattern))
+
+            total_groups += 1
+            nested_groups += 1
+            regex.append(group_open_char)
+
+        elif ch == ']':
+            msg = "unexpected meta character {!r} at position {}: {!r}"
+            raise RegexError(msg.format(ch, pos, pattern))
+
+        elif ch == ')':
+            if nested_groups == 0:
+                msg = "unbalanced parenthesis ')' at position {}: {!r}"
+                raise RegexError(msg.format(pos, pattern))
+
+            nested_groups -= 1
+            regex.append(ch)
+
+        elif ch in OCCURRENCE_INDICATORS:
+            if pos == 0:
+                msg = "unexpected quantifier {!r} at position {}: {!r}"
+                raise RegexError(msg.format(ch, pos, pattern))
+            elif lazy_quantifiers:
+                pass
+            elif pos < pattern_len - 1 and pattern[pos + 1] in ('?', '+', '*', '{'):
+                msg = "unexpected meta character {!r} at position {}: {!r}"
+                raise RegexError(msg.format(pattern[pos + 1], pos + 1, pattern))
+
+            if regex and regex[-1] in ('^', r'(?<!\n\Z)^', '$', r'$(?!\n\Z)'):
+                # ^*/^+/^? or $*/$+/$? allowed but useless. Invalid im Python re
+                # so incapsulate '^'/'$' inside a non-capturing group.
+                regex[-1] = f'(?:{regex[-1]})'
+
+            regex.append(ch)
+
+        elif ch == '\\':
+            pos += 1
+            if flags & re.VERBOSE:
+                while pos < pattern_len and pattern[pos] == ' ':
+                    pos += 1
+
+            if pos >= pattern_len:
+                regex.append('\\')
+            elif pattern[pos].isdigit():
+                regex.append('\\%s' % pattern[pos])
+                reference = DIGITS_PATTERN.match(pattern[pos:]).group()  # type: ignore[union-attr]
+                if len(reference) > 1:
+                    k = 0
+                    for k in range(1, len(reference)):
+                        if total_groups < int(reference[:k + 1]):
+                            regex.append('[%s]' % pattern[pos + k])
+                            break
+                        else:
+                            regex.append(pattern[pos + k])
+                    pos += k  # pragma: no cover
+            elif pattern[pos] == 'i':
+                regex.append('[%s]' % I_SHORTCUT_REPLACE)
+            elif pattern[pos] == 'I':
+                regex.append('[^%s]' % I_SHORTCUT_REPLACE)
+            elif pattern[pos] == 'c':
+                regex.append('[%s]' % C_SHORTCUT_REPLACE)
+            elif pattern[pos] == 'C':
+                regex.append('[^%s]' % C_SHORTCUT_REPLACE)
+            elif pattern[pos] in 'pP':
+                block_pos = pos - 1
+                try:
+                    if pattern[pos + 1] != '{':
+                        raise RegexError("a '{' expected, found %r." % pattern[pos + 1])
+                    while pattern[pos] != '}':
+                        pos += 1
+                except (IndexError, ValueError):
+                    msg = "truncated unicode block escape at position {}: {!r}"
+                    raise RegexError(msg.format(block_pos, pattern))
+
+                block_name = pattern[block_pos + 3:pos]
+                if flags & re.VERBOSE:
+                    # spaces are completely collapsed in verbose regex patterns
+                    block_name = block_name.replace(' ', '')
+
+                try:
+                    p_shortcut_set = unicode_subset(block_name)
+                except RegexError:
+                    # XSD 1.1 supports Is prefix to match Unicode blocks
+                    if xsd_version == '1.0' or not block_name.startswith('Is'):
+                        raise
+                    p_shortcut_group = '[%s]' % UnicodeSubset([(0, maxunicode)])
+                else:
+                    if pattern[block_pos + 1] == 'p':
+                        p_shortcut_group = '[%s]' % p_shortcut_set
+                    else:
+                        p_shortcut_group = '[^%s]' % p_shortcut_set
+
+                if flags & re.IGNORECASE:
+                    regex.append('(?-i:%s)' % p_shortcut_group)
+                else:
+                    regex.append(p_shortcut_group)
+
+            else:
+                regex.append('\\%s' % pattern[pos])
+        else:
+            regex.append(ch)
+        pos += 1
+
+    if nested_groups > 0:
+        raise RegexError("unterminated subpattern in expression: %r" % pattern)
+
+    if not anchors:
+        regex.append(r')$(?!\n\Z)')
+    return ''.join(regex)
+elementpath/regex/unicode_subsets.py
+class RegexError(Exception):
+    """
+    Error in a regular expression or in a character class specification.
+    This exception is derived from `Exception` base class and is raised
+    only by the regex subpackage.
+    """
+elementpath/datatypes/untyped.py
+class UntypedAtomic(metaclass=AtomicTypeMeta):
+    """
+    Class for xs:untypedAtomic data. Provides special methods for comparing
+    and converting to basic data types.
+
+    :param value: the untyped value, usually a string.
+    """
+    name = 'untypedAtomic'
+    value: str
+
+    @classmethod
+    def validate(cls, value: object) -> None:
+        if not isinstance(value, cls):
+            raise cls.invalid_type(value)
+
+    def __init__(self, value: Union[str, bytes, bool, float, Decimal,
+                                    'UntypedAtomic', AnyAtomicType]) -> None:
+        if isinstance(value, str):
+            self.value = value
+        elif isinstance(value, bytes):
+            self.value = value.decode('utf-8')
+        elif isinstance(value, bool):
+            self.value = 'true' if value else 'false'
+        elif isinstance(value, float):
+            self.value = str(value).rstrip('0').rstrip('.')
+        elif isinstance(value, Decimal):
+            self.value = str(value.normalize())
+        elif isinstance(value, UntypedAtomic):
+            self.value = value.value
+        elif isinstance(value, AnyAtomicType):
+            self.value = str(value)
+        else:
+            raise TypeError("{!r} is not an atomic value".format(value))
+
+    def __repr__(self) -> str:
+        return '%s(%r)' % (self.__class__.__name__, self.value)
+
+    def _get_operands(self, other: Any, force_float: bool = True) -> Tuple[Any, Any]:
+        """
+        Returns a couple of operands, applying a cast to the instance value based on
+        the type of the *other* argument.
+
+        :param other: The other operand, that determines the cast for the untyped instance.
+        :param force_float: Force a conversion to float if *other* is an UntypedAtomic instance.
+        :return: A couple of values.
+        """
+        if isinstance(other, UntypedAtomic):
+            if force_float:
+                return float(self.value), float(other.value)
+            return self.value, other.value
+        elif isinstance(other, bool):
+            # Cast to xs:boolean
+            value = self.value.strip()
+            if value not in BOOLEAN_VALUES:
+                raise ValueError("{!r} cannot be cast to xs:boolean".format(self.value))
+            return value in ('1', 'true'), other
+        elif isinstance(other, int):
+            return float(self.value), other
+        elif other is None or isinstance(other, (str, list)):
+            return self.value, other
+
+        try:
+            return type(other).fromstring(self.value), other
+        except AttributeError:
+            return type(other)(self.value), other
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __eq__(self, other: Any) -> Any:
+        return operator.eq(*self._get_operands(other, force_float=False))
+
+    def __ne__(self, other: Any) -> Any:
+        return not operator.eq(*self._get_operands(other, force_float=False))
+
+    def __lt__(self, other: Any) -> Any:
+        return operator.lt(*self._get_operands(other))
+
+    def __le__(self, other: Any) -> Any:
+        return operator.le(*self._get_operands(other))
+
+    def __gt__(self, other: Any) -> Any:
+        return operator.gt(*self._get_operands(other))
+
+    def __ge__(self, other: Any) -> Any:
+        return operator.ge(*self._get_operands(other))
+
+    def __add__(self, other: Any) -> Any:
+        return operator.add(*self._get_operands(other))
+    __radd__ = __add__
+
+    def __sub__(self, other: Any) -> Any:
+        return operator.sub(*self._get_operands(other))
+
+    def __rsub__(self, other: Any) -> Any:
+        return operator.sub(*reversed(self._get_operands(other)))
+
+    def __mul__(self, other: Any) -> Any:
+        return operator.mul(*self._get_operands(other))
+    __rmul__ = __mul__
+
+    def __truediv__(self, other: Any) -> Any:
+        return operator.truediv(*self._get_operands(other))
+
+    def __rtruediv__(self, other: Any) -> Any:
+        return operator.truediv(*reversed(self._get_operands(other)))
+
+    def __int__(self) -> int:
+        return int(self.value)
+
+    def __float__(self) -> float:
+        return float(self.value)
+
+    def __bool__(self) -> bool:
+        return bool(self.value)  # For effective boolean value, not for cast to xs:boolean.
+
+    def __abs__(self) -> Decimal:
+        return abs(Decimal(self.value))
+
+    def __mod__(self, other: Any) -> Any:
+        return operator.mod(*self._get_operands(other))
+
+    def __str__(self) -> str:
+        return self.value
+
+    def __bytes__(self) -> bytes:
+        return bytes(self.value, encoding='utf-8')
+elementpath/xpath30/xpath30_helpers.py
+MODIFIER_PATTERN = re.compile(r'^([co](\(.+\))?)?[at]?$')
+elementpath/helpers.py
+XML_NEWLINES_PATTERN = re.compile('\r\n|\r|\n')
+elementpath/namespaces.py
+XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace"
+elementpath/xpath_nodes.py
+def is_etree_element(obj: Any) -> bool:
+    return hasattr(obj, 'tag') and hasattr(obj, 'attrib') and hasattr(obj, 'text')
+elementpath/datatypes/datetime.py
+class Time(AbstractDateTime):
+    """XSD xs:time builtin type"""
+    name = 'time'
+    pattern = re.compile(
+        r'^(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):'
+        r'(?P<second>[0-9]{2})(?:\.(?P<microsecond>[0-9]+))?'
+        r'(?P<tzinfo>Z|[+-](?:(?:0[0-9]|1[0-3]):[0-5][0-9]|14:00))?$')
+
+    def __init__(self, hour: int = 0, minute: int = 0,
+                 second: int = 0, microsecond: int = 0,
+                 tzinfo: Union[None, Timezone, datetime.tzinfo] = None) -> None:
+        if hour == 24 and minute == second == microsecond == 0:
+            hour = 0
+        super(Time, self).__init__(
+            hour=hour, minute=minute, second=second, microsecond=microsecond, tzinfo=tzinfo
+        )
+
+    def __str__(self) -> str:
+        if self.microsecond:
+            return '{:02}:{:02}:{:02}.{}{}'.format(
+                self.hour, self.minute, self.second,
+                '{:06}'.format(self.microsecond).rstrip('0'),
+                str(self.tzinfo or '')
+            )
+        return '{:02}:{:02}:{:02}{}'.format(
+            self.hour, self.minute, self.second, str(self.tzinfo or '')
+        )
+
+    def __lt__(self, other: object) -> bool:
+        return cast(bool, operator.lt(*self._get_operands(other)))
+
+    def __le__(self, other: object) -> bool:
+        return cast(bool, operator.le(*self._get_operands(other)))
+
+    def __gt__(self, other: object) -> bool:
+        return cast(bool, operator.gt(*self._get_operands(other)))
+
+    def __ge__(self, other: object) -> bool:
+        return cast(bool, operator.ge(*self._get_operands(other)))
+
+    def __add__(self, other: object) -> 'Time':
+        if isinstance(other, DayTimeDuration):
+            dt = self._dt + other.get_timedelta()
+        elif isinstance(other, datetime.timedelta):
+            dt = self._dt + other
+        else:
+            raise TypeError("wrong type %r for operand %r" % (type(other), other))
+        return Time(dt.hour, dt.minute, dt.second, dt.microsecond, dt.tzinfo)
+
+    def __sub__(self, other: object) -> Union['DayTimeDuration', 'Time']:
+        if isinstance(other, self.__class__):
+            delta = operator.sub(*self._get_operands(other))
+            return DayTimeDuration.fromtimedelta(delta)
+        elif isinstance(other, DayTimeDuration):
+            dt = self._dt - other.get_timedelta()
+            return Time(dt.hour, dt.minute, dt.second, dt.microsecond, dt.tzinfo)
+        elif isinstance(other, datetime.timedelta):
+            dt = self._dt - other
+            return Time(dt.hour, dt.minute, dt.second, dt.microsecond, dt.tzinfo)
+        else:
+            raise TypeError("wrong type %r for operand %r" % (type(other), other))
+elementpath/xpath_nodes.py
+def is_processing_instruction_node(obj: Any) -> bool:
+    return hasattr(obj, 'tag') and callable(obj.tag) and obj.tag.__name__ == 'ProcessingInstruction'
+elementpath/xpath_nodes.py
+class AttributeNode(XPathNode):
+    """
+    A class for processing XPath attribute nodes.
+
+    :param name: the attribute name.
+    :param value: a string value or an XSD attribute when XPath is applied on a schema.
+    :param parent: the parent element.
+    """
+    name: str
+
+    def __init__(self, name: str, value: Union[str, XsdAttributeProtocol],
+                 parent: Optional[ElementNode] = None) -> None:
+        self.name = name
+        self.value: Union[str, XsdAttributeProtocol] = value
+        self.parent = parent
+
+    @property
+    def kind(self) -> str:
+        return 'attribute'
+
+    def as_item(self) -> Tuple[str, Union[str, XsdAttributeProtocol]]:
+        return self.name, self.value
+
+    def __repr__(self) -> str:
+        if self.parent is not None:
+            return '%s(name=%r, value=%r, parent=%r)' % (
+                self.__class__.__name__, self.name, self.value, self.parent
+            )
+        return '%s(name=%r, value=%r)' % (self.__class__.__name__, self.name, self.value)
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, self.__class__) and \
+            self.name == other.name and \
+            self.value == other.value and \
+            self.parent is other.parent
+
+    def __hash__(self) -> int:
+        return hash((self.name, self.value, self.parent))
+elementpath/datatypes/datetime.py
+class Date10(OrderedDateTime):
+    """XSD 1.0 xs:date builtin type"""
+    name = 'date'
+    pattern = re.compile(r'^(?P<year>-?[0-9]*[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})'
+                         r'(?P<tzinfo>Z|[+-](?:(?:0[0-9]|1[0-3]):[0-5][0-9]|14:00))?$')
+
+    def __init__(self, year: int, month: int, day: int,
+                 tzinfo: Optional[datetime.tzinfo] = None) -> None:
+        super(Date10, self).__init__(year, month, day, tzinfo=tzinfo)
+
+    def __str__(self) -> str:
+        return '{}-{:02}-{:02}{}'.format(
+            self.iso_year, self.month, self.day, str(self.tzinfo or '')
+        )
+elementpath/datatypes/datetime.py
+class DateTime10(OrderedDateTime):
+    """XSD 1.0 xs:dateTime builtin type"""
+    name = 'dateTime'
+    pattern = re.compile(
+        r'^(?P<year>-?[0-9]*[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})'
+        r'(T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):'
+        r'(?P<second>[0-9]{2})(?:\.(?P<microsecond>[0-9]+))?)'
+        r'(?P<tzinfo>Z|[+-](?:(?:0[0-9]|1[0-3]):[0-5][0-9]|14:00))?$')
+
+    def __init__(self, year: int, month: int, day: int, hour: int = 0,
+                 minute: int = 0, second: int = 0, microsecond: int = 0,
+                 tzinfo: Optional[datetime.tzinfo] = None) -> None:
+        super(DateTime10, self).__init__(
+            year, month, day, hour, minute, second, microsecond, tzinfo
+        )
+
+    def __str__(self) -> str:
+        if self.microsecond:
+            return '{}-{:02}-{:02}T{:02}:{:02}:{:02}.{}{}'.format(
+                self.iso_year, self.month, self.day, self.hour, self.minute, self.second,
+                '{:06}'.format(self.microsecond).rstrip('0'), str(self.tzinfo or '')
+            )
+        return '{}-{:02}-{:02}T{:02}:{:02}:{:02}{}'.format(
+            self.iso_year, self.month, self.day, self.hour,
+            self.minute, self.second, str(self.tzinfo or '')
+        )
+elementpath/xpath_nodes.py
+def node_document_uri(obj: Any) -> Optional[str]:
+    if is_document_node(obj):
+        try:
+            uri = cast(str, obj.getroot().attrib[XML_BASE])
+            parts = urlparse(uri)
+        except (KeyError, ValueError):
+            pass
+        else:
+            if parts.scheme and parts.netloc or parts.path.startswith('/'):
+                return uri
+    return None
+elementpath/helpers.py
+EQNAME_PATTERN = re.compile(
+    r'^(?:Q{(?P<namespace>[^}]+)}|'
+    r'(?P<prefix>[^\d\W][\w\-.\u00B7\u0300-\u036F\u0387\u06DD\u06DE\u203F\u2040]*):)?'
+    r'(?P<local>[^\d\W][\w\-.\u00B7\u0300-\u036F\u0387\u06DD\u06DE\u203F\u2040]*)$',
+)
+elementpath/namespaces.py
+def get_expanded_name(
+        qname: str, namespaces: Union[Dict[str, str], Dict[Optional[str], str]]) -> str:
+    """
+    Get the expanded form of a QName, using a namespace map.
+    Local names are mapped to the default namespace.
+
+    :param qname: a prefixed QName or a local name or an extended QName.
+    :param namespaces: a dictionary with a map from prefixes to namespace URIs.
+    :return: the expanded format of a QName or a local name.
+    """
+    try:
+        if qname[0] == '{' or qname[1] == '{' and qname[0] == 'Q':
+            return qname
+    except IndexError:
+        return qname
+
+    try:
+        prefix, local_name = qname.split(':')
+    except ValueError:
+        if ':' in qname:
+            raise ValueError("wrong format for prefixed QName %r" % qname)
+        elif '' in namespaces:
+            uri = namespaces['']
+        elif None in namespaces:
+            uri = cast(Dict[Optional[str], str], namespaces)[None]  # lxml nsmap
+        else:
+            return qname
+
+        return '{%s}%s' % (uri, qname) if uri else qname
+    else:
+        if not prefix or not local_name:
+            raise ValueError("wrong format for reference name %r" % qname)
+        uri = namespaces[prefix]
+        return '{%s}%s' % (uri, local_name) if uri else local_name
+elementpath/xpath_nodes.py
+def node_name(obj: Any) -> Optional[str]:
+    if isinstance(obj, XPathNode):
+        return cast(Optional[str], obj.name)
+    elif not hasattr(obj, 'tag') or not hasattr(obj, 'text'):
+        return None
+    elif not callable(obj.tag):
+        return cast(str, obj.tag)
+    elif obj.tag.__name__ != 'ProcessingInstruction':
+        return None
+    else:
+        # Return pi target. ElementTree doesn't have a specific attribute
+        # for target but put it before the text, separated by a space.
+        try:
+            return cast(str, obj.target)
+        except AttributeError:
+            return cast(str, obj.text.split(' ', maxsplit=1)[0])
+elementpath/xpath30/xpath30_helpers.py
+UNICODE_DIGIT_PATTERN = re.compile(r'\d')
+elementpath/xpath_nodes.py
+class TypedElement(XPathNode):
+    """
+    A class for processing typed element nodes.
+
+    :param elem: the linked element. Can be an Element, or an XSD element \
+    when XPath is applied on a schema.
+    :param xsd_type: the reference XSD type.
+    :param value: the decoded value. Can be `None` for empty or element-only elements."
+    """
+    def __init__(self, elem: ElementProtocol, xsd_type: Any, value: Any) -> None:
+        self.elem = elem
+        self.xsd_type = xsd_type
+        self.value = value
+
+    @property
+    def kind(self) -> str:
+        return 'element'
+
+    @property
+    def name(self) -> str:
+        return self.elem.tag
+
+    @property
+    def tag(self) -> str:
+        return self.elem.tag
+
+    def __repr__(self) -> str:
+        return '%s(tag=%r)' % (self.__class__.__name__, self.elem.tag)
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, self.__class__) and \
+            self.elem is other.elem and \
+            self.value == other.value
+
+    def __hash__(self) -> int:
+        return hash((self.elem, self.value))
+elementpath/xpath30/_xpath30_operators.py
+def nud_placeholder_symbol(self):
+def evaluate_placeholder_symbol(self, context=None):
+def nud_parenthesized_expression(self):
+def led_parenthesized_expression(self, left):
+def evaluate_parenthesized_expression(self, context=None):
+def evaluate_union_operator(self, context=None):
+def select_simple_map_operator(self, context=None):
+def nud_let_expression(self):
+def select_let_expression(self, context=None):
+def led_function_reference(self, left):
+def evaluate_function_reference(self, context=None):
+elementpath/xpath30/xpath30_helpers.py
+def parse_datetime_picture(picture: str) -> Tuple[List[str], List[str]]:
+    """
+    Analyze a picture argument of XPath 3.0+ formatting functions.
+
+    :param picture: the picture string.
+    :return: a couple of lists containing the literal parts and markers.
+    """
+    min_value: Union[int, str]
+    max_value: Union[None, int, str]
+
+    literals = []
+    for lit in PICTURE_PATTERN.split(picture):
+        if '[' in lit.replace('[[', ''):
+            raise xpath_error('FOFD1340', "Invalid character '[' in picture literal")
+        elif ']' in lit.replace(']]', ''):
+            raise xpath_error('FOFD1340', "Invalid character ']' in picture literal")
+        else:
+            literals.append(lit.replace('[[', '[').replace(']]', ']'))
+
+    markers = [x.group().replace(' ', '').replace('\n', '').replace('\t', '')
+               for x in PICTURE_PATTERN.finditer(picture)]
+    assert len(markers) == (len(literals) - 1)
+
+    msg_tmpl = 'Invalid formatting component {!r}'
+    for value in markers:
+        if value[1] not in 'YMDdFWwHhPmsfZzCE':
+            raise xpath_error('FOFD1340', msg_tmpl.format(value))
+
+        if ',' not in value:
+            presentation = value[2:-1]
+        else:
+            presentation, width = value[2:-1].rsplit(',', maxsplit=1)
+
+            if WIDTH_PATTERN.match(width) is None:
+                raise xpath_error('FOFD1340', f'Invalid width modifier {value!r}')
+            elif '-' not in width:
+                if '*' not in width and not int(width):
+                    raise xpath_error('FOFD1340', f'Invalid width modifier {value!r}')
+            elif '*' not in width:
+                min_value, max_value = map(int, width.split('-'))
+                if min_value < 1 or max_value < min_value:
+                    raise xpath_error('FOFD1340', msg_tmpl.format(value))
+            else:
+                min_value, max_value = width.split('-')
+                if min_value != '*' and not int(min_value):
+                    raise xpath_error('FOFD1340', f'Invalid width modifier {value!r}')
+                if max_value != '*' and not int(max_value):
+                    raise xpath_error('FOFD1340', f'Invalid width modifier {value!r}')
+
+        if len(presentation) > 1 and presentation[-1] in 'atco':
+            presentation = presentation[:-1]
+
+        if not presentation or presentation in PRESENTATION_FORMATS:
+            pass
+        elif DECIMAL_DIGIT_PATTERN.match(presentation) is None:
+            raise xpath_error('FOFD1340', msg_tmpl.format(value))
+        else:
+            if value[1] == 'f':
+                if presentation[0] == '#' and any(ch.isdigit() for ch in presentation):
+                    msg = 'picture argument has an invalid primary format token'
+                    raise xpath_error('FOFD1340', msg)
+            elif presentation[0].isdigit() and '#' in presentation:
+                msg = 'picture argument has an invalid primary format token'
+                raise xpath_error('FOFD1340', msg)
+
+            # Check digits set uniformity
+            cp = None
+            for ch in reversed(presentation):
+                if not ch.isdigit():
+                    continue
+                elif cp is None:
+                    cp = ord(ch)
+                elif abs(ord(ch) - cp) > 10:
+                    raise xpath_error('FOFD1340', msg_tmpl.format(value))
+
+    return literals, markers
+elementpath/xpath30/xpath30_helpers.py
+DECIMAL_DIGIT_PATTERN = re.compile(translate_pattern(r'^((\p{Nd}|#|[^\p{N}\p{L}])+?)$'))
+elementpath/namespaces.py
+def split_expanded_name(name: str) -> Tuple[str, str]:
+    match = EXPANDED_NAME_PATTERN.match(name)
+    if match is None:
+        raise ValueError("{!r} is not an expanded QName".format(name))
+    namespace, local_name = match.groups()
+    return namespace or '', local_name
+elementpath/exceptions.py
+class ElementPathError(Exception):
+    """
+    Base exception class for elementpath package.
+
+    :param message: the message related to the error.
+    :param code: an optional error code.
+    :param token: an optional token instance related with the error.
+    """
+    def __init__(self, message: str,
+                 code: Optional[str] = None,
+                 token: Optional[Token[Any]] = None) -> None:
+        super(ElementPathError, self).__init__(message)
+        self.message = message
+        self.code = code
+        self.token = token
+
+    def __str__(self) -> str:
+        if self.token is None or not isinstance(self.token.value, (str, bytes)):
+            if not self.code:
+                return self.message
+            return '[{}] {}'.format(self.code, self.message)
+        elif not self.code:
+            return '{1} at line {2}, column {3}: {0}'.format(
+                self.message, self.token, *self.token.position
+            )
+        return '{2} at line {3}, column {4}: [{1}] {0}'.format(
+            self.message, self.code, self.token, *self.token.position
+        )
+elementpath/xpath30/xpath30_helpers.py
+def format_digits(digits: str,
+                  fmt: str,
+                  digits_family: str = '0123456789',
+                  optional_digit: str = '#',
+                  grouping_separator: Optional[str] = None) -> str:
+    result = []
+    iter_num_digits = reversed(digits)
+    num_digit = next(iter_num_digits)
+
+    for fmt_char in reversed(fmt):
+        if fmt_char.isdigit() or fmt_char == optional_digit:
+            if num_digit:
+                result.append(digits_family[ord(num_digit) - 48])
+                num_digit = next(iter_num_digits, '')
+            elif fmt_char != optional_digit:
+                result.append(digits_family[0])
+        elif not result or not result[-1].isdigit() and grouping_separator \
+                and result[-1] != grouping_separator:
+            raise xpath_error('FODF1310', "invalid grouping in picture argument")
+        else:
+            result.append(fmt_char)
+
+    if num_digit:
+        separator = ''
+        _separator = {x for x in fmt if not x.isdigit() and x != optional_digit}
+        if len(_separator) != 1:
+            repeat = None
+        else:
+            separator = _separator.pop()
+            chunks = fmt.split(separator)
+            repeat = len(chunks[-1])
+            if all(len(item) == repeat for item in chunks[1:-1]):
+                repeat += 1
+            else:
+                repeat = None
+
+        if repeat is None:
+            while num_digit:
+                result.append(digits_family[ord(num_digit) - 48])
+                num_digit = next(iter_num_digits, '')
+        else:
+            while num_digit:
+                if ((len(result) + 1) % repeat) == 0:
+                    result.append(separator)
+                result.append(digits_family[ord(num_digit) - 48])
+                num_digit = next(iter_num_digits, '')
+
+    if grouping_separator:
+        return ''.join(reversed(result)).lstrip(grouping_separator)
+    while result and \
+            category(result[-1]) not in ('Nd', 'Nl', 'No', 'Lu', 'Ll', 'Lt', 'Lm', 'Lo'):
+        result.pop()
+    return ''.join(reversed(result))
+elementpath/datatypes/atomic_types.py
+XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema"
+class AtomicTypeMeta(ABCMeta):
+class AnyAtomicType(metaclass=AtomicTypeMeta):
+    def __new__(mcs, class_name: str, bases: Tuple[Type[Any], ...], dict_: Dict[str, Any]) \
+    def validate(cls, value: object) -> None:
+    def is_valid(cls, value: object) -> bool:
+    def invalid_type(cls, value: object) -> TypeError:
+    def invalid_value(cls, value: object) -> ValueError:
+elementpath/xpath_nodes.py
+class NamespaceNode(XPathNode):
+    """
+    A class for processing XPath namespace nodes.
+
+    :param prefix: the namespace prefix.
+    :param uri: the namespace URI.
+    :param parent: the parent element.
+    """
+    def __init__(self, prefix: str, uri: str, parent: Optional[ElementNode] = None) -> None:
+        self.prefix = prefix
+        self.uri = uri
+        self.parent = parent
+
+    @property
+    def kind(self) -> str:
+        return 'namespace'
+
+    @property
+    def name(self) -> str:
+        return self.prefix
+
+    @property
+    def value(self) -> str:
+        return self.uri
+
+    def as_item(self) -> Tuple[str, str]:
+        return self.prefix, self.uri
+
+    def __repr__(self) -> str:
+        if self.parent is not None:
+            return '%s(prefix=%r, uri=%r, parent=%r)' % (
+                self.__class__.__name__, self.prefix, self.uri, self.parent
+            )
+        return '%s(prefix=%r, uri=%r)' % (self.__class__.__name__, self.prefix, self.uri)
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, self.__class__) and \
+            self.prefix == other.prefix and \
+            self.uri == other.uri and \
+            self.parent is other.parent
+
+    def __hash__(self) -> int:
+        return hash((self.prefix, self.uri, self.parent))
+elementpath/datatypes/uri.py
+class AnyURI(AnyAtomicType):
+    """
+    Class for xs:anyURI data.
+
+    :param value: a string or an untyped atomic instance.
+    """
+    value: str
+    name = 'anyURI'
+
+    def __init__(self, value: Union[str, bytes, UntypedAtomic, 'AnyURI']) -> None:
+        if isinstance(value, str):
+            self.value = collapse_white_spaces(value)
+        elif isinstance(value, bytes):
+            self.value = collapse_white_spaces(value.decode('utf-8'))
+        elif isinstance(value, self.__class__):
+            self.value = value.value
+        elif isinstance(value, UntypedAtomic):
+            self.value = collapse_white_spaces(value.value)
+        else:
+            raise TypeError('the argument has an invalid type %r' % type(value))
+
+        self.validate(self.value)
+
+    def __repr__(self) -> str:
+        return '%s(%r)' % (self.__class__.__name__, self.value)
+
+    def __str__(self) -> str:
+        return self.value
+
+    def __bool__(self) -> bool:
+        return bool(self.value)  # For effective boolean value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __contains__(self, item: str) -> bool:
+        return item in self.value
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (AnyURI, UntypedAtomic)):
+            return self.value == other.value
+        elif isinstance(other, (bool, float, Decimal, Integer)):
+            raise TypeError("cannot compare {} with xs:{}".format(type(other), self.name))
+        return self.value == other
+
+    def __ne__(self, other: object) -> bool:
+        if isinstance(other, (AnyURI, UntypedAtomic)):
+            return self.value != other.value
+        elif isinstance(other, (bool, float, Decimal, Integer)):
+            raise TypeError("cannot compare {} with xs:{}".format(type(other), self.name))
+        return self.value != other
+
+    def __lt__(self, other: Union[str, 'AnyURI', UntypedAtomic]) -> bool:
+        if isinstance(other, (AnyURI, UntypedAtomic)):
+            return self.value < other.value
+        return self.value < other
+
+    def __le__(self, other: Union[str, 'AnyURI', UntypedAtomic]) -> bool:
+        if isinstance(other, (AnyURI, UntypedAtomic)):
+            return self.value <= other.value
+        return self.value <= other
+
+    def __gt__(self, other: Union[str, 'AnyURI', UntypedAtomic]) -> bool:
+        if isinstance(other, (AnyURI, UntypedAtomic)):
+            return self.value > other.value
+        return self.value > other
+
+    def __ge__(self, other: Union[str, 'AnyURI', UntypedAtomic]) -> bool:
+        if isinstance(other, (AnyURI, UntypedAtomic)):
+            return self.value >= other.value
+        return self.value >= other
+
+    @classmethod
+    def validate(cls, value: object) -> None:
+        if isinstance(value, cls):
+            return
+        elif isinstance(value, bytes):
+            value = value.decode()
+        elif not isinstance(value, str):
+            raise cls.invalid_type(value)
+
+        try:
+            url_parts = urlparse(value)
+            _ = url_parts.port  # check invalid port!
+        except ValueError as err:
+            msg = 'invalid value {!r} for xs:{} ({})'
+            raise ValueError(msg.format(value, cls.name, str(err))) from None
+        else:
+            if url_parts.path.startswith(':'):
+                raise cls.invalid_value(value)
+            elif value.count('#') > 1:
+                msg = 'invalid value {!r} for xs:{} (too many # characters)'
+                raise ValueError(msg.format(value, cls.name))
+            elif WRONG_ESCAPE_PATTERN.search(value) is not None:
+                msg = 'invalid value {!r} for xs:{} (wrong escaping)'
+                raise ValueError(msg.format(value, cls.name))
+elementpath/xpath30/xpath30_helpers.py
+def int_to_words(num: int, lang: Optional[str] = None, fmt_modifier: str = '') -> str:
+
+    def word_num(value: int) -> Iterator[str]:
+        if not value:
+            yield num_map[value]
+
+        for base, word in num_map.items():
+            if base >= 1:
+                floor = value // base
+                if not floor:
+                    continue
+                elif base >= 100:
+                    yield from word_num(floor)
+                    yield ' '
+
+                yield word
+                value %= base
+                if not value:
+                    break
+                elif base < 100:
+                    yield '-'
+                elif base == 100:
+                    if lang == 'en':
+                        yield ' and '
+                else:
+                    yield ' '
+
+    try:
+        num_map = NUM_TO_WORD_MAPS[lang]  # type: ignore[index]
+    except KeyError:
+        lang = 'en'
+        num_map = NUM_TO_WORD_MAPS[lang]
+
+    if num < 0:
+        result = '-' + ''.join(x for x in word_num(abs(num)))
+    else:
+        result = ''.join(x for x in word_num(num))
+
+    if not fmt_modifier.startswith('o'):
+        return result
+
+    if lang == 'en':
+        return to_ordinal_en(result)
+    elif lang == 'it':
+        return to_ordinal_it(result, fmt_modifier)
+    else:
+        return result

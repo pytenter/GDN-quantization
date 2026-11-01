@@ -1,0 +1,1 @@
+lambda _cls, module_finder, name, ispkg: _tuple_new(_cls, (module_finder, name, ispkg))

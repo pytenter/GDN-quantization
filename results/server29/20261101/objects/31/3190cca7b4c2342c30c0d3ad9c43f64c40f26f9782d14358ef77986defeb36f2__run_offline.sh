@@ -1,0 +1,8 @@
+#!/bin/bash
+set -u
+export PYTHONDONTWRITEBYTECODE=1
+/data/ydai/miniconda3/envs/bitdecode/bin/python -u /data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/control/coordinator_4gpu.py --root /data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1
+controller_exit=$?
+/data/ydai/miniconda3/envs/bitdecode/bin/python -u /data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/analysis_scripts/offline_finish.py --root /data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1 --parent /data/zypan/analyses/qwen_hadamard_dual_axis_direct_32k_pilot_v1/continuation_01/experiments/qwen_gdn/quantizer/QWEN_GDN_HADAMARD_DUAL_AXIS_DIRECT_32K_PILOT_V1 --archive /data/zypan/qwen_dual_axis_replication_archive/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1 > /data/zypan/analyses/qwen_gdn_dual_axis_prospective_replication_5doc_v1/experiments/qwen_gdn/quantizer/QWEN_GDN_DUAL_AXIS_PROSPECTIVE_REPLICATION_5DOC_V1/logs/OFFLINE_FINISH.log 2>&1
+finish_exit=$?
+exit "$finish_exit"

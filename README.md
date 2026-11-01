@@ -83,3 +83,8 @@ docs/          Protocols, experiment index, provenance, and server inventories
 ```
 
 Start with `docs/HANDOFF_2026-09-26.md`, `docs/RESEARCH_STATUS_2026-09-26.md`, `docs/EXPERIMENT_INDEX.md`, `docs/HANDOFF_ARTIFACT_MATRIX.md`, and `docs/SERVER_PROVENANCE.md`. Frozen protocol details remain in `docs/PROTOCOL.md` and `docs/SCORER_PROTOCOL.md`.
+
+
+## 2026-11-01 existing server29 evidence archive
+
+See [Chinese experiment/source index](docs/server29_archive_20261101/EXPERIMENT_INDEX.md) and [archive report](docs/server29_archive_20261101/ARCHIVE_REPORT_ZH.md). These preserve original evidence and distinct protocols; they do not represent new experiments.

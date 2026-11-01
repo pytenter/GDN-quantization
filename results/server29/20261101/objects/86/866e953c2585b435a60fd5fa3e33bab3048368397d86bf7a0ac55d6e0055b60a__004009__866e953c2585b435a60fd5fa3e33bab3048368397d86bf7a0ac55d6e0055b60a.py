@@ -1,0 +1,4 @@
+def __create_fn__():
+ def __repr__(self):
+  return self.__class__.__qualname__ + f"(hf_ds_config={self.hf_ds_config!r}, gradient_accumulation_steps={self.gradient_accumulation_steps!r}, gradient_clipping={self.gradient_clipping!r}, zero_stage={self.zero_stage!r}, is_train_batch_min={self.is_train_batch_min!r}, offload_optimizer_device={self.offload_optimizer_device!r}, offload_param_device={self.offload_param_device!r}, offload_optimizer_nvme_path={self.offload_optimizer_nvme_path!r}, offload_param_nvme_path={self.offload_param_nvme_path!r}, zero3_init_flag={self.zero3_init_flag!r}, zero3_save_16bit_model={self.zero3_save_16bit_model!r}, transformer_moe_cls_names={self.transformer_moe_cls_names!r}, enable_msamp={self.enable_msamp!r}, msamp_opt_level={self.msamp_opt_level!r})"
+ return __repr__

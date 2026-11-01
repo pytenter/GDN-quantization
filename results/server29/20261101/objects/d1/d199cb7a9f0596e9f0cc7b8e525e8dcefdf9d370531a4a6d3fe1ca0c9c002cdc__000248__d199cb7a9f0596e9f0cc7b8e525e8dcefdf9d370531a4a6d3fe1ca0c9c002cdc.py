@@ -1,0 +1,1 @@
+lambda _cls, primal, tangent: _tuple_new(_cls, (primal, tangent))

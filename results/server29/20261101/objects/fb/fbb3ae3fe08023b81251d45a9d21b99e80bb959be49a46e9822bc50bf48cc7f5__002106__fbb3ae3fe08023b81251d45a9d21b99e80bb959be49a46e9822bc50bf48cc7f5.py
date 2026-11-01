@@ -1,0 +1,4 @@
+def __create_fn__(_type__rule_id_name_set, _type_node_missing_onnx_shape_inference, _type_missing_custom_symbolic_function, _type_missing_standard_symbolic_function, _type_operator_supported_in_newer_opset_version, _type_fx_graph_to_onnx, _type_fx_node_to_onnx, _type_fx_pass, _type_no_symbolic_function_for_call_function, _type_unsupported_fx_node_analysis, _type_op_level_debugging, _type_find_opschema_matched_symbolic_function, _type_fx_node_insert_type_promotion, _type_find_operator_overloads_in_onnx_registry, MISSING, _HAS_DEFAULT_FACTORY, __dataclass_builtins_object__, _return_type):
+ def __init__(self)->_return_type:
+  self.__post_init__()
+ return __init__

@@ -1,0 +1,1 @@
+tuple[Literal['post'], int] | None

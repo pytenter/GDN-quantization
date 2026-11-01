@@ -1,0 +1,61 @@
+--- ORIGINAL_UNCHANGED
++++ CORRECTED_ATTEMPT_ONLY
+@@ -16,8 +16,8 @@
+ import time
+ import traceback
+ 
+-ROOT = Path(__file__).resolve().parents[1]
+-DATA = ROOT / 'data'
++ROOT = Path(__file__).resolve().parents[3]
++DATA = Path(__file__).resolve().parent
+ CFG = json.loads((DATA / 'SELECTION_CONFIG.json').read_text())
+ SEED = 20261017
+ START = time.time()
+@@ -82,6 +82,8 @@
+     rule=read(DATA/'SELECTION_RULE.json')
+     need(rule['status']=='FROZEN_BEFORE_NEW_CANDIDATE_TOKENIZATION' and rule['seed']==SEED,'Prewritten selection rule missing')
+     rule_sha=sha(DATA/'SELECTION_RULE.json')
++    freeze=read(DATA/'CORRECTION_SOURCE_FREEZE.json')
++    for item in freeze['execution_sources']:need(sha(DATA/item['path'])==item['sha256'],'Correction frozen source changed: '+item['path'])
+     ids=set(CFG['known_Ling_ids']);raws=set();token_hashes=set();sources=[]
+     def collect(x):
+         if isinstance(x,list):
+@@ -108,7 +110,20 @@
+         p=Path(path)
+         actual=sha(p)
+         need(actual==expected,'Historical registry source SHA changed: '+path)
+-        x=read(p);collect(x)
++        x=read(p)
++        correction=read(DATA/'CPU_EXCLUSION_CLASSIFICATION_CORRECTION_V1.json')
++        exception=correction['exact_exception']
++        if str(p)==exception['source']:
++            need(actual==exception['source_SHA'],'Correction source identity changed')
++            expected={r['document_id']:r for r in exception['remove_only_these_six_unselected_records']}
++            selected_ids={r['document_id'] for r in x['selected_documents']}
++            need(not selected_ids.intersection(expected),'Correction attempted to drop selected history')
++            dropped=[r for r in x['audited_remaining_candidates'] if r['document_id'] in expected]
++            need(len(dropped)==6 and {r['document_id'] for r in dropped}==set(expected),'Correction exception record count changed')
++            for r in dropped:need(r['raw_text_SHA']==expected[r['document_id']]['raw_SHA'],'Correction raw identity changed')
++            x=dict(x)
++            x['audited_remaining_candidates']=[r for r in x['audited_remaining_candidates'] if r['document_id'] not in expected]
++        collect(x)
+         if p.name=='EXCLUSION_UNION.json':
+             ids.update(x.get('document_ids',[]));raws.update(x.get('raw_text_sha256',[]));token_hashes.update(x.get('canonical_32768_input_sha256',[]))
+         if p.name in ['EXCLUSION_REGISTRY.json','SELECTION_EXCLUSION_REGISTRY.json']:
+@@ -204,11 +219,11 @@
+             for name,item in a['artifacts'].items():
+                 value=read(ROOT/item['path']);need(sha(ROOT/item['path'])==item['file_SHA'] and canon(value)==item['canonical_SHA'] and value==fresh[:item['count']],'Frozen selected input mismatch')
+     need(sha(DATA/'SELECTION_RULE.json')==rule_sha,'Rule changed during selection')
+-    manifest=dict(TASK_ID=CFG['TASK_ID'],status='PASS_FROZEN_64_16_2_NEW_INPUTS',rule_SHA=rule_sha,rule_seed=SEED,source_files=source_meta,tokenizer=dict(path=CFG['tokenizer_path'],actual_class=type(tokenizer).__name__,identity_SHA=CFG['tokenizer_identity_sha256'],files=CFG['tokenizer_files'],add_special_tokens=False),splits=selected_records,split_counts={k:len(v) for k,v in selected_records.items()},reserved_future_pool_all_excluded_from_training=[{k:x[k] for k in ['document_id','raw_text_sha256','full_token_count','input32768_SHA']} for x in reserved],original_preprocessing_preserved=dict(max_tokens=1024,capture_points=8,capture_seed='int(rawSHA[:16],16) XOR20260921',capture_min128=True),source_change=rule['data_source_change'],paired_arms_share_order=True,old_C6R_G_adapt_interpretation='Absolute adaptation comparison includes source-data change; only paired G_specific can isolate planned codec variable under all other matched conditions',PROJECT_INDEPENDENCE='UNKNOWN',GPU_work=False,model_forward_count=0,new_model_results_used=False,created_unix=time.time())
+-    put(ROOT/'DATA_SPLIT_MANIFEST.json',manifest)
+-    leak=dict(TASK_ID=CFG['TASK_ID'],status='PASS_KNOWN_IDENTITY_AND_ACTUAL_SPLIT_EXCLUSION',split_counts=manifest['split_counts'],historical_registry_sources_fresh_SHA=len(sources),historical_raw_SHA_count=len(raws),historical_canonical_token_SHA_count=len(token_hashes),historical_document_ID_count=len(ids),old96_and_AIME30_excluded=True,all_6_or_actual_reserved_long_contexts_excluded_from_TRAIN_DEV=len(reserved),no_raw_or_full_or_canonical_input_duplicate_across_splits=True,no_TRAIN_DEV_input1024_subsequence_in_any_reserved_future32769_input=True,no_TRAIN_DEV_input1024_subsequence_in_available_observed_vectors=True,all_selected_retokenized_fresh_twice=True,PROJECT_INDEPENDENCE='UNKNOWN',limitations=['Unknown repositories/projects prevent claims of project-level independence','Not a proof against arbitrary semantic paraphrase or unrecorded historical usage','Original WikiText training source differs from new paired RepoBench source; both A/D arms share exactly the same new inputs and order'],manifest_SHA=sha(ROOT/'DATA_SPLIT_MANIFEST.json'),selection_rule_SHA=rule_sha,artifact_hashes=all_artifacts,GPU_work=False)
+-    put(ROOT/'DATA_LEAKAGE_AUDIT.json',leak)
+-    signal.alarm(0);event('DATA_FREEZE_COMPLETE',status=manifest['status'],split_counts=manifest['split_counts'],reserved_future=len(reserved),manifest_SHA=sha(ROOT/'DATA_SPLIT_MANIFEST.json'),leakage_SHA=sha(ROOT/'DATA_LEAKAGE_AUDIT.json'))
++    manifest=dict(correction_id='CPU_EXCLUSION_CLASSIFICATION_CORRECTION_V1',correction_source_freeze_SHA=sha(DATA/'CORRECTION_SOURCE_FREEZE.json'),first_failure_retained_SHA=correction['original_first_failure_SHA'],TASK_ID=CFG['TASK_ID'],status='PASS_FROZEN_64_16_2_NEW_INPUTS',rule_SHA=rule_sha,rule_seed=SEED,source_files=source_meta,tokenizer=dict(path=CFG['tokenizer_path'],actual_class=type(tokenizer).__name__,identity_SHA=CFG['tokenizer_identity_sha256'],files=CFG['tokenizer_files'],add_special_tokens=False),splits=selected_records,split_counts={k:len(v) for k,v in selected_records.items()},reserved_future_pool_all_excluded_from_training=[{k:x[k] for k in ['document_id','raw_text_sha256','full_token_count','input32768_SHA']} for x in reserved],original_preprocessing_preserved=dict(max_tokens=1024,capture_points=8,capture_seed='int(rawSHA[:16],16) XOR20260921',capture_min128=True),source_change=rule['data_source_change'],paired_arms_share_order=True,old_C6R_G_adapt_interpretation='Absolute adaptation comparison includes source-data change; only paired G_specific can isolate planned codec variable under all other matched conditions',PROJECT_INDEPENDENCE='UNKNOWN',GPU_work=False,model_forward_count=0,new_model_results_used=False,created_unix=time.time())
++    put(DATA/'DATA_SPLIT_MANIFEST.json',manifest)
++    leak=dict(TASK_ID=CFG['TASK_ID'],status='PASS_KNOWN_IDENTITY_AND_ACTUAL_SPLIT_EXCLUSION',split_counts=manifest['split_counts'],historical_registry_sources_fresh_SHA=len(sources),historical_raw_SHA_count=len(raws),historical_canonical_token_SHA_count=len(token_hashes),historical_document_ID_count=len(ids),old96_and_AIME30_excluded=True,all_6_or_actual_reserved_long_contexts_excluded_from_TRAIN_DEV=len(reserved),no_raw_or_full_or_canonical_input_duplicate_across_splits=True,no_TRAIN_DEV_input1024_subsequence_in_any_reserved_future32769_input=True,no_TRAIN_DEV_input1024_subsequence_in_available_observed_vectors=True,all_selected_retokenized_fresh_twice=True,PROJECT_INDEPENDENCE='UNKNOWN',limitations=['Unknown repositories/projects prevent claims of project-level independence','Not a proof against arbitrary semantic paraphrase or unrecorded historical usage','Original WikiText training source differs from new paired RepoBench source; both A/D arms share exactly the same new inputs and order'],manifest_SHA=sha(DATA/'DATA_SPLIT_MANIFEST.json'),selection_rule_SHA=rule_sha,artifact_hashes=all_artifacts,GPU_work=False)
++    put(DATA/'DATA_LEAKAGE_AUDIT.json',leak)
++    signal.alarm(0);event('DATA_FREEZE_COMPLETE',status=manifest['status'],split_counts=manifest['split_counts'],reserved_future=len(reserved),manifest_SHA=sha(DATA/'DATA_SPLIT_MANIFEST.json'),leakage_SHA=sha(DATA/'DATA_LEAKAGE_AUDIT.json'))
+ 
+ 
+ if __name__=='__main__':

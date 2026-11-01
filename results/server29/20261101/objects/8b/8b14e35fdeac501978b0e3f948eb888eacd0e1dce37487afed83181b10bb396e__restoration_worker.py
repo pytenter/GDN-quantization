@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""Bounded future GPU qualification worker. No GPU-capable import before permit."""
+import argparse,collections,gc,hashlib,importlib.util,json,math,os,sys,time
+from pathlib import Path
+sys.dont_write_bytecode=True
+def read(p):return json.loads(Path(p).read_bytes())
+def digest(p):
+    h=hashlib.sha256()
+    with Path(p).open('rb') as f:
+        for b in iter(lambda:f.read(4*1024**2),b''):h.update(b)
+    return h.hexdigest()
+def save(p,j):
+    p=Path(p);p.parent.mkdir(parents=True,exist_ok=True)
+    with p.open('x') as f:json.dump(j,f,indent=2,allow_nan=False);f.write('\n');f.flush();os.fsync(f.fileno())
+def load(name,path):
+    s=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(s);sys.modules[name]=m;s.loader.exec_module(m);return m
+def check(ok,msg):
+    if not ok:raise RuntimeError(msg)
+def main():
+    ap=argparse.ArgumentParser();ap.add_argument('--root',type=Path,required=True);ap.add_argument('--mode',choices=['numeric','benchmark'],required=True);ap.add_argument('--unit',required=True);ap.add_argument('--permit',type=Path,required=True);a=ap.parse_args();r=a.root.resolve()
+    sys.path.insert(0,str(r/'scripts'))
+    import restoration_controller as controller
+    permit=controller.require_worker_permit(r,a.mode,a.unit,a.permit)
+    # All imports below are unreachable while ALLOW_GPU_RESTORE=NO.
+    plan=read(r/'qualification/GPU_PLAN.json');target=r/'execution'/a.unit
+    proc=Path('/proc')/str(os.getpid())
+    process_identity=dict(pid=os.getpid(),starttick=int(proc.joinpath('stat').read_text().rsplit(')',1)[1].split()[19]),cmdline=proc.joinpath('cmdline').read_bytes().rstrip(b'\0').decode().split('\0'))
+    def result(j):
+        j.update(unit_id=a.unit,mode=a.mode,process_identity=process_identity,permit_sha256=digest(a.permit))
+        save(target/'RESULT.json',j)
+    check(not (target/'WORKER_STARTED.json').exists(),'Worker already started; no retry')
+    save(target/'WORKER_STARTED.json',dict(task_id='QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1',pid=os.getpid(),mode=a.mode,unit=a.unit,monotonic=time.monotonic()))
+    bindings=read(r/'analysis/environment/PROSPECTIVE_MODEL_AND_NATIVE_BINDINGS.json')
+    allowed={str(Path(x['path']).resolve()):x for x in bindings['native_library_inventory']}
+    extra=r/'analysis/environment/CPU_FIXTURE_CRITICAL_NATIVE_BINDINGS.json'
+    if extra.exists():
+        for x in read(extra)['native_library_rows']:allowed[str(Path(x['path']).resolve())]=x
+    def driver_ordinal_check():
+        try:receipt=controller.require_driver_ordinal_identity(list(allowed.values()))
+        except BaseException as exc:
+            receipt=getattr(exc,'driver_identity_receipt',dict(status='FAIL_CLOSED_STOP',expected_uuid=controller.UUID,error=type(exc).__name__+':'+str(exc)))
+            save(target/'DRIVER_ORDINAL_IDENTITY.json',receipt);raise
+        save(target/'DRIVER_ORDINAL_IDENTITY.json',receipt)
+    def environment_snapshot():
+        return dict(torch=torch.__version__,cuda_build=torch.version.cuda,
+                    intraop_threads=torch.get_num_threads(),interop_threads=torch.get_num_interop_threads(),
+                    deterministic=torch.are_deterministic_algorithms_enabled(),
+                    matmul_TF32=torch.backends.cuda.matmul.allow_tf32,cudnn_TF32=torch.backends.cudnn.allow_tf32,
+                    cudnn_deterministic=torch.backends.cudnn.deterministic,
+                    fill_uninitialized_memory=torch.utils.deterministic.fill_uninitialized_memory,
+                    environment={k:os.environ.get(k) for k in ['CUDA_VISIBLE_DEVICES','CUBLAS_WORKSPACE_CONFIG','OMP_NUM_THREADS','MKL_NUM_THREADS','CUDA_DEVICE_ORDER']})
+    def library_check(phase):
+        try:own_gpu_identity=controller.require_own_gpu_identity(os.getpid())
+        except BaseException as exc:
+            own_gpu_identity=getattr(exc,'gpu_identity_receipt',dict(status='FAIL_CLOSED_STOP',own_pid=os.getpid(),expected_uuid=controller.UUID,observation=None,own_records=[],error=type(exc).__name__+':'+str(exc)))
+        save(target/(phase+'_OWN_GPU_IDENTITY.json'),own_gpu_identity)
+        mapped=Path('/proc/self/maps').read_text(); selected=[];missing=[]
+        words=['libtorch','libc10','libcudart','libcublas','libcudnn','libnvrtc','libcuda.','libtorchaudio','torchvision']
+        for line in mapped.splitlines():
+            fields=line.split(maxsplit=5)
+            if len(fields)!=6 or not fields[5].startswith('/'):continue
+            p=Path(fields[5]);name=p.name
+            package_dso=('.so' in name and any('/site-packages/'+s+'/' in str(p) for s in ['torch','torchaudio','torchvision']))
+            if not(package_dso or any(w in name or (w=='torchvision' and w in str(p)) for w in words)):continue
+            key=str(p.resolve());b=allowed.get(key)
+            if b is None:missing.append(key);continue
+            before=p.stat();h=digest(p);after=p.stat();stable=(before.st_ino,before.st_size,before.st_mtime_ns)==(after.st_ino,after.st_size,after.st_mtime_ns)
+            selected.append(dict(path=key,bytes=after.st_size,sha256=h,mapped_inode=int(fields[4]),disk_inode=after.st_ino,stable=stable,match=stable and int(fields[4])==after.st_ino and after.st_size==b['bytes'] and h==b['sha256']))
+        signature=[dict(path=k,sha256=v) for k,v in sorted({x['path']:x['sha256'] for x in selected}.items())]
+        reference_signature=None;selection_matches=True
+        if a.unit!='NUMERIC_FRESH0' and not a.unit.startswith('NEW_'):
+            reference_path=r/'execution/NUMERIC_FRESH0'/(phase+'_LIBRARY_IDENTITY.json')
+            reference_signature=read(reference_path)['critical_selection_signature']
+            selection_matches=signature==reference_signature
+        receipt=dict(phase=phase,status='PASS' if selected and not missing and all(x['match'] for x in selected) and selection_matches and own_gpu_identity['status']=='PASS' else 'FAIL_CLOSED_STOP',own_gpu_identity=own_gpu_identity,selected=selected,missing=missing,full_maps=mapped,actual_environment=environment_snapshot(),critical_selection_signature=signature,same_phase_OLD_reference_signature=reference_signature,selection_matches_same_phase_OLD_reference=selection_matches)
+        save(target/(phase+'_LIBRARY_IDENTITY.json'),receipt)
+        check(receipt['status']=='PASS','Unbound/changed critical runtime library or own actual GPU identity')
+    oldpath=r/'candidate/source_tree/data/zypan/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/qwen_gdn/aime26/81920/run_qwen_aime26_formal.py'
+    def old_module():
+        sys.path.insert(0,str(oldpath.parent));f=load('restored_original_aime',oldpath)
+        check(digest(oldpath)=='9ff56d00b6b2dbaf9be3c3186bd30be8d3b9cc9d9b580a680316bcc8c01247dd','Old loader source mismatch')
+        return f
+    def assert_old_environment():
+        check(torch.__version__=='2.5.1+cu121' and torch.version.cuda=='12.1','Pinned torch/CUDA build changed')
+        check([torch.get_num_threads(),torch.get_num_interop_threads()]==[24,24],'Historical effective CPU threads not reproduced')
+        check(not torch.are_deterministic_algorithms_enabled() and not torch.backends.cuda.matmul.allow_tf32 and torch.backends.cudnn.allow_tf32 and not torch.backends.cudnn.deterministic,'Historical recorded flags not reproduced')
+        check(all(os.environ.get(k) is None for k in ['CUBLAS_WORKSPACE_CONFIG','OMP_NUM_THREADS','MKL_NUM_THREADS','CUDA_DEVICE_ORDER']),'Historical actual-unset environment not reproduced')
+    try:
+        driver_ordinal_check()
+        import torch
+        if a.mode=='benchmark':
+            m=load('historical_matched_benchmark',r/'candidate/benchmark_replay/source/matched_worker.py')
+            m.OLD=oldpath
+            original_load=m.load_module
+            def checked_module(name,path):
+                obj=original_load(name,path)
+                if name=='matched_original_aime':
+                    original=obj.load_model_and_tokenizer
+                    def checked_loader():
+                        out=original();assert_old_environment();library_check('PREFLIGHT');return out
+                    obj.load_model_and_tokenizer=checked_loader
+                if name=='matched_current_measurement':
+                    original=obj.reference
+                    def checked_reference(*args,**kw):
+                        out=original(*args,**kw);library_check('PREFLIGHT');return out
+                    obj.reference=checked_reference
+                return obj
+            m.load_module=checked_module
+            condition='NEW_FP' if a.unit.startswith('NEW') else 'OLD_FP';repeat=int(a.unit.rsplit('R',1)[1])
+            sys.argv=[str(m.__file__),'--root',str(r/'candidate/benchmark_replay'),'--condition',condition,'--repeat',str(repeat)]
+            m.main()
+            if condition=='OLD_FP':assert_old_environment()
+            library_check('POSTFLIGHT')
+            p=r/'candidate/benchmark_replay/execution'/a.unit/'RESULT.json';out=read(p)
+            check(out['status']=='PASS' and out['measured_tokens']==128 and out['warmup_tokens']==128 and not out['profile'],'Benchmark receipt invalid')
+            result(dict(task_id='QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1',status='PASS',mode=a.mode,unit=a.unit,historical_worker_result=out,historical_worker_result_sha256=digest(p),legacy_labels_retained=True,math_source_changes=0,adapter_scope='Path/global binding and pre/postflight library identity outside timing only',qualification_scope='256_INPUT_SHORT_CACHE_NOT_32K_OR_81K'))
+            return
+        assert_old_environment();f=old_module();f.setup_seed(20261015);model,tokenizer=f.load_model_and_tokenizer()
+        import transformers.models.qwen3_5.modeling_qwen3_5 as Q
+        check(digest(Q.__file__)=='90d929129ffc835d2652c604925c4f3842bc6e401e174ec6f0db2285dfb8f85a','Native architecture changed')
+        check(all(p.device.type=='cuda' and p.device.index==0 and p.dtype==torch.bfloat16 for p in model.parameters()),'Model device/dtype/offload mismatch')
+        assert_old_environment();library_check('PREFLIGHT');N=plan['numeric_tokens'];obj=read(r/'candidate/benchmark_replay/fixtures/doc1_tokens.json');ids=obj if isinstance(obj,list) else obj.get('input_ids',obj.get('tokens'))
+        check(len(ids)==32768 and N==32,'Frozen fixture/length changed')
+        layers=model.model.layers if hasattr(model.model,'layers') else model.model.language_model.layers
+        check(len(layers)==32,'Complete model required')
+        cache=None;position={'t':0};counts=collections.Counter();layercounts=collections.Counter();previous={};updates={};oracle_states={};math_checks=[];traces=[];active={'norms':None};handles=[]
+        def raw(t):return t.detach().contiguous().cpu().view(torch.uint8).numpy().tobytes()
+        def thash(t):return hashlib.sha256(raw(t)).hexdigest()
+        def numeric_failure(record,values):
+            p=target/'EARLIEST_NUMERICAL_FAILURE.json'
+            if p.exists():return
+            evidence=[]
+            for name,x in values:
+                data=raw(x);q=target/('FIRST_FAILURE_'+name+'.bin')
+                with q.open('xb') as stream:stream.write(data)
+                evidence.append(dict(name=name,path=str(q.relative_to(r)),dtype=str(x.dtype),shape=list(x.shape),bytes=len(data),sha256=hashlib.sha256(data).hexdigest()))
+            save(p,dict(status='FAIL_CLOSED_STOP',record=record,raw=evidence))
+        def difference(reference,actual,reference_path,actual_path):
+            names=[];first=None;rp=reference['tensors'];ap=actual['tensors']
+            if [x['name'] for x in rp]!=[x['name'] for x in ap]:return dict(kind='TENSOR_ROSTER_DIFFERENCE',reference_roster=[x['name'] for x in rp],actual_roster=[x['name'] for x in ap])
+            with reference_path.open('rb') as rf,actual_path.open('rb') as af:
+                for x,y in zip(rp,ap):
+                    if x==y:continue
+                    names.append(x['name'])
+                    if first is not None:continue
+                    if any(x[k]!=y[k] for k in ['dtype','shape','stride','bytes']):first=dict(kind='LAYOUT',reference=x,actual=y);continue
+                    rf.seek(x['offset']);af.seek(y['offset']);a0=rf.read(x['bytes']);a1=af.read(y['bytes'])
+                    if a0==a1:continue
+                    byte=next(i for i,(u,v) in enumerate(zip(a0,a1)) if u!=v);dtype=getattr(torch,x['dtype'].removeprefix('torch.'))
+                    u=torch.frombuffer(bytearray(a0),dtype=dtype).double();v=torch.frombuffer(bytearray(a1),dtype=dtype).double();err=(u-v).abs();rel=err/u.abs().clamp_min(1e-300)
+                    relative=float(rel.max());element=byte//torch.empty((),dtype=dtype).element_size()
+                    first=dict(kind='ACTUAL_BYTES_DIFFER',tensor=x['name'],first_different_byte=byte,first_element=element,reference_value=float(u[element]),actual_value=float(v[element]),max_absolute=float(err.max()),max_relative=relative if math.isfinite(relative) else str(relative),reference=x,actual=y)
+            return dict(different_tensor_names=names,first_tensor_difference=first,cache_metadata_equal=reference.get('cache_metadata')==actual.get('cache_metadata'),aliases_equal=reference.get('tensor_storage_aliases')==actual.get('tensor_storage_aliases'))
+        def arrays(c,out,t):
+            # Full cache traversal includes dict-valued recurrent/conv states, scalar
+            # metadata and reference/alias structure. Unknown fields fail closed.
+            z=[('logits',out.logits),('input_ids',torch.tensor([[ids[t]]],dtype=torch.long))];meta={};seen={}
+            def walk(x,path):
+                if isinstance(x,torch.Tensor):z.append((path,x));return
+                if x is None or isinstance(x,(str,bool,int,float)):meta[path]=x;return
+                if isinstance(x,(torch.dtype,torch.device)):meta[path]=str(x);return
+                if isinstance(x,type):meta[path]={'class':x.__module__+'.'+x.__qualname__};return
+                if id(x) in seen:meta[path]={'reference_to':seen[id(x)]};return
+                seen[id(x)]=path
+                if isinstance(x,dict):
+                    meta[path]={'container':type(x).__name__,'keys':[[type(k).__name__,str(k)] for k in sorted(x,key=lambda k:(type(k).__name__,str(k)))]}
+                    for k in sorted(x,key=lambda k:(type(k).__name__,str(k))):walk(x[k],path+'/'+type(k).__name__+':'+str(k))
+                elif isinstance(x,(tuple,list)):
+                    meta[path]={'container':type(x).__name__,'length':len(x)}
+                    for j,v in enumerate(x):walk(v,path+'/'+str(j))
+                elif type(x).__module__.startswith('transformers') and hasattr(x,'__dict__'):
+                    meta[path]={'class':type(x).__module__+'.'+type(x).__qualname__}
+                    for k in sorted(vars(x)):walk(vars(x)[k],path+'/'+k)
+                else:raise RuntimeError('Unsupported cache metadata field '+path+':'+str(type(x)))
+            walk(c,'cache')
+            storages={};aliases=[]
+            for name,x in z:
+                key=(x.device.type,x.device.index,x.untyped_storage().data_ptr())
+                if key in storages:aliases.append([storages[key],name])
+                else:storages[key]=name
+            return z,meta,aliases
+        for i,L in enumerate(layers):handles.append(L.register_forward_pre_hook(lambda _m,_a,i=i:layercounts.update([(position['t'],i)])))
+        originals={name:getattr(Q,name) for name in ['torch_chunk_gated_delta_rule','torch_recurrent_gated_delta_rule','l2norm']}
+        def norm(*args,**kw):
+            y=originals['l2norm'](*args,**kw)
+            if active['norms'] is not None:active['norms'].append(y.detach().cpu())
+            return y
+        Q.l2norm=norm
+        for name,kind in [('torch_chunk_gated_delta_rule','chunk'),('torch_recurrent_gated_delta_rule','recurrent')]:
+            def make(fn=originals[name],kind=kind):
+                def helper(q,k,v,*args,**kw):
+                    t=position['t'];idx=f.GDN_LAYERS[counts[(t,'all')]];counts[(t,'all')]+=1;counts[(t,kind)]+=1
+                    initial=kw.get('initial_state');check((initial is None) if t==0 else thash(initial)==previous[idx],'Next helper did not consume exact previous state')
+                    # CPU observer only; actual helper inputs/output and arithmetic are untouched.
+                    active['norms']=[]
+                    out,state=fn(q,k,v,*args,**kw);norms=active['norms'];active['norms']=None
+                    finite_values=[('query',q),('key',k),('value',v),('gate',kw['g']),('beta',kw['beta']),('core_actual',out),('state_actual',state)]
+                    bad=[name for name,x in finite_values if not bool(torch.isfinite(x).all())]
+                    if bad:numeric_failure(dict(token=t,layer=idx,kind='NONFINITE',nonfinite_tensors=bad),finite_values)
+                    check(not bad,'Nonfinite GDN helper tensor')
+                    check(state.dtype==torch.float32 and list(state.shape)==[1,32,128,128],'FP32 state contract failed')
+                    check(len(norms)==2,'Native normalization observation missing')
+                    q0,k0=[x.double() for x in norms];v0=v.detach().cpu().double();g=kw['g'].detach().cpu().double();b=kw['beta'].detach().cpu().double()
+                    norm_errors=[]
+                    for source,actual in [(q,q0),(k,k0)]:
+                        x=source.detach().cpu().double();expected=x*torch.rsqrt((x*x).sum(-1,keepdim=True)+1e-6)
+                        error=float((actual-expected).abs().max());bound=plan['math_gate']['normalization_atol']+plan['math_gate']['normalization_scale_rtol']*float(expected.abs().max())
+                        norm_errors.append(dict(max_abs=error,bound=bound))
+                        if error>bound:numeric_failure(dict(token=t,layer=idx,kind='NORMALIZATION',max_abs=error,bound=bound),[('normalization_input',source),('normalization_actual',actual),('normalization_reference_FP64',expected)])
+                        check(error<=bound,'BF16 normalization independent FP64 bound failed')
+                    S=torch.zeros((1,32,128,128),dtype=torch.float64) if t==0 else oracle_states[idx];ys=[]
+                    for j in range(q0.shape[1]):
+                        S=S*g[:,j].exp()[...,None,None];mem=(S*k0[:,j,...,None]).sum(-2)
+                        S=S+k0[:,j,...,None]*((v0[:,j]-mem)*b[:,j,...,None])[...,None,:]
+                        ys.append((S*(q0[:,j]/math.sqrt(128))[...,None]).sum(-2))
+                    oracle_states[idx]=S
+                    Y=torch.stack(ys,1);sa=float((state.detach().cpu().double()-S).abs().max());ya=float((out.detach().cpu().double()-Y).abs().max())
+                    bound_s=plan['math_gate']['state_atol']+plan['math_gate']['state_scale_rtol']*float(S.abs().max());bound_y=plan['math_gate']['output_atol']+plan['math_gate']['output_scale_rtol']*float(Y.abs().max())
+                    rec=dict(token=t,layer=idx,kind=kind,state_max_abs=sa,state_bound=bound_s,core_max_abs=ya,core_bound=bound_y,normalization_checks=norm_errors)
+                    math_checks.append(rec)
+                    save(target/'math'/('TOKEN_%03d_LAYER_%02d.json'%(t,idx)),rec)
+                    if not(sa<=bound_s and ya<=bound_y):numeric_failure(rec,[('state_actual',state),('state_reference_FP64',S),('core_actual',out),('core_reference_FP64',Y),('query',q),('key',k),('value',v)])
+                    check(sa<=bound_s and ya<=bound_y,'Independent FP64 prefix recurrence gate failed')
+                    check(state.dtype==torch.float32 and list(state.shape)==[1,32,128,128],'FP32 state contract failed');updates[idx]=thash(state)
+                    return out,state
+                return helper
+            setattr(Q,name,make())
+        try:
+            with torch.inference_mode():
+                for t in range(N):
+                    position['t']=t;out=model(input_ids=torch.tensor([[ids[t]]],device='cuda:0'),past_key_values=cache,use_cache=True);cache=out.past_key_values
+                    check(cache.get_seq_length()==t+1,'Cache cursor mismatch');check(counts[(t,'all')]==24,'Missing native GDN helper')
+                    intervals=[]
+                    for i in f.GDN_LAYERS:
+                        s=f.get_state(cache,i);check(thash(s)==updates[i],'Returned GDN state not written back');previous[i]=updates[i]
+                        check(s.is_contiguous(),'Unexpected noncontiguous persistent GDN state')
+                        intervals.append((s.data_ptr(),s.data_ptr()+s.numel()*s.element_size(),i))
+                    intervals.sort();check(all(x[1]<=y[0] for x,y in zip(intervals,intervals[1:])),'Overlapping inter-layer persistent GDN state storage')
+                    kv=[int(cache.layers[i].keys.shape[-2]) for i in range(32) if model.config.get_text_config().layer_types[i]=='full_attention']
+                    check(kv==[t+1]*8,'All eight attention KV lengths must equal actual cursor')
+                    path=target/'raw'/('token_%03d.bin'%t);path.parent.mkdir(exist_ok=True);rows=[];offset=0
+                    values,metadata,aliases=arrays(cache,out,t)
+                    with path.open('xb') as stream:
+                        for name,x in values:
+                            check(bool(torch.isfinite(x).all()),'Nonfinite tensor '+name);data=raw(x);stream.write(data);rows.append(dict(name=name,dtype=str(x.dtype),shape=list(x.shape),stride=list(x.stride()),offset=offset,bytes=len(data),sha256=hashlib.sha256(data).hexdigest()));offset+=len(data)
+                    prior_raw=0 if a.unit=='NUMERIC_FRESH0' else sum(x['raw_bytes'] for x in read(r/'execution/NUMERIC_FRESH0/TRACE.json')['tokens'])
+                    check(prior_raw+sum(x['raw_bytes'] for x in traces)+offset<=plan['max_numeric_raw_bytes'],'Frozen numeric raw capacity exceeded')
+                    trace=dict(token=t,input_id=ids[t],cursor=t+1,all8attention_KV_lengths=kv,tensors=rows,cache_metadata=metadata,tensor_storage_aliases=aliases,raw_bytes=offset,raw_sha256=digest(path));traces.append(trace)
+                    if a.unit=='NUMERIC_FRESH1':
+                        ref=read(r/'execution/NUMERIC_FRESH0/TRACE.json')['tokens'][t]
+                        same=trace==ref
+                        if not same:save(target/'EARLIEST_DIVERGENCE.json',dict(token=t,status='RUNTIME_REPRODUCIBILITY_FAIL',reference=ref,actual=trace,quantified_difference=difference(ref,trace,r/'execution/NUMERIC_FRESH0/raw'/path.name,path)))
+                        check(same,'Fresh-process strict self-repeatability failed')
+                    save(target/('TOKEN_%03d.json'%t),trace)
+                    print(json.dumps(dict(event='NUMERIC_TOKEN_COMMITTED',unit=a.unit,consumed=t+1)),flush=True)
+                    del out
+        finally:
+            for name,fn in originals.items():setattr(Q,name,fn)
+            for h in handles:h.remove()
+        check(len(math_checks)==24*N and all(layercounts[(t,i)]==1 for t in range(N) for i in range(32)),'Full native model call roster failed')
+        save(target/'TRACE.json',dict(tokens=traces,source_fixture_sha256=digest(r/'candidate/benchmark_replay/fixtures/doc1_tokens.json')))
+        save(target/'MATHEMATICAL_AUDIT.json',dict(status='PASS_PREFIX_ONLY_NATIVE_RECURRENCE_FP64_CHECK',checks=math_checks,normalization_scope='Native normalized inputs separately bounded against FP64 normalization; FP64 state oracle carries from token0, conditioned on actual model q/k/v/g/b activations. Not a full-model FP64 or long-horizon oracle.'))
+        assert_old_environment();library_check('POSTFLIGHT')
+        result(dict(task_id='QWEN_GDN_HISTORICAL_RUNTIME_RESTORATION_V1',status='PASS',mode=a.mode,unit=a.unit,tokens=N,all_model_layers=32,GDN_layers=24,math_gate='PASS_PREFIX_ONLY',fresh_self_byte_comparison='PASS' if a.unit=='NUMERIC_FRESH1' else 'REFERENCE_ONLY',historical_OLD_byte_reference='NOT_RETAINED',NEW_STRICT_byte_equivalence='NOT_REQUIRED',scope='32_TOKEN_PREFIX_ONLY_NOT_32K_81K_OR_INT8',raw_retained_remote=True))
+        del model,cache;gc.collect();torch.cuda.empty_cache()
+    except BaseException as e:
+        import traceback
+        p=target/'FIRST_FAILURE.json'
+        if not p.exists():save(p,dict(status='FAIL_CLOSED_STOP',error=type(e).__name__+': '+str(e),traceback=traceback.format_exc(),retry=False))
+        raise
+if __name__=='__main__':main()

@@ -1,0 +1,20 @@
+{
+  "canonical_source_sha256": "48bd12d252c827ae57c48b2228d95e30de9f92baad47ebc2e8b64405b49e516e",
+  "document": "wikitext2raw-train-000",
+  "document_tokens": 1024,
+  "capture_positions_zero_based": [625, 663, 813, 819, 881, 940, 957, 989],
+  "capture_count": 8,
+  "H": 32,
+  "H_segment_count": 32,
+  "capture_count_by_H_segment_zero_based": {"19": 1, "20": 1, "25": 2, "27": 1, "29": 2, "30": 1},
+  "max_simultaneously_stored_capture_loss_tensors": 2,
+  "C5_loss": "At each sampled position captured_losses returns the state relative MSE averaged across 24 GDN layers. The combined C5 loss is divided by 8 and appended to segment_losses.",
+  "C6_loss": "At each sampled position captured_losses returns functional relative MSE plus 0.1 times state relative MSE, divided by 8 and appended to segment_losses.",
+  "backward_timing": "At each 32-token boundary or document end, sum the current segment_losses, backward once if nonempty, clear segment_losses and patch capture dictionaries, then detach recurrent/convolution/KV cache. Gradient accumulates in theta.grad across segments; Adam step occurs once at document end.",
+  "multiple_H_segment_graphs_held_before_backward": false,
+  "graph_lifetime": "At most the current H segment's student cache graph and its one or two captured loss graphs are live. Teacher targets are detached CPU tensors and remain for the document but have no autograd graph.",
+  "validation": "Canonical evaluate_validation uses no_grad student forward, detaches the cache every H tokens, clears captures and releases each row's cache/targets, then calls gc.collect and torch.cuda.empty_cache. Frozen panel has 16 documents of 1024 tokens each.",
+  "optimizer": "Adam owns rotation bank only; C5 lr=0.003, C6 lr=0.001, weight_decay=0, clip_grad_norm_=1.0, one optimizer step per document.",
+  "source_locations": ["run_recurrent_dense.py:110 sampled_positions", "run_recurrent_dense.py:153 detach_cache", "run_recurrent_dense.py:329 captured_losses", "run_recurrent_dense.py:377 collect_teacher_targets", "run_recurrent_dense.py:751 evaluate_validation", "run_recurrent_dense.py:786 train"],
+  "redesign_applied": false
+}

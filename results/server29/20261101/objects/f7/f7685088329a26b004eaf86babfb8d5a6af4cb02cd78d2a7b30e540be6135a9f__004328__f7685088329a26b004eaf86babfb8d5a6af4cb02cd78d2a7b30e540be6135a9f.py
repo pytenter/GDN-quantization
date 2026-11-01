@@ -1,0 +1,1 @@
+lambda _cls, device, mountpoint, fstype, opts: _tuple_new(_cls, (device, mountpoint, fstype, opts))

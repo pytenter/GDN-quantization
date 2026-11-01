@@ -1,0 +1,57 @@
+{
+  "task": "QWEN_PERSISTENT_FUNCTIONAL_SURROGATE_V1",
+  "amendment_version": 2,
+  "amended_at": "2026-09-24",
+  "timing": "Frozen before persistent replay parity and before any formal output-space comparison.",
+  "reason": "The rotation-aware M5 primary gate failed. The preserved persistent experiment is now authorized as the next stage. The original anchor quantization attempted an in-place update of an inference tensor outside torch.inference_mode; v2 moves that operation inside inference_mode without changing QDQ or recurrent semantics.",
+  "preserved_files": [
+    "preregistration.json",
+    "preregistration_amendment_v1.json",
+    "replay_persistent_functional.py",
+    "analyze_persistent_surrogate.py"
+  ],
+  "implementation_file": "replay_persistent_functional_v2.py",
+  "output_space_fp_parity": {
+    "sample_indices_before_labels": [0, 20, 40, 59],
+    "anchors": "Prompt endpoint for all four samples, plus the already preregistered 0.2-fraction anchor for sample 0.",
+    "propagation_steps": 64,
+    "reported_horizons": [1, 4, 8, 16, 32, 64],
+    "runtime_state_semantics": "Batch row 2 retains Hadamard runtime recurrent coordinates produced by the frozen q/k rotation patch; no native cache is substituted for it.",
+    "all_observation_gate": {
+      "all_finite": true,
+      "logit_relative_l2_p95_max": 0.03,
+      "full_vocabulary_kl_p95_max": 0.05,
+      "top1_agreement_min": 0.995
+    },
+    "logit_max_abs_error": "Recorded at every reported horizon; no post-hoc threshold is introduced.",
+    "tolerance_basis": "The prior frozen Hadamard FP full-path check had 128-token relative-L2 p95 0.01934, max 0.02733, and top1 agreement 1.0 across three prompts. Its 512-token stress check had relative-L2 p95 0.01938 and top1 agreement 0.9961. The 0.03 and 0.995 thresholds allow BF16/FP32 roundoff while requiring the same numerical regime. KL 0.05 nats is a prespecified small output-distribution tolerance."
+  },
+  "anchor_protocol": {
+    "source": "Original preregistration deterministic_replay.persistent_anchor_rule; unchanged.",
+    "fractions": [0.2, 0.4, 0.6, 0.8],
+    "formula": "floor(f*(N-65)), deduplicated in order; N is frozen FP generated-token count.",
+    "validity": "Require N>=65, all 24 GDN states available, finite metrics, identical teacher-forced tokens in all three batch rows; report exclusions without replacement.",
+    "sequence_end": "After feeding generated_token_ids[anchor+h-1], read logits for generated_token_ids[anchor+h]; h<=64 by construction.",
+    "intervention": "At each anchor reconstruct the same FP cache from prompt and FP tokens[:anchor], quantize only Identity and Hadamard recurrent states once in their respective runtime coordinates, then apply unchanged C128 QDQ after each future token. Never re-inject FP state inside a horizon."
+  },
+  "metrics_and_aggregation": {
+    "full_vocab_kl": "KL(p_FP || p_INT8,R) with float32 log_softmax, temperature 1, all vocabulary entries; primary.",
+    "delta_nll": "log p_FP(y_t) - log p_INT8,R(y_t), signed, with frozen FP next token; secondary.",
+    "delta_margin": "FP-selected top1 margin in FP minus that same token's margin against the strongest alternative in INT8; signed; secondary.",
+    "continuous": "For each trajectory and rotation compute mean, median, p90, p95 and CVaR95 over every finite teacher-forced token; never label continuous divergence as an anchor horizon.",
+    "anchor_horizon": "For each trajectory, rotation and horizon compute mean, median, p90, p95 and CVaR95 across the four fixed anchors.",
+    "primary_persistent_aggregate": "For each trajectory and rotation, arithmetic mean of the six horizon-specific anchor means with equal horizon weight; cross-rotation direction compares the median across clean59 trajectories.",
+    "secondary_persistent_aggregates": ["median across clean59 trajectory horizon-specific means", "median across clean59 trajectory horizon-specific p95", "median across clean59 trajectory equal-horizon average p95"],
+    "no_posthoc_selection": true
+  },
+  "statistical_gates": {
+    "pairwise_direction": "Hadamard primary persistent KL aggregate must be lower than Identity on clean59; only PAIRWISE_DIRECTION_CHECK, not a two-candidate Spearman statistic.",
+    "rescue_association": "For the primary equal-horizon trajectory KL, more than half of true Hadamard-rescue pairs require delta KL<0; rescue median delta must be below stable-failure median delta; Cliff's delta must be negative; one-sided 10000-permutation p<0.10. Report each horizon separately without selection.",
+    "within_rotation": "Descriptive, not a hard gate: report failure AUROC, 5000-bootstrap CI, Spearman, correct/failure medians and Cliff's delta on frozen FP-correct trajectories separately for each rotation.",
+    "horizon_pattern": "Describe all six fixed horizons, including medians, paired sign proportions and bootstrap intervals; do not select the best horizon for the final gate."
+  },
+  "disk_safety_stop_gib": 20,
+  "labels_loaded_by_replay_workers": false,
+  "new_free_generation": false,
+  "new_rotation_training": false
+}

@@ -1,0 +1,1 @@
+lambda _cls, shape, dims: _tuple_new(_cls, (shape, dims))

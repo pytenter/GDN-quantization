@@ -1,0 +1,1 @@
+lambda _cls, type, index, multi_processor_count, cc, major, regs_per_multiprocessor, max_threads_per_multi_processor, warp_size: _tuple_new(_cls, (type, index, multi_processor_count, cc, major, regs_per_multiprocessor, max_threads_per_multi_processor, warp_size))
