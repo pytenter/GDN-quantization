@@ -48,3 +48,16 @@
 - [`reports/audits/FINAL_THREE_SERVER_CONSOLIDATION.md`](../../../../../reports/audits/FINAL_THREE_SERVER_CONSOLIDATION.md)
 - [`experiments/qwen_gdn/rotation/key_hadamard/README.md`](../../../../../experiments/qwen_gdn/rotation/key_hadamard/README.md)
 - [`results/aime26/81920/ling_kda/frozen_v4_summary.json`](../../../../aime26/81920/ling_kda/frozen_v4_summary.json)
+
+## 补充核验的原始 Parquet 指标表
+
+按列结构及解码内容确认，未重新运行模型或评分。全部记录见本来源的逐文件清单。
+
+- [`experiments/QWEN_GDN_C5_C6_EVIDENCE_GUIDED_DIAGNOSIS_V1/sparse_metrics.parquet`](../../objects/33/330aa57221101255fb7b4d6f67f0d87b259082d4e94ba9b4a2baa988a5825377__sparse_metrics.parquet)
+- [`experiments/QWEN_GDN_C5_C6_EVIDENCE_GUIDED_DIAGNOSIS_V1/analysis/smoke_metrics.parquet`](../../objects/c5/c5c3cbd7f98b71ace27cdc8a55041875ae38321b8a76b79a81e8999b418a7c55__smoke_metrics.parquet)
+- [`experiments/QWEN_GDN_SHARED_OBJECTIVE_PARETO_AND_DEV_SCREEN_V1/analysis/screen_capture_metrics.parquet`](../../objects/de/dea4b8a2efa0833d2bdb9b8edef3a3c34ba7419f76962999251b44ba970ad4ea__screen_capture_metrics.parquet)
+- [`experiments/QWEN_GDN_SHARED_OBJECTIVE_PARETO_AND_DEV_SCREEN_V1/analysis/check_capture_metrics.parquet`](../../objects/78/789410af641a158b17198793e4fa1d5554e960c8be8288c7ee639fb0970af2c9__check_capture_metrics.parquet)
+- [`experiments/qwen_gdn/QWEN_GDN_STAGE_B_STREAMING_REDUCER_V2_CLOSURE/reference/exact_topk_reference.parquet`](../../objects/d3/d364ab748767d49f9b056b68c301d0fef0cc048e4cd487021306653b57e08085__exact_topk_reference.parquet)
+- [`experiments/qwen_gdn/QWEN_GDN_STAGE_B_STREAMING_REDUCER_V3_CLOSURE/reference/exact_extreme_topk.parquet`](../../objects/05/05ab1da9c4e9b77f9dfc19866cff95e3a4f9f00f8ba95120719e85db25f205ee__exact_extreme_topk.parquet)
+- [`experiments/qwen_gdn/QWEN_GDN_STAGE_B_STREAMING_REDUCER_V3_CLOSURE/reference/exact_token_local_tails.parquet`](../../objects/33/332f1f6937dd06b12a5f1f20104037e4b605a69bf8fee034757f0ac270486549__exact_token_local_tails.parquet)
+- [`experiments/qwen_gdn/QWEN_GDN_STRICT_COMMON_FP_STATE_FANOUT_V1/smoke/tail_events.parquet`](../../objects/ea/ead4d1e583e537aca8bbac451e678903c4ec5dbc2c862382ea25f4895da48a75__tail_events.parquet)

@@ -88,3 +88,5 @@ Start with `docs/HANDOFF_2026-09-26.md`, `docs/RESEARCH_STATUS_2026-09-26.md`, `
 ## 2026-11-01 existing server29 evidence archive
 
 See [Chinese experiment/source index](docs/server29_archive_20261101/EXPERIMENT_INDEX.md) and [archive report](docs/server29_archive_20261101/ARCHIVE_REPORT_ZH.md). These preserve original evidence and distinct protocols; they do not represent new experiments.
+
+Parquet research metrics are also schema-reviewed and indexed in the [classification and archival follow-up](docs/server29_archive_20261101/PARQUET_SCHEMA_AND_CONTENT_REVIEW.json).

@@ -40,3 +40,13 @@
 - [`qwen_gdn/QWEN_SCIENTIFIC_RETENTION_AND_3090_MIGRATION_V1/source_metadata/archive_B/metadata/reports/STORAGE_RECLAMATION_FINAL.md`](../../objects/1c/1cf03f7406f60a37ba5b8d91a7ec235b45e45861ab88ca9ec19d965a4220968a__STORAGE_RECLAMATION_FINAL.md)
 - [`qwen_gdn/QWEN_SCIENTIFIC_RETENTION_AND_3090_MIGRATION_V1/source_metadata/archive_A/metadata/analysis/artifact_relocation_manifest.csv`](../../objects/e5/e55cf5fb0760115534ff99c9c9e67c7527bb61d8ffd8e23441ba6dc4443ddb4b__artifact_relocation_manifest.csv)
 - [`qwen_gdn/QWEN_SCIENTIFIC_RETENTION_AND_3090_MIGRATION_V1/source_metadata/archive_B/metadata/analysis/artifact_relocation_manifest.csv`](../../objects/e5/e55cf5fb0760115534ff99c9c9e67c7527bb61d8ffd8e23441ba6dc4443ddb4b__artifact_relocation_manifest.csv)
+
+## 补充核验的原始 Parquet 指标表
+
+按列结构及解码内容确认，未重新运行模型或评分。全部记录见本来源的逐文件清单。
+
+- [`qwen_gdn/QWEN_SCIENTIFIC_RETENTION_AND_3090_MIGRATION_V1/scientific_data/completed_old_raw/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/QWEN_HADAMARD_TRAJECTORY_STABILITY_ANALYSIS_V1/trajectory_metrics/shard_01/029_aime26_15_seed2_logits.parquet`](../../objects/51/51bcf9e8a3099d3610455263f6b5c0551b1e898c9fb9286eb7079de6e14b276a__029_aime26_15_seed2_logits.parquet)
+- [`qwen_gdn/QWEN_SCIENTIFIC_RETENTION_AND_3090_MIGRATION_V1/scientific_data/completed_old_raw/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/QWEN_HADAMARD_TRAJECTORY_STABILITY_ANALYSIS_V1/trajectory_metrics/shard_02/054_aime26_28_seed1_logits.parquet`](../../objects/69/697838d4191e882c2ddc755d8568a84ac592003525d995f46a5a517edb5a8c62__054_aime26_28_seed1_logits.parquet)
+- [`qwen_gdn/QWEN_SCIENTIFIC_RETENTION_AND_3090_MIGRATION_V1/scientific_data/completed_old_raw/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/QWEN_HADAMARD_TRAJECTORY_STABILITY_ANALYSIS_V1/trajectory_metrics/shard_02/058_aime26_30_seed1_logits.parquet`](../../objects/dc/dc81980cc2620daf755374085ce4cbbb12901d4b47dd19adca34330176d5f384__058_aime26_30_seed1_logits.parquet)
+- [`qwen_gdn/QWEN_SCIENTIFIC_RETENTION_AND_3090_MIGRATION_V1/scientific_data/completed_old_raw/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/QWEN_HADAMARD_TRAJECTORY_STABILITY_ANALYSIS_V1/trajectory_metrics/shard_00/028_aime26_15_seed1_logits.parquet`](../../objects/3e/3e1299a4c080fd67b6e2f51f536a1fa9600ac1cd6a6281026b0b03e2c907e967__028_aime26_15_seed1_logits.parquet)
+- [`qwen_gdn/QWEN_SCIENTIFIC_RETENTION_AND_3090_MIGRATION_V1/scientific_data/completed_old_raw/worktrees/hadamard-init-dense-oracle-v1-qwen/experiments/QWEN_HADAMARD_TRAJECTORY_STABILITY_ANALYSIS_V1/trajectory_metrics/shard_03/055_aime26_28_seed2_logits.parquet`](../../objects/5c/5c37cbb792d64ef32f6f60de4cb66dfd5fd6a5c3fdcd0c4eb74fdc5c4925ef0c__055_aime26_28_seed2_logits.parquet)

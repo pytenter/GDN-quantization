@@ -213,3 +213,7 @@ Qwen/GDN与Ling/KDA、INT8 R128/C128和G32/G64/G128、sym/asym、不同seed/cont
 | `server55_zypan_backup_20261029_87e45424/restored/qualification` | UNKNOWN | UNKNOWN | 1 | [来源及关键文件](../../results/server29/20261101/sources/907fadd8fcef/README.md) |
 | `server55_zypan_backup_20261029_87e45424/restored/consolidation` | UNKNOWN | UNKNOWN | 106 | [来源及关键文件](../../results/server29/20261101/sources/f7244dbb1ca6/README.md) |
 | `server55_zypan_backup_20261029_87e45424/restored/GDN-quantization` | /data/zypan/modelscope_models/Qwen3.5-9B | UNKNOWN | 816 | [来源及关键文件](../../results/server29/20261101/sources/b08a56fda70a/README.md) |
+
+## Parquet 原始指标补充
+
+[380张唯一表的结构、实际归档与排除原因](PARQUET_SCHEMA_AND_CONTENT_REVIEW.json)。初版的按扩展名分类已修正，紧凑自有指标原样补齐。

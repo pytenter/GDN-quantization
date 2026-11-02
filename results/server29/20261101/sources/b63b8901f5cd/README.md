@@ -48,3 +48,10 @@
 - [`repair_20261017_v1/stop_delivery_20261017/lineage/FINAL_STATUS.json`](../../objects/36/36d5cc2cc29f4d7951262808383fa03df808b8e62286e3043b9aa4ad27417018__FINAL_STATUS.json)
 - [`repair_20261017_v1/protocol_recovery/CPU_PROTOCOL_QUALIFICATION.json`](../../objects/5e/5efd3e81fff703056d004458bbcf7a8c9bc6736c7caaed4ea03c60ac4e09493b__CPU_PROTOCOL_QUALIFICATION.json)
 - [`repair_20261017_v1/stop_delivery_20261017/FINAL_SCIENTIFIC_REPORT.md`](../../objects/75/753c795cfd278bffcd5d9d1162cb293c63ef1f7671caf18c0979f27aef8dfcc4__FINAL_SCIENTIFIC_REPORT.md)
+
+## 补充核验的原始 Parquet 指标表
+
+按列结构及解码内容确认，未重新运行模型或评分。全部记录见本来源的逐文件清单。
+
+- [`repair_20261017_v1/calibration_data/wikitext2_raw_train_b08601e0.parquet`](../../objects/e8/e83889baabc497075506f91975be5fac0d45c5290b6b20582c8cd1e853d0c9f7__wikitext2_raw_train_b08601e0.parquet)
+- [`calibration_data/wikitext2_raw_train_b08601e0.parquet`](../../objects/e8/e83889baabc497075506f91975be5fac0d45c5290b6b20582c8cd1e853d0c9f7__wikitext2_raw_train_b08601e0.parquet)
